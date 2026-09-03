@@ -23,7 +23,7 @@ async function waitForContentSettled(page) {
 }
 
 async function openSettings(page) {
-  await page.locator(".header-actions .icon-btn").first().click();
+  await page.locator(".header-actions .settings-entry").click();
   await waitForContentSettled(page);
 }
 

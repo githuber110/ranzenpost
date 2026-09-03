@@ -185,7 +185,7 @@ def _room_members(state_events, own_user_id):
             continue
         display_name = (event.get("content") or {}).get("displayname") or user_id
         members[user_id] = display_name
-    return sorted(members.values())
+    return members
 
 
 def _last_message_event(room):
@@ -209,7 +209,8 @@ def parse_room_list(sync_body, own_user_id=None):
     for room_id, room in joined.items():
         state_events = _all_state_events(room)
         name = _room_name(state_events)
-        members = _room_members(state_events, own_user_id)
+        member_names = _room_members(state_events, own_user_id)
+        members = sorted(member_names.values())
         last_event = _last_message_event(room)
         unread = int(((room.get("unread_notifications") or {}).get("notification_count")) or 0)
         rooms.append(
@@ -217,6 +218,7 @@ def parse_room_list(sync_body, own_user_id=None):
                 "room_id": room_id,
                 "name": name or ", ".join(members),
                 "members": members,
+                "member_names": member_names,
                 "last_message": _preview(last_event),
                 "last_message_at": last_event.get("origin_server_ts") if last_event else None,
                 "unread_count": unread,

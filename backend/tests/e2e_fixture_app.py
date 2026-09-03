@@ -184,9 +184,175 @@ def scenario_posts(count):
     ]
 
 
+MESSENGER_SELF = "@parent-fixture:example.test"
+MESSENGER_TEACHER = "@teacher-fixture:example.test"
+MESSENGER_OFFICE = "@office-fixture:example.test"
+MESSENGER_ROOM_A = "!room-a-fixture:example.test"
+MESSENGER_ROOM_B = "!room-b-fixture:example.test"
+MESSENGER_TEACHER_NAME = "Fr. Behrend-Waldenburger"
+MESSENGER_OFFICE_NAME = "Schulleitung"
+MESSENGER_ROOM_A_NAME = "Klasse 3b - Elternchat mit der Klassenlehrerin und dem Sekretariat"
+MESSENGER_BASE_TS = 1788336000000
+MESSENGER_MINUTE = 60000
+MESSENGER_DAY = 86400000
+MESSENGER_OLDER_TOKEN = "fixture-page-2"
+MESSENGER_IMAGE_ID = "image-fixture"
+MESSENGER_FILE_ID = "file-fixture"
+MESSENGER_SERVER = "media.example.test"
+MESSENGER_LONG_TEXT = (
+    "Guten Tag, der Ausflug am Donnerstag startet um acht Uhr am Schultor und wir sind "
+    "gegen sechzehn Uhr zurueck. Bitte gebt festes Schuhwerk, Regenjacke und ausreichend "
+    "Verpflegung mit."
+)
+MESSENGER_TINY_JPEG = bytes.fromhex(
+    "ffd8ffe000104a46494600010101006000600000ffdb004300ffffffffffffffffffffffffffffffff"
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "ffffffffffffffffffffffffffffffffffffffffc00011080001000103012200021101031101ffc400"
+    "1f0000010501010101010100000000000000000102030405060708090a0bffc400b5100002010303020"
+    "4030505040400000178000102030004110512213106134151076122713214328191a1082342b1c11552"
+    "d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a5354555657585"
+    "95a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8"
+    "a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f"
+    "3f4f5f6f7f8f9faffda0008010100003f00fbfe8a28a2803fffd9"
+)
+
+
+class FixtureMediaResponse:
+    def __init__(self, content, content_type, disposition=""):
+        self.content = content
+        self.headers = {"content-type": content_type}
+        if disposition:
+            self.headers["content-disposition"] = disposition
+
+
+def messenger_text(event_id, sender, offset, body):
+    return {
+        "event_id": event_id,
+        "sender": sender,
+        "sent_at": MESSENGER_BASE_TS + offset,
+        "kind": "text",
+        "body": body,
+    }
+
+
+def messenger_newest_page():
+    return [
+        messenger_text("$m6", MESSENGER_SELF, 25 * MESSENGER_MINUTE, "Alles klar, ist notiert."),
+        {
+            "event_id": "$m5",
+            "sender": MESSENGER_TEACHER,
+            "sent_at": MESSENGER_BASE_TS + 20 * MESSENGER_MINUTE,
+            "kind": "image",
+            "body": "ausflug-gruppenfoto-am-schultor.jpg",
+            "media_url": f"api/messenger/media/{MESSENGER_SERVER}/{MESSENGER_IMAGE_ID}",
+            "mimetype": "image/jpeg",
+            "size": len(MESSENGER_TINY_JPEG),
+        },
+        {
+            "event_id": "$m4",
+            "sender": MESSENGER_OFFICE,
+            "sent_at": MESSENGER_BASE_TS + 15 * MESSENGER_MINUTE,
+            "kind": "file",
+            "body": "elternabend-protokoll-2026-09-02.txt",
+            "media_url": f"api/messenger/media/{MESSENGER_SERVER}/{MESSENGER_FILE_ID}",
+            "mimetype": "text/plain",
+            "size": 42,
+        },
+        messenger_text(
+            "$m3",
+            MESSENGER_SELF,
+            10 * MESSENGER_MINUTE,
+            "Vielen Dank fuer die Information, wir packen alles ein.",
+        ),
+        messenger_text("$m2", MESSENGER_TEACHER, 5 * MESSENGER_MINUTE, MESSENGER_LONG_TEXT),
+        {
+            "event_id": "$m1",
+            "sender": MESSENGER_OFFICE,
+            "sent_at": MESSENGER_BASE_TS,
+            "kind": "system",
+            "system_kind": "join",
+        },
+    ]
+
+
+def messenger_older_page():
+    return [
+        messenger_text(
+            "$m0",
+            MESSENGER_TEACHER,
+            -MESSENGER_DAY,
+            "Guten Tag, hier ist der Elternchat der Klasse 3b.",
+        ),
+        {
+            "event_id": "$m-1",
+            "sender": MESSENGER_OFFICE,
+            "sent_at": MESSENGER_BASE_TS - MESSENGER_DAY - MESSENGER_MINUTE,
+            "kind": "system",
+            "system_kind": "invite",
+        },
+    ]
+
+
 class FixtureService:
     def __init__(self, store):
         self.store = store
+
+    def messenger_rooms(self):
+        return {
+            "self_user_id": MESSENGER_SELF,
+            "rooms": [
+                {
+                    "room_id": MESSENGER_ROOM_A,
+                    "name": MESSENGER_ROOM_A_NAME,
+                    "members": [MESSENGER_OFFICE_NAME, MESSENGER_TEACHER_NAME],
+                    "member_names": {
+                        MESSENGER_TEACHER: MESSENGER_TEACHER_NAME,
+                        MESSENGER_OFFICE: MESSENGER_OFFICE_NAME,
+                    },
+                    "last_message": "Alles klar, ist notiert.",
+                    "last_message_at": MESSENGER_BASE_TS + 25 * MESSENGER_MINUTE,
+                    "unread_count": 3,
+                },
+                {
+                    "room_id": MESSENGER_ROOM_B,
+                    "name": MESSENGER_TEACHER_NAME,
+                    "members": [MESSENGER_TEACHER_NAME],
+                    "member_names": {MESSENGER_TEACHER: MESSENGER_TEACHER_NAME},
+                    "last_message": MESSENGER_LONG_TEXT,
+                    "last_message_at": MESSENGER_BASE_TS - MESSENGER_DAY,
+                    "unread_count": 0,
+                },
+            ],
+        }
+
+    def messenger_room_messages(self, room_id, before=None):
+        if before == MESSENGER_OLDER_TOKEN:
+            return {
+                "messages": messenger_older_page(),
+                "before": "",
+                "self_user_id": MESSENGER_SELF,
+            }
+        if room_id == MESSENGER_ROOM_B:
+            return {"messages": [], "before": "", "self_user_id": MESSENGER_SELF}
+        return {
+            "messages": messenger_newest_page(),
+            "before": MESSENGER_OLDER_TOKEN,
+            "self_user_id": MESSENGER_SELF,
+        }
+
+    def messenger_send(self, room_id, text):
+        if not str(text or "").strip():
+            return {"ok": False, "message_key": "api.messenger.send.empty"}
+        return {"ok": True, "message_key": "api.messenger.send.ok", "event_id": "$fixture-sent"}
+
+    def messenger_media(self, server_name, media_id):
+        if media_id == MESSENGER_IMAGE_ID:
+            return FixtureMediaResponse(MESSENGER_TINY_JPEG, "image/jpeg")
+        return FixtureMediaResponse(
+            b"Protokoll des Elternabends.\n",
+            "text/plain",
+            'inline; filename="elternabend-protokoll-2026-09-02.txt"',
+        )
 
     def is_configured(self):
         return True
