@@ -1,0 +1,103 @@
+[
+  {
+    "id": "fixture-ni-public-newyear-2026",
+    "startDate": "2026-01-01",
+    "endDate": "2026-01-01",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Neujahr" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-goodfriday-2026",
+    "startDate": "2026-04-03",
+    "endDate": "2026-04-03",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Karfreitag" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-eastermonday-2026",
+    "startDate": "2026-04-06",
+    "endDate": "2026-04-06",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Ostermontag" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-labour-2026",
+    "startDate": "2026-05-01",
+    "endDate": "2026-05-01",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Tag der Arbeit" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-ascension-2026",
+    "startDate": "2026-05-14",
+    "endDate": "2026-05-14",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Christi Himmelfahrt" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-whitmonday-2026",
+    "startDate": "2026-05-25",
+    "endDate": "2026-05-25",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Pfingstmontag" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-unity-2026",
+    "startDate": "2026-10-03",
+    "endDate": "2026-10-03",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Tag der Deutschen Einheit" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-reformation-2026",
+    "startDate": "2026-10-31",
+    "endDate": "2026-10-31",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Reformationstag" }],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [{ "code": "DE-NI", "shortName": "NI" }]
+  },
+  {
+    "id": "fixture-ni-public-christmas1-2026",
+    "startDate": "2026-12-25",
+    "endDate": "2026-12-25",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Erster Weihnachtstag" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fixture-ni-public-christmas2-2026",
+    "startDate": "2026-12-26",
+    "endDate": "2026-12-26",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Zweiter Weihnachtstag" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  }
+]

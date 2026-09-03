@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="de-DE">
+<head><meta charset="UTF-8"><title>Login</title></head>
+<body>
+  <form id="login-form" method="post" action="/iserv/auth/login?_target_path=/iserv/auth/auth%3Fclient_id%3Dexample">
+    <input type="text" id="username" name="_username" value="" required>
+    <input type="password" id="password" name="_password" value="" required>
+    <input type="checkbox" id="remember_me" name="_remember_me" value="on">
+    <button type="submit">Anmelden</button>
+  </form>
+  <form class="module-filter" method="get" action="/iserv/">
+    <input type="search" name="filter" placeholder="Module filtern">
+  </form>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "fixture-school_de_by_2026-01",
+    "startDate": "2026-11-18",
+    "endDate": "2026-11-18",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Buß- und Bettag"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-BY",
+        "shortName": "BY"
+      }
+    ]
+  }
+]

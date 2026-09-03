@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "filter": {
+      "startDate": "31.08.2026",
+      "endDate": "06.09.2026",
+      "changesUntil": "01.09.2026",
+      "classes": ["01A"],
+      "teachers": ["%"],
+      "rooms": ["%"]
+    },
+    "last-updated": "22.07.2026 12:25"
+  },
+  "data": {
+    "timetable": [
+      {"id": 1001, "class": "01A", "teacher": "AAA", "subject": "D", "room": "R1", "dow": 1, "period": 1, "internal_id": "10", "date": "31.08.2026", "period_reference": null},
+      {"id": 1002, "class": "01A", "teacher": "CCC", "subject": "M", "room": "R2", "dow": 1, "period": 2, "internal_id": "11", "date": "31.08.2026", "period_reference": null}
+    ],
+    "orphan-changes": []
+  },
+  "plain-timetable": [
+    {"id": 1001, "class": "01A", "teacher": "AAA", "subject": "D", "room": "R1", "dow": 1, "period": 1, "internal_id": "10", "date": "31.08.2026", "period_reference": null},
+    {"id": 1002, "class": "01A", "teacher": "BBB", "subject": "M", "room": "R1", "dow": 1, "period": 2, "internal_id": "11", "date": "31.08.2026", "period_reference": null},
+    {"id": 1003, "class": "01A", "teacher": "DDD", "subject": "SP", "room": "GYM", "dow": 1, "period": 3, "internal_id": "12", "date": "31.08.2026", "period_reference": null}
+  ],
+  "plain-changes": [
+    {"id": 2001, "class": "01A", "teacher": "CCC", "subject": "M", "room": "R2", "dow": 1, "period": 2, "internal_id": "11", "date": "31.08.2026", "type": "substitution"}
+  ]
+}

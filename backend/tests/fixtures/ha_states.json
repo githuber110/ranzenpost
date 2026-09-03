@@ -1,0 +1,32 @@
+[
+  {
+    "entity_id": "notify.test_phone",
+    "state": "2026-09-01T07:12:00+00:00",
+    "attributes": { "friendly_name": "Test Phone" }
+  },
+  {
+    "entity_id": "device_tracker.test_phone",
+    "state": "home",
+    "attributes": { "friendly_name": "Test Phone Tracker", "source_type": "gps" }
+  },
+  {
+    "entity_id": "device_tracker.test_tablet",
+    "state": "not_home",
+    "attributes": { "friendly_name": "Test Tablet", "source_type": "gps" }
+  },
+  {
+    "entity_id": "sensor.test_tablet_battery_level",
+    "state": "64",
+    "attributes": { "friendly_name": "Test Tablet Battery level", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "light.hallway",
+    "state": "off",
+    "attributes": { "friendly_name": "Hallway" }
+  },
+  {
+    "entity_id": "sensor.without_name",
+    "state": "1",
+    "attributes": {}
+  }
+]

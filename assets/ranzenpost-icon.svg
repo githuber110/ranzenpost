@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Ranzenpost">
+  <defs>
+    <linearGradient id="rpField" x1="90" y1="0" x2="930" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#178C93"/>
+      <stop offset="0.3" stop-color="#0E6B70"/>
+      <stop offset="0.68" stop-color="#08363D"/>
+      <stop offset="1" stop-color="#04171C"/>
+    </linearGradient>
+    <radialGradient id="rpBloom" cx="292" cy="180" r="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7FE9E0" stop-opacity="0.3"/>
+      <stop offset="0.52" stop-color="#3EBDBA" stop-opacity="0.09"/>
+      <stop offset="1" stop-color="#0E6B70" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rpSweep" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="rpVignette" cx="512" cy="440" r="690" gradientUnits="userSpaceOnUse">
+      <stop offset="0.36" stop-color="#02141A" stop-opacity="0"/>
+      <stop offset="1" stop-color="#02141A" stop-opacity="0.74"/>
+    </radialGradient>
+
+    <linearGradient id="rpBody" x1="270" y1="310" x2="780" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.5"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="0.74" stop-color="#CFFFF8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#9DF3E9" stop-opacity="0.34"/>
+    </linearGradient>
+    <radialGradient id="rpInner" cx="382" cy="410" r="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rpRefract" cx="726" cy="748" r="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3DEFDD" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#3DEFDD" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rpFlapSheet" x1="290" y1="340" x2="700" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.36"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#EAFFFB" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="rpPocket" x1="0" y1="500" x2="0" y2="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#01191E" stop-opacity="0.54"/>
+      <stop offset="0.55" stop-color="#032128" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#04333A" stop-opacity="0.12"/>
+    </linearGradient>
+    <linearGradient id="rpLeak" x1="0" y1="500" x2="0" y2="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8DFFF2" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#8DFFF2" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="rpSpec" x1="252" y1="0" x2="772" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.52" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="0.76" stop-color="#FFFFFF" stop-opacity="0.74"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.24"/>
+    </linearGradient>
+    <linearGradient id="rpRim" x1="262" y1="340" x2="772" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="0.26" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.07"/>
+      <stop offset="0.88" stop-color="#DEFFF8" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.32"/>
+    </linearGradient>
+    <linearGradient id="rpHandle" x1="348" y1="266" x2="676" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.56"/>
+      <stop offset="0.45" stop-color="#D8FFF8" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#8FEDE4" stop-opacity="0.38"/>
+    </linearGradient>
+
+    <filter id="rpB5" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
+    <filter id="rpB18" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="rpB24" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="24"/></filter>
+    <filter id="rpB40" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>
+    <filter id="rpB52" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="52"/></filter>
+
+    <clipPath id="rpBodyClip"><rect x="252" y="360" width="520" height="420" rx="108"/></clipPath>
+    <clipPath id="rpFlapClip"><path d="M232 340 H792 V500 L556 594 Q512 613 468 594 L232 500 Z"/></clipPath>
+    <clipPath id="rpPocketClip"><path d="M232 500 L468 594 Q512 613 556 594 L792 500 V800 H232 Z"/></clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#062226"/>
+  <rect width="1024" height="1024" fill="url(#rpField)"/>
+  <rect width="1024" height="1024" fill="url(#rpBloom)"/>
+  <g transform="rotate(-28 512 512)">
+    <rect x="-400" y="110" width="1824" height="330" fill="url(#rpSweep)"/>
+  </g>
+  <rect width="1024" height="1024" fill="url(#rpVignette)"/>
+
+  <path d="M348 382 C348 268 676 268 676 382" fill="none" stroke="#01161B" stroke-opacity="0.52" stroke-width="70" stroke-linecap="round" transform="translate(6,26)" filter="url(#rpB24)"/>
+  <path d="M348 382 C348 268 676 268 676 382" fill="none" stroke="url(#rpHandle)" stroke-width="58" stroke-linecap="round"/>
+  <path d="M348 382 C348 268 676 268 676 382" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="58" stroke-linecap="round" filter="url(#rpB18)"/>
+  <path d="M348 382 C348 268 676 268 676 382" fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="7" stroke-linecap="round" transform="translate(-3,-17)" filter="url(#rpB5)"/>
+
+  <rect x="252" y="360" width="520" height="420" rx="108" fill="#02141A" opacity="0.58" transform="translate(0,36)" filter="url(#rpB52)"/>
+  <rect x="252" y="360" width="520" height="420" rx="108" fill="#5AE6DC" opacity="0.22" transform="translate(0,-12)" filter="url(#rpB40)"/>
+
+  <g clip-path="url(#rpBodyClip)">
+    <rect x="252" y="360" width="520" height="420" fill="url(#rpBody)"/>
+    <rect x="252" y="360" width="520" height="420" fill="url(#rpInner)"/>
+    <rect x="252" y="360" width="520" height="420" fill="url(#rpRefract)"/>
+
+    <g clip-path="url(#rpPocketClip)">
+      <rect x="252" y="480" width="520" height="300" fill="url(#rpPocket)"/>
+      <rect x="252" y="500" width="520" height="180" fill="url(#rpLeak)"/>
+    </g>
+    <g clip-path="url(#rpFlapClip)">
+      <rect x="252" y="360" width="520" height="250" fill="url(#rpFlapSheet)"/>
+    </g>
+
+    <rect x="252" y="360" width="520" height="420" rx="108" fill="none" stroke="#01161B" stroke-opacity="0.22" stroke-width="70" transform="translate(20,24)" filter="url(#rpB24)"/>
+    <rect x="252" y="360" width="520" height="420" rx="108" fill="none" stroke="#EAFFFB" stroke-opacity="0.32" stroke-width="64" transform="translate(-18,-22)" filter="url(#rpB24)"/>
+
+    <path d="M252 500 L468 594 Q512 613 556 594 L772 500" fill="none" stroke="#CFFFF6" stroke-opacity="0.44" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" filter="url(#rpB18)"/>
+    <path d="M252 500 L468 594 Q512 613 556 594 L772 500" fill="none" stroke="url(#rpSpec)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M252 500 L468 594 Q512 613 556 594 L772 500" fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#rpB5)"/>
+  </g>
+
+  <rect x="254.5" y="362.5" width="515" height="415" rx="105.5" fill="none" stroke="url(#rpRim)" stroke-width="5"/>
+</svg>

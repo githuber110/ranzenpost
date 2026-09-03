@@ -1,0 +1,2 @@
+network:
+  "8100/tcp": "Calendar subscription (ICS). The calendar stays off while no port is set. Setting a port here makes the calendar address reachable on your home network without a password — the link is the password. Never forward it through your router; use a reverse proxy with HTTPS or a VPN for access from outside."

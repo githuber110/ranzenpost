@@ -1,0 +1,60 @@
+[
+  {
+    "id": "fixture-public_de_by_2026-01",
+    "startDate": "2026-08-08",
+    "endDate": "2026-08-08",
+    "type": "Public",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Friedensfest"
+      }
+    ],
+    "regionalScope": "Local",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-BY-AU",
+        "shortName": "BY-AU"
+      }
+    ]
+  },
+  {
+    "id": "fixture-public_de_by_2026-02",
+    "startDate": "2026-11-01",
+    "endDate": "2026-11-01",
+    "type": "Public",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Allerheiligen"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-SL",
+        "shortName": "SL"
+      },
+      {
+        "code": "DE-NW",
+        "shortName": "NW"
+      },
+      {
+        "code": "DE-BW",
+        "shortName": "BW"
+      },
+      {
+        "code": "DE-RP",
+        "shortName": "RP"
+      },
+      {
+        "code": "DE-BY",
+        "shortName": "BY"
+      }
+    ]
+  }
+]

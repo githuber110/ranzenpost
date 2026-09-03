@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "guardians_seeAllAbsencesAndSickNotesOfChildren_isActive": false,
+    "requestToSchools_notAttend_bus_isActive": true,
+    "requestToSchools_notAttend_afternoonCare_isActive": true,
+    "requestToSchools_notAttend_afternoonCare_minDays": 0,
+    "requestToSchools_notAttend_afternoonCare_noteRequired": false,
+    "requestToSchools_notAttend_afternoonCare_allowCustomPickupTime": true,
+    "requestToSchools_notAttend_afternoonCare_pickupTimes": ["15:00", "16:00"],
+    "requestToSchools_notAttend_kindergarten_isActive": true,
+    "requestToSchools_notAttend_lunch_isActive": true,
+    "requestToSchools_studentAbsence_isActive": true,
+    "requestToSchools_studentAbsence_minDays": 3,
+    "substitutions_availableForGuardiansAndStudents": true,
+    "sickNotes_allowTextnoteForGuardiansAndStudents": true,
+    "sickNotes_guardiansCanReportByLesson": true,
+    "timetable_availableForGuardiansAndStudents": true
+  }
+]

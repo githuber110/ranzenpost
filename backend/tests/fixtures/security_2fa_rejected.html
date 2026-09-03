@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Zwei-Faktor-Authentifizierung</title></head>
+<body>
+<h1>Zwei-Faktor-Authentifizierung</h1>
+<a class="otpauth-link" href="otpauth://totp/IServ:parent?secret=JBSWY3DPEHPK3PXP&amp;issuer=IServ&amp;algorithm=SHA1&amp;digits=6&amp;period=30">In App öffnen</a>
+<form name="confirm" method="post" action="" id="twofactor_confirm" hx-post="/iserv/auth/settings/twofactor/add/confirm" hx-target="#twofactor-content">
+  <input type="text" name="confirm[name]" value="">
+  <div class="has-error">
+    <input type="text" name="confirm[verification]" value="">
+    <span class="help-block">Bitte geben Sie einen gültigen 2FA-Code ein.</span>
+  </div>
+  <input type="text" name="confirm[_fake_username]" value="">
+  <input type="text" name="confirm[code]" value="">
+  <button type="button">Manuelle Eingabe</button>
+  <button type="submit" name="confirm[actions][submit]">Aktivieren</button>
+  <input type="hidden" name="confirm[_token]" value="csrf-confirm-token">
+</form>
+</body>
+</html>

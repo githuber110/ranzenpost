@@ -1,0 +1,2 @@
+network:
+  "8100/tcp": "Kalender-Abo (ICS). Ohne eingetragenen Port bleibt der Kalender aus. Wer hier einen Port einträgt, macht die Kalender-Adresse im Heimnetz ohne Passwort erreichbar — der Link ist das Passwort. Niemals im Router nach außen weiterleiten; von unterwegs stattdessen einen Reverse-Proxy mit HTTPS oder ein VPN benutzen."

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de-DE">
+<head><meta charset="UTF-8"><title>Zwei-Faktor-Authentifizierung</title></head>
+<body>
+  <form id="twofactor-form" method="post" action="/iserv/auth/twofactor/confirm?_target_path=/iserv/auth/auth%3Fclient_id%3Dexample">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_1]" value="">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_2]" value="">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_3]" value="">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_4]" value="">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_5]" value="">
+    <input type="text" name="two_factor_login_form[two_factor_code_digit_6]" value="">
+    <input type="hidden" name="otp" value="">
+    <input type="hidden" name="_csrf_token" value="csrf-token-example">
+    <button type="submit">Bestätigen</button>
+  </form>
+</body>
+</html>
