@@ -19,6 +19,8 @@ FOREIGN_TEXT_FIELDS = {
     "note": ("text", "title"),
     "conference": ("title", "teacher", "slot"),
     "me": ("forename", "lastname", "email", "external_id"),
+    "room": ("name", "last_message"),
+    "message": ("body",),
 }
 FOREIGN_FIELD = re.compile(
     r"\b(" + "|".join(sorted(FOREIGN_TEXT_FIELDS)) + r")\.(\w+)\b"

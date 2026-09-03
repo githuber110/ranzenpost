@@ -3,6 +3,15 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.04
+
+- School messenger (read and reply): room list with filter and unread badges, chronological room
+  view with day separators, images opening in the file viewer, attachments via the regular
+  attachment flow, paging into older messages, and a compose bar that only ever sends on an
+  explicit tap. The app never emits read receipts - teachers never see a read status you did not
+  cause yourself. Entry point is provisional (header action) while the navigation rework decided
+  by the design round ships with the next release together with room creation.
+
 ## 2609.01.03
 
 - In-app file viewer: images open in a full-screen overlay with pinch and double-tap zoom, PDFs

@@ -156,7 +156,7 @@ def test_a_401_triggers_exactly_one_bootstrap_refresh_then_succeeds():
 
     service = MessengerService(iserv, matrix_client_factory=factory)
     result = service.rooms()
-    assert result == {"rooms": []}
+    assert result == {"rooms": [], "self_user_id": "@me:srv-1"}
     assert tokens_seen == ["stale-tok", "tok-1"]
     assert client.fetched_paths == ["/iserv/messenger/"]
 
@@ -248,6 +248,18 @@ def test_room_messages_forwards_the_before_token_and_builds_media_urls():
     result = service.room_messages("!room:school.example", before="batch-1")
     assert result["before"] == "batch-2"
     assert result["messages"][0]["media_url"] == "api/messenger/media/school-server/media-9"
+
+
+def test_both_read_endpoints_name_the_own_matrix_user_so_the_ui_can_tell_the_sides_apart():
+    store = DictStore({"messenger_access_token": "tok-1", "messenger_user_id": "@me:srv"})
+    iserv = FakeIServ(store)
+    plan = {
+        "sync": FakeMatrixResponse(json_data={"rooms": {"join": {}}}),
+        "room_messages": FakeMatrixResponse(json_data={"end": "", "chunk": []}),
+    }
+    service = MessengerService(iserv, matrix_client_factory=make_factory(plan))
+    assert service.rooms()["self_user_id"] == "@me:srv"
+    assert service.room_messages("!room:school.example")["self_user_id"] == "@me:srv"
 
 
 def test_unread_pulse_returns_the_total_across_rooms():
