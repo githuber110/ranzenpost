@@ -3,6 +3,14 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.02
+
+- Read confirmations for parent letters: letters that request a confirmation are marked in the
+  list, the detail view explains what is asked and sends the confirmation after an explicit
+  prompt, and the push notification mentions an outstanding confirmation. Accept/decline replies
+  and questionnaires are shown as requiring IServ directly - their submit format is not verifiable
+  yet and nothing is guessed.
+
 ## 2609.01.01
 
 - Attachments and the sick-note PDF now open directly in a viewer where the platform allows it

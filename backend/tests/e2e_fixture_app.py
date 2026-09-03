@@ -16,6 +16,9 @@ if E2E_DATA_DIR.exists():
 
 LONG_SUBJECT = "Naturwissenschaften und angewandte Informatik"
 
+CONFIRM_LETTER_ID = "c3d4e5f6a7b8491023c4d5e6f7a8b901"
+CONFIRMED_AT = "2026-09-03T14:05:00"
+
 HOLIDAY_REGION = "DE-NI"
 HOLIDAY_FULL_WEEK_OFFSET = 3
 HOLIDAY_SINGLE_DAY_OFFSET = 5
@@ -381,7 +384,7 @@ class FixtureService:
             return {"letters": scenario_letters(scenario["letters"] if tab == "current" else 0)}
         letters = [
             {
-                "letter_id": "c3d4e5f6a7b8491023c4d5e6f7a8b901",
+                "letter_id": CONFIRM_LETTER_ID,
                 "recipient_id": "r1",
                 "title": "Informationen zum Schuljahresstart und weiteren Terminen",
                 "child": "Mia Musterkind",
@@ -390,6 +393,7 @@ class FixtureService:
                 "unread": tab == "current",
                 "body_text": "",
                 "attachments": [],
+                "confirmation": self._confirmation_state(),
             },
             {
                 "letter_id": "l2",
@@ -401,15 +405,46 @@ class FixtureService:
                 "unread": False,
                 "body_text": "",
                 "attachments": [],
+                "confirmation": {
+                    "type": "confirmation",
+                    "open": True,
+                    "done": False,
+                    "sendable": False,
+                    "confirmed_at": "",
+                },
             },
         ]
         return {"letters": letters}
 
+    def _confirmation_state(self):
+        return {"type": "seen", "open": True, "done": False, "sendable": True, "confirmed_at": ""}
+
     def mark_letters_read(self, keys=None, mark_all=False):
         return {"read": len(keys or [])}
 
+    def confirm_letter(self, letter_id, recipient_id, text=None):
+        return {
+            "ok": True,
+            "message_key": "api.letters.confirm.ok",
+            "confirmed_at": CONFIRMED_AT,
+        }
+
     def letter_detail(self, letter_id, recipient_id):
-        return {"title": "Letter", "body_html": "<p>Inhalt</p>", "attachments": [], "archive_url_present": True}
+        return {
+            "title": "Letter",
+            "body_html": "<p>Inhalt</p>",
+            "attachments": [],
+            "archive_url_present": True,
+            "confirmation": self._confirmation_state()
+            if letter_id == CONFIRM_LETTER_ID
+            else {
+                "type": "confirmation",
+                "open": True,
+                "done": False,
+                "sendable": False,
+                "confirmed_at": "",
+            },
+        }
 
     def archive_letter(self, letter_id, recipient_id):
         return True

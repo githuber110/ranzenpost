@@ -248,6 +248,67 @@ def build_hide_payload(form):
     return payload
 
 
+CONFIRMATION_ATTR = "confirmation-type"
+CONFIRMATION_NONE = "none"
+CONFIRMATION_SEEN = "seen"
+CONFIRMATION_CHOICE = "confirmation"
+SENDABLE_CONFIRMATIONS = (CONFIRMATION_SEEN,)
+
+
+def parse_confirmation(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    button = soup.find(attrs={CONFIRMATION_ATTR: True})
+    if button is None:
+        return None
+    kind = (button.get(CONFIRMATION_ATTR) or "").strip().lower()
+    if not kind or kind == CONFIRMATION_NONE:
+        return None
+    form = button.find_parent("form")
+    if form is None:
+        return None
+    fields = {}
+    submits = {}
+    text_field = ""
+    for control in form.find_all(["input", "textarea", "select"]):
+        name = control.get("name")
+        if not name:
+            continue
+        if control.name == "textarea":
+            text_field = name
+            fields[name] = control.get_text() or ""
+            continue
+        if control.name == "input" and (control.get("type") or "text").lower() == "submit":
+            submits[name] = control.get("value") or ""
+            continue
+        fields[name] = control.get("value") or ""
+    for control in form.find_all("button"):
+        name = control.get("name")
+        if not name or (control.get("type") or "submit").lower() != "submit":
+            continue
+        submits[name] = control.get("value") or ""
+    return {
+        "type": kind,
+        "action": urljoin(base_url, form.get("action") or base_url),
+        "fields": fields,
+        "submits": submits,
+        "text_field": text_field,
+        "text": fields.get(text_field, "") if text_field else "",
+        "sendable": kind in SENDABLE_CONFIRMATIONS and len(submits) == 1,
+    }
+
+
+def build_confirmation_payload(confirmation, text=None):
+    payload = dict(confirmation.get("fields") or {})
+    field = confirmation.get("text_field") or ""
+    if field and text is not None:
+        payload[field] = text
+    submits = dict(confirmation.get("submits") or {})
+    name = next(iter(submits), "")
+    if name:
+        payload[name] = submits[name]
+    return payload
+
+
 CONFIRM_FIELD = "iserv_crud_multi_select[confirm]"
 
 

@@ -1,7 +1,7 @@
 import logging
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
 import requests
@@ -59,9 +59,11 @@ from .iserv.letters import (
     RESTORE_ACTION,
     build_archive_payload,
     build_batch_confirm_payload,
+    build_confirmation_payload,
     build_hide_payload,
     parse_archive_form,
     parse_batch_confirm,
+    parse_confirmation,
     parse_hide_confirm,
     parse_letter_detail,
     parse_letter_list,
@@ -107,6 +109,12 @@ ABSENCE_SENT_KEYS = {
     KIND_DEREGISTER: "api.absence.sent.deregister",
     KIND_DAYCARE: "api.absence.sent.daycare",
 }
+LETTER_CONFIRM_OK_KEY = "api.letters.confirm.ok"
+LETTER_CONFIRM_DONE_KEY = "api.letters.confirm.alreadyDone"
+LETTER_CONFIRM_GONE_KEY = "api.letters.confirm.gone"
+LETTER_CONFIRM_UNSUPPORTED_KEY = "api.letters.confirm.unsupported"
+LETTER_CONFIRM_UPSTREAM_KEY = "api.letters.confirm.upstream"
+LETTER_CONFIRM_REJECTED_KEY = "api.letters.confirm.rejected"
 SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 SAFE_FILENAME = re.compile(r"^[^\x00-\x1f/\\]{1,120}$")
 
@@ -395,6 +403,7 @@ class IServService:
         self.store.save_seen({})
         self.store.save_absence_history({})
         self.store.save_letters_search_cache({})
+        self.store.save_letters_confirmations({})
         self.store.reset_config()
         self.store.delete_secrets()
         self._client = None
@@ -518,31 +527,93 @@ class IServService:
         entries = parse_letter_list(response.text, response.url)
         entries.sort(key=lambda item: _published_sort_key(item.get("published")), reverse=True)
         search_cache = self.store.load_letters_search_cache()
+        records = self.store.load_letters_confirmations()
         for entry in entries:
             key = self._letter_key(entry)
             entry["unread"] = bool(entry.get("unread")) and tab != "archive"
             cached = search_cache.get(key) or {}
             entry["body_text"] = cached.get("body_text", "")
             entry["attachments"] = cached.get("attachments", [])
+            entry["confirmation"] = self._confirmation_state(
+                cached.get("confirmation"), records.get(key)
+            )
         return {"letters": entries}
+
+    def _confirmation_state(self, parsed, record):
+        record = record if isinstance(record, dict) else None
+        parsed = parsed if isinstance(parsed, dict) else None
+        if parsed is None and record is None:
+            return None
+        kind = (parsed or {}).get("type") or (record or {}).get("type") or ""
+        done = record is not None
+        return {
+            "type": kind,
+            "open": bool(parsed) and not done,
+            "done": done,
+            "sendable": bool((parsed or {}).get("sendable")),
+            "confirmed_at": (record or {}).get("confirmed_at", ""),
+        }
+
+    def _cached_confirmation(self, parsed):
+        if not parsed:
+            return None
+        return {"type": parsed.get("type", ""), "sendable": bool(parsed.get("sendable"))}
+
+    def _confirmation_cache_entry(self, public):
+        if not public or not public.get("open"):
+            return None
+        return {"type": public.get("type", ""), "sendable": bool(public.get("sendable"))}
+
+    def _store_confirmation_cache(self, key, parsed):
+        cache = self.store.load_letters_search_cache()
+        entry = cache.get(key)
+        if not isinstance(entry, dict):
+            return
+        state = self._cached_confirmation(parsed)
+        if entry.get("confirmation") == state:
+            return
+        entry["confirmation"] = state
+        cache[key] = entry
+        self.store.save_letters_search_cache(cache)
+
+    def _needs_confirmation_refresh(self, entry):
+        if not isinstance(entry, dict):
+            return True
+        if "confirmation" not in entry:
+            return True
+        return bool(entry.get("confirmation"))
 
     def enrich_letters_search(self, tab="current"):
         entries = self.letters(tab)["letters"]
         cache = self.store.load_letters_search_cache()
+        records = self.store.load_letters_confirmations()
         indexed = 0
         for entry in entries:
             key = self._letter_key(entry)
-            if key in cache:
+            cached = cache.get(key)
+            known = key in cache
+            if known and key in records:
+                continue
+            if known and not self._needs_confirmation_refresh(cached):
                 continue
             detail = self.letter_detail(entry.get("letter_id"), entry.get("recipient_id"))
             cache[key] = {
-                "body_text": plain_text(detail.get("body_html", "")),
-                "attachments": detail.get("attachments", []),
+                "body_text": cached.get("body_text", "") if known else plain_text(detail.get("body_html", "")),
+                "attachments": cached.get("attachments", []) if known else detail.get("attachments", []),
+                "confirmation": self._confirmation_cache_entry(detail.get("confirmation")),
             }
             indexed += 1
         if indexed:
             self.store.save_letters_search_cache(cache)
         return indexed
+
+    def pending_confirmation_keys(self, tab="current"):
+        entries = self.letters(tab)["letters"]
+        return {
+            self._letter_key(entry)
+            for entry in entries
+            if (entry.get("confirmation") or {}).get("open")
+        }
 
     def mark_letters_read(self, keys=None, mark_all=False):
         targets = list(keys or [])
@@ -569,12 +640,20 @@ class IServService:
         )
         return getattr(response, "status_code", 0) == 200
 
+    def _fetch_letter_page(self, letter_id, recipient_id):
+        client = self._session()
+        response = client.fetch(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
+        return client, response
+
     def letter_detail(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
         recipient_id = _clean_id(recipient_id)
-        client = self._session()
-        response = client.fetch(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
+        _, response = self._fetch_letter_page(letter_id, recipient_id)
         detail = parse_letter_detail(response.text, response.url)
+        parsed = parse_confirmation(response.text, response.url)
+        key = f"{letter_id}:{recipient_id}"
+        self._store_confirmation_cache(key, parsed)
+        record = self.store.load_letters_confirmations().get(key)
         attachments = [
             {"filename": item.get("filename") or "", "url": f"api/letters/attachment/{item.get('attachment_id')}"}
             for item in detail.get("attachments", [])
@@ -585,7 +664,36 @@ class IServService:
             "body_html": detail.get("body_html", ""),
             "attachments": attachments,
             "archive_url_present": bool(detail.get("archive_url")),
+            "confirmation": self._confirmation_state(self._cached_confirmation(parsed), record),
         }
+
+    def confirm_letter(self, letter_id, recipient_id, text=None):
+        letter_id = _clean_id(letter_id)
+        recipient_id = _clean_id(recipient_id)
+        key = f"{letter_id}:{recipient_id}"
+        records = self.store.load_letters_confirmations()
+        if key in records:
+            return messages.result(False, LETTER_CONFIRM_DONE_KEY)
+        client, response = self._fetch_letter_page(letter_id, recipient_id)
+        parsed = parse_confirmation(response.text, response.url)
+        if parsed is None:
+            self._store_confirmation_cache(key, None)
+            return messages.result(False, LETTER_CONFIRM_GONE_KEY)
+        if not parsed.get("sendable"):
+            return messages.result(False, LETTER_CONFIRM_UNSUPPORTED_KEY)
+        payload = build_confirmation_payload(parsed, text)
+        sent = client.post_absolute(parsed["action"], data=payload)
+        status = getattr(sent, "status_code", 0)
+        if status not in (200, 201, 204, 302):
+            return messages.result(False, LETTER_CONFIRM_UPSTREAM_KEY, {"status": status})
+        _, verify = self._fetch_letter_page(letter_id, recipient_id)
+        if parse_confirmation(verify.text, verify.url) is not None:
+            return messages.result(False, LETTER_CONFIRM_REJECTED_KEY)
+        stamp = datetime.now().replace(microsecond=0).isoformat()
+        records[key] = {"type": parsed.get("type", ""), "confirmed_at": stamp}
+        self.store.save_letters_confirmations(records)
+        self._store_confirmation_cache(key, None)
+        return messages.result(True, LETTER_CONFIRM_OK_KEY, confirmed_at=stamp)
 
     def archive_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
