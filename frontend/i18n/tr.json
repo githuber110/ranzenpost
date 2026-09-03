@@ -155,6 +155,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "Bildirimi iptal et",
   "absence.wizard.factJoin": "{first}, {second}",
+  "absence.wizard.fieldHidden": "Bilgi kaldırıldı: {name}",
+  "absence.wizard.fieldShown": "Ek bilgi gösterildi: {name}",
   "absence.wizard.need": "Hâlâ gerekli: {field}",
   "absence.wizard.none": "yok",
   "absence.wizard.periodsDropped": "Ders saati bilgileri silinecek.",

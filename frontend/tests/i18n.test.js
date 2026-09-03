@@ -269,7 +269,8 @@ describe("right-to-left is switched on for arabic and off again for everyone els
     const bar = window.eval("weekBar()");
     expect(bar.querySelector(".chev-prev")).toBeTruthy();
     expect(bar.querySelector(".chev-next")).toBeTruthy();
-    expect(window.eval("backButton(function () {})").className).toContain("nav-back");
+    const head = window.eval('headerTitleNode({ text: "x", onBack: function () {} })');
+    expect(head.querySelector(".header-back")).toBeTruthy();
   });
 
   test("content that comes from iserv keeps its own direction", () => {

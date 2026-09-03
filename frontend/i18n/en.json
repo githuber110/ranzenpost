@@ -155,6 +155,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "Cancel report",
   "absence.wizard.factJoin": "{first}, {second}",
+  "absence.wizard.fieldHidden": "Detail removed: {name}",
+  "absence.wizard.fieldShown": "Extra detail shown: {name}",
   "absence.wizard.need": "Still needed: {field}",
   "absence.wizard.none": "none",
   "absence.wizard.periodsDropped": "The lesson numbers will be discarded.",

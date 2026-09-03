@@ -292,5 +292,5 @@ def test_no_inline_rotation_survives_where_rtl_cannot_reach_it():
 
 def test_the_stylesheet_mirrors_every_direction_sensitive_class_it_defines():
     css = (FRONTEND / "styles.css").read_text(encoding="utf-8")
-    for selector in (".chev-prev", ".chev-next", ".chev-toggle", ".nav-back", ".swap .arrow"):
+    for selector in (".chev-prev", ".chev-next", ".chev-toggle", ".header-back", ".swap .arrow"):
         assert f'[dir="rtl"] {selector}' in css, f"{selector} has no right-to-left counterpart"

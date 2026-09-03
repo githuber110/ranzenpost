@@ -159,6 +159,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "إلغاء البلاغ",
   "absence.wizard.factJoin": "{first}، {second}",
+  "absence.wizard.fieldHidden": "أُلغي التفصيل: {name}",
+  "absence.wizard.fieldShown": "تم إظهار تفصيل إضافي: {name}",
   "absence.wizard.need": "ما زال مطلوبًا: {field}",
   "absence.wizard.none": "لا يوجد",
   "absence.wizard.periodsDropped": "سيتم إلغاء بيانات الحصص.",
