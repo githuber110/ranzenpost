@@ -31,7 +31,7 @@ module.exports = defineConfig({
     {
       name: "webkit-iphone",
       use: { ...devices["iPhone SE"] },
-      testMatch: /responsive-guard-webkit\.spec\.js/,
+      testMatch: [/responsive-guard-webkit\.spec\.js/, /file-viewer\.spec\.js/],
     },
   ],
   webServer: {

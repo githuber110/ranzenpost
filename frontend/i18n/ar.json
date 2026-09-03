@@ -394,6 +394,7 @@
   "common.close": "إغلاق",
   "common.dateRange": "{from} – {till}",
   "common.done": "تم",
+  "common.filePreviewUnavailable": "المعاينة غير متاحة — سيتم التنزيل بدلاً من ذلك.",
   "common.hits.few": "{count} نتائج",
   "common.hits.many": "{count} نتيجة",
   "common.hits.one": "{count} نتيجة",

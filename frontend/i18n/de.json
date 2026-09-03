@@ -390,6 +390,7 @@
   "common.close": "Schließen",
   "common.dateRange": "{from} – {till}",
   "common.done": "Fertig",
+  "common.filePreviewUnavailable": "Vorschau nicht möglich — wird stattdessen heruntergeladen.",
   "common.hits.one": "{count} Treffer",
   "common.hits.other": "{count} Treffer",
   "common.imageSize": "{width} × {height} px",

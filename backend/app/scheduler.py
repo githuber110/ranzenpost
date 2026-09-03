@@ -59,7 +59,14 @@ def start_poller(service, interval_seconds=1800, registry=None, holiday_calendar
                         notifier=_make_notifier(service.store),
                         notifiers={
                             event: _make_notifier(service.store, event)
-                            for event in ("timetable", "letters", "pinboard", "conferences", "auth")
+                            for event in (
+                                "timetable",
+                                "letters",
+                                "pinboard",
+                                "conferences",
+                                "auth",
+                                "messenger",
+                            )
                         },
                         registry=registry,
                         holiday_calendar=holiday_calendar,
