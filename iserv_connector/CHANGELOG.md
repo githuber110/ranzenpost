@@ -3,6 +3,16 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.03
+
+- In-app file viewer: images open in a full-screen overlay with pinch and double-tap zoom, PDFs
+  try the platform's inline renderer and fall back to the download automatically when it is not
+  available; other file types download as before. This replaces the new-window approach that the
+  Home Assistant companion app does not support.
+- Groundwork for the school messenger (Matrix-based): backend client that reads rooms and
+  messages without ever emitting read receipts, encrypted token handling, and a send endpoint
+  that only ever fires on an explicit user action. No UI yet - it ships with the next release.
+
 ## 2609.01.02
 
 - Read confirmations for parent letters: letters that request a confirmation are marked in the

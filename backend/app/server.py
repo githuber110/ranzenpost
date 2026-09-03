@@ -43,12 +43,12 @@ def _sanitize_phones(phones):
 
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
-    "img-src 'self' data:; "
+    "img-src 'self' data: blob:; "
     "style-src 'self' 'unsafe-inline'; "
     "font-src 'self'; "
     "script-src 'self'; "
     "connect-src 'self'; "
-    "frame-src 'none'; "
+    "frame-src blob:; "
     "object-src 'none'; "
     "base-uri 'none'; "
     "form-action 'none'"
@@ -602,6 +602,10 @@ def create_app(
             return marks_registry.delete(mark_id)
         except marks.MarkError as error:
             return _mark_error(error)
+
+    from .messenger_routes import register_routes as register_messenger_routes
+
+    register_messenger_routes(app, service, read_endpoint, write_endpoint, _binary_upstream_response)
 
     if frontend_dir and Path(frontend_dir).is_dir():
         app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

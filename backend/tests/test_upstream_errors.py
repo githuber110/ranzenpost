@@ -33,6 +33,8 @@ READ_ENDPOINTS = (
     ("/api/letters/detail", "GET", None),
     ("/api/conferences", "GET", None),
     ("/api/absences", "GET", None),
+    ("/api/messenger/rooms", "GET", None),
+    ("/api/messenger/room", "GET", None),
 )
 
 WRITE_ENDPOINTS = (
@@ -44,6 +46,7 @@ WRITE_ENDPOINTS = (
     ("/api/absences", "POST", {"type": "krankmeldung"}),
     ("/api/absences/delete", "POST", {"id": "a1"}),
     ("/api/password/repair", "POST", {"password": "current-pass"}),
+    ("/api/messenger/send", "POST", {"room_id": "!r:school.example", "text": "hi"}),
 )
 
 BINARY_ENDPOINTS = (
@@ -51,12 +54,14 @@ BINARY_ENDPOINTS = (
     "/api/letters/attachment/a1",
     "/api/absences/attachment/note.pdf",
     "/api/absences/sick-note-pdf",
+    "/api/messenger/media/school-server/media-1",
 )
 
 QUERY = {
     "/api/timetable": {"child_id": "c1"},
     "/api/letters/detail": {"letter_id": "l1", "recipient_id": "r1"},
     "/api/absences/sick-note-pdf": {"id": "42"},
+    "/api/messenger/room": {"id": "!r:school.example"},
 }
 
 COVERED_ROUTES = {
@@ -79,6 +84,10 @@ COVERED_ROUTES = {
     "/api/letters/attachment/{attachment_id}",
     "/api/absences/attachment/{filename}",
     "/api/absences/sick-note-pdf",
+    "/api/messenger/rooms",
+    "/api/messenger/room",
+    "/api/messenger/send",
+    "/api/messenger/media/{server_name}/{media_id}",
 }
 
 ROUTES_WITHOUT_UPSTREAM_CALLS = {
