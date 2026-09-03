@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Zwei-Faktor-Authentifizierung</title></head>
+<body>
+<p>Die Zwei-Faktor-Authentifizierung sichert nur den Zugriff auf die Weboberfläche.</p>
+<table class="table">
+  <thead><tr><th>Bezeichnung</th><th>Aktionen</th></tr></thead>
+  <tbody>
+    <tr><td>parent@school.example</td><td></td></tr>
+    <tr id="client-twofactor-row-b2b6b8b0-1111-4a2a-9c3c-abcdef123456">
+      <td>ISERV-Connector</td>
+      <td>
+        <button type="button"
+          hx-delete="/iserv/auth/settings/twofactor/delete/b2b6b8b0-1111-4a2a-9c3c-abcdef123456"
+          hx-target="#client-twofactor-row-b2b6b8b0-1111-4a2a-9c3c-abcdef123456">Löschen</button>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<form id="deleteTwoFactorForm">
+  <input type="hidden" name="delete[_token]" value="csrf-delete-token">
+  <input type="text" name="delete[code]" value="">
+</form>
+</body>
+</html>

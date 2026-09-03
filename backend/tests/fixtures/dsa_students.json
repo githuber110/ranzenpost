@@ -1,0 +1,22 @@
+[
+  {
+    "id": 10000001,
+    "createdAt": 1700000000,
+    "updatedAt": 1700000000,
+    "forename": "Alex",
+    "surname": "Example",
+    "displayname": "Example Alex",
+    "mainCourse": {
+      "id": 200001,
+      "channel": 300001,
+      "externalId": "klasse.02b",
+      "externalIds": ["klasse.00b", "klasse.02b"],
+      "name": "Klasse 02B",
+      "type": "class",
+      "isSoftDeleted": false
+    },
+    "courses": [
+      {"id": 200001, "type": "class", "name": "Klasse 02B", "externalId": "klasse.02b", "channel": 300001, "isSoftDeleted": false}
+    ]
+  }
+]

@@ -1,0 +1,70 @@
+[
+  {
+    "id": 5000001,
+    "title": "Klassenpinnwand 2B",
+    "author": {"id": 400001, "displayname": "Teacher One"},
+    "coAuthors": [],
+    "channels": [300001],
+    "receivers": [400002, 400003],
+    "studentsAndGuardiansCanCreateTiles": false,
+    "columns": [
+      {
+        "id": 600001,
+        "position": 0,
+        "title": "Termine",
+        "width": "normal",
+        "tiles": [
+          {
+            "id": 700001,
+            "title": "Wandertag",
+            "text": "Am Freitag ist Wandertag.",
+            "color": null,
+            "position": 0,
+            "owner": {"id": 400001, "displayname": "Teacher One"},
+            "staticFiles": []
+          },
+          {
+            "id": 700002,
+            "title": "Elternabend",
+            "text": "Naechste Woche Elternabend.",
+            "color": "#ffcc00",
+            "position": 1,
+            "owner": {"id": 400001, "displayname": "Teacher One"},
+            "staticFiles": [
+              {
+                "id": 800001,
+                "contentEntity": 700002,
+                "filename": "stored-name.pdf",
+                "originalFilename": "Einladung Elternabend.pdf",
+                "extension": "pdf",
+                "mimetype": "application/pdf",
+                "size": 120000,
+                "hash": "abc123",
+                "imageWidth": null,
+                "imageHeight": null,
+                "createdAt": 1700000000,
+                "updatedAt": 1700000000
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "staticFiles": [
+      {
+        "id": 800002,
+        "contentEntity": 5000001,
+        "filename": "board-file.pdf",
+        "originalFilename": "Jahresplan.pdf",
+        "extension": "pdf",
+        "mimetype": "application/pdf",
+        "size": 264000,
+        "hash": "def456",
+        "imageWidth": null,
+        "imageHeight": null,
+        "createdAt": 1700000000,
+        "updatedAt": 1700000000
+      }
+    ]
+  }
+]

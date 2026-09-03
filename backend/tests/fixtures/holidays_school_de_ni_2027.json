@@ -1,0 +1,35 @@
+[
+  {
+    "id": "fixture-ni-school-christmas-2026",
+    "startDate": "2026-12-23",
+    "endDate": "2027-01-09",
+    "type": "School",
+    "name": [{ "language": "DE", "text": "Weihnachtsferien" }],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [{ "code": "DE-NI", "shortName": "NI" }]
+  },
+  {
+    "id": "fixture-ni-school-midterm-2027",
+    "startDate": "2027-02-01",
+    "endDate": "2027-02-02",
+    "type": "School",
+    "name": [{ "language": "DE", "text": "Halbjahresferien" }],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [{ "code": "DE-NI", "shortName": "NI" }]
+  },
+  {
+    "id": "fixture-ni-school-easter-2027",
+    "startDate": "2027-03-22",
+    "endDate": "2027-04-03",
+    "type": "School",
+    "name": [{ "language": "DE", "text": "Osterferien" }],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [{ "code": "DE-NI", "shortName": "NI" }]
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "name": "ranzenpost",
+  "private": true,
+  "version": "2609.01.00",
+  "description": "Home Assistant app that pulls timetable, notices, and letters from IServ into a dedicated UI.",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:all": "vitest run && (cd backend && python -m pytest -q) && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}

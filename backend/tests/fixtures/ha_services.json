@@ -1,0 +1,43 @@
+[
+  {
+    "domain": "light",
+    "services": {
+      "turn_on": { "name": "Turn on", "description": "Turns on a light.", "fields": {} }
+    }
+  },
+  {
+    "domain": "notify",
+    "services": {
+      "notify": {
+        "name": "Send a notification with notify",
+        "description": "Sends a notification message using the notify service.",
+        "fields": {}
+      },
+      "persistent_notification": {
+        "name": "Send a notification with persistent_notification",
+        "description": "Sends a notification message using the persistent_notification service.",
+        "fields": {}
+      },
+      "mobile_app_test_phone": {
+        "name": "Send a notification via mobile_app_test_phone",
+        "description": "Sends a notification message using the mobile_app_test_phone integration.",
+        "fields": {}
+      },
+      "mobile_app_test_tablet": {
+        "name": "Send a notification via mobile_app_test_tablet",
+        "description": "Sends a notification message using the mobile_app_test_tablet integration.",
+        "fields": {}
+      },
+      "mobile_app_unregistered_device": {
+        "name": "Send a notification via mobile_app_unregistered_device",
+        "description": "Sends a notification message using the mobile_app_unregistered_device integration.",
+        "fields": {}
+      },
+      "custom_webhook": {
+        "name": "Send a notification via custom_webhook",
+        "description": "Sends a notification message using the custom_webhook integration.",
+        "fields": {}
+      }
+    }
+  }
+]

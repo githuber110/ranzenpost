@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Ranzenpost">
+  <defs>
+    <linearGradient id="rsField" x1="90" y1="0" x2="930" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#137178"/>
+      <stop offset="0.32" stop-color="#0A4247"/>
+      <stop offset="0.7" stop-color="#041D21"/>
+      <stop offset="1" stop-color="#010A0C"/>
+    </linearGradient>
+    <radialGradient id="rsVignette" cx="512" cy="440" r="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0.3" stop-color="#00090C" stop-opacity="0"/>
+      <stop offset="1" stop-color="#00090C" stop-opacity="0.88"/>
+    </radialGradient>
+
+    <linearGradient id="rsBody" x1="240" y1="300" x2="810" y2="820" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.45" stop-color="#F2FFFD" stop-opacity="0.66"/>
+      <stop offset="1" stop-color="#BEF8F0" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="rsFlapSheet" x1="260" y1="330" x2="720" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.62"/>
+      <stop offset="1" stop-color="#EAFFFB" stop-opacity="0.24"/>
+    </linearGradient>
+    <linearGradient id="rsPocket" x1="0" y1="500" x2="0" y2="804" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#010F13" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#021D22" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="rsRim" x1="230" y1="330" x2="800" y2="810" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.34" stop-color="#FFFFFF" stop-opacity="0.5"/>
+      <stop offset="0.72" stop-color="#DEFFF8" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="rsHandle" x1="328" y1="130" x2="696" y2="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#B7F2E8" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <filter id="rsB40" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="40"/></filter>
+
+    <clipPath id="rsBodyClip"><rect x="224" y="348" width="576" height="456" rx="116"/></clipPath>
+    <clipPath id="rsFlapClip"><path d="M204 328 H820 V500 L572 604 Q512 626 452 604 L204 500 Z"/></clipPath>
+    <clipPath id="rsPocketClip"><path d="M204 500 L452 604 Q512 626 572 604 L820 500 V824 H204 Z"/></clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#031012"/>
+  <rect width="1024" height="1024" fill="url(#rsField)"/>
+  <rect width="1024" height="1024" fill="url(#rsVignette)"/>
+
+  <path d="M328 370 C328 130 696 130 696 370" fill="none" stroke="#00090C" stroke-opacity="0.6" stroke-width="66" stroke-linecap="round" transform="translate(4,24)" filter="url(#rsB40)"/>
+  <path d="M328 370 C328 130 696 130 696 370" fill="none" stroke="url(#rsHandle)" stroke-width="54" stroke-linecap="round"/>
+
+  <rect x="224" y="348" width="576" height="456" rx="116" fill="#00090C" opacity="0.7" transform="translate(0,30)" filter="url(#rsB40)"/>
+
+  <g clip-path="url(#rsBodyClip)">
+    <rect x="224" y="348" width="576" height="456" fill="url(#rsBody)"/>
+    <g clip-path="url(#rsPocketClip)">
+      <rect x="224" y="480" width="576" height="330" fill="url(#rsPocket)"/>
+    </g>
+    <g clip-path="url(#rsFlapClip)">
+      <rect x="224" y="348" width="576" height="270" fill="url(#rsFlapSheet)"/>
+    </g>
+    <path d="M224 500 L452 604 Q512 626 572 604 L800 500" fill="none" stroke="#02181D" stroke-opacity="0.55" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M224 500 L452 604 Q512 626 572 604 L800 500" fill="none" stroke="#FFFFFF" stroke-opacity="1" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <rect x="228" y="352" width="568" height="448" rx="112" fill="none" stroke="url(#rsRim)" stroke-width="11"/>
+</svg>

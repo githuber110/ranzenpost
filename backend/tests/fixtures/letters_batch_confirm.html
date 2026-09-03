@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Archiv</title></head>
+<body>
+<h1>Elternbriefe wiederherstellen</h1>
+<p>Sollen die gewählten Elternbriefe wirklich wiederhergestellt werden?</p>
+<form name="iserv_crud_multi_select" method="post" action="/iserv/parentletter/parent/archive/batch">
+  <input type="hidden" name="iserv_crud_multi_select[multi][]" value="10000000-0000-4000-8000-000000000001-20000000-0000-4000-8000-000000000001">
+  <input type="hidden" name="iserv_crud_multi_select[confirm]" value="1">
+  <input type="hidden" name="iserv_crud_multi_select[_token]" value="csrf-batch-token">
+  <button type="submit" name="iserv_crud_multi_select[actions][cancel]">Abbrechen</button>
+  <button type="submit" name="iserv_crud_multi_select[actions][parent-restore-letter]">Wiederherstellen</button>
+</form>
+</body>
+</html>
