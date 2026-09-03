@@ -1,6 +1,8 @@
 from app.iserv.letters import (
     build_archive_payload,
+    build_confirmation_payload,
     parse_archive_form,
+    parse_confirmation,
     parse_letter_detail,
     parse_letter_list,
 )
@@ -198,3 +200,62 @@ def test_the_same_attachment_is_listed_only_once():
     """
     detail = parse_letter_detail(html, BASE)
     assert len(detail["attachments"]) == 1
+
+
+SHOW_URL = (
+    "https://school.example/iserv/parentletter/parent/show/"
+    + LETTER_ONE
+    + "/"
+    + RECIPIENT_ONE
+)
+
+
+def test_parse_confirmation_reads_an_open_read_receipt(fixture):
+    found = parse_confirmation(fixture("letter_confirm_seen.html"), SHOW_URL)
+    assert found is not None
+    assert found["type"] == "seen"
+    assert found["sendable"] is True
+    assert found["action"] == SHOW_URL
+    assert found["fields"] == {"form[_token]": "fixture-token-0001"}
+    assert found["submits"] == {"form[submit]": ""}
+    assert found["text_field"] == ""
+
+
+def test_parse_confirmation_is_none_for_a_letter_without_one(fixture):
+    assert parse_confirmation(fixture("letter_detail.html"), SHOW_URL) is None
+
+
+def test_parse_confirmation_is_none_once_the_form_is_gone(fixture):
+    assert parse_confirmation(fixture("letter_confirm_done.html"), SHOW_URL) is None
+
+
+def test_parse_confirmation_ignores_the_none_type(fixture):
+    assert parse_confirmation(fixture("letter_confirm_none.html"), SHOW_URL) is None
+
+
+def test_parse_confirmation_reads_the_optional_message_field(fixture):
+    found = parse_confirmation(fixture("letter_confirm_seen_text.html"), SHOW_URL)
+    assert found["text_field"] == "form[text]"
+    assert found["text"] == ""
+    assert found["sendable"] is True
+
+
+def test_parse_confirmation_keeps_accept_decline_unsendable(fixture):
+    found = parse_confirmation(fixture("letter_confirm_choice.html"), SHOW_URL)
+    assert found["type"] == "confirmation"
+    assert found["sendable"] is False
+    assert set(found["submits"]) == {"form[accept]", "form[decline]"}
+
+
+def test_build_confirmation_payload_carries_the_token_and_the_submit(fixture):
+    found = parse_confirmation(fixture("letter_confirm_seen.html"), SHOW_URL)
+    assert build_confirmation_payload(found) == {
+        "form[_token]": "fixture-token-0001",
+        "form[submit]": "",
+    }
+
+
+def test_build_confirmation_payload_leaves_the_message_untouched_without_text(fixture):
+    found = parse_confirmation(fixture("letter_confirm_seen_text.html"), SHOW_URL)
+    assert build_confirmation_payload(found)["form[text]"] == ""
+    assert build_confirmation_payload(found, "danke")["form[text]"] == "danke"

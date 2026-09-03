@@ -39,6 +39,7 @@ class Store:
         self.seen_path = self.dir / "seen.json"
         self.absence_history_path = self.dir / "absence_history.json"
         self.letters_search_cache_path = self.dir / "letters_search_cache.json"
+        self.letters_confirmations_path = self.dir / "letters_confirmations.json"
         self.holidays_cache_path = self.dir / "holidays_cache.json"
         self.calendar_subscriptions_path = self.dir / "calendar_subscriptions.json"
         self.calendar_snapshot_path = self.dir / "calendar_snapshot.json"
@@ -160,6 +161,12 @@ class Store:
 
     def save_letters_search_cache(self, cache):
         atomic_write.write_json(self.letters_search_cache_path, cache)
+
+    def load_letters_confirmations(self):
+        return self._load_json_object(self.letters_confirmations_path)
+
+    def save_letters_confirmations(self, data):
+        atomic_write.write_json(self.letters_confirmations_path, data)
 
     def load_holidays_cache(self):
         return self._load_json_object(self.holidays_cache_path)

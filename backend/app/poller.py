@@ -24,6 +24,7 @@ ABSENCE_FIELDS = (
 
 BAD_CREDENTIALS_KEY = "notify.auth.badCredentials"
 LETTERS_KEY = "notify.letters.new"
+LETTERS_CONFIRM_KEY = "notify.letters.newConfirm"
 PINBOARD_KEY = "notify.pinboard.new"
 CONFERENCES_KEY = "notify.conferences.new"
 TIMETABLE_KEY = "notify.timetable.changes"
@@ -222,8 +223,8 @@ class Poller:
                 "changed": signature_changed,
                 "has_changes": has_changes,
             })
-        events.extend(self._poll_modules(poll_state, language))
         self._enrich_letters_search()
+        events.extend(self._poll_modules(poll_state, language))
         if self._poll_absences(snapshot, absence_children, children):
             snapshot_dirty = True
         if snapshot_dirty and self.store is not None:
@@ -236,10 +237,10 @@ class Poller:
 
     def _poll_modules(self, poll_state, language=None):
         events = []
-        for event, state_key, collect, key, method in (
-            ("letters", "letter_keys", self._letter_keys, LETTERS_KEY, "letters"),
-            ("pinboard", "pinboard_ids", self._pinboard_ids, PINBOARD_KEY, "pinboard"),
-            ("conferences", "conference_keys", self._conference_keys, CONFERENCES_KEY, "conferences"),
+        for event, state_key, collect, key, method, resolve in (
+            ("letters", "letter_keys", self._letter_keys, LETTERS_KEY, "letters", self._letters_key),
+            ("pinboard", "pinboard_ids", self._pinboard_ids, PINBOARD_KEY, "pinboard", None),
+            ("conferences", "conference_keys", self._conference_keys, CONFERENCES_KEY, "conferences", None),
         ):
             if not callable(getattr(self.service, method, None)):
                 continue
@@ -255,9 +256,20 @@ class Poller:
                 continue
             fresh = current - set(known)
             if fresh:
-                self._notify(event, "", messages.text_count(language, key, len(fresh)))
+                chosen = (resolve(fresh) if resolve is not None else None) or key
+                self._notify(event, "", messages.text_count(language, chosen, len(fresh)))
             events.append({"module": event, "new": len(fresh)})
         return events
+
+    def _letters_key(self, fresh):
+        reader = getattr(self.service, "pending_confirmation_keys", None)
+        if not callable(reader):
+            return None
+        try:
+            pending = reader("current")
+        except Exception:
+            return None
+        return LETTERS_CONFIRM_KEY if fresh & set(pending or ()) else None
 
     def _poll_absences(self, snapshot=None, wanted=(), children=()):
         observe = getattr(self.service, "absences_overview", None)
