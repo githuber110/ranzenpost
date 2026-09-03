@@ -1,0 +1,6 @@
+[
+  {"id": 39163, "number": 1, "startTime": "08:00", "endTime": "08:45", "type": "lesson", "name": "1. Stunde"},
+  {"id": 39164, "number": 2, "startTime": "08:45", "endTime": "09:30", "type": "lesson", "name": "2. Stunde"},
+  {"id": 39166, "number": 3, "startTime": "10:00", "endTime": "10:45", "type": "lesson", "name": "3. Stunde"},
+  {"id": 39167, "number": 4, "startTime": "10:45", "endTime": "11:30", "type": "lesson", "name": "4. Stunde"}
+]

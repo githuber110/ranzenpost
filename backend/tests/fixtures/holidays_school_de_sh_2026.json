@@ -1,0 +1,53 @@
+[
+  {
+    "id": "fixture-school_de_sh_2026-01",
+    "startDate": "2026-10-05",
+    "endDate": "2026-10-24",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Herbstferien"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-SH",
+        "shortName": "SH"
+      }
+    ],
+    "comment": [
+      {
+        "language": "DE",
+        "text": "Inseln Sylt, Föhr, Amrum, Helgoland und die Halligen"
+      }
+    ],
+    "tags": [
+      "Exception"
+    ]
+  },
+  {
+    "id": "fixture-school_de_sh_2026-02",
+    "startDate": "2026-10-12",
+    "endDate": "2026-10-24",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Herbstferien"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-SH",
+        "shortName": "SH"
+      }
+    ]
+  }
+]

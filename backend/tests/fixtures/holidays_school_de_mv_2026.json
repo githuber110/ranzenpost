@@ -1,0 +1,87 @@
+[
+  {
+    "id": "fixture-school_de_mv_2026-01",
+    "startDate": "2026-07-13",
+    "endDate": "2026-08-29",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Sommerferien"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-MV",
+        "shortName": "MV"
+      }
+    ],
+    "groups": [
+      {
+        "code": "DE-MV-BBS",
+        "shortName": "MV-BBS"
+      }
+    ]
+  },
+  {
+    "id": "fixture-school_de_mv_2026-02",
+    "startDate": "2026-07-13",
+    "endDate": "2026-08-22",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Sommerferien"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-MV",
+        "shortName": "MV"
+      }
+    ],
+    "groups": [
+      {
+        "code": "DE-MV-ABS",
+        "shortName": "MV-ABS"
+      }
+    ]
+  },
+  {
+    "id": "fixture-school_de_mv_2026-03",
+    "startDate": "2026-11-26",
+    "endDate": "2026-11-26",
+    "type": "School",
+    "name": [
+      {
+        "language": "DE",
+        "text": "Zusätzlicher Ferientag"
+      }
+    ],
+    "regionalScope": "Regional",
+    "temporalScope": "FullDay",
+    "nationwide": false,
+    "subdivisions": [
+      {
+        "code": "DE-MV",
+        "shortName": "MV"
+      }
+    ],
+    "groups": [
+      {
+        "code": "DE-MV-ABS",
+        "shortName": "MV-ABS"
+      },
+      {
+        "code": "DE-MV-BBS",
+        "shortName": "MV-BBS"
+      }
+    ]
+  }
+]

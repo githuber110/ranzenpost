@@ -1,0 +1,58 @@
+<html>
+<head>
+<title>Elternbriefe - IServ - school.example</title>
+</head>
+<body>
+<nav class="navbar"><a href="/iserv">IServ</a></nav>
+<h1>Elternbriefe</h1>
+<form action="/iserv/parentletter/parent/search" method="get">
+<input type="text" name="filter" value="">
+</form>
+<form action="/iserv/parentletter/parent/index" method="post">
+<table id="crud-table" class="table">
+<thead>
+<tr>
+<th></th>
+<th>Titel</th>
+<th>Kind</th>
+<th>Absender</th>
+<th>Weitere Absender</th>
+<th>Empfaenger</th>
+<th>Veroeffentlicht</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="list-check"><input type="checkbox" name="iserv_crud_multi_select[multi][]" value="10000000-0000-4000-8000-000000000001-20000000-0000-4000-8000-000000000001"></td>
+<td><a href="/iserv/parentletter/parent/show/10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000001">Einladung zum Schulfest</a></td>
+<td>Alex Example</td>
+<td>M. Muster</td>
+<td></td>
+<td>Jahrgang 01</td>
+<td>05.03.2026 14:30</td>
+</tr>
+<tr>
+<td class="list-check"><input type="checkbox" name="iserv_crud_multi_select[multi][]" value="10000000-0000-4000-8000-000000000002-20000000-0000-4000-8000-000000000002"></td>
+<td class="iserv-admin-list-field iserv-admin-list-field-text"><div class="parent-index-table-unread"><a href="/iserv/parentletter/parent/show/10000000-0000-4000-8000-000000000002/20000000-0000-4000-8000-000000000002">Informationen zum Wandertag</a></div></td>
+<td>Robin Example</td>
+<td>S. Sample</td>
+<td>T. Test</td>
+<td>Klasse 02B</td>
+<td>12.03.2026 09:15</td>
+</tr>
+<tr>
+<td class="list-check"><input type="checkbox" name="iserv_crud_multi_select[multi][]" value="10000000-0000-4000-8000-000000000003-20000000-0000-4000-8000-000000000003"></td>
+<td><a href="/iserv/parentletter/parent/show/10000000-0000-4000-8000-000000000003/20000000-0000-4000-8000-000000000003">Persoenliche Mitteilung</a></td>
+<td>Alex Example</td>
+<td>M. Muster</td>
+<td></td>
+<td>Persoenlich</td>
+<td>20.03.2026 16:45</td>
+</tr>
+</tbody>
+</table>
+<input type="submit" name="iserv_crud_multi_select[actions][parent-archive-letter]" value="Archivieren">
+<input type="hidden" name="iserv_crud_multi_select[_token]" value="synthetic-token-0001">
+</form>
+</body>
+</html>

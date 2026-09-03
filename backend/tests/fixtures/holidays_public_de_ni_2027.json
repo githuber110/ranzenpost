@@ -1,0 +1,12 @@
+[
+  {
+    "id": "fixture-ni-public-newyear-2027",
+    "startDate": "2027-01-01",
+    "endDate": "2027-01-01",
+    "type": "Public",
+    "name": [{ "language": "DE", "text": "Neujahr" }],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  }
+]

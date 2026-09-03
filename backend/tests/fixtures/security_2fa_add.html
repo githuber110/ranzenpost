@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Zwei-Faktor-Authentifizierung</title></head>
+<body>
+<h1>Zwei-Faktor-Authentifizierung</h1>
+<p>Scanne den QR-Code oder gib den Schlüssel manuell ein.</p>
+<div class="qr">
+  <img src="data:image/png;base64,PLACEHOLDER" alt="QR">
+</div>
+<a class="otpauth-link" href="otpauth://totp/IServ:parent?secret=JBSWY3DPEHPK3PXP&amp;issuer=IServ&amp;algorithm=SHA1&amp;digits=6&amp;period=30">In App öffnen</a>
+<p class="manual">Schlüssel: <code>JBSW Y3DP EHPK 3PXP</code></p>
+<form name="confirm" method="post" action="" id="twofactor_confirm" hx-post="/iserv/auth/settings/twofactor/add/confirm" hx-target="#twofactor-content">
+  <label>Bezeichnung <input type="text" name="confirm[name]" value=""></label>
+  <label>Code * <input type="text" name="confirm[verification]" value=""></label>
+  <input type="text" name="confirm[_fake_username]" value="" autocomplete="off">
+  <label>2FA-Code * <input type="text" name="confirm[code]" value=""></label>
+  <button type="button">Manuelle Eingabe</button>
+  <button type="submit" name="confirm[actions][submit]">Aktivieren</button>
+  <input type="hidden" name="confirm[_token]" value="csrf-confirm-token">
+  <button type="button">Zurück</button>
+</form>
+</body>
+</html>
