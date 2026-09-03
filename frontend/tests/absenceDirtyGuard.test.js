@@ -114,10 +114,13 @@ describe("[C05] the wizard replaces the screen shell: no tab bar, own header", (
     expect(row.querySelector(".icon-btn.header-back[aria-label='Zurück']")).not.toBeNull();
   });
 
-  test("settingsView wraps back + title in .list-head", () => {
+  test("[P188] header('settings') wraps back + title, the view itself carries no head", () => {
     const { window } = loadApp();
+    const bar = window.eval("header('settings')");
+    const row = bar.querySelector(".header-title-row");
+    expect(row).not.toBeNull();
+    expect(row.querySelector(".icon-btn.header-back[aria-label='Zurück']")).not.toBeNull();
     const view = window.eval("(function () { state.config = {}; return settingsView(); })()");
-    const head = view.querySelector(".list-head");
-    expect(head).not.toBeNull();
+    expect(view.querySelector(".list-head")).toBeNull();
   });
 });

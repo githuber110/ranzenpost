@@ -13,7 +13,7 @@ describe("[C17] settings orientation: remembers where it was opened from", () =>
         gear.click();
         const viewAfterGear = state.view;
         state.config = {};
-        const backBtn = settingsView().querySelector(".icon-btn[aria-label='Zurück']");
+        const backBtn = header("settings").querySelector(".icon-btn[aria-label='Zurück']");
         backBtn.click();
         return { viewAfterGear, viewAfterBack: state.view };
       })()
@@ -29,7 +29,7 @@ describe("[C17] settings orientation: remembers where it was opened from", () =>
         state.config = {};
         state.settingsReturn = null;
         setView("settings");
-        const backBtn = settingsView().querySelector(".icon-btn[aria-label='Zurück']");
+        const backBtn = header("settings").querySelector(".icon-btn[aria-label='Zurück']");
         backBtn.click();
         return state.view;
       })()
@@ -49,6 +49,29 @@ describe("[C17] settings orientation: remembers where it was opened from", () =>
       const gear = window.eval(`header(${JSON.stringify(view)}).querySelector('.icon-btn[aria-label="Einstellungen"]')`);
       expect(gear).not.toBeNull();
     }
+  });
+});
+
+describe("[P188] the settings wear the same compact head as every other screen", () => {
+  test("the title and the back arrow live in the header bar, level with the action row", () => {
+    const { window } = loadApp();
+    const head = window.eval(`header("settings")`);
+    const title = head.querySelector(".header-title-row .header-title");
+    expect(title.textContent).toBe(window.eval(`t("settings.title")`));
+    expect(head.querySelector(".header-title-row .header-back")).not.toBeNull();
+  });
+
+  test("the settings body carries no second head of its own", () => {
+    const { window } = loadApp();
+    const view = window.eval(`(function () { state.config = {}; return settingsView(); })()`);
+    expect(view.querySelector(".list-head")).toBeNull();
+    expect(view.querySelector(".page-title")).toBeNull();
+    expect(view.firstElementChild.className).toBe("settings-group");
+  });
+
+  test("the old subpage head is gone for good", () => {
+    const { window } = loadApp();
+    expect(window.eval(`typeof subpageHead`)).toBe("undefined");
   });
 });
 

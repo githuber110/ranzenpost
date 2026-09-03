@@ -26,18 +26,22 @@ describe("[C06] sick wizard: Ganztaegig/Stundenweise is its own step", () => {
     expect(wz.form.from_period).toBe("");
   });
 
-  test("choosing Stundenweise adds the periods step and prefills first/last lesson", () => {
+  test("[P194] choosing Stundenweise unfolds the lesson pickers right below, in the same step", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
     wz.go("sickHours");
+    expect(wz.body.querySelector(".sw-reveal")).toBeNull();
     wz.options()[1].click();
     expect(wz.form.hours_mode).toBe("byLesson");
-    expect(wz.path).toContain("sickPeriods");
+    expect(wz.path).not.toContain("sickPeriods");
+    expect(wz.step).toBe("sickHours");
     expect(wz.form.from_period).toBe("1");
     expect(wz.form.till_period).toBe("2");
-    wz.go("sickPeriods");
-    expect(wz.body.textContent).toContain("Ab Stunde");
-    expect(wz.body.textContent).toContain("Bis Stunde");
+    const reveal = wz.body.querySelector(".sw-reveal");
+    expect(reveal).not.toBeNull();
+    expect(reveal.textContent).toContain("Ab Stunde");
+    expect(reveal.textContent).toContain("Bis Stunde");
+    expect(reveal.querySelectorAll("select").length).toBe(2);
   });
 
   test("choosing Ganztaegig again drops the periods and says so in the status line", () => {

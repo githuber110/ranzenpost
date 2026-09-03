@@ -3,6 +3,17 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.01
+
+- Attachments and the sick-note PDF now open directly in a viewer where the platform allows it
+  (PDF and images); anything else, blocked pop-ups and failures fall back to the download.
+- Absence wizard polish: dependent inputs (lesson range for a part-day sick note, pick-up time for
+  daycare) reveal inline below the choice instead of forming an extra step; the notifiable-disease
+  notice on the review page opens in full instead of being truncated; date and time fields are
+  clamped so native WebKit widths cannot overflow the step.
+- The settings screen uses the same compact header as every other screen.
+- README with feature overview and example screens (fictional fixture data only).
+
 ## 2609.01.00
 
 - Subscribable calendar: per-child feeds (timetable, school holidays, public holidays, exam marks,

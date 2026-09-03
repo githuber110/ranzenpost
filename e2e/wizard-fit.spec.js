@@ -103,13 +103,13 @@ const CONFIGURATIONS = [
 const WALKS = {
   sick: [
     { set: {}, steps: ["type", "child", "sickWhen", "sickHours", "review"] },
-    { set: { hours_mode: "byLesson", from_period: "1", till_period: "6" }, steps: ["sickPeriods"] },
+    { set: { hours_mode: "byLesson", from_period: "1", till_period: "6" }, steps: ["sickHours"] },
     { set: {}, steps: ["sickComment"] },
   ],
   leave: [
     { set: { body: "Begruendung" }, steps: ["type", "child", "leaveFrom", "leaveDayTime", "leaveSubject", "leaveBody", "review"] },
     { set: { duration: "more", body: "Begruendung" }, steps: ["leaveTill"] },
-    { set: { time_mode: "custom", body: "Begruendung" }, steps: ["leaveTimes"] },
+    { set: { time_mode: "custom", body: "Begruendung" }, steps: ["leaveTimes", "leaveDayTime"] },
     { set: { body: "Begruendung" }, steps: ["leaveAttachments"] },
   ],
   deregister: [
@@ -118,7 +118,7 @@ const WALKS = {
   ],
   daycare: [
     { set: { reason: "Grund" }, steps: ["type", "child", "daycareKind", "daycareWhen", "daycareReason", "review"] },
-    { set: { daycare_kind: "early_end", pickup_time: "13:30", reason: "Grund" }, steps: ["daycarePickup"] },
+    { set: { daycare_kind: "early_end", pickup_time: "13:30", reason: "Grund" }, steps: ["daycareKind"] },
     { set: { repeat: "weekly", repeat_until: isoDay(21), reason: "Grund" }, steps: ["repeatUntil"] },
   ],
 };
@@ -373,4 +373,90 @@ test.describe("wizard fit in landscape", () => {
     }
     expect(failures, failures.join("\n")).toEqual([]);
   });
+});
+
+const LONG_DUTY_HINT =
+  "Meldepflichtig sind unter anderem Masern, Keuchhusten, Scharlach und Windpocken. " +
+  "Bitte melde solche Erkrankungen zusaetzlich telefonisch im Sekretariat, damit die Schule " +
+  "die anderen Familien rechtzeitig informieren kann.";
+
+async function clippedTexts(page, selector) {
+  return page.evaluate((scopeSelector) => {
+    const scope = document.querySelector(scopeSelector);
+    if (!scope) return null;
+    const out = [];
+    scope.querySelectorAll("*").forEach((node) => {
+      if (node.children.length) return;
+      const text = (node.textContent || "").trim();
+      if (!text) return;
+      const style = getComputedStyle(node);
+      const clamped = style.webkitLineClamp && style.webkitLineClamp !== "none";
+      const clipped =
+        (style.textOverflow === "ellipsis" && node.scrollWidth > node.clientWidth + 1) ||
+        (clamped && node.scrollHeight > node.clientHeight + 1);
+      if (!clipped) return;
+      if (node.closest("button, a, summary, [role='button']")) return;
+      out.push({ text: text.slice(0, 60), clientWidth: node.clientWidth, scrollWidth: node.scrollWidth });
+    });
+    return out;
+  }, selector);
+}
+
+test.describe("[P192] no text on the review page is cut off without a way to the whole of it", () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  for (const language of LANGUAGES) {
+    test.describe(language.key, () => {
+      test.use({ locale: language.locale });
+
+      test(`review pages keep every value reachable (${language.key})`, async ({ page }) => {
+        const failures = [];
+        const data = {
+          rules: Object.assign({}, ALL_RULES, { duty_hint: LONG_DUTY_HINT }),
+          types: ["sick", "leave", "deregister", "daycare"],
+          kids: 2,
+          targets: ["bus", "lunch"],
+        };
+        await installPayload(page, data);
+        await goto(page);
+        await setRootFont(page, 20);
+        await page.evaluate(() => document.fonts.ready);
+
+        for (const type of data.types) {
+          await openWizard(page, type, data.kids);
+          const result = await measureStep(page, "review", {
+            body: "Begruendung",
+            reason: "Ein sehr ausfuehrlich begruendeter Grund fuer die Abmeldung von der Betreuung",
+            subject: "Ein sehr langer Betreff, der in eine einzeilige Zeile niemals hineinpasst",
+            comment: "Ein langer Kommentar, der die Zeile der Pruefen-Karte deutlich ueberschreitet",
+          });
+          judge(result, `${language.key}/review/${type}`, failures);
+          const clipped = await clippedTexts(page, ".sw-body");
+          if (clipped === null) failures.push(`${language.key}/review/${type}: wizard body missing`);
+          else if (clipped.length) {
+            failures.push(`${language.key}/review/${type}: cut off with no way to the full text: ${JSON.stringify(clipped)}`);
+          }
+        }
+
+        await openWizard(page, "sick", data.kids);
+        await measureStep(page, "review", {});
+        await page.locator(".sw-duty-more").click();
+        await page.waitForSelector(".sheet-body");
+        const duty = await page.evaluate(() => {
+          const paragraph = document.querySelector(".sheet-body p");
+          const body = document.querySelector(".sheet-body");
+          return {
+            text: paragraph ? paragraph.textContent : "",
+            clippedHeight: paragraph ? paragraph.scrollHeight - paragraph.clientHeight : 0,
+            scrollable: body ? body.scrollHeight <= body.clientHeight + 1 || getComputedStyle(body).overflowY !== "visible" : false,
+          };
+        });
+        if (duty.text !== LONG_DUTY_HINT) failures.push(`${language.key}/duty: the sheet shows "${duty.text}"`);
+        if (duty.clippedHeight > 1) failures.push(`${language.key}/duty: the legal text is clipped by ${duty.clippedHeight}px`);
+        if (!duty.scrollable) failures.push(`${language.key}/duty: the sheet neither fits nor scrolls`);
+
+        expect(failures, failures.join(SEPARATOR)).toEqual([]);
+      });
+    });
+  }
 });
