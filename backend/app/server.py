@@ -388,6 +388,18 @@ def create_app(
     def letters_restore(body: dict = Body(...)):
         return write_endpoint(lambda: _restore_letter(body), fallback="restore_failed")
 
+    def _confirm_letter(body):
+        text = body.get("text")
+        return service.confirm_letter(
+            body.get("letter_id", ""),
+            body.get("recipient_id", ""),
+            text if isinstance(text, str) else None,
+        )
+
+    @app.post("/api/letters/confirm")
+    def letters_confirm(body: dict = Body(...)):
+        return write_endpoint(lambda: _confirm_letter(body), fallback="confirm_failed")
+
     @app.get("/api/letters/attachment/{attachment_id}")
     def letters_attachment(attachment_id: str):
         try:

@@ -102,6 +102,10 @@ class FakeService:
     def archive_letter(self, letter_id, recipient_id):
         return True
 
+    def confirm_letter(self, letter_id, recipient_id, text=None):
+        self.confirm_args = (letter_id, recipient_id, text)
+        return {"ok": True, "message_key": "api.letters.confirm.ok", "confirmed_at": "2026-09-03T14:05:00"}
+
     def letter_attachment(self, attachment_id):
         class Upstream:
             content = b"%PDF"
@@ -396,6 +400,20 @@ def test_letters_endpoints(tmp_path):
     detail = api.get("/api/letters/detail", params={"letter_id": "l1", "recipient_id": "r1"}).json()
     assert detail["archive_url_present"] is True
     assert api.post("/api/letters/archive", json={"letter_id": "l1", "recipient_id": "r1"}).json() == {"ok": True}
+
+
+def test_letters_confirm_endpoint_passes_the_ids_and_the_optional_message(tmp_path):
+    service = FakeService(Store(tmp_path / "data"))
+    api = TestClient(create_app(service))
+    answer = api.post("/api/letters/confirm", json={"letter_id": "l1", "recipient_id": "r1"}).json()
+    assert answer["ok"] is True
+    assert answer["message_key"] == "api.letters.confirm.ok"
+    assert answer["confirmed_at"] == "2026-09-03T14:05:00"
+    assert service.confirm_args == ("l1", "r1", None)
+    api.post("/api/letters/confirm", json={"letter_id": "l1", "recipient_id": "r1", "text": "danke"})
+    assert service.confirm_args == ("l1", "r1", "danke")
+    api.post("/api/letters/confirm", json={"letter_id": "l1", "recipient_id": "r1", "text": 5})
+    assert service.confirm_args == ("l1", "r1", None)
 
 
 def test_letters_attachment_proxies_content(tmp_path):

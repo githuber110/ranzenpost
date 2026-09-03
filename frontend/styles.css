@@ -1668,6 +1668,26 @@ button.section-head {
 .tag.open { background: var(--accent-soft); color: var(--accent); }
 .tag.ok { background: var(--success-soft); color: var(--success); }
 .tag.no { background: var(--danger-soft); color: var(--danger); }
+.tag.confirm { background: var(--warn-soft); color: var(--warn); }
+
+.confirm-card { margin-top: var(--s-7); border-color: var(--warn-tint); }
+.confirm-card.done { border-color: var(--line); }
+.confirm-head { display: flex; align-items: center; gap: var(--s-4); }
+.confirm-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn);
+  flex: none;
+}
+.confirm-card.done .confirm-mark { background: var(--success-soft); color: var(--success); }
+.confirm-title { font-family: var(--font-display); font-size: 0.9375rem; font-weight: 600; color: var(--ink); }
+.confirm-text { margin: var(--s-4) 0 0; font-size: 0.875rem; line-height: 1.5; color: var(--ink-2); overflow-wrap: break-word; }
+.confirm-action { margin-top: var(--s-6); }
 
 .body-html { font-size: 0.9375rem; line-height: 1.55; color: var(--ink); overflow-wrap: break-word; }
 .body-html p { margin: 0 0 var(--s-5); }

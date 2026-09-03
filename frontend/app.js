@@ -479,6 +479,25 @@ function showDateTime(text) {
   return parsed.hasTime ? `${formatDate(parsed.date)} ${formatTime(parsed.date)}` : formatDate(parsed.date);
 }
 
+function parseIsoDateTime(text) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(text || "").trim());
+  if (!match) return null;
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5])
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function showTimestamp(text) {
+  const date = parseIsoDateTime(text);
+  if (date) return `${formatDate(date)} ${formatTime(date)}`;
+  return showDateTime(text);
+}
+
 function hashIndex(text, length) {
   let sum = 0;
   for (const char of String(text || "")) sum = (sum * 31 + char.charCodeAt(0)) % 100003;
@@ -1004,7 +1023,7 @@ function badgeCount(key) {
   if (key === "letters") {
     const data = state.letters;
     if (!data || data.error || data.tab !== "current") return 0;
-    return (data.letters || []).filter((entry) => entry.unread).length;
+    return (data.letters || []).filter((entry) => entry.unread || letterConfirmationOpen(entry)).length;
   }
   if (key === "pinboard") {
     const data = state.pinboard;
@@ -1966,7 +1985,9 @@ function lettersChapter() {
     chapter.blocks = [overviewFailureBlock("letters:failed", () => loadLetters("current"))];
     return chapter;
   }
-  const unread = (data.letters || []).filter((letter) => letter.unread).slice(0, OVERVIEW_ENTRY_CAP);
+  const unread = (data.letters || [])
+    .filter((letter) => letter.unread || letterConfirmationOpen(letter))
+    .slice(0, OVERVIEW_ENTRY_CAP);
   if (!unread.length) return overviewRest(chapter, "letters:none", t("overview.letters.none"));
   chapter.blocks = unread.map((letter) => overviewBlock(
     `letter:${letterKey(letter)}`,
@@ -4291,6 +4312,16 @@ function letterKey(letter) {
   return `${letter.letter_id}:${letter.recipient_id}`;
 }
 
+function letterConfirmation(source) {
+  const info = source && source.confirmation;
+  return info && typeof info === "object" ? info : null;
+}
+
+function letterConfirmationOpen(letter) {
+  const info = letterConfirmation(letter);
+  return !!(info && info.open);
+}
+
 function createSelectionController(modeKey, selectedKey) {
   return {
     toggleMode() {
@@ -4591,8 +4622,10 @@ function letterRow(letter) {
   const sub = letter.sender || "";
   const swipe = { wasSwipe: false };
   const showChildTag = letter.child && state.children.length > 1;
-  const tags = (letter.recipients || showChildTag)
+  const confirmOpen = letterConfirmationOpen(letter);
+  const tags = (letter.recipients || showChildTag || confirmOpen)
     ? el("div", { class: "row-tags" }, [
+        confirmOpen ? el("span", { class: "tag confirm" }, t("letters.confirm.badge")) : null,
         letter.recipients ? el("span", { class: "tag" }, letter.recipients) : null,
         showChildTag ? el("span", { class: "tag soft" }, letter.child) : null,
       ])
@@ -4700,6 +4733,8 @@ function letterDetailView() {
     view.append(el("div", { class: "section-head", style: "margin-top:24px" }, [el("span", { class: "overline" }, t("common.attachments"))]));
     view.append(attachmentRows(attachments));
   }
+  const confirmBlock = letterConfirmationBlock(letter, detail);
+  if (confirmBlock) view.append(confirmBlock);
   view.append(
     el("div", { style: "margin-top:24px; display:flex; gap:12px; flex-wrap:wrap" }, [
       state.lettersTab === "archive"
@@ -4708,6 +4743,88 @@ function letterDetailView() {
     ])
   );
   return view;
+}
+
+function letterConfirmationBlock(letter, detail) {
+  const info = letterConfirmation(detail) || letterConfirmation(letter);
+  if (!info || !info.type) return null;
+  if (info.done) {
+    return el("div", { class: "card confirm-card done" }, [
+      el("div", { class: "confirm-head" }, [
+        el("span", { class: "confirm-mark" }, [icon("check", 16)]),
+        el("span", { class: "confirm-title" }, t("letters.confirm.doneTitle")),
+      ]),
+      el(
+        "p",
+        { class: "confirm-text" },
+        info.confirmed_at
+          ? t("letters.confirm.doneAt", { when: showTimestamp(info.confirmed_at) })
+          : t("letters.confirm.doneText")
+      ),
+    ]);
+  }
+  if (!info.open) return null;
+  const sendable = !!info.sendable;
+  return el("div", { class: "card confirm-card" }, [
+    el("div", { class: "confirm-head" }, [
+      el("span", { class: "confirm-mark" }, [icon("check", 16)]),
+      el(
+        "span",
+        { class: "confirm-title" },
+        sendable ? t("letters.confirm.title") : t("letters.confirm.choiceTitle")
+      ),
+    ]),
+    el(
+      "p",
+      { class: "confirm-text" },
+      sendable ? t("letters.confirm.text") : t("letters.confirm.choiceText")
+    ),
+    sendable
+      ? el("button", { class: "btn confirm-action", type: "button", onclick: () => confirmLetterRead(letter) }, [
+          icon("check", 18),
+          t("letters.confirm.action"),
+        ])
+      : null,
+  ]);
+}
+
+function applyLetterConfirmed(letter, stamp) {
+  const done = { type: "seen", open: false, done: true, sendable: false, confirmed_at: stamp || "" };
+  letter.confirmation = done;
+  const detail = state.letterDetail && state.letterDetail.detail;
+  if (detail) detail.confirmation = done;
+  const list = state.letters && state.letters.letters;
+  const key = letterKey(letter);
+  if (list) {
+    for (const entry of list) {
+      if (letterKey(entry) === key) entry.confirmation = done;
+    }
+  }
+}
+
+async function confirmLetterRead(letter) {
+  const ok = await confirmAction({
+    title: t("letters.confirm.sheetTitle"),
+    text: t("letters.confirm.sheetText"),
+    confirmLabel: t("letters.confirm.action"),
+  });
+  if (!ok) return;
+  try {
+    const result = await postJson("api/letters/confirm", {
+      letter_id: letter.letter_id,
+      recipient_id: letter.recipient_id,
+    });
+    if (result && result.ok) {
+      applyLetterConfirmed(letter, result.confirmed_at || "");
+      toast(t("letters.confirm.sent"), "good");
+    } else {
+      toast(apiMessage(result, "letters.confirm.failed"), "bad");
+    }
+  } catch (error) {
+    if (handleApiFailure(error)) return;
+    toast(t("letters.confirm.failed"), "bad");
+  }
+  rerender();
 }
 
 async function archiveLetter(letter) {

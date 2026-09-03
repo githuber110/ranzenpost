@@ -1622,3 +1622,178 @@ def test_folder_order_sorts_alphabetically_and_folds_umlauts():
         "Ostern",
         "Zebra",
     ]
+
+
+CONFIRM_LETTER = "10000000-0000-4000-8000-000000000001"
+CONFIRM_RECIPIENT = "20000000-0000-4000-8000-000000000001"
+
+
+def _fixture_text(name):
+    from pathlib import Path as _Path
+
+    return (_Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8")
+
+
+class ConfirmClient(FakeClient):
+    def __init__(self, url, pages, post_status=200):
+        super().__init__(url)
+        self.pages = list(pages)
+        self.post_status = post_status
+        self.posts = []
+        self.stage = 0
+        self.list_html = _fixture_text("letters_index.html")
+
+    def fetch(self, path, params=None):
+        class R:
+            pass
+
+        response = R()
+        response.status_code = 200
+        response.url = "https://school.example" + path
+        if "/parent/show/" in path:
+            response.text = self.pages[min(self.stage, len(self.pages) - 1)]
+        else:
+            response.text = self.list_html
+        return response
+
+    def post_absolute(self, url, data, timeout=30):
+        class R:
+            pass
+
+        self.posts.append((url, dict(data)))
+        self.stage += 1
+        response = R()
+        response.status_code = self.post_status
+        response.url = url
+        response.text = ""
+        return response
+
+
+def _confirm_service(tmp_path, pages, post_status=200):
+    service, store = make(tmp_path)
+    client = ConfirmClient("https://school.example", pages, post_status)
+    service.client_factory = lambda url: client
+    return service, store, client
+
+
+def test_letter_detail_carries_the_open_read_receipt(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen.html")])
+    detail = service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert detail["confirmation"] == {
+        "type": "seen",
+        "open": True,
+        "done": False,
+        "sendable": True,
+        "confirmed_at": "",
+    }
+
+
+def test_letter_detail_has_no_confirmation_when_iserv_asks_for_none(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_detail.html")])
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation"] is None
+
+
+def test_confirm_letter_sends_the_receipt_and_records_it(tmp_path):
+    service, store, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is True
+    assert result["message_key"] == "api.letters.confirm.ok"
+    assert len(client.posts) == 1
+    url, payload = client.posts[0]
+    assert url.endswith(f"/parent/show/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}")
+    assert payload == {"form[_token]": "fixture-token-0001", "form[submit]": ""}
+    record = store.load_letters_confirmations()[f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"]
+    assert record["type"] == "seen"
+    assert record["confirmed_at"] == result["confirmed_at"]
+
+
+def test_confirm_letter_refuses_a_second_send(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    again = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert again["ok"] is False
+    assert again["message_key"] == "api.letters.confirm.alreadyDone"
+    assert len(client.posts) == 1
+
+
+def test_confirm_letter_reports_a_missing_form(tmp_path):
+    service, store, client = _confirm_service(tmp_path, [_fixture_text("letter_confirm_done.html")])
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.confirm.gone"
+    assert client.posts == []
+    assert store.load_letters_confirmations() == {}
+
+
+def test_confirm_letter_refuses_accept_decline(tmp_path):
+    service, store, client = _confirm_service(tmp_path, [_fixture_text("letter_confirm_choice.html")])
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.confirm.unsupported"
+    assert client.posts == []
+    assert store.load_letters_confirmations() == {}
+
+
+def test_confirm_letter_never_records_a_silent_failure(tmp_path):
+    seen = _fixture_text("letter_confirm_seen.html")
+    service, store, client = _confirm_service(tmp_path, [seen, seen])
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.confirm.rejected"
+    assert len(client.posts) == 1
+    assert store.load_letters_confirmations() == {}
+
+
+def test_confirm_letter_reports_an_upstream_status(tmp_path):
+    seen = _fixture_text("letter_confirm_seen.html")
+    service, store, client = _confirm_service(tmp_path, [seen, seen], post_status=500)
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.confirm.upstream"
+    assert result["message_vars"] == {"status": 500}
+    assert store.load_letters_confirmations() == {}
+
+
+def test_letters_list_carries_the_open_confirmation_after_enrichment(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen.html")])
+    assert all(entry["confirmation"] is None for entry in service.letters("current")["letters"])
+    service.enrich_letters_search("current")
+    entries = service.letters("current")["letters"]
+    assert all(entry["confirmation"]["open"] for entry in entries)
+    assert service.pending_confirmation_keys("current") == {
+        service._letter_key(entry) for entry in entries
+    }
+
+
+def test_enrich_keeps_refreshing_an_open_confirmation_but_stops_once_it_is_done(tmp_path):
+    service, store, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    first = service.enrich_letters_search("current")
+    assert first == 3
+    assert service.enrich_letters_search("current") == 3
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    assert store.load_letters_confirmations()
+    remaining = service.enrich_letters_search("current")
+    assert remaining == 2
+    done = next(
+        entry
+        for entry in service.letters("current")["letters"]
+        if service._letter_key(entry) == f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"
+    )
+    assert done["confirmation"]["done"] is True
+    assert done["confirmation"]["open"] is False
+    assert done["confirmation"]["confirmed_at"]
+
+
+def test_letters_without_a_confirmation_are_not_refetched(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_detail.html")])
+    assert service.enrich_letters_search("current") == 3
+    assert service.enrich_letters_search("current") == 0
