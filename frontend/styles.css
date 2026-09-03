@@ -363,14 +363,6 @@ a.row[href^="tel:"] .row-sub {
   text-wrap: balance;
 }
 
-.page-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-4);
-  margin: var(--s-5) 0 var(--s-6);
-}
-
 .greeting {
   font-family: var(--font-display);
   font-size: clamp(1.5rem, 1.15rem + 1.4vw, 1.875rem);
@@ -841,6 +833,39 @@ button.section-head {
   transition: background 140ms ease-out, border-color 140ms ease-out;
 }
 .txt { min-height: 96px; resize: vertical; font-weight: 400; line-height: 1.5; }
+.inp[type="date"],
+.inp[type="time"],
+.inp[type="datetime-local"] {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: hidden;
+}
+@supports (-webkit-touch-callout: none) {
+  .inp[type="date"],
+  .inp[type="time"],
+  .inp[type="datetime-local"] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .inp[type="date"]::-webkit-datetime-edit,
+  .inp[type="time"]::-webkit-datetime-edit,
+  .inp[type="datetime-local"]::-webkit-datetime-edit {
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .inp[type="date"]::-webkit-date-and-time-value,
+  .inp[type="time"]::-webkit-date-and-time-value,
+  .inp[type="datetime-local"]::-webkit-date-and-time-value {
+    inline-size: 100%;
+    min-inline-size: 0;
+    margin: 0;
+    text-align: start;
+  }
+}
 .inp:focus, .sel:focus, .txt:focus {
   background: var(--surface);
   border-color: var(--accent);
@@ -1209,7 +1234,6 @@ button.section-head {
   padding: var(--s-2) var(--gutter) var(--s-4);
   background: var(--bg);
 }
-.list-head .page-title { margin: var(--s-3) 0 var(--s-5); }
 .list-head .segment { margin-block-end: var(--s-6); }
 .list-head .section-head { margin-bottom: 0; }
 .list-head .chipbar { margin: 0 0 var(--s-4); padding: 0; }
@@ -1751,7 +1775,6 @@ button.section-head {
 [dir="rtl"] .chev-next { transform: rotate(90deg); }
 [dir="rtl"] .chev-toggle { transform: rotate(90deg); }
 [dir="rtl"] .chev-toggle.open { transform: rotate(0deg); }
-[dir="rtl"] .nav-back .ico { transform: scaleX(-1); }
 [dir="rtl"] .header-back .ico { transform: scaleX(-1); }
 [dir="rtl"] .swap .arrow { display: inline-block; transform: scaleX(-1); }
 

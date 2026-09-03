@@ -155,6 +155,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "Meldung abbrechen",
   "absence.wizard.factJoin": "{first}, {second}",
+  "absence.wizard.fieldHidden": "Angabe entfällt: {name}",
+  "absence.wizard.fieldShown": "Zusätzliche Angabe eingeblendet: {name}",
   "absence.wizard.need": "Noch nötig: {field}",
   "absence.wizard.none": "keine Angabe",
   "absence.wizard.periodsDropped": "Die Stundenangaben werden verworfen.",

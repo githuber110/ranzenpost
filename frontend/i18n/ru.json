@@ -157,6 +157,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "Отменить сообщение",
   "absence.wizard.factJoin": "{first}, {second}",
+  "absence.wizard.fieldHidden": "Дополнение отпадает: {name}",
+  "absence.wizard.fieldShown": "Показано дополнительно: {name}",
   "absence.wizard.need": "Ещё нужно: {field}",
   "absence.wizard.none": "нет данных",
   "absence.wizard.periodsDropped": "Данные об уроках будут удалены.",

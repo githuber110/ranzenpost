@@ -55,7 +55,7 @@ describe("[P155] compact header: screen title sits level with the settings gear"
     expect(withoutGear.querySelector(".header-actions .icon-btn")).toBeNull();
   });
 
-  test("[P178] the overview greeting moved into the sticky header, settings still has no title", () => {
+  test("[P178] the overview greeting moved into the sticky header, [P188] settings carry theirs there too", () => {
     const { window } = loadApp();
     window.eval("state.me = { forename: 'Mia' };");
     const overviewBar = window.eval("header('overview')");
@@ -65,7 +65,9 @@ describe("[P155] compact header: screen title sits level with the settings gear"
     expect(title.classList.contains("greeting-head")).toBe(true);
     expect(title.textContent).toContain("Mia");
     expect(overviewBar.querySelector(".header-back")).toBeNull();
-    expect(settingsBar.querySelector(".header-title-row")).toBeNull();
+    const settingsTitle = settingsBar.querySelector(".header-title-row .header-title");
+    expect(settingsTitle.textContent).toBe(window.eval(`t("settings.title")`));
+    expect(settingsBar.querySelector(".header-title-row .header-back")).not.toBeNull();
   });
 
   test("styles.css keeps .header-title single-line (truncates instead of wrapping at narrow widths)", () => {

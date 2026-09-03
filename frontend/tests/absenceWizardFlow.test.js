@@ -104,7 +104,7 @@ describe("[P177] the 7:10 case costs four taps", () => {
     );
     expect(wz.path).toEqual(["type", "child", "sickWhen", "sickHours", "review"]);
     wz.form.hours_mode = "byLesson";
-    expect(wz.path).toEqual(["type", "child", "sickWhen", "sickHours", "sickPeriods", "review"]);
+    expect(wz.path).toEqual(["type", "child", "sickWhen", "sickHours", "review"]);
   });
 });
 
@@ -209,9 +209,9 @@ describe("[P177] regression: the three bugs the rebuild had to close", () => {
     wz.form.till_period = "2";
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
     expect(entry.text).toBe("Die Bis-Stunde darf nicht vor der Ab-Stunde liegen.");
-    expect(entry.step).toBe("sickPeriods");
+    expect(entry.step).toBe("sickHours");
     wz.go("review");
-    expect(wz.step).toBe("sickPeriods");
+    expect(wz.step).toBe("sickHours");
     expect(wz.status).toBe("Die Bis-Stunde darf nicht vor der Ab-Stunde liegen.");
   });
 
@@ -223,7 +223,7 @@ describe("[P177] regression: the three bugs the rebuild had to close", () => {
     wz.form.till_period = "";
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
     expect(entry.text).toBe("Bitte auch die Bis-Stunde wählen.");
-    expect(entry.step).toBe("sickPeriods");
+    expect(entry.step).toBe("sickHours");
   });
 });
 

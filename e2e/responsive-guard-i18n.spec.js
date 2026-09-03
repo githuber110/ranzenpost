@@ -211,6 +211,20 @@ for (const viewport of VIEWPORTS) {
           await headerFits(page, `${viewport.name}/${lang.key}/conferences`, failures);
           await expect(page.locator(".header-back")).toBeVisible();
 
+          await page.locator(".header-actions .icon-btn").first().click();
+          await waitForContentSettled(page);
+          await headerFits(page, `${viewport.name}/${lang.key}/settings`, failures);
+          await expect(page.locator(".header-back")).toBeVisible();
+          await expect(page.locator(".wrap .list-head")).toHaveCount(0);
+          const settingsGap = await page.evaluate(() => {
+            const bar = document.querySelector(".header");
+            const first = document.querySelector(".wrap .settings-group");
+            if (!bar || !first) return null;
+            return Math.round(first.getBoundingClientRect().top - bar.getBoundingClientRect().bottom);
+          });
+          if (settingsGap === null) failures.push(`${viewport.name}/${lang.key}/settings: header or first group missing`);
+          else if (settingsGap > 32) failures.push(`${viewport.name}/${lang.key}/settings: ${settingsGap}px of empty space under the header`);
+
           expect(failures, failures.join("\n")).toEqual([]);
         });
       });

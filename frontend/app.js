@@ -851,6 +851,12 @@ function headerTitleFor(view) {
   }
   if (view === "pinboard") return { text: t("pinboard.title") };
   if (view === "conferences") return { text: t("conferences.title"), onBack: () => setView("overview") };
+  if (view === "settings") {
+    return {
+      text: t("settings.title"),
+      onBack: () => setView(state.settingsReturn || "overview", { keepEntryState: true }),
+    };
+  }
   if (view === "overview") return { node: greetingHeadline(new Date(), "header-title greeting-head") };
   return null;
 }
@@ -1008,28 +1014,6 @@ function badgeCount(key) {
   return 0;
 }
 
-function pageTitle(text, extra) {
-  if (!extra) return el("h1", { class: "page-title" }, text);
-  return el("div", { class: "page-title-row" }, [
-    el("h1", { class: "page-title", style: "margin:0" }, text),
-    extra,
-  ]);
-}
-
-function backButton(onclick) {
-  return el("button", {
-    class: "icon-btn nav-back",
-    type: "button",
-    "aria-label": t("common.back"),
-    style: "margin-top:12px",
-    onclick,
-  }, [icon("back", 18)]);
-}
-
-function subpageHead(onclick, title, extra) {
-  return el("div", { class: "list-head" }, [backButton(onclick), pageTitle(title, extra)]);
-}
-
 function loadingBlock() {
   return el("div", { class: "loading" }, t("common.loading"));
 }
@@ -1102,9 +1086,55 @@ async function responseUserMessage(response) {
   }
 }
 
+const VIEWABLE_EXTENSION_PATTERN = /\.(pdf|png|jpe?g|gif|webp|bmp|avif|heic|heif)$/i;
+const VIEWABLE_TYPE_PATTERN = /^(application\/pdf|image\/(png|jpeg|gif|webp|bmp|avif|heic|heif))\b/i;
+const OPAQUE_TYPES = ["", "application/octet-stream", "binary/octet-stream"];
+const VIEWER_REVOKE_DELAY = 60000;
+const DOWNLOAD_REVOKE_DELAY = 4000;
+
+function fileIsViewable(filename, type) {
+  const mime = String(type || "").split(";")[0].trim().toLowerCase();
+  if (VIEWABLE_TYPE_PATTERN.test(mime)) return true;
+  if (!OPAQUE_TYPES.includes(mime)) return false;
+  return VIEWABLE_EXTENSION_PATTERN.test(filename || "");
+}
+
+function reserveViewerWindow() {
+  try {
+    return window.open("", "_blank") || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function releaseViewerWindow(viewer) {
+  if (!viewer) return;
+  try {
+    viewer.close();
+  } catch (error) {
+    return;
+  }
+}
+
+function downloadBlob(objectUrl, filename) {
+  const link = el("a", { href: objectUrl, download: filename });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), DOWNLOAD_REVOKE_DELAY);
+}
+
 async function openAppFile(path, fallbackFilename) {
-  const response = await fetch(apiUrl(path));
+  const viewer = fileIsViewable(fallbackFilename, "") ? reserveViewerWindow() : null;
+  let response;
+  try {
+    response = await fetch(apiUrl(path));
+  } catch (error) {
+    releaseViewerWindow(viewer);
+    throw error;
+  }
   if (!response.ok) {
+    releaseViewerWindow(viewer);
     const failure = new Error("http " + response.status);
     failure.userMessage = await responseUserMessage(response);
     throw failure;
@@ -1112,11 +1142,19 @@ async function openAppFile(path, fallbackFilename) {
   const filename = filenameFromDisposition(response.headers.get("content-disposition")) || fallbackFilename;
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
-  const link = el("a", { href: objectUrl, download: filename });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+  if (viewer && !viewer.closed && fileIsViewable(filename, blob.type)) {
+    try {
+      viewer.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), VIEWER_REVOKE_DELAY);
+      return;
+    } catch (error) {
+      releaseViewerWindow(viewer);
+      downloadBlob(objectUrl, filename);
+      return;
+    }
+  }
+  releaseViewerWindow(viewer);
+  downloadBlob(objectUrl, filename);
 }
 
 function fileName(file) {
@@ -5440,7 +5478,7 @@ function daycareLeadDays(rules) {
 
 const ABSENCE_DEFAULT_FROM_TIME = "08:00";
 const ABSENCE_DEFAULT_TILL_TIME = "14:00";
-const ABSENCE_PENDING_STEPS = ["sickHours", "leaveFrom", "leaveDayTime", "deregisterWhen", "daycareWhen"];
+const ABSENCE_CONDITIONAL_STEPS = ["sickHours", "leaveFrom", "leaveDayTime", "deregisterWhen", "daycareWhen"];
 const ABSENCE_FLOW_TEXTS = {
   back: "absence.wizard.back",
   goal: "absence.wizard.progress.goal",
@@ -5460,6 +5498,49 @@ function absenceDefaultType(data) {
   const types = absenceTypeList(data);
   if (types.includes("sick")) return "sick";
   return types[0] || "sick";
+}
+
+const ABSENCE_STEP_TITLES = {
+  sickPeriods: "absence.wizard.step.sick.periods",
+  leaveTill: "absence.wizard.step.leave.till",
+  leaveTimes: "absence.wizard.step.leave.times",
+  repeatUntil: "absence.wizard.step.repeatUntil",
+  daycarePickup: "absence.wizard.step.daycare.pickup",
+};
+
+const ABSENCE_REVEALS = {
+  sickHours: { step: "sickPeriods", when: (form) => form.hours_mode === "byLesson" },
+  daycareKind: { step: "daycarePickup", when: (form) => form.daycare_kind === "early_end" },
+};
+
+function absenceStepHost(id) {
+  for (const host of Object.keys(ABSENCE_REVEALS)) {
+    if (ABSENCE_REVEALS[host].step === id) return host;
+  }
+  return id;
+}
+
+function absenceRevealedStep(id, form) {
+  const reveal = ABSENCE_REVEALS[id];
+  return reveal && form && reveal.when(form) ? reveal.step : "";
+}
+
+function absenceRevealName(id) {
+  const reveal = ABSENCE_REVEALS[id];
+  return reveal ? t(ABSENCE_STEP_TITLES[reveal.step]) : "";
+}
+
+function absenceAnnounceReveal(id, shown) {
+  const name = absenceRevealName(id);
+  if (!name || !absenceFlow) return;
+  absenceFlow.announce(t(shown ? "absence.wizard.fieldShown" : "absence.wizard.fieldHidden", { name }));
+}
+
+function absenceAnnounceStep(stepId, added) {
+  if (!absenceFlow) return;
+  absenceFlow.announce(
+    t(added ? "absence.wizard.stepAdded" : "absence.wizard.stepRemoved", { name: t(ABSENCE_STEP_TITLES[stepId]) })
+  );
 }
 
 function absencePath(form, data) {
@@ -5492,7 +5573,10 @@ function absencePath(form, data) {
     if (rules.daycare_reason_required) ids.push("daycareReason");
   }
   ids.push("review");
-  return ids;
+  return ids.filter((id) => {
+    const host = absenceStepHost(id);
+    return host === id || !ids.includes(host);
+  });
 }
 
 function absenceCurrentPath() {
@@ -5556,7 +5640,7 @@ function wizRefresh() {
 function absenceOpenStep(id) {
   if (!absenceFlow) return;
   absenceFlow.returnTo("review");
-  absenceFlow.go(id);
+  absenceFlow.go(absenceStepHost(id));
 }
 
 function absenceRecheckLimits() {
@@ -5579,7 +5663,7 @@ function absenceFlowStart(startAt) {
     detour: absenceIsDetour,
     redirect: absenceRedirect,
     step: absenceStep,
-    pending: (id) => ABSENCE_PENDING_STEPS.includes(id),
+    pending: (id) => ABSENCE_CONDITIONAL_STEPS.includes(id) && !ABSENCE_REVEALS[id],
     title: () => absenceTypeLabel(state.absenceForm.type),
     lead: absenceFlowLead,
     trailing: absenceFlowTrailing,
@@ -5685,11 +5769,7 @@ function absenceSetHoursMode(key) {
   }
   wizRefresh();
   if (dropped) absenceFlow.status(t("absence.wizard.periodsDropped"), "");
-  absenceFlow.announce(
-    t(key === "byLesson" ? "absence.wizard.stepAdded" : "absence.wizard.stepRemoved", {
-      name: t("absence.wizard.step.sick.periods"),
-    })
-  );
+  absenceAnnounceReveal("sickHours", key === "byLesson");
 }
 
 function absenceSetRepeat(key) {
@@ -5698,11 +5778,7 @@ function absenceSetRepeat(key) {
   form.repeat = key;
   if (key === "once") form.repeat_until = "";
   wizRefresh();
-  absenceFlow.announce(
-    t(key === "weekly" ? "absence.wizard.stepAdded" : "absence.wizard.stepRemoved", {
-      name: t("absence.wizard.step.repeatUntil"),
-    })
-  );
+  absenceAnnounceStep("repeatUntil", key === "weekly");
 }
 
 function absenceSyncSubject() {
@@ -5723,6 +5799,12 @@ function absenceStep(id) {
   const builder = ABSENCE_STEP_BUILDERS[id];
   if (!builder) return { question: "", body: [], nextLabel: t("common.next") };
   const step = builder(form, data, data.rules || {});
+  const revealed = absenceRevealedStep(id, form);
+  if (revealed) {
+    step.body = [].concat(step.body || [], [
+      el("div", { class: "sw-reveal" }, [].concat(ABSENCE_STEP_BUILDERS[revealed](form, data, data.rules || {}).body || [])),
+    ]);
+  }
   if (!step.nextLabel) step.nextLabel = t("common.next");
   const blocker = absenceStepBlock(id, form, data);
   if (blocker) {
@@ -5856,7 +5938,7 @@ const ABSENCE_STEP_BUILDERS = {
               form.duration = "one";
               form.till_date = form.from_date;
               wizRefresh();
-              absenceFlow.announce(t("absence.wizard.stepRemoved", { name: t("absence.wizard.step.leave.till") }));
+              absenceAnnounceStep("leaveTill", false);
             },
           },
           {
@@ -5866,7 +5948,7 @@ const ABSENCE_STEP_BUILDERS = {
               if (form.duration === "more") return;
               form.duration = "more";
               wizRefresh();
-              absenceFlow.announce(t("absence.wizard.stepAdded", { name: t("absence.wizard.step.leave.till") }));
+              absenceAnnounceStep("leaveTill", true);
             },
           },
         ]),
@@ -5898,7 +5980,7 @@ const ABSENCE_STEP_BUILDERS = {
               form.from_time = ABSENCE_DEFAULT_FROM_TIME;
               form.till_time = ABSENCE_DEFAULT_TILL_TIME;
               wizRefresh();
-              absenceFlow.announce(t("absence.wizard.stepRemoved", { name: t("absence.wizard.step.leave.times") }));
+              absenceAnnounceStep("leaveTimes", false);
             },
           },
           {
@@ -5908,7 +5990,7 @@ const ABSENCE_STEP_BUILDERS = {
               if (form.time_mode === "custom") return;
               form.time_mode = "custom";
               wizRefresh();
-              absenceFlow.announce(t("absence.wizard.stepAdded", { name: t("absence.wizard.step.leave.times") }));
+              absenceAnnounceStep("leaveTimes", true);
             },
           },
         ]),
@@ -6091,11 +6173,7 @@ function absenceSetDaycareKind(kind) {
   if (form.daycare_kind === kind) return;
   form.daycare_kind = kind;
   wizRefresh();
-  absenceFlow.announce(
-    t(kind === "early_end" ? "absence.wizard.stepAdded" : "absence.wizard.stepRemoved", {
-      name: t("absence.wizard.step.daycare.pickup"),
-    })
-  );
+  absenceAnnounceReveal("daycareKind", kind === "early_end");
 }
 
 function absenceRepeatSegment(form) {
@@ -6112,18 +6190,31 @@ function absenceReviewBody(form, data) {
   return wrap;
 }
 
+function absenceDutyText(data) {
+  const rules = (data && data.rules) || {};
+  return String(rules.duty_hint || "").trim() || t("absence.sick.dutyHint");
+}
+
+function absenceDutySheet(text) {
+  return sheet(t("absence.review.dutyExplain"), [iservText("p", { class: "dlg-text" }, text)]);
+}
+
 function absenceDutyCard(form, data) {
-  const rules = data.rules || {};
   const box = el("input", { type: "checkbox" });
   box.checked = !!form.duty_to_report;
   box.addEventListener("change", () => {
     form.duty_to_report = box.checked;
   });
+  const text = absenceDutyText(data);
   return el("div", { class: "field-group sw-duty" }, [
     el("label", { class: "cell check" }, [box, el("span", {}, t("absence.field.dutyToReport"))]),
-    el("details", { class: "cell" }, [
-      el("summary", {}, t("absence.review.dutyExplain")),
-      el("p", { class: "row-sub" }, rules.duty_hint || t("absence.sick.dutyHint")),
+    el("button", {
+      class: "cell sw-duty-more",
+      type: "button",
+      onclick: () => openSheet(() => absenceDutySheet(text)),
+    }, [
+      el("span", {}, t("absence.review.dutyExplain")),
+      el("span", { class: "sw-fact-go chev-next", html: iconSvg("chevron", 14) }),
     ]),
   ]);
 }
@@ -6353,7 +6444,7 @@ function absenceProblems(form, data) {
   const rules = data.rules || {};
   const children = data.children || [];
   const list = [];
-  const push = (step, text, hint) => list.push({ step, text, hint: hint || text });
+  const push = (step, text, hint) => list.push({ step: absenceStepHost(step), text, hint: hint || text });
   if (!form.student_id) push("child", t("absence.problem.child"), t("absence.wizard.required"));
   const attachments = absenceAttachmentsProblem(form);
   if (attachments) push("leaveAttachments", attachments.text, attachments.hint);
@@ -6471,8 +6562,6 @@ async function submitAbsence() {
 function settingsView() {
   const config = state.config || {};
   const view = el("div", {});
-  view.append(subpageHead(() => setView(state.settingsReturn || "overview", { keepEntryState: true }), t("settings.title")));
-
   view.append(settingsSection("settings.section.school", true, [
     settingRow(t("holidays.settings.title"), holidayRegionValueLabel(), () => openSheet(holidayRegionSheet)),
     settingRow(t("settings.phones"), t("settings.phones.count", { count: formatNumber((config.phones || []).filter((p) => p.number).length) }), () => openSheet(phonesSheet)),

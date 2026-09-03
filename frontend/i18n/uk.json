@@ -157,6 +157,8 @@
   "absence.wizard.childLine": "{name} · {class}",
   "absence.wizard.exit": "Скасувати повідомлення",
   "absence.wizard.factJoin": "{first}, {second}",
+  "absence.wizard.fieldHidden": "Доповнення відпадає: {name}",
+  "absence.wizard.fieldShown": "Показано додатково: {name}",
   "absence.wizard.need": "Ще потрібно: {field}",
   "absence.wizard.none": "немає",
   "absence.wizard.periodsDropped": "Дані про уроки буде відкинуто.",
