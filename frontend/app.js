@@ -190,6 +190,8 @@ const VIEWS = [
   { key: "pinboard", label: "nav.pinboard", icon: "pinboard" },
 ];
 
+const MESSENGER_ENTRY_VIEWS = ["overview", "letters"];
+
 const CHANGE_KEYS = {
   cancelled: "timetable.change.cancelled",
   changed: "timetable.change.changed",
@@ -265,6 +267,10 @@ const state = {
   lettersSelected: [],
   lettersSearch: "",
   letterDetail: null,
+  messengerRooms: null,
+  messengerSearch: "",
+  messengerRoom: null,
+  messengerReturn: "overview",
   absence: null,
   absenceForm: null,
   absenceFormDefault: null,
@@ -410,6 +416,8 @@ const ICON_SHAPES = {
   search: '<circle cx="10.6" cy="10.6" r="6.6"/><path d="m20 20-4.8-4.8"/>',
   calendarAdd: '<rect x="3.4" y="5.4" width="17.2" height="15.2" rx="3.4"/><path d="M8 3v4.4M16 3v4.4M3.4 10.4h17.2"/><path d="M12 13.6v4.8M9.6 16h4.8"/>',
   exam: '<path d="M12 3.4 14.7 9l6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.9 9.3 9z" fill="currentColor" stroke-linejoin="round"/>',
+  messages: '<path d="M20.6 11.6a8.4 8.4 0 0 1-8.4 8.4H4.4l1.9-3.5a8.4 8.4 0 1 1 14.3-4.9z"/><path d="M8.6 11.6h.01M12 11.6h.01M15.4 11.6h.01"/>',
+  send: '<path d="M20.4 3.6 3.9 10.1a.5.5 0 0 0 .05.95l6.15 1.75 1.75 6.15a.5.5 0 0 0 .95.05z" stroke-linejoin="round"/><path d="m10.1 12.8 4.7-4.7"/>',
   qr: '<rect x="3.6" y="3.6" width="6.6" height="6.6" rx="1.6"/><rect x="13.8" y="3.6" width="6.6" height="6.6" rx="1.6"/><rect x="3.6" y="13.8" width="6.6" height="6.6" rx="1.6"/><path d="M13.8 13.8h3v3h-3z"/><path d="M20.4 13.8v3M20.4 20.4h-3.6M13.8 20.4h.01"/>',
 };
 
@@ -627,15 +635,16 @@ function render() {
   }
   const hasSelectBar =
     (state.view === "letters" && state.lettersSelectMode) || (state.view === "pinboard" && state.pinboardSelectMode);
-  const screen = el("div", { class: hasSelectBar ? "screen has-select-bar" : "screen" });
+  const chat = inMessengerRoom();
+  const screen = el("div", { class: chat ? "screen chat" : hasSelectBar ? "screen has-select-bar" : "screen" });
   screen.append(header(state.view));
   screen.append(el("div", { class: "wrap" }, [viewFor(state.view)]));
   screen.addEventListener("scroll", () => {
     const bar = screen.querySelector(".header");
     if (bar) bar.classList.toggle("scrolled", screen.scrollTop > 4);
   });
-  setupPullToRefresh(screen);
-  const nodes = [screen, tabbar()];
+  if (!chat) setupPullToRefresh(screen);
+  const nodes = chat ? [screen] : [screen, tabbar()];
   if (state.sheet) nodes.push(state.sheet());
   if (state.toast) nodes.push(toastNode());
   if (state.fileViewer) nodes.push(fileViewerNode());
@@ -646,6 +655,10 @@ function render() {
     state._keepScroll = 0;
   }
   applyOverviewPagination();
+  if (chat) {
+    setupChatViewport();
+    applyChatViewport();
+  }
 }
 
 function rerender() {
@@ -684,7 +697,13 @@ function leaveAbsenceForm(after) {
 const VIEW_ENTRY_RESETS = {
   letters: resetLettersEntryState,
   pinboard: resetPinboardEntryState,
+  messenger: resetMessengerEntryState,
 };
+
+function resetMessengerEntryState() {
+  state.messengerRoom = null;
+  state.messengerSearch = "";
+}
 
 function resetLettersEntryState() {
   state.lettersTab = "current";
@@ -709,6 +728,7 @@ function setView(name, options) {
     state.sheet = null;
     state.onSheetClose = null;
     state.letterDetail = null;
+    stopMessengerPoll();
     discardFileViewer();
     closeAbsenceForm();
     if (changed && !keepEntryState && VIEW_ENTRY_RESETS[name]) VIEW_ENTRY_RESETS[name]();
@@ -874,6 +894,13 @@ function headerTitleFor(view) {
     return { text: t("letters.title") };
   }
   if (view === "pinboard") return { text: t("pinboard.title") };
+  if (view === "messenger") {
+    if (state.messengerRoom) return { node: messengerRoomHeadTitle(), onBack: closeMessengerRoom };
+    return {
+      text: t("messenger.title"),
+      onBack: () => setView(state.messengerReturn || "overview", { keepEntryState: true }),
+    };
+  }
   if (view === "conferences") return { text: t("conferences.title"), onBack: () => setView("overview") };
   if (view === "settings") {
     return {
@@ -936,9 +963,10 @@ function header(view) {
       onclick: openCalendarSheet,
     }, [icon("calendarAdd", 18)]));
   }
+  if (messengerEntryVisible(view)) actions.push(messengerEntryButton());
   if (view !== "settings") {
     actions.push(el("button", {
-      class: "icon-btn",
+      class: "icon-btn settings-entry",
       type: "button",
       "aria-label": t("nav.settings"),
       onclick: () => {
@@ -1592,6 +1620,10 @@ async function refreshActiveView() {
     case "pinboard":
       await loadPinboard();
       break;
+    case "messenger":
+      await loadMessengerRooms();
+      if (state.messengerRoom) await loadMessengerHistory();
+      break;
     case "conferences":
       await loadConferences();
       break;
@@ -1777,6 +1809,7 @@ function viewFor(view) {
     case "absence": return absenceView();
     case "letters": return state.letterDetail ? letterDetailView() : lettersView();
     case "pinboard": return pinboardView();
+    case "messenger": return state.messengerRoom ? messengerRoomView() : messengerView();
     case "conferences": return conferencesView();
     case "settings": return settingsView();
     default: return overviewView();
@@ -5445,6 +5478,484 @@ async function markAllPostsRead() {
   }
   state.pinboard = null;
   loadPinboard();
+}
+
+const MESSENGER_POLL_MS = 25000;
+const MESSENGER_LOAD_KEY = "messenger";
+const MESSENGER_ROOM_LOAD_KEY = "messengerRoom";
+const MESSENGER_OLDER_LOAD_KEY = "messengerRoomOlder";
+const MESSENGER_SYSTEM_KEYS = {
+  join: "messenger.system.join",
+  leave: "messenger.system.leave",
+  invite: "messenger.system.invite",
+};
+const CHAT_BOTTOM_SLACK = 40;
+const CHAT_OLDER_TRIGGER = 80;
+const CHAT_COMPOSER_MAX = 132;
+
+let messengerPollTimer = 0;
+let chatViewportBound = false;
+
+function inMessengerRoom() {
+  return state.view === "messenger" && !!state.messengerRoom;
+}
+
+function messengerUnreadTotal() {
+  const data = state.messengerRooms;
+  if (data && !data.error) {
+    return (data.rooms || []).reduce((sum, entry) => sum + (Number(entry.unread_count) || 0), 0);
+  }
+  const pollState = (state.config && state.config.poll_state) || {};
+  const stored = Number(pollState.messenger_unread);
+  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+}
+
+function messengerEntryVisible(view) {
+  if (!MESSENGER_ENTRY_VIEWS.includes(view)) return false;
+  return view !== "letters" || !state.letterDetail;
+}
+
+function messengerEntryButton() {
+  const unread = messengerUnreadTotal();
+  return el("button", {
+    class: "icon-btn messenger-entry",
+    type: "button",
+    "aria-label": unread ? t("messenger.open.unread") : t("messenger.open"),
+    onclick: openMessenger,
+  }, [icon("messages", 18), unread ? el("span", { class: "entry-dot" }) : null]);
+}
+
+function openMessenger() {
+  if (state.view !== "messenger") state.messengerReturn = state.view;
+  setView("messenger");
+}
+
+function messengerRoomHeadTitle() {
+  const room = state.messengerRoom;
+  return iservText("h1", { class: "header-title" }, room.name || t("messenger.title"));
+}
+
+async function loadMessengerRooms() {
+  const keep = !!(state.messengerRooms && !state.messengerRooms.error);
+  const outcome = await reload(MESSENGER_LOAD_KEY, () => getJson("api/messenger/rooms"), keep);
+  if (!outcome) return;
+  if (outcome.data) state.messengerRooms = outcome.data;
+  else if (outcome.error) state.messengerRooms = { error: outcome.error };
+  rerender();
+}
+
+function matchesRoomQuery(room, query) {
+  return [room.name || "", (room.members || []).join(" "), room.last_message || ""]
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
+function messengerDate(value) {
+  const stamp = Number(value);
+  if (!stamp) return null;
+  const date = new Date(stamp);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function messengerStamp(value) {
+  const date = messengerDate(value);
+  if (!date) return "";
+  return isoDate(date) === isoDate(new Date()) ? formatTime(date) : formatShortDate(date);
+}
+
+function messengerTime(value) {
+  const date = messengerDate(value);
+  return date ? formatTime(date) : "";
+}
+
+function messengerDayKey(value) {
+  const date = messengerDate(value);
+  return date ? isoDate(date) : "";
+}
+
+function messengerDayLabel(value) {
+  const date = messengerDate(value);
+  return date ? formatWeekdayDay(date) : "";
+}
+
+function messengerRoomRow(room) {
+  const unread = Number(room.unread_count) || 0;
+  const dot = el("span", { class: "row-dot" }, unread ? el("i") : null);
+  const main = el("div", { class: "row-main" }, [iservText("div", { class: "row-title" }, room.name || t("messenger.title"))]);
+  if (room.last_message) main.append(iservText("div", { class: "row-sub" }, room.last_message));
+  const side = el("div", { class: "row-side" }, [el("span", { class: "row-meta" }, messengerStamp(room.last_message_at))]);
+  if (unread) side.append(el("span", { class: "badge" }, badgeText(unread)));
+  return el("button", {
+    type: "button",
+    class: unread ? "row" : "row read",
+    onclick: () => openMessengerRoom(room),
+  }, [dot, main, side]);
+}
+
+function messengerView() {
+  const view = el("div", {});
+  const head = el("div", { class: "list-head" });
+  view.append(head);
+  const data = state.messengerRooms;
+  if (!data) {
+    autoLoad(MESSENGER_LOAD_KEY, loadMessengerRooms);
+    view.append(loadingBlock());
+    return view;
+  }
+  if (data.error) {
+    view.append(
+      emptyBlock("alert", t("messenger.error.title"), t("messenger.error.text"), retryButton(() => {
+        state.messengerRooms = null;
+        rerender();
+      }))
+    );
+    return view;
+  }
+  const note = refreshFailureNote(MESSENGER_LOAD_KEY);
+  if (note) head.append(note);
+  const rooms = data.rooms || [];
+  if (!rooms.length) {
+    view.append(emptyBlock("messages", t("messenger.empty.title"), t("messenger.empty.text")));
+    return view;
+  }
+  const hitCount = el("span", { class: "search-hits" });
+  const rowsHost = el("div", {});
+  function renderRoomRows() {
+    const query = (state.messengerSearch || "").trim().toLowerCase();
+    const filtered = query ? rooms.filter((room) => matchesRoomQuery(room, query)) : rooms;
+    hitCount.textContent = query ? tCount("common.hits", filtered.length) : "";
+    if (!filtered.length) {
+      rowsHost.replaceChildren(emptyBlock("search", t("messenger.search.emptyTitle"), t("messenger.search.emptyText")));
+      return;
+    }
+    const list = el("div", { class: "rows" });
+    for (const room of filtered) list.append(messengerRoomRow(room));
+    rowsHost.replaceChildren(list);
+  }
+  head.append(searchField(state.messengerSearch, t("messenger.search.placeholder"), (value) => {
+    state.messengerSearch = value;
+    renderRoomRows();
+  }, hitCount));
+  view.append(rowsHost);
+  renderRoomRows();
+  return view;
+}
+
+function openMessengerRoom(room) {
+  state.messengerRoom = {
+    room_id: room.room_id,
+    name: room.name || "",
+    memberNames: room.member_names || {},
+    selfUserId: (state.messengerRooms && state.messengerRooms.self_user_id) || "",
+    messages: [],
+    before: "",
+    loading: true,
+    loadingOlder: false,
+    error: "",
+    draft: "",
+    sending: false,
+    atBottom: true,
+    stickBottom: true,
+    logScroll: null,
+    restoreFromEnd: null,
+  };
+  rerender();
+  startMessengerPoll();
+  loadMessengerHistory();
+}
+
+function closeMessengerRoom() {
+  stopMessengerPoll();
+  state.messengerRoom = null;
+  rerender();
+  loadMessengerRooms();
+}
+
+function mergeMessengerMessages(existing, page) {
+  const arrived = new Set(page.map((entry) => entry.event_id));
+  return existing.filter((entry) => !arrived.has(entry.event_id)).concat(page);
+}
+
+function applyMessengerHistory(room, data, older) {
+  const page = (data.messages || []).slice().reverse();
+  if (data.self_user_id) room.selfUserId = data.self_user_id;
+  if (older) {
+    room.messages = page.concat(room.messages);
+    room.before = data.before || "";
+    return;
+  }
+  const first = !room.messages.length;
+  const grown = mergeMessengerMessages(room.messages, page);
+  const changed = grown.length !== room.messages.length;
+  room.messages = grown;
+  if (first) room.before = data.before || "";
+  if (first || (changed && room.atBottom)) room.stickBottom = true;
+}
+
+async function loadMessengerHistory(options) {
+  const room = state.messengerRoom;
+  if (!room) return;
+  const older = !!(options && options.older);
+  if (older && (!room.before || room.loadingOlder)) return;
+  if (older) {
+    room.loadingOlder = true;
+    rerender();
+  }
+  const query = older ? `&before=${encodeURIComponent(room.before)}` : "";
+  const outcome = await reload(
+    older ? MESSENGER_OLDER_LOAD_KEY : MESSENGER_ROOM_LOAD_KEY,
+    () => getJson(`api/messenger/room?id=${encodeURIComponent(room.room_id)}${query}`),
+    !older && room.messages.length > 0
+  );
+  if (!outcome || state.messengerRoom !== room) return;
+  room.loading = false;
+  room.loadingOlder = false;
+  if (outcome.data) {
+    room.error = "";
+    applyMessengerHistory(room, outcome.data, older);
+  } else if (outcome.error) {
+    room.error = outcome.error;
+  }
+  rerender();
+}
+
+function messengerSenderName(room, message) {
+  return (room.memberNames || {})[message.sender] || "";
+}
+
+function messengerImage(message) {
+  const label = message.body || t("messenger.image");
+  const button = el("button", { type: "button", class: "chat-image", "aria-label": label }, [
+    el("img", { class: "chat-thumb", src: apiUrl(message.media_url), alt: "", loading: "lazy", draggable: "false" }),
+  ]);
+  button.addEventListener("click", async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await openAppFile(message.media_url, label, button);
+    } catch (error) {
+      toast(error.userMessage || t("common.attachmentOpenFailed"), "bad");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
+function messengerBody(message) {
+  if (message.kind === "image" && message.media_url) return messengerImage(message);
+  if (message.kind === "file" && message.media_url) {
+    return attachmentRows([{ filename: message.body || "", url: message.media_url }]);
+  }
+  return iservText("div", { class: "chat-text" }, message.body || "");
+}
+
+function messengerSystemRow(message) {
+  return el("div", { class: "chat-system", role: "note" }, t(MESSENGER_SYSTEM_KEYS[message.system_kind] || "messenger.system.change"));
+}
+
+function messengerBubble(room, message) {
+  const mine = !!room.selfUserId && message.sender === room.selfUserId;
+  const bubble = el("div", { class: mine ? "chat-msg mine" : "chat-msg" });
+  if (!mine) {
+    const sender = messengerSenderName(room, message);
+    if (sender) bubble.append(iservText("div", { class: "chat-from" }, sender));
+  }
+  bubble.append(messengerBody(message));
+  bubble.append(el("div", { class: "chat-time" }, messengerTime(message.sent_at)));
+  return bubble;
+}
+
+function messengerOlderStrip(room) {
+  const strip = el("div", { class: "chat-older" });
+  if (room.loadingOlder) {
+    strip.append(el("span", { class: "spin" }));
+    return strip;
+  }
+  strip.append(
+    el("button", {
+      class: "chat-older-btn",
+      type: "button",
+      onclick: () => loadMessengerHistory({ older: true }),
+    }, t("messenger.room.loadOlder"))
+  );
+  return strip;
+}
+
+function messengerLogScroll(log, room) {
+  room.logScroll = log.scrollTop;
+  room.atBottom = log.scrollHeight - log.scrollTop - log.clientHeight <= CHAT_BOTTOM_SLACK;
+  if (log.scrollTop > CHAT_OLDER_TRIGGER || !room.before || room.loadingOlder) return;
+  if (log.scrollHeight <= log.clientHeight) return;
+  room.restoreFromEnd = log.scrollHeight - log.scrollTop;
+  loadMessengerHistory({ older: true });
+}
+
+function placeMessengerLog(log, room) {
+  if (room.restoreFromEnd !== null && room.restoreFromEnd !== undefined) {
+    log.scrollTop = Math.max(log.scrollHeight - room.restoreFromEnd, 0);
+    room.restoreFromEnd = null;
+  } else if (room.stickBottom || room.logScroll === null || room.logScroll === undefined) {
+    log.scrollTop = log.scrollHeight;
+    room.stickBottom = false;
+  } else {
+    log.scrollTop = room.logScroll;
+  }
+  room.logScroll = log.scrollTop;
+}
+
+function messengerStream(room) {
+  const stream = el("div", { class: "chat-stream" });
+  let lastDay = "";
+  for (const message of room.messages) {
+    const day = messengerDayKey(message.sent_at);
+    if (day && day !== lastDay) {
+      lastDay = day;
+      stream.append(el("div", { class: "chat-day" }, messengerDayLabel(message.sent_at)));
+    }
+    stream.append(message.kind === "system" ? messengerSystemRow(message) : messengerBubble(room, message));
+  }
+  return stream;
+}
+
+function messengerLog(room) {
+  const log = el("div", { class: "chat-log", role: "log" });
+  if (room.loading && !room.messages.length) {
+    log.append(loadingBlock());
+    return log;
+  }
+  if (room.error && !room.messages.length) {
+    log.append(
+      emptyBlock("alert", t("messenger.room.error.title"), t("messenger.room.error.text"), retryButton(() => {
+        room.error = "";
+        room.loading = true;
+        rerender();
+        loadMessengerHistory();
+      }))
+    );
+    return log;
+  }
+  if (!room.messages.length) {
+    log.append(emptyBlock("messages", t("messenger.room.empty.title"), t("messenger.room.empty.text")));
+    return log;
+  }
+  const note = refreshFailureNote(MESSENGER_ROOM_LOAD_KEY);
+  if (note) log.append(note);
+  if (room.before) log.append(messengerOlderStrip(room));
+  log.append(messengerStream(room));
+  log.addEventListener("scroll", () => messengerLogScroll(log, room));
+  window.setTimeout(() => placeMessengerLog(log, room), 0);
+  return log;
+}
+
+function growComposer(input) {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, CHAT_COMPOSER_MAX) + "px";
+}
+
+function messengerComposer(room) {
+  const input = el("textarea", {
+    class: "composer-input",
+    rows: "1",
+    dir: "auto",
+    placeholder: t("messenger.compose.placeholder"),
+    "aria-label": t("messenger.compose.placeholder"),
+  });
+  input.value = room.draft || "";
+  input.addEventListener("input", () => {
+    room.draft = input.value;
+    growComposer(input);
+  });
+  const button = el("button", {
+    class: "composer-send",
+    type: "button",
+    "aria-label": t("messenger.compose.send"),
+  }, [room.sending ? el("span", { class: "spin" }) : icon("send", 18)]);
+  button.disabled = !!room.sending;
+  button.addEventListener("click", () => sendMessengerMessage(input));
+  window.setTimeout(() => growComposer(input), 0);
+  return el("div", { class: "composer" }, [el("div", { class: "composer-inner" }, [input, button])]);
+}
+
+async function sendMessengerMessage(input) {
+  const room = state.messengerRoom;
+  if (!room || room.sending) return;
+  const text = (input.value || "").trim();
+  if (!text) {
+    toast(t("api.messenger.send.empty"), "bad");
+    input.focus();
+    return;
+  }
+  room.draft = input.value;
+  room.sending = true;
+  rerender();
+  let result = null;
+  try {
+    result = await postJson("api/messenger/send", { room_id: room.room_id, text });
+  } catch (error) {
+    if (handleApiFailure(error)) return;
+    result = null;
+  }
+  if (state.messengerRoom !== room) return;
+  room.sending = false;
+  if (!result || !result.ok) {
+    rerender();
+    toast(apiMessage(result, "api.messenger.send.failed"), "bad");
+    return;
+  }
+  room.draft = "";
+  room.stickBottom = true;
+  rerender();
+  await loadMessengerHistory();
+}
+
+function messengerRoomView() {
+  const room = state.messengerRoom;
+  return el("div", { class: "chat" }, [messengerLog(room), messengerComposer(room)]);
+}
+
+function messengerComposing() {
+  const active = document.activeElement;
+  return !!(active && active.classList && active.classList.contains("composer-input"));
+}
+
+function pollMessengerRoom() {
+  const room = state.messengerRoom;
+  if (!room || state.view !== "messenger" || document.hidden) return;
+  if (room.sending || room.loadingOlder || messengerComposing()) return;
+  loadMessengerHistory();
+  loadMessengerRooms();
+}
+
+function startMessengerPoll() {
+  stopMessengerPoll();
+  messengerPollTimer = window.setInterval(pollMessengerRoom, MESSENGER_POLL_MS);
+}
+
+function stopMessengerPoll() {
+  if (!messengerPollTimer) return;
+  window.clearInterval(messengerPollTimer);
+  messengerPollTimer = 0;
+}
+
+function applyChatViewport() {
+  const view = window.visualViewport;
+  if (!view) return;
+  const app = root();
+  if (!app) return;
+  if (!inMessengerRoom()) {
+    app.style.removeProperty("--chat-vh");
+    return;
+  }
+  app.style.setProperty("--chat-vh", Math.round(view.height) + "px");
+}
+
+function setupChatViewport() {
+  if (chatViewportBound || !window.visualViewport) return;
+  chatViewportBound = true;
+  window.visualViewport.addEventListener("resize", applyChatViewport);
+  window.visualViewport.addEventListener("scroll", applyChatViewport);
 }
 
 async function loadConferences() {

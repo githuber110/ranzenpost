@@ -106,7 +106,11 @@ class MessengerService:
             response = client.sync(timeout_ms=0)
             if response.status_code != 200:
                 raise requests.RequestException(f"messenger sync failed: {response.status_code}")
-            return {"rooms": parse_room_list(response.json(), self._own_user_id())}
+            own_user_id = self._own_user_id()
+            return {
+                "rooms": parse_room_list(response.json(), own_user_id),
+                "self_user_id": own_user_id,
+            }
 
         return self._with_matrix(call)
 
@@ -119,7 +123,9 @@ class MessengerService:
                 raise requests.RequestException(
                     f"messenger history failed: {response.status_code}"
                 )
-            return parse_room_messages(response.json(), _media_proxy_url)
+            payload = parse_room_messages(response.json(), _media_proxy_url)
+            payload["self_user_id"] = self._own_user_id()
+            return payload
 
         return self._with_matrix(call)
 

@@ -188,6 +188,12 @@ def test_parse_room_list_derives_the_name_from_members_when_no_room_name_is_set(
     assert room1["last_message"] == "hello"
 
 
+def test_parse_room_list_keeps_a_user_id_to_display_name_map_for_the_room_view():
+    rooms = parse_room_list(SYNC_BODY, own_user_id="@me:school.example")
+    room1 = next(r for r in rooms if r["room_id"] == "!room1:school.example")
+    assert room1["member_names"] == {"@teacher:school.example": "Teacher A"}
+
+
 def test_parse_room_list_prefers_the_explicit_room_name():
     rooms = parse_room_list(SYNC_BODY, own_user_id="@me:school.example")
     room2 = next(r for r in rooms if r["room_id"] == "!room2:school.example")

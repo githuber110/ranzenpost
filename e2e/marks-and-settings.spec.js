@@ -123,7 +123,7 @@ for (const viewport of VIEWPORTS) {
         test(`the top level of the settings never pans sideways (${language.key})`, async ({ page }) => {
           const tag = `${viewport.name}/${language.key}`;
           await goto(page);
-          await page.locator(".header-actions .icon-btn").first().click();
+          await page.locator(".header-actions .settings-entry").click();
           await settled(page);
 
           await expect(page.locator(".settings-group")).toHaveCount(4);

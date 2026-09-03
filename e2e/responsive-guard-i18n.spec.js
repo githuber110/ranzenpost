@@ -211,7 +211,7 @@ for (const viewport of VIEWPORTS) {
           await headerFits(page, `${viewport.name}/${lang.key}/conferences`, failures);
           await expect(page.locator(".header-back")).toBeVisible();
 
-          await page.locator(".header-actions .icon-btn").first().click();
+          await page.locator(".header-actions .settings-entry").click();
           await waitForContentSettled(page);
           await headerFits(page, `${viewport.name}/${lang.key}/settings`, failures);
           await expect(page.locator(".header-back")).toBeVisible();
@@ -241,7 +241,7 @@ for (const viewport of VIEWPORTS) {
         const failures = [];
         await goto(page);
 
-        await page.locator(".header-actions .icon-btn").first().click();
+        await page.locator(".header-actions .settings-entry").click();
         await waitForContentSettled(page);
         await page.locator(".setting-row.notify-setting").click();
         await waitForSheetSettled(page);

@@ -143,7 +143,7 @@ for (const viewport of VIEWPORTS) {
         test(`the state picker holds seventeen rows and stays reachable (${lang.key})`, async ({ page }) => {
           const failures = [];
           await goto(page);
-          await page.locator(".header-actions .icon-btn").first().click();
+          await page.locator(".header-actions .settings-entry").click();
           await waitForContentSettled(page);
 
           const rowLabel = await page.evaluate(() => window.t("holidays.settings.title"));
