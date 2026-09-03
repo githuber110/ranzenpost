@@ -72,6 +72,7 @@ from .iserv.timetable import lesson_key
 from .iserv.totp import generate_code
 from .iserv.twofactor import parse_delete_token
 from .mapping import merge_discovered_codes, to_display
+from .messenger import MessengerService
 
 LETTERS_INDEX_PATH = "/iserv/parentletter/parent/index"
 LETTERS_ARCHIVE_PATH = "/iserv/parentletter/parent/archive"
@@ -297,6 +298,7 @@ class IServService:
         self.client_factory = client_factory or (lambda url: IServClient(url))
         self._client = None
         self._last_code = {}
+        self._messenger_service = None
 
     def is_configured(self):
         config = self.store.load_config()
@@ -321,6 +323,29 @@ class IServService:
         if self._client is None or not self._client.is_authenticated():
             return self._login()
         return self._client
+
+    def iserv_session(self):
+        return self._session()
+
+    def _messenger(self):
+        if self._messenger_service is None:
+            self._messenger_service = MessengerService(self)
+        return self._messenger_service
+
+    def messenger_rooms(self):
+        return self._messenger().rooms()
+
+    def messenger_room_messages(self, room_id, before=None):
+        return self._messenger().room_messages(room_id, before)
+
+    def messenger_send(self, room_id, text):
+        return self._messenger().send_message(room_id, text)
+
+    def messenger_media(self, server_name, media_id):
+        return self._messenger().media(server_name, media_id)
+
+    def messenger_unread_pulse(self):
+        return self._messenger().unread_pulse()
 
     def check_connection(self):
         if not self.is_configured():

@@ -290,6 +290,8 @@ const state = {
   sheetFormDefault: null,
   sheetDiscardAsk: false,
   detached: false,
+  fileViewer: null,
+  fileViewerFocused: false,
 };
 
 function documentBase() {
@@ -618,6 +620,7 @@ function render() {
     const wizard = [absenceFlow.node];
     if (state.sheet) wizard.push(state.sheet());
     if (state.toast) wizard.push(toastNode());
+    if (state.fileViewer) wizard.push(fileViewerNode());
     app.replaceChildren(...wizard);
     restoreSheetScroll(keptSheetScroll);
     return;
@@ -635,6 +638,7 @@ function render() {
   const nodes = [screen, tabbar()];
   if (state.sheet) nodes.push(state.sheet());
   if (state.toast) nodes.push(toastNode());
+  if (state.fileViewer) nodes.push(fileViewerNode());
   app.replaceChildren(...nodes);
   restoreSheetScroll(keptSheetScroll);
   if (state._keepScroll) {
@@ -705,6 +709,7 @@ function setView(name, options) {
     state.sheet = null;
     state.onSheetClose = null;
     state.letterDetail = null;
+    discardFileViewer();
     closeAbsenceForm();
     if (changed && !keepEntryState && VIEW_ENTRY_RESETS[name]) VIEW_ENTRY_RESETS[name]();
     if (changed && name === "overview") {
@@ -1105,34 +1110,26 @@ async function responseUserMessage(response) {
   }
 }
 
-const VIEWABLE_EXTENSION_PATTERN = /\.(pdf|png|jpe?g|gif|webp|bmp|avif|heic|heif)$/i;
-const VIEWABLE_TYPE_PATTERN = /^(application\/pdf|image\/(png|jpeg|gif|webp|bmp|avif|heic|heif))\b/i;
+const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif)$/i;
+const IMAGE_TYPE_PATTERN = /^image\/(png|jpeg|gif|webp|bmp|avif|heic|heif)\b/i;
+const PDF_EXTENSION_PATTERN = /\.pdf$/i;
+const PDF_TYPE_PATTERN = /^application\/pdf\b/i;
 const OPAQUE_TYPES = ["", "application/octet-stream", "binary/octet-stream"];
-const VIEWER_REVOKE_DELAY = 60000;
 const DOWNLOAD_REVOKE_DELAY = 4000;
+const PDF_LOAD_TIMEOUT_MS = 5000;
+const PDF_EMPTY_CHECK_DELAY = 300;
+const VIEWER_ZOOM_MAX = 5;
+const VIEWER_DOUBLE_TAP_MS = 320;
+const VIEWER_DOUBLE_TAP_SLOP = 24;
 
-function fileIsViewable(filename, type) {
+function fileKind(filename, type) {
   const mime = String(type || "").split(";")[0].trim().toLowerCase();
-  if (VIEWABLE_TYPE_PATTERN.test(mime)) return true;
-  if (!OPAQUE_TYPES.includes(mime)) return false;
-  return VIEWABLE_EXTENSION_PATTERN.test(filename || "");
-}
-
-function reserveViewerWindow() {
-  try {
-    return window.open("", "_blank") || null;
-  } catch (error) {
-    return null;
-  }
-}
-
-function releaseViewerWindow(viewer) {
-  if (!viewer) return;
-  try {
-    viewer.close();
-  } catch (error) {
-    return;
-  }
+  if (IMAGE_TYPE_PATTERN.test(mime)) return "image";
+  if (PDF_TYPE_PATTERN.test(mime)) return "pdf";
+  if (!OPAQUE_TYPES.includes(mime)) return "download";
+  if (IMAGE_EXTENSION_PATTERN.test(filename || "")) return "image";
+  if (PDF_EXTENSION_PATTERN.test(filename || "")) return "pdf";
+  return "download";
 }
 
 function downloadBlob(objectUrl, filename) {
@@ -1143,17 +1140,45 @@ function downloadBlob(objectUrl, filename) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), DOWNLOAD_REVOKE_DELAY);
 }
 
-async function openAppFile(path, fallbackFilename) {
-  const viewer = fileIsViewable(fallbackFilename, "") ? reserveViewerWindow() : null;
-  let response;
-  try {
-    response = await fetch(apiUrl(path));
-  } catch (error) {
-    releaseViewerWindow(viewer);
-    throw error;
-  }
+function openFileViewer(kind, objectUrl, filename, triggerEl) {
+  state.fileViewer = { kind, url: objectUrl, filename, trigger: triggerEl || null, pdfSettled: false };
+  state.fileViewerFocused = false;
+  rerender();
+}
+
+function discardFileViewer() {
+  const current = state.fileViewer;
+  if (!current) return;
+  state.fileViewer = null;
+  URL.revokeObjectURL(current.url);
+}
+
+function closeFileViewer() {
+  const current = state.fileViewer;
+  if (!current) return;
+  discardFileViewer();
+  rerender();
+  if (current.trigger && typeof current.trigger.focus === "function") current.trigger.focus();
+}
+
+function pdfViewerFailed(viewer) {
+  if (state.fileViewer !== viewer || viewer.pdfSettled) return;
+  viewer.pdfSettled = true;
+  state.fileViewer = null;
+  rerender();
+  if (viewer.trigger && typeof viewer.trigger.focus === "function") viewer.trigger.focus();
+  toast(t("common.filePreviewUnavailable"), "good");
+  downloadBlob(viewer.url, viewer.filename);
+}
+
+function pdfViewerLoaded(viewer) {
+  if (state.fileViewer !== viewer) return;
+  viewer.pdfSettled = true;
+}
+
+async function openAppFile(path, fallbackFilename, triggerEl) {
+  const response = await fetch(apiUrl(path));
   if (!response.ok) {
-    releaseViewerWindow(viewer);
     const failure = new Error("http " + response.status);
     failure.userMessage = await responseUserMessage(response);
     throw failure;
@@ -1161,19 +1186,176 @@ async function openAppFile(path, fallbackFilename) {
   const filename = filenameFromDisposition(response.headers.get("content-disposition")) || fallbackFilename;
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
-  if (viewer && !viewer.closed && fileIsViewable(filename, blob.type)) {
-    try {
-      viewer.location.replace(objectUrl);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), VIEWER_REVOKE_DELAY);
-      return;
-    } catch (error) {
-      releaseViewerWindow(viewer);
-      downloadBlob(objectUrl, filename);
-      return;
+  const kind = fileKind(filename, blob.type);
+  if (kind === "image" || kind === "pdf") {
+    openFileViewer(kind, objectUrl, filename, triggerEl);
+    return;
+  }
+  downloadBlob(objectUrl, filename);
+}
+
+function pointDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function attachImageViewerGestures(img) {
+  const pointers = new Map();
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let startDistance = 0;
+  let startScale = 1;
+  let panStart = null;
+  let lastTapTime = 0;
+  let lastTapPoint = null;
+
+  function applyTransform() {
+    img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+  }
+
+  function resetZoom() {
+    scale = 1;
+    translateX = 0;
+    translateY = 0;
+    applyTransform();
+  }
+
+  function toggleZoom() {
+    if (scale > 1) resetZoom();
+    else {
+      scale = 2.5;
+      applyTransform();
     }
   }
-  releaseViewerWindow(viewer);
-  downloadBlob(objectUrl, filename);
+
+  img.addEventListener("pointerdown", (event) => {
+    img.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 1) {
+      panStart = { x: event.clientX - translateX, y: event.clientY - translateY };
+    } else if (pointers.size === 2) {
+      const points = [...pointers.values()];
+      startDistance = pointDistance(points[0], points[1]);
+      startScale = scale;
+      panStart = null;
+    }
+  });
+
+  img.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const points = [...pointers.values()];
+      const newDistance = pointDistance(points[0], points[1]);
+      if (startDistance > 0) {
+        scale = Math.min(Math.max(startScale * (newDistance / startDistance), 1), VIEWER_ZOOM_MAX);
+        applyTransform();
+      }
+    } else if (pointers.size === 1 && panStart && scale > 1) {
+      translateX = event.clientX - panStart.x;
+      translateY = event.clientY - panStart.y;
+      applyTransform();
+    }
+  });
+
+  function endPointer(event) {
+    const wasSingle = pointers.size === 1;
+    const point = pointers.get(event.pointerId);
+    pointers.delete(event.pointerId);
+    if (pointers.size === 0) {
+      panStart = null;
+      if (scale < 1) resetZoom();
+      if (wasSingle && point) {
+        const now = Date.now();
+        if (now - lastTapTime < VIEWER_DOUBLE_TAP_MS && lastTapPoint && pointDistance(point, lastTapPoint) < VIEWER_DOUBLE_TAP_SLOP) {
+          toggleZoom();
+          lastTapTime = 0;
+          lastTapPoint = null;
+        } else {
+          lastTapTime = now;
+          lastTapPoint = point;
+        }
+      }
+    } else if (pointers.size === 1) {
+      const [remaining] = [...pointers.values()];
+      panStart = { x: remaining.x - translateX, y: remaining.y - translateY };
+    }
+  }
+
+  img.addEventListener("pointerup", endPointer);
+  img.addEventListener("pointercancel", endPointer);
+}
+
+function fileViewerImage(viewer) {
+  const img = el("img", {
+    src: viewer.url,
+    alt: viewer.filename || t("common.attachment"),
+    class: "viewer-img",
+    draggable: "false",
+  });
+  attachImageViewerGestures(img);
+  return img;
+}
+
+function pdfFrameIsEmpty(frame) {
+  try {
+    const doc = frame.contentDocument;
+    return !doc || !doc.body || !doc.body.firstChild;
+  } catch (error) {
+    return false;
+  }
+}
+
+function fileViewerPdf(viewer) {
+  const frame = el("iframe", {
+    src: viewer.url,
+    class: "viewer-pdf",
+    title: viewer.filename || t("common.attachment"),
+  });
+  frame.addEventListener("load", () => {
+    window.setTimeout(() => {
+      if (pdfFrameIsEmpty(frame)) pdfViewerFailed(viewer);
+      else pdfViewerLoaded(viewer);
+    }, PDF_EMPTY_CHECK_DELAY);
+  });
+  window.setTimeout(() => pdfViewerFailed(viewer), PDF_LOAD_TIMEOUT_MS);
+  return frame;
+}
+
+function trapViewerFocus(event, overlay) {
+  const focusable = [...overlay.querySelectorAll("button, [tabindex]")].filter((node) => !node.disabled);
+  if (!focusable.length) return;
+  event.preventDefault();
+  focusable[0].focus();
+}
+
+function fileViewerNode() {
+  const viewer = state.fileViewer;
+  if (!viewer) return null;
+  const body = viewer.kind === "image" ? fileViewerImage(viewer) : fileViewerPdf(viewer);
+  const overlay = el(
+    "div",
+    { class: "viewer-overlay", role: "dialog", "aria-modal": "true", "aria-label": viewer.filename || t("common.attachment") },
+    [
+      el("div", { class: "viewer-stage" }, [body]),
+      el("button", { class: "viewer-close", type: "button", "aria-label": t("common.close"), onclick: closeFileViewer }, [icon("close", 20)]),
+    ]
+  );
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      closeFileViewer();
+    } else if (event.key === "Tab") {
+      trapViewerFocus(event, overlay);
+    }
+  });
+  window.setTimeout(() => {
+    if (state.fileViewerFocused) return;
+    const close = overlay.querySelector(".viewer-close");
+    if (close) close.focus();
+    state.fileViewerFocused = true;
+  }, 0);
+  return overlay;
 }
 
 function fileName(file) {
@@ -1199,7 +1381,7 @@ function attachmentButton(file) {
     button.disabled = true;
     button.classList.add("disabled");
     try {
-      await openAppFile(file.url, filename);
+      await openAppFile(file.url, filename, button);
     } catch (error) {
       toast(error.userMessage || t("common.attachmentOpenFailed"), "bad");
     } finally {
@@ -5510,7 +5692,7 @@ function sickNotePdfBlock(entry) {
     if (button.disabled) return;
     button.disabled = true;
     try {
-      await openAppFile(path, t("absence.sickNote.pdfFilename"));
+      await openAppFile(path, t("absence.sickNote.pdfFilename"), button);
     } catch (error) {
       toast(error.userMessage || t("common.attachmentOpenFailed"), "bad");
     } finally {

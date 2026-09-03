@@ -392,6 +392,7 @@
   "common.close": "Закрыть",
   "common.dateRange": "{from} – {till}",
   "common.done": "Готово",
+  "common.filePreviewUnavailable": "Предпросмотр недоступен — файл будет загружен.",
   "common.hits.few": "Найдено: {count}",
   "common.hits.many": "Найдено: {count}",
   "common.hits.one": "Найдено: {count}",

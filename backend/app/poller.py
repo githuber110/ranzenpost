@@ -28,6 +28,7 @@ LETTERS_CONFIRM_KEY = "notify.letters.newConfirm"
 PINBOARD_KEY = "notify.pinboard.new"
 CONFERENCES_KEY = "notify.conferences.new"
 TIMETABLE_KEY = "notify.timetable.changes"
+MESSENGER_KEY = "notify.messenger.unread"
 
 
 class Poller:
@@ -225,6 +226,9 @@ class Poller:
             })
         self._enrich_letters_search()
         events.extend(self._poll_modules(poll_state, language))
+        messenger_event = self._poll_messenger(poll_state, language)
+        if messenger_event is not None:
+            events.append(messenger_event)
         if self._poll_absences(snapshot, absence_children, children):
             snapshot_dirty = True
         if snapshot_dirty and self.store is not None:
@@ -260,6 +264,25 @@ class Poller:
                 self._notify(event, "", messages.text_count(language, chosen, len(fresh)))
             events.append({"module": event, "new": len(fresh)})
         return events
+
+    def _messenger_push_ready(self):
+        return any(name.startswith(f"{MESSENGER_KEY}.") for name in messages.BASE_MESSAGES)
+
+    def _poll_messenger(self, poll_state, language=None):
+        pulse = getattr(self.service, "messenger_unread_pulse", None)
+        if not callable(pulse):
+            return None
+        try:
+            count = pulse()
+        except Exception as error:
+            return {"module": "messenger", "error": str(error)}
+        if count is None:
+            return {"module": "messenger", "skipped": True}
+        previous = poll_state.get("messenger_unread")
+        poll_state["messenger_unread"] = count
+        if previous is not None and count > previous and self._messenger_push_ready():
+            self._notify("messenger", "", messages.text_count(language, MESSENGER_KEY, count))
+        return {"module": "messenger", "unread": count}
 
     def _letters_key(self, fresh):
         reader = getattr(self.service, "pending_confirmation_keys", None)

@@ -390,6 +390,7 @@
   "common.close": "Kapat",
   "common.dateRange": "{from} – {till}",
   "common.done": "Tamam",
+  "common.filePreviewUnavailable": "Önizleme kullanılamıyor — bunun yerine indiriliyor.",
   "common.hits.one": "{count} sonuç",
   "common.hits.other": "{count} sonuç",
   "common.imageSize": "{width} × {height} piksel",

@@ -740,6 +740,23 @@ def test_csp_has_no_external_font_hosts(tmp_path):
     assert "fonts.gstatic.com" not in csp
 
 
+def test_csp_header_exact_value(tmp_path):
+    api, _ = client(tmp_path)
+    response = api.get("/api/health")
+    assert response.headers.get("content-security-policy") == (
+        "default-src 'self'; "
+        "img-src 'self' data: blob:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
+        "script-src 'self'; "
+        "connect-src 'self'; "
+        "frame-src blob:; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "form-action 'none'"
+    )
+
+
 def test_index_html_has_no_google_fonts_link():
     index_html = (Path(__file__).resolve().parents[2] / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "fonts.googleapis" not in index_html
