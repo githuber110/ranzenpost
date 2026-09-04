@@ -4,7 +4,13 @@ import shutil
 from datetime import date, timedelta
 from pathlib import Path
 
-from app import haservices, subscriptions
+from app import haservices, messages, subscriptions
+from app.messenger import (
+    READ_FAILED_KEY,
+    READ_OK_KEY,
+    ROOM_INCOMPLETE_KEY,
+    ROOM_OK_KEY,
+)
 from app.server import create_app
 from app.store import Store
 
@@ -79,6 +85,8 @@ haservices.list_notify_services = fake_notify_services
 
 SCENARIO_COOKIE = "e2e_scenario"
 SCENARIO = contextvars.ContextVar("e2e_scenario", default="")
+ROOM_WRITES_COOKIE = "e2e_room_writes"
+ROOM_WRITES = contextvars.ContextVar("e2e_room_writes", default="")
 
 SCENARIO_CHILDREN = [
     {"child_id": "child-1", "name": "Mia Musterkind", "class_name": "3b"},
@@ -101,15 +109,23 @@ def current_scenario():
     return SCENARIOS.get(SCENARIO.get(""), None)
 
 
-def scenario_cookie(scope):
+def read_cookie(scope, wanted):
     for key, value in scope.get("headers", []):
         if key != b"cookie":
             continue
         for part in value.decode("latin-1").split(";"):
             name, _, raw = part.strip().partition("=")
-            if name == SCENARIO_COOKIE:
+            if name == wanted:
                 return raw
     return ""
+
+
+def scenario_cookie(scope):
+    return read_cookie(scope, SCENARIO_COOKIE)
+
+
+def room_writes_allowed():
+    return ROOM_WRITES.get("") == "1"
 
 
 class ScenarioMiddleware:
@@ -119,6 +135,7 @@ class ScenarioMiddleware:
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http":
             SCENARIO.set(scenario_cookie(scope))
+            ROOM_WRITES.set(read_cookie(scope, ROOM_WRITES_COOKIE))
         await self.app(scope, receive, send)
 
 
@@ -189,7 +206,16 @@ MESSENGER_TEACHER = "@teacher-fixture:example.test"
 MESSENGER_OFFICE = "@office-fixture:example.test"
 MESSENGER_ROOM_A = "!room-a-fixture:example.test"
 MESSENGER_ROOM_B = "!room-b-fixture:example.test"
+MESSENGER_ROOM_NEW = "!room-new-fixture:example.test"
 MESSENGER_TEACHER_NAME = "Fr. Behrend-Waldenburger"
+MESSENGER_NEW_TEACHER = "@teacher-osterkamp-fixture:example.test"
+MESSENGER_NEW_TEACHER_NAME = "Hr. Osterkamp"
+MESSENGER_NEW_TEACHER_VALUE = "teacher-osterkamp-fixture"
+MESSENGER_TEACHER_VALUE = "teacher-behrend-fixture"
+MESSENGER_TEACHER_DIRECTORY = [
+    {"value": MESSENGER_NEW_TEACHER_VALUE, "label": MESSENGER_NEW_TEACHER_NAME, "extra": "Klasse 4a", "match": "osterkamp"},
+    {"value": MESSENGER_TEACHER_VALUE, "label": MESSENGER_TEACHER_NAME, "extra": "Klasse 3b", "match": "behrend"},
+]
 MESSENGER_OFFICE_NAME = "Schulleitung"
 MESSENGER_ROOM_A_NAME = "Klasse 3b - Elternchat mit der Klassenlehrerin und dem Sekretariat"
 MESSENGER_BASE_TS = 1788336000000
@@ -296,36 +322,53 @@ def messenger_older_page():
 class FixtureService:
     def __init__(self, store):
         self.store = store
+        self._teacher_room_created = False
 
     def messenger_rooms(self):
+        rooms = [
+            {
+                "room_id": MESSENGER_ROOM_A,
+                "name": MESSENGER_ROOM_A_NAME,
+                "members": [MESSENGER_OFFICE_NAME, MESSENGER_TEACHER_NAME],
+                "member_names": {
+                    MESSENGER_TEACHER: MESSENGER_TEACHER_NAME,
+                    MESSENGER_OFFICE: MESSENGER_OFFICE_NAME,
+                },
+                "last_message": "Alles klar, ist notiert.",
+                "last_message_at": MESSENGER_BASE_TS + 25 * MESSENGER_MINUTE,
+                "unread_count": 3,
+            },
+            {
+                "room_id": MESSENGER_ROOM_B,
+                "name": MESSENGER_TEACHER_NAME,
+                "members": [MESSENGER_TEACHER_NAME],
+                "member_names": {MESSENGER_TEACHER: MESSENGER_TEACHER_NAME},
+                "last_message": MESSENGER_LONG_TEXT,
+                "last_message_at": MESSENGER_BASE_TS - MESSENGER_DAY,
+                "unread_count": 0,
+            },
+        ]
+        if self._teacher_room_created and room_writes_allowed():
+            rooms.append(
+                {
+                    "room_id": MESSENGER_ROOM_NEW,
+                    "name": MESSENGER_NEW_TEACHER_NAME,
+                    "members": [MESSENGER_NEW_TEACHER_NAME],
+                    "member_names": {MESSENGER_NEW_TEACHER: MESSENGER_NEW_TEACHER_NAME},
+                    "last_message": "",
+                    "last_message_at": MESSENGER_BASE_TS,
+                    "unread_count": 0,
+                }
+            )
         return {
             "self_user_id": MESSENGER_SELF,
-            "rooms": [
-                {
-                    "room_id": MESSENGER_ROOM_A,
-                    "name": MESSENGER_ROOM_A_NAME,
-                    "members": [MESSENGER_OFFICE_NAME, MESSENGER_TEACHER_NAME],
-                    "member_names": {
-                        MESSENGER_TEACHER: MESSENGER_TEACHER_NAME,
-                        MESSENGER_OFFICE: MESSENGER_OFFICE_NAME,
-                    },
-                    "last_message": "Alles klar, ist notiert.",
-                    "last_message_at": MESSENGER_BASE_TS + 25 * MESSENGER_MINUTE,
-                    "unread_count": 3,
-                },
-                {
-                    "room_id": MESSENGER_ROOM_B,
-                    "name": MESSENGER_TEACHER_NAME,
-                    "members": [MESSENGER_TEACHER_NAME],
-                    "member_names": {MESSENGER_TEACHER: MESSENGER_TEACHER_NAME},
-                    "last_message": MESSENGER_LONG_TEXT,
-                    "last_message_at": MESSENGER_BASE_TS - MESSENGER_DAY,
-                    "unread_count": 0,
-                },
-            ],
+            "rooms": rooms,
+            "can_write_to_teacher": True,
         }
 
     def messenger_room_messages(self, room_id, before=None):
+        if room_id == MESSENGER_ROOM_NEW:
+            return {"messages": [], "before": "", "self_user_id": MESSENGER_SELF}
         if before == MESSENGER_OLDER_TOKEN:
             return {
                 "messages": messenger_older_page(),
@@ -344,6 +387,34 @@ class FixtureService:
         if not str(text or "").strip():
             return {"ok": False, "message_key": "api.messenger.send.empty"}
         return {"ok": True, "message_key": "api.messenger.send.ok", "event_id": "$fixture-sent"}
+
+    def messenger_mark_read(self, room_id, event_id):
+        if not str(room_id or "").strip() or not str(event_id or "").strip():
+            return messages.result(False, READ_FAILED_KEY)
+        return messages.result(True, READ_OK_KEY)
+
+    def messenger_teacher_search(self, query):
+        query = str(query or "").strip()
+        if not query:
+            return {"teachers": [], "allowed": True}
+        needle = query.lower()
+        hits = [
+            {"value": entry["value"], "label": entry["label"], "extra": entry["extra"]}
+            for entry in MESSENGER_TEACHER_DIRECTORY
+            if entry["match"] in needle
+        ]
+        return {"teachers": hits, "allowed": True}
+
+    def messenger_create_teacher_room(self, teacher, child_ids, add_other_parents):
+        teacher = str(teacher or "").strip()
+        wanted = [str(value or "").strip() for value in (child_ids or [])]
+        wanted = [value for value in wanted if value]
+        if not teacher or not wanted:
+            return messages.result(False, ROOM_INCOMPLETE_KEY)
+        if teacher == MESSENGER_TEACHER_VALUE:
+            return messages.result(True, ROOM_OK_KEY, room_id=MESSENGER_ROOM_B, joined=True)
+        self._teacher_room_created = True
+        return messages.result(True, ROOM_OK_KEY, room_id=MESSENGER_ROOM_NEW, joined=True)
 
     def messenger_media(self, server_name, media_id):
         if media_id == MESSENGER_IMAGE_ID:

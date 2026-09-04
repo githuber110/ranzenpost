@@ -20,8 +20,9 @@ const VIEWS = [
   { key: "overview", tabIndex: 0 },
   { key: "timetable", tabIndex: 1 },
   { key: "absence", tabIndex: 2 },
-  { key: "letters", tabIndex: 3 },
-  { key: "pinboard", tabIndex: 4 },
+  { key: "post-letters", tabIndex: 3 },
+  { key: "post-pinboard", tabIndex: 3, segment: 1 },
+  { key: "chat", tabIndex: 4 },
   { key: "settings", gear: true },
 ];
 
@@ -35,6 +36,10 @@ async function openView(page, view) {
     await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
   } else {
     await page.locator(".tabbar .tab").nth(view.tabIndex).click();
+    await waitForContentSettled(page);
+    if (view.segment !== undefined) {
+      await page.locator(".list-head .segment button").nth(view.segment).click();
+    }
   }
   await waitForContentSettled(page);
 }
@@ -113,13 +118,14 @@ for (const viewport of VIEWPORTS) {
       const tapOffenders = await checkTapTargets(page);
       assertTapTargets(tapOffenders, `${viewport.name}/notify-sheet`);
 
-      await page.locator(".notify-advanced-toggle").click();
-      await expect(page.locator(".notify-advanced")).toBeVisible();
+      await page.locator(".notify-pick-open").click();
+      await expect(page.locator(".notify-services-group").first()).toBeVisible();
+      await waitForSheetSettled(page);
 
       const openOverflow = await checkHorizontalOverflow(page);
       const openOffenders = await checkElementsWithinViewport(page);
-      assertNoStructuralOverflow(openOverflow, openOffenders, `${viewport.name}/notify-sheet-advanced`);
-      assertTapTargets(await checkTapTargets(page), `${viewport.name}/notify-sheet-advanced`);
+      assertNoStructuralOverflow(openOverflow, openOffenders, `${viewport.name}/notify-picker`);
+      assertTapTargets(await checkTapTargets(page), `${viewport.name}/notify-picker`);
     });
 
     test("technical details sheet stays within the viewport and is fully visible or scrollable", async ({ page }) => {

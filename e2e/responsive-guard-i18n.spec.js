@@ -99,7 +99,7 @@ for (const viewport of VIEWPORTS) {
             failures
           );
 
-          await page.locator(".tabbar .tab").nth(4).click();
+          await page.locator(".list-head .segment button").nth(1).click();
           await waitForContentSettled(page);
           const pinboardSelectToggle = page.locator(".letters-tools button").first();
           await pinboardSelectToggle.click();
@@ -200,11 +200,17 @@ for (const viewport of VIEWPORTS) {
             await waitForContentSettled(page);
             await headerFits(page, `${viewport.name}/${lang.key}/letters-detail`, failures);
             await expect(page.locator(".header-back")).toBeVisible();
+            await page.locator(".header-back").click();
+            await waitForContentSettled(page);
           }
+
+          await page.locator(".list-head .segment button").nth(1).click();
+          await waitForContentSettled(page);
+          await headerFits(page, `${viewport.name}/${lang.key}/pinboard`, failures);
 
           await page.locator(".tabbar .tab").nth(4).click();
           await waitForContentSettled(page);
-          await headerFits(page, `${viewport.name}/${lang.key}/pinboard`, failures);
+          await headerFits(page, `${viewport.name}/${lang.key}/chat`, failures);
 
           await page.evaluate(() => window.setView("conferences"));
           await waitForContentSettled(page);
@@ -245,12 +251,13 @@ for (const viewport of VIEWPORTS) {
         await waitForContentSettled(page);
         await page.locator(".setting-row.notify-setting").click();
         await waitForSheetSettled(page);
-        await expect(page.locator(".notify-services-group").first()).toBeVisible();
+        await expect(page.locator(".notify-chips")).toBeVisible();
         assertClean(await collectOverflow(page), `${viewport.name}/${lang.key}/notify-sheet`, failures);
 
-        await page.locator(".notify-advanced-toggle").click();
-        await expect(page.locator(".notify-advanced")).toBeVisible();
-        assertClean(await collectOverflow(page), `${viewport.name}/${lang.key}/notify-advanced`, failures);
+        await page.locator(".notify-pick-open").click();
+        await waitForSheetSettled(page);
+        await expect(page.locator(".notify-services-group").first()).toBeVisible();
+        assertClean(await collectOverflow(page), `${viewport.name}/${lang.key}/notify-picker`, failures);
 
         expect(failures, failures.join("\n")).toEqual([]);
       });

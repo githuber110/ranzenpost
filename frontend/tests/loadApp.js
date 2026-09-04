@@ -9,6 +9,7 @@ const frontendDir = path.resolve(dirname, "..");
 const indexHtml = fs.readFileSync(path.join(frontendDir, "index.html"), "utf8");
 const stepsJs = fs.readFileSync(path.join(frontendDir, "steps.js"), "utf8");
 const wizardJs = fs.readFileSync(path.join(frontendDir, "wizard.js"), "utf8");
+const pdfViewerJs = fs.readFileSync(path.join(frontendDir, "pdfviewer.js"), "utf8");
 const appJs = fs.readFileSync(path.join(frontendDir, "app.js"), "utf8");
 const baseMessages = fs.readFileSync(path.join(frontendDir, "i18n", "de.json"), "utf8");
 
@@ -43,6 +44,7 @@ export function loadApp({ url = "http://localhost/" } = {}) {
   };
   inject(stepsJs);
   inject(wizardJs);
+  inject(pdfViewerJs);
   inject(appJs);
   window.setLanguageBundle("de", JSON.parse(baseMessages), JSON.parse(baseMessages));
 

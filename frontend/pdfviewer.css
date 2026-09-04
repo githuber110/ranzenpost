@@ -1,0 +1,113 @@
+body .pdfv-host {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.pdfv {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: rgba(10, 10, 12, 0.96);
+}
+
+.pdfv-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+  padding-block: var(--s-4, 12px) calc(var(--s-10, 40px) + var(--safe-b, 0px));
+  scrollbar-width: thin;
+}
+
+.pdfv-scroll:focus-visible {
+  outline: 2px solid var(--accent, #4c8);
+  outline-offset: -2px;
+}
+
+.pdfv-column {
+  inline-size: 100%;
+  max-inline-size: 900px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3, 8px);
+}
+
+.pdfv-page {
+  position: relative;
+  inline-size: var(--pdfv-page-w, 100%);
+  block-size: var(--pdfv-page-h, auto);
+  max-inline-size: 100%;
+  aspect-ratio: auto;
+  background: #ffffff;
+  overflow: hidden;
+  flex: none;
+}
+
+.pdfv-canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: 100%;
+}
+
+.pdfv-page-failed {
+  background: var(--surface, #222);
+}
+
+.pdfv-banner {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  margin-block: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: min(88%, 32rem);
+  transform: translateY(-50%);
+  padding: var(--s-4, 12px) var(--s-6, 20px);
+  border-radius: var(--r-3, 14px);
+  background: var(--surface, #1b1f1e);
+  color: var(--ink-2, #d8dedc);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pdfv-banner-error {
+  color: var(--danger, #e5484d);
+}
+
+.pdfv-counter {
+  position: absolute;
+  inset-block-end: calc(var(--s-6, 20px) + var(--safe-b, 0px));
+  inset-inline: 0;
+  margin-block: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  padding: var(--s-2, 6px) var(--s-4, 12px);
+  border-radius: var(--r-full, 999px);
+  background: var(--surface, #1b1f1e);
+  color: var(--ink-2, #d8dedc);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.pdfv-counter[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pdfv-page-ready .pdfv-canvas {
+    animation: pdfvFade 160ms linear;
+  }
+}
+
+@keyframes pdfvFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

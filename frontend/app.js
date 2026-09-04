@@ -16,6 +16,10 @@ const COLOR_SOURCE_AUTO = "auto";
 const WEEK_MIN = 0;
 const WEEK_MAX = 8;
 const MS_PER_WEEK = 604800000;
+const LESSON_MINUTES = 45;
+const PULL_AXIS_RATIO = 1;
+const OVERVIEW_ORIGIN = "overview";
+const LETTERS_TAB_CURRENT = "current";
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024;
 
@@ -35,10 +39,14 @@ const CALENDAR_DEFAULT_COLOR = "#135859";
 const CALENDAR_DEFAULT_PORT = 8100;
 const CALENDAR_MAX_LABEL_LENGTH = 60;
 const CALENDAR_HOST_KEY = "calendarHost";
-const CALENDAR_SETUP_KEY = "calendarSetupSeen";
+const CALENDAR_PORT_BUSY = "port";
+const CALENDAR_RESUME_KEY = "calendarResumeSheet";
+const CALENDAR_HOST_FALLBACK = "fallback";
+const CALENDAR_RESTART_GRACE_MS = 3000;
+const CALENDAR_RESTART_POLL_MS = 1000;
+const CALENDAR_RESTART_MAX_TRIES = 40;
 const CALENDAR_REMOTE_SUFFIX = ".ui.nabu.casa";
 const CALENDAR_LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
-const CALENDAR_SETUP_STEPS = 4;
 const CALENDAR_SCHEME_WEB = "webcal";
 const CALENDAR_SCHEME_PLAIN = "http";
 
@@ -186,11 +194,9 @@ const VIEWS = [
   { key: "overview", label: "nav.overview", icon: "overview" },
   { key: "timetable", label: "nav.timetable", icon: "timetable" },
   { key: "absence", label: "nav.absence", icon: "absence" },
-  { key: "letters", label: "nav.letters", icon: "letters" },
-  { key: "pinboard", label: "nav.pinboard", icon: "pinboard" },
+  { key: "post", label: "nav.post", icon: "inbox" },
+  { key: "messenger", label: "nav.messenger", icon: "messages" },
 ];
-
-const MESSENGER_ENTRY_VIEWS = ["overview", "letters"];
 
 const CHANGE_KEYS = {
   cancelled: "timetable.change.cancelled",
@@ -247,6 +253,7 @@ const state = {
   timetable: null,
   timetableAvailable: true,
   weekOffset: 0,
+  spotlightSubject: null,
   marks: null,
   holidays: null,
   holidayRegions: null,
@@ -254,6 +261,8 @@ const state = {
   overviewWeeks: {},
   overviewChildId: null,
   _overviewAnchor: null,
+  _overviewOrder: null,
+  _overviewPinboardOrder: null,
   _overviewNow: true,
   pinboard: null,
   pinboardFolder: null,
@@ -263,14 +272,16 @@ const state = {
   pinboardSelected: [],
   letters: null,
   lettersTab: "current",
+  lettersUnread: 0,
   lettersSelectMode: false,
   lettersSelected: [],
   lettersSearch: "",
   letterDetail: null,
+  postTab: "letters",
   messengerRooms: null,
   messengerSearch: "",
   messengerRoom: null,
-  messengerReturn: "overview",
+  teacherRoom: null,
   absence: null,
   absenceForm: null,
   absenceFormDefault: null,
@@ -283,9 +294,9 @@ const state = {
   sheetForm: null,
   calendar: null,
   calendarDraft: null,
-  calendarSetupOpen: false,
   calendarQr: "",
-  calendarHost: "",
+  calendarPortRestart: false,
+  calendarRestarting: false,
   calendarBusy: "",
   loads: {},
   pending: {},
@@ -348,17 +359,17 @@ const raiseCarriedError = (data) => {
   if (data && data.error) throw apiError(data.error, data);
   return data;
 };
-const getJson = (path) =>
-  fetch(apiUrl(path), { signal: requestSignal(REQUEST_TIMEOUT_MS) })
+const getJson = (path, signal) =>
+  fetch(apiUrl(path), { signal: signal || requestSignal(REQUEST_TIMEOUT_MS) })
     .then(checkResponse)
     .then((r) => r.json())
     .then(raiseCarriedError);
-const postJson = (path, body) =>
+const postJson = (path, body, timeout) =>
   fetch(apiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: requestSignal(REQUEST_TIMEOUT_MS),
+    signal: requestSignal(timeout || REQUEST_TIMEOUT_MS),
   })
     .then(checkResponse)
     .then((r) => r.json());
@@ -628,13 +639,23 @@ function render() {
     const wizard = [absenceFlow.node];
     if (state.sheet) wizard.push(state.sheet());
     if (state.toast) wizard.push(toastNode());
-    if (state.fileViewer) wizard.push(fileViewerNode());
     app.replaceChildren(...wizard);
+    syncFileViewer();
     restoreSheetScroll(keptSheetScroll);
     return;
   }
-  const hasSelectBar =
-    (state.view === "letters" && state.lettersSelectMode) || (state.view === "pinboard" && state.pinboardSelectMode);
+  if (state.teacherRoom && teacherRoomFlow) {
+    const wizard = [teacherRoomFlow.node];
+    if (state.sheet) wizard.push(state.sheet());
+    if (state.toast) wizard.push(toastNode());
+    app.replaceChildren(...wizard);
+    syncFileViewer();
+    restoreSheetScroll(keptSheetScroll);
+    return;
+  }
+  const hasSelectBar = state.view === "post" && (postSegmentIs("letters")
+    ? state.lettersSelectMode
+    : state.pinboardSelectMode);
   const chat = inMessengerRoom();
   const screen = el("div", { class: chat ? "screen chat" : hasSelectBar ? "screen has-select-bar" : "screen" });
   screen.append(header(state.view));
@@ -647,8 +668,8 @@ function render() {
   const nodes = chat ? [screen] : [screen, tabbar()];
   if (state.sheet) nodes.push(state.sheet());
   if (state.toast) nodes.push(toastNode());
-  if (state.fileViewer) nodes.push(fileViewerNode());
   app.replaceChildren(...nodes);
+  syncFileViewer();
   restoreSheetScroll(keptSheetScroll);
   if (state._keepScroll) {
     screen.scrollTop = state._keepScroll;
@@ -695,10 +716,18 @@ function leaveAbsenceForm(after) {
 }
 
 const VIEW_ENTRY_RESETS = {
-  letters: resetLettersEntryState,
-  pinboard: resetPinboardEntryState,
+  post: resetPostEntryState,
   messenger: resetMessengerEntryState,
 };
+
+function postSegmentIs(segment) {
+  return state.postTab === segment;
+}
+
+function resetPostEntryState() {
+  resetLettersEntryState();
+  resetPinboardEntryState();
+}
 
 function resetMessengerEntryState() {
   state.messengerRoom = null;
@@ -728,13 +757,17 @@ function setView(name, options) {
     state.sheet = null;
     state.onSheetClose = null;
     state.letterDetail = null;
+    state.spotlightSubject = null;
     stopMessengerPoll();
     discardFileViewer();
     closeAbsenceForm();
+    closeTeacherRoom();
     if (changed && !keepEntryState && VIEW_ENTRY_RESETS[name]) VIEW_ENTRY_RESETS[name]();
-    if (changed && name === "overview") {
+    if (changed && name === "overview" && !(options && options.keepAnchor)) {
       state._overviewAnchor = null;
       state._overviewNow = true;
+      state._overviewOrder = null;
+      state._overviewPinboardOrder = null;
     }
     render();
   });
@@ -882,24 +915,20 @@ function headerTitleFor(view) {
     return { text: t("timetable.title") };
   }
   if (view === "absence") return { text: t("absence.title") };
-  if (view === "letters") {
+  if (view === "post") {
     if (state.letterDetail) {
       const { letter } = state.letterDetail;
       return {
         text: letter.title || t("letters.detail.title"),
-        onBack: () => { state.letterDetail = null; rerender(); loadLetters(state.lettersTab); },
+        onBack: leaveLetterDetail,
         extra: techDetailsButton(letterTechEntries(letter)),
       };
     }
-    return { text: t("letters.title") };
+    return { text: t("post.title") };
   }
-  if (view === "pinboard") return { text: t("pinboard.title") };
   if (view === "messenger") {
     if (state.messengerRoom) return { node: messengerRoomHeadTitle(), onBack: closeMessengerRoom };
-    return {
-      text: t("messenger.title"),
-      onBack: () => setView(state.messengerReturn || "overview", { keepEntryState: true }),
-    };
+    return { text: t("messenger.title") };
   }
   if (view === "conferences") return { text: t("conferences.title"), onBack: () => setView("overview") };
   if (view === "settings") {
@@ -963,7 +992,7 @@ function header(view) {
       onclick: openCalendarSheet,
     }, [icon("calendarAdd", 18)]));
   }
-  if (messengerEntryVisible(view)) actions.push(messengerEntryButton());
+  if (view === "messenger" && messengerRoomUnread()) actions.push(messengerReadButton());
   if (view !== "settings") {
     actions.push(el("button", {
       class: "icon-btn settings-entry",
@@ -1022,18 +1051,21 @@ async function selectChild(childId) {
 function tabbar() {
   const bar = el("nav", { class: "tabbar", "aria-label": t("nav.aria") });
   const items = state.timetableAvailable ? VIEWS : VIEWS.filter((item) => item.key !== "timetable");
+  bar.style.setProperty("--tabs", String(items.length));
   for (const item of items) {
     const count = badgeCount(item.key);
+    const label = t(item.label);
     bar.append(
       el("button", {
         class: "tab",
         type: "button",
+        "aria-label": count ? t("nav.unread", { area: label, count: formatNumber(count) }) : null,
         "aria-current": (state.view === item.key || (item.key === "overview" && state.view === "conferences")) ? "page" : null,
         onclick: () => setView(item.key),
       }, [
         icon(item.icon, 22),
-        el("span", {}, t(item.label)),
-        count ? el("span", { class: "badge" }, badgeText(count)) : null,
+        el("span", {}, label),
+        count ? el("span", { class: "badge", "aria-hidden": "true" }, badgeText(count)) : null,
       ])
     );
   }
@@ -1052,17 +1084,25 @@ function dateRange(from, till) {
   return t("common.dateRange", { from, till });
 }
 
+function lettersUnreadCount() {
+  const data = state.letters;
+  if (data && !data.error && data.tab === LETTERS_TAB_CURRENT) {
+    state.lettersUnread = (data.letters || []).filter(
+      (entry) => entry.unread || letterConfirmationOpen(entry)
+    ).length;
+  }
+  return Number(state.lettersUnread) || 0;
+}
+
+function pinboardUnreadCount() {
+  const data = state.pinboard;
+  if (!data || data.error) return 0;
+  return (data.feed || []).filter((tile) => tile.unread).length;
+}
+
 function badgeCount(key) {
-  if (key === "letters") {
-    const data = state.letters;
-    if (!data || data.error || data.tab !== "current") return 0;
-    return (data.letters || []).filter((entry) => entry.unread || letterConfirmationOpen(entry)).length;
-  }
-  if (key === "pinboard") {
-    const data = state.pinboard;
-    if (!data || data.error) return 0;
-    return (data.feed || []).filter((tile) => tile.unread).length;
-  }
+  if (key === "post") return lettersUnreadCount() + pinboardUnreadCount();
+  if (key === "messenger") return messengerUnreadTotal();
   return 0;
 }
 
@@ -1144,8 +1184,6 @@ const PDF_EXTENSION_PATTERN = /\.pdf$/i;
 const PDF_TYPE_PATTERN = /^application\/pdf\b/i;
 const OPAQUE_TYPES = ["", "application/octet-stream", "binary/octet-stream"];
 const DOWNLOAD_REVOKE_DELAY = 4000;
-const PDF_LOAD_TIMEOUT_MS = 5000;
-const PDF_EMPTY_CHECK_DELAY = 300;
 const VIEWER_ZOOM_MAX = 5;
 const VIEWER_DOUBLE_TAP_MS = 320;
 const VIEWER_DOUBLE_TAP_SLOP = 24;
@@ -1168,8 +1206,8 @@ function downloadBlob(objectUrl, filename) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), DOWNLOAD_REVOKE_DELAY);
 }
 
-function openFileViewer(kind, objectUrl, filename, triggerEl) {
-  state.fileViewer = { kind, url: objectUrl, filename, trigger: triggerEl || null, pdfSettled: false };
+function openFileViewer(kind, objectUrl, filename, triggerEl, blob) {
+  state.fileViewer = { kind, url: objectUrl, filename, blob: blob || null, trigger: triggerEl || null, pdfSettled: false };
   state.fileViewerFocused = false;
   rerender();
 }
@@ -1178,6 +1216,8 @@ function discardFileViewer() {
   const current = state.fileViewer;
   if (!current) return;
   state.fileViewer = null;
+  unmountFileViewer();
+  if (typeof current.pdfCleanup === "function") current.pdfCleanup();
   URL.revokeObjectURL(current.url);
 }
 
@@ -1193,6 +1233,8 @@ function pdfViewerFailed(viewer) {
   if (state.fileViewer !== viewer || viewer.pdfSettled) return;
   viewer.pdfSettled = true;
   state.fileViewer = null;
+  unmountFileViewer();
+  if (typeof viewer.pdfCleanup === "function") viewer.pdfCleanup();
   rerender();
   if (viewer.trigger && typeof viewer.trigger.focus === "function") viewer.trigger.focus();
   toast(t("common.filePreviewUnavailable"), "good");
@@ -1216,7 +1258,7 @@ async function openAppFile(path, fallbackFilename, triggerEl) {
   const objectUrl = URL.createObjectURL(blob);
   const kind = fileKind(filename, blob.type);
   if (kind === "image" || kind === "pdf") {
-    openFileViewer(kind, objectUrl, filename, triggerEl);
+    openFileViewer(kind, objectUrl, filename, triggerEl, blob);
     return;
   }
   downloadBlob(objectUrl, filename);
@@ -1325,29 +1367,50 @@ function fileViewerImage(viewer) {
   return img;
 }
 
-function pdfFrameIsEmpty(frame) {
-  try {
-    const doc = frame.contentDocument;
-    return !doc || !doc.body || !doc.body.firstChild;
-  } catch (error) {
-    return false;
-  }
+function pdfViewerBytes(blob) {
+  if (!blob || typeof blob.arrayBuffer !== "function") return null;
+  return blob.arrayBuffer();
 }
 
 function fileViewerPdf(viewer) {
-  const frame = el("iframe", {
-    src: viewer.url,
-    class: "viewer-pdf",
-    title: viewer.filename || t("common.attachment"),
-  });
-  frame.addEventListener("load", () => {
-    window.setTimeout(() => {
-      if (pdfFrameIsEmpty(frame)) pdfViewerFailed(viewer);
-      else pdfViewerLoaded(viewer);
-    }, PDF_EMPTY_CHECK_DELAY);
-  });
-  window.setTimeout(() => pdfViewerFailed(viewer), PDF_LOAD_TIMEOUT_MS);
-  return frame;
+  if (!viewer.pdfView) {
+    const view = window.PdfViewer.create({
+      url: viewer.url,
+      data: pdfViewerBytes(viewer.blob),
+      onError: () => pdfViewerFailed(viewer),
+    });
+    view.ready.then((outcome) => {
+      if (outcome && outcome.ok) pdfViewerLoaded(viewer);
+    });
+    viewer.pdfView = view;
+    viewer.pdfCleanup = () => {
+      viewer.pdfView = null;
+      view.destroy();
+    };
+  }
+  return el("div", { class: "viewer-pdf-wrap" }, [viewer.pdfView.node]);
+}
+
+let mountedFileViewer = null;
+
+function syncFileViewer() {
+  const wanted = state.fileViewer;
+  if (!wanted) {
+    unmountFileViewer();
+    return;
+  }
+  if (mountedFileViewer && mountedFileViewer.viewer === wanted) return;
+  unmountFileViewer();
+  const node = fileViewerNode();
+  if (!node) return;
+  mountedFileViewer = { viewer: wanted, node };
+  document.body.append(node);
+}
+
+function unmountFileViewer() {
+  if (!mountedFileViewer) return;
+  mountedFileViewer.node.remove();
+  mountedFileViewer = null;
 }
 
 function trapViewerFocus(event, overlay) {
@@ -1459,15 +1522,19 @@ function techDetailsSheet(entries) {
 function openNestedSheet(factory) {
   const previous = state.sheet;
   const previousForm = state.sheetForm;
+  const previousDefault = state.sheetFormDefault;
   if (!previous) return openSheet(factory);
   state.onSheetClose = () => {
     state.onSheetClose = null;
     state.sheet = previous;
     state.sheetForm = previousForm;
+    state.sheetFormDefault = previousDefault;
     state.sheetFocused = false;
     rerender();
   };
   state.sheet = factory;
+  state.sheetForm = null;
+  state.sheetFormDefault = null;
   state.sheetFocused = false;
   return rerender();
 }
@@ -1535,6 +1602,7 @@ async function bootOnce() {
     render();
     loadRest();
     setupVisibilityRefresh();
+    resumeCalendarSheet();
   } catch (error) {
     if (handleApiFailure(error)) return;
     renderNotice(app, t("app.error.service.title"), t("app.error.service.text"), true);
@@ -1571,13 +1639,14 @@ function loadRest() {
   loadConferences();
   loadMarks();
   loadAbsences();
+  loadMessengerRooms();
 }
 
 const VISIBILITY_REFRESH_MS = 5 * 60 * 1000;
 let lastVisibilityRefreshAt = Date.now();
 
 function hasOpenFormGuard() {
-  return !!(state.sheet || state.absenceForm || state.letterDetail);
+  return !!(state.sheet || state.absenceForm || state.teacherRoom || state.letterDetail);
 }
 
 function setupVisibilityRefresh() {
@@ -1603,6 +1672,7 @@ async function refreshActiveView() {
         loadLetters(state.lettersTab),
         loadPinboard(),
         loadConferences(),
+        loadMessengerRooms(),
       ]);
       rerender();
       break;
@@ -1614,11 +1684,8 @@ async function refreshActiveView() {
     case "absence":
       await loadAbsences();
       break;
-    case "letters":
-      await loadLetters(state.lettersTab);
-      break;
-    case "pinboard":
-      await loadPinboard();
+    case "post":
+      await (postSegmentIs("letters") ? loadLetters(state.lettersTab) : loadPinboard());
       break;
     case "messenger":
       await loadMessengerRooms();
@@ -1641,6 +1708,7 @@ function pullIndicator() {
 
 function setupPullToRefresh(screen) {
   let startY = 0;
+  let startX = 0;
   let tracking = false;
   let armed = false;
   let refreshing = false;
@@ -1663,12 +1731,18 @@ function setupPullToRefresh(screen) {
     armed = false;
     screen.style.setProperty("scroll-snap-type", "none");
     startY = event.touches[0].clientY;
+    startX = event.touches[0].clientX;
   });
 
   screen.addEventListener("touchmove", (event) => {
     if (!tracking || refreshing) return;
     const dy = event.touches[0].clientY - startY;
+    const dx = Math.abs(event.touches[0].clientX - startX);
     if (dy <= 0 || screen.scrollTop > 1) {
+      cleanup();
+      return;
+    }
+    if (dx > dy * PULL_AXIS_RATIO) {
       cleanup();
       return;
     }
@@ -1807,8 +1881,7 @@ function viewFor(view) {
   switch (view) {
     case "timetable": return timetableView();
     case "absence": return absenceView();
-    case "letters": return state.letterDetail ? letterDetailView() : lettersView();
-    case "pinboard": return pinboardView();
+    case "post": return state.letterDetail ? letterDetailView() : postView();
     case "messenger": return state.messengerRoom ? messengerRoomView() : messengerView();
     case "conferences": return conferencesView();
     case "settings": return settingsView();
@@ -2023,14 +2096,24 @@ function overviewBrackets(groups) {
   return keys;
 }
 
-function overviewDayEnd(schedule, groups) {
+function lastAttendedGroup(groups) {
   for (let index = groups.length - 1; index >= 0; index -= 1) {
-    const info = schedule.get(groups[index].period);
-    if (!info) continue;
-    const end = new Date(2000, 0, 1, Math.floor(info.end / 60), info.end % 60);
-    return formatTime(end);
+    if (groups[index].lessons.some((lesson) => lesson.change_kind !== "cancelled")) return index;
   }
-  return "";
+  return -1;
+}
+
+function clockText(minutes) {
+  const total = ((minutes % 1440) + 1440) % 1440;
+  const hours = String(Math.floor(total / 60)).padStart(2, "0");
+  return `${hours}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function lessonTimeRange(time) {
+  const parts = /^(\d{1,2}):(\d{2})/.exec(String(time || ""));
+  if (!parts) return "";
+  const start = Number(parts[1]) * 60 + Number(parts[2]);
+  return t("overview.time.range", { start: time, end: clockText(start + LESSON_MINUTES) });
 }
 
 function todayChapter() {
@@ -2085,20 +2168,20 @@ function todayChapter() {
     chapter.blocks.push(overviewBlock(node.key, node.node));
   }
   const firstLessonIndex = chapter.blocks.length;
+  const lastActive = lastAttendedGroup(groups);
   groups.forEach((group, position) => {
     const isNow = group.period === nowPeriod;
-    const isNext = group.period === nextPeriod;
     const isPast = periodStatus(schedule, group.period, minutesNow) === "past";
-    const nowLabel = isNow ? t("overview.now") : isNext ? t("overview.next") : null;
     const entries = group.lessons.map((lesson) => ({
       lesson,
       time: lesson.start_time || times[String(lesson.period)] || "",
       childId: child.child_id,
       mark: markAt(child.child_id, lessonIso(lesson), lesson.period),
     }));
+    if (position === lastActive) entries[0].meta = lessonTimeRange(entries[0].time);
     const node = entries.length > 1
-      ? compactLessonPair(entries, isNow || isNext, nowLabel, isPast)
-      : compactLesson(entries[0], isNow || isNext, nowLabel, isPast);
+      ? compactLessonPair(entries, isPast)
+      : compactLesson(entries[0], isPast);
     if (isNow) node.setAttribute("aria-current", "true");
     const changed = group.lessons.some((lesson) => !!lesson.change_kind);
     chapter.blocks.push(overviewBlock(`${child.child_id}:${group.period}`, node, brackets[position], changed));
@@ -2112,8 +2195,6 @@ function todayChapter() {
   const anchorPeriod = nowPeriod !== null ? nowPeriod : nextPeriod;
   if (anchorPeriod !== null && anchorPeriod !== undefined) chapter.nowKey = `${child.child_id}:${anchorPeriod}`;
   else chapter.nowKey = dayOver ? chapter.blocks[chapter.blocks.length - 1].key : chapter.blocks[firstLessonIndex].key;
-  const end = overviewDayEnd(schedule, groups);
-  if (end) chapter.link = { label: t("overview.head.until", { time: end }), onclick: overviewOpenTimetable };
   return chapter;
 }
 
@@ -2186,18 +2267,19 @@ function todayLeadingRows(childId, iso) {
 function lettersChapter() {
   const chapter = overviewChapter("letters", t("overview.chapter.letters"), {
     label: t("overview.viewAll"),
-    onclick: () => setView("letters"),
+    onclick: () => openPostSegment("letters"),
   });
   const data = state.letters;
-  if (!data) {
+  if (!data || (!data.error && data.tab && data.tab !== LETTERS_TAB_CURRENT)) {
     chapter.bodyClass = "panel-rest";
     chapter.blocks = [overviewLoadingBlock("letters:loading")];
     chapter.loading = true;
+    autoLoad(lettersLoadKey(LETTERS_TAB_CURRENT), () => loadLetters(LETTERS_TAB_CURRENT));
     return chapter;
   }
   if (data.error) {
     chapter.bodyClass = "panel-rest";
-    chapter.blocks = [overviewFailureBlock("letters:failed", () => loadLetters("current"))];
+    chapter.blocks = [overviewFailureBlock("letters:failed", () => loadLetters(LETTERS_TAB_CURRENT))];
     return chapter;
   }
   const unread = (data.letters || [])
@@ -2211,10 +2293,10 @@ function lettersChapter() {
       letter.sender || "",
       letter.published ? showDate(letter.published) : "",
       true,
-      () => setView("letters")
+      () => openLetterFromOverview(letter)
     )
   ));
-  chapter.blocks.push(overviewAllRow("letters:all", t("overview.all.letters"), () => setView("letters")));
+  chapter.blocks.push(overviewAllRow("letters:all", t("overview.all.letters"), () => openPostSegment("letters")));
   return chapter;
 }
 
@@ -2227,7 +2309,7 @@ function overviewPostTitle(tile) {
 function pinboardChapter() {
   const chapter = overviewChapter("pinboard", t("overview.chapter.pinboard"), {
     label: t("overview.viewAll"),
-    onclick: () => setView("pinboard"),
+    onclick: () => openPostSegment("pinboard"),
   });
   const data = state.pinboard;
   if (!data) {
@@ -2242,16 +2324,53 @@ function pinboardChapter() {
     return chapter;
   }
   const feed = data.feed || [];
-  const unread = feed.filter((tile) => tile.unread);
-  const seen = feed.filter((tile) => !tile.unread);
-  const shown = unread.concat(seen).slice(0, OVERVIEW_ENTRY_CAP);
+  const shown = freezePinboardOrder(feed).slice(0, OVERVIEW_ENTRY_CAP);
   if (!shown.length) return overviewRest(chapter, "pinboard:none", t("overview.pinboard.none"));
   chapter.blocks = shown.map((tile) => overviewBlock(
     `post:${tile.id}`,
-    overviewListRow(overviewPostTitle(tile), tile.folder_title || "", "", !!tile.unread, () => setView("pinboard"))
+    overviewListRow(overviewPostTitle(tile), tile.folder_title || "", "", !!tile.unread, () => openPost(tile))
   ));
-  chapter.blocks.push(overviewAllRow("pinboard:all", t("overview.all.pinboard"), () => setView("pinboard")));
+  chapter.blocks.push(overviewAllRow("pinboard:all", t("overview.all.pinboard"), () => openPostSegment("pinboard")));
   return chapter;
+}
+
+function messengerChapter() {
+  const data = state.messengerRooms;
+  if (!data) return null;
+  if (data.error) {
+    const failed = overviewChapter("messenger", t("overview.chapter.messenger"), null);
+    failed.bodyClass = "panel-rest";
+    failed.blocks = [overviewFailureBlock("messenger:failed", () => {
+      state.messengerRooms = null;
+      loadMessengerRooms();
+    })];
+    return failed;
+  }
+  const unread = (data.rooms || [])
+    .filter((room) => Number(room.unread_count) > 0)
+    .slice(0, OVERVIEW_ENTRY_CAP);
+  if (!unread.length) return null;
+  const chapter = overviewChapter("messenger", t("overview.chapter.messenger"), {
+    label: t("overview.viewAll"),
+    onclick: () => setView("messenger"),
+  });
+  chapter.blocks = unread.map((room) => overviewBlock(
+    `chat:${room.room_id}`,
+    overviewListRow(
+      room.name || t("messenger.title"),
+      tCount("overview.messenger.count", Number(room.unread_count)),
+      messengerStamp(room.last_message_at),
+      true,
+      () => openMessengerRoomFromOverview(room)
+    )
+  ));
+  chapter.blocks.push(overviewAllRow("chat:all", t("overview.all.messenger"), () => setView("messenger")));
+  return chapter;
+}
+
+function openMessengerRoomFromOverview(room) {
+  setView("messenger");
+  openMessengerRoom(room);
 }
 
 function overviewConferenceCells(item) {
@@ -2294,20 +2413,15 @@ function overviewUpcomingEntries(limitIso, todayIso) {
 }
 
 function upcomingChapter() {
-  const chapter = overviewChapter("upcoming", t("overview.chapter.upcoming"), {
-    label: t("overview.upcoming.report"),
-    onclick: () => setView("absence"),
-  });
   const conferences = state.conferences;
   const absence = state.absence;
-  if (conferences === null || absence === null) {
-    chapter.bodyClass = "panel-rest";
-    chapter.blocks = [overviewLoadingBlock("upcoming:loading")];
-    chapter.loading = true;
-    return chapter;
-  }
+  if (conferences === null || absence === null) return null;
   const conferencesFailed = !!(conferences && conferences.error);
   const absenceFailed = !!(absence && absence.error);
+  const now = new Date();
+  const rows = overviewUpcomingEntries(isoDate(addDays(now, OVERVIEW_UPCOMING_DAYS)), isoDate(now));
+  if (!rows.length && !conferencesFailed && !absenceFailed) return null;
+  const chapter = overviewChapter("upcoming", t("overview.chapter.upcoming"), null);
   if (conferencesFailed && absenceFailed) {
     chapter.bodyClass = "panel-rest";
     chapter.blocks = [overviewFailureBlock("upcoming:failed", () => {
@@ -2316,22 +2430,77 @@ function upcomingChapter() {
     })];
     return chapter;
   }
-  const now = new Date();
-  const rows = overviewUpcomingEntries(isoDate(addDays(now, OVERVIEW_UPCOMING_DAYS)), isoDate(now));
-  if (!rows.length && !conferencesFailed && !absenceFailed) {
-    return overviewRest(chapter, "upcoming:none", t("overview.upcoming.none"));
-  }
   if (conferencesFailed) chapter.blocks.push(overviewFailureBlock("upcoming:conferences", loadConferences));
   if (absenceFailed) chapter.blocks.push(overviewFailureBlock("upcoming:absence", loadAbsences));
   for (const row of rows) {
     chapter.blocks.push(overviewBlock(row.key, overviewListRow(row.title, row.sub, "", false, () => setView(row.view))));
   }
-  chapter.blocks.push(overviewAllRow("upcoming:all", t("overview.all.upcoming"), () => setView("conferences")));
   return chapter;
 }
 
 function overviewChapters() {
-  return [todayChapter(), lettersChapter(), pinboardChapter(), upcomingChapter()];
+  return [todayChapter(), upcomingChapter(), lettersChapter(), pinboardChapter(), messengerChapter()]
+    .filter(Boolean);
+}
+
+const OVERVIEW_ANCHOR_AREA = "today";
+
+function overviewNewCount(area) {
+  if (area === "letters") return lettersUnreadCount();
+  if (area === "pinboard") return pinboardUnreadCount();
+  if (area === "messenger") return messengerUnreadTotal();
+  return 0;
+}
+
+function orderOverviewAreas(areas, counts) {
+  const anchor = areas.filter((area) => area === OVERVIEW_ANCHOR_AREA);
+  const rest = areas.filter((area) => area !== OVERVIEW_ANCHOR_AREA);
+  const fresh = rest.filter((area) => (Number(counts[area]) || 0) > 0);
+  const stale = rest.filter((area) => !((Number(counts[area]) || 0) > 0));
+  return anchor.concat(fresh, stale);
+}
+
+function freezePinboardOrder(feed) {
+  const frozen = state._overviewPinboardOrder;
+  if (!frozen) {
+    const unread = feed.filter((tile) => tile.unread);
+    const seen = feed.filter((tile) => !tile.unread);
+    const order = unread.concat(seen);
+    state._overviewPinboardOrder = order.map((tile) => String(tile.id));
+    return order;
+  }
+  const rank = (tile) => {
+    const index = frozen.indexOf(String(tile.id));
+    return index < 0 ? frozen.length : index;
+  };
+  return feed
+    .map((tile, index) => ({ tile, index }))
+    .sort((left, right) => rank(left.tile) - rank(right.tile) || left.index - right.index)
+    .map((entry) => entry.tile);
+}
+
+function overviewCountsReady() {
+  return !!state.letters && !!state.pinboard && !!state.messengerRooms
+    && !!state.conferences && !!state.absence;
+}
+
+function applyOverviewOrder(chapters) {
+  const areas = chapters.map((chapter) => chapter.area);
+  if (!state._overviewOrder && overviewCountsReady()) {
+    const counts = {};
+    for (const area of areas) counts[area] = overviewNewCount(area);
+    state._overviewOrder = orderOverviewAreas(areas, counts);
+  }
+  const frozen = state._overviewOrder;
+  if (!frozen) return chapters;
+  const rank = (area) => {
+    const index = frozen.indexOf(area);
+    return index < 0 ? frozen.length : index;
+  };
+  return chapters
+    .map((chapter, index) => ({ chapter, index }))
+    .sort((left, right) => rank(left.chapter.area) - rank(right.chapter.area) || left.index - right.index)
+    .map((entry) => entry.chapter);
 }
 
 function overviewPanelHead(chapter, pageIndex, pageCount, panelIndex) {
@@ -2351,8 +2520,6 @@ function overviewPanelHead(chapter, pageIndex, pageCount, panelIndex) {
       }),
       onclick: (event) => overviewStep(-1, event.currentTarget.closest(".panel")),
     }, [el("span", { class: "ico-slot chev-up", html: iconSvg("chevron", 18) })]));
-  } else {
-    head.append(el("span", { class: "panel-dot", "aria-hidden": "true" }));
   }
   head.append(first
     ? el("h2", { class: "section-label" }, chapter.title)
@@ -2365,13 +2532,16 @@ function overviewPanelHead(chapter, pageIndex, pageCount, panelIndex) {
   return head;
 }
 
-function overviewPanelArrow(chapter, pageIndex, pageCount, nextTitle, changesAhead) {
+function overviewPanelArrow(chapter, pageIndex, pageCount, next, changesAhead) {
   const last = pageIndex === pageCount - 1;
-  if (last && !nextTitle) return null;
+  if (last && !next) return null;
   const current = formatNumber(pageIndex + 2);
   const total = formatNumber(pageCount);
+  const fresh = last && next ? Number(next.count) || 0 : 0;
   const label = last
-    ? t("overview.arrow.area", { area: nextTitle })
+    ? (fresh
+      ? tCount("overview.arrow.areaNew", fresh, { area: next.title })
+      : t("overview.arrow.area", { area: next.title }))
     : changesAhead
       ? tCount("overview.arrow.pageChanges", changesAhead, { current, total })
       : t("overview.arrow.page", { current, total });
@@ -2383,7 +2553,8 @@ function overviewPanelArrow(chapter, pageIndex, pageCount, nextTitle, changesAhe
     onclick: (event) => overviewStep(1, event.currentTarget.closest(".panel")),
   }, [
     el("span", { class: "ico-slot", html: iconSvg("chevron", 18) }),
-    last ? el("span", { class: "panel-arrow-name" }, nextTitle) : null,
+    last ? el("span", { class: "panel-arrow-name" }, next.title) : null,
+    fresh ? el("span", { class: "badge panel-arrow-badge", "aria-hidden": "true" }, badgeText(fresh)) : null,
     !last && changesAhead ? el("span", { class: "panel-arrow-dot", "aria-hidden": "true" }) : null,
   ]);
   return el("div", { class: "panel-arrow" }, [button]);
@@ -2547,7 +2718,10 @@ function overviewBuild(container, chapters, plan) {
   chapters.forEach((chapter, chapterIndex) => {
     const pages = plan[chapterIndex];
     const byKey = new Map(chapter.blocks.map((block) => [block.key, block]));
-    const nextTitle = chapterIndex + 1 < chapters.length ? chapters[chapterIndex + 1].title : null;
+    const following = chapters[chapterIndex + 1] || null;
+    const nextTitle = following
+      ? { title: following.title, count: overviewNewCount(following.area) }
+      : null;
     pages.forEach((keys, pageIndex) => {
       const last = pageIndex === pages.length - 1;
       panels.push(overviewPanel(
@@ -2719,7 +2893,7 @@ function overviewView() {
     }
   }
   if (!state.absence) autoLoad("absence", loadAbsences);
-  const chapters = overviewChapters();
+  const chapters = applyOverviewOrder(overviewChapters());
   overviewModel = { chapters, plan: null, panelHeight: 0 };
   const container = el("div", { class: "overview", "data-snap": "off" });
   container.addEventListener("focusin", overviewFocusIn);
@@ -2817,8 +2991,8 @@ function changeTag(kind) {
   return el("span", { class: kind === "cancelled" ? "tag no" : "tag open" }, changeLabel(kind));
 }
 
-function rowClassNames(highlight, isPast) {
-  return ["row", highlight ? "next" : "", isPast ? "past" : ""].filter(Boolean).join(" ");
+function rowClassNames(isPast) {
+  return ["row", isPast ? "past" : ""].filter(Boolean).join(" ");
 }
 
 function markTag(mark) {
@@ -2829,7 +3003,7 @@ function markTag(mark) {
   ]);
 }
 
-function compactLesson(entry, highlight, nowLabel, isPast) {
+function compactLesson(entry, isPast) {
   const lesson = entry.lesson;
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectColor(lesson);
@@ -2837,15 +3011,14 @@ function compactLesson(entry, highlight, nowLabel, isPast) {
   if (lesson.change_kind === "cancelled") title.style.textDecoration = "line-through";
   const sub = [lesson.room ? t("timetable.room", { room: lesson.room }) : "", lesson.teacher_label || ""].filter(Boolean).join(" · ");
   const row = el("button", {
-    class: rowClassNames(highlight, isPast),
+    class: rowClassNames(isPast),
     type: "button",
-    onclick: () => openLessonSheet(lesson, entry.time, entry.childId),
+    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
   }, [
     dot,
     el("div", { class: "row-main" }, [title, sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
     el("div", { class: "row-side" }, [
-      highlight && nowLabel ? el("span", { class: "row-now-label" }, nowLabel) : null,
-      el("span", { class: "row-meta" }, entry.time || periodShort(lesson.period)),
+      el("span", { class: "row-meta" }, entry.meta || entry.time || periodShort(lesson.period)),
       changeTag(lesson.change_kind),
     ]),
   ]);
@@ -2863,7 +3036,7 @@ function compactLessonPairItem(entry) {
   const item = el("button", {
     class: "row-pair-item",
     type: "button",
-    onclick: () => openLessonSheet(lesson, entry.time, entry.childId),
+    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
   }, [
     dot,
     el("div", { class: "row-main" }, [title, sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
@@ -2873,14 +3046,13 @@ function compactLessonPairItem(entry) {
   return item;
 }
 
-function compactLessonPair(entries, highlight, nowLabel, isPast) {
+function compactLessonPair(entries, isPast) {
   const time = entries[0].time;
   const items = entries.map((entry) => compactLessonPairItem(entry));
-  return el("div", { class: rowClassNames(highlight, isPast) }, [
+  return el("div", { class: rowClassNames(isPast) }, [
     el("div", { class: "row-pair" }, items),
     el("div", { class: "row-side" }, [
-      highlight && nowLabel ? el("span", { class: "row-now-label" }, nowLabel) : null,
-      el("span", { class: "row-meta" }, time || periodShort(entries[0].lesson.period)),
+      el("span", { class: "row-meta" }, entries[0].meta || time || periodShort(entries[0].lesson.period)),
     ]),
   ]);
 }
@@ -3195,7 +3367,11 @@ function timetableView() {
   }
   const monday = weekMonday();
   const fullWeek = holidayFullWeek(monday, data);
-  view.append(timetableGrid(data));
+  view.append(el("div", { class: "tt-frame" }, [
+    weekSwipeHint(-1, "tt-edge-prev"),
+    timetableGrid(data),
+    weekSwipeHint(1, "tt-edge-next"),
+  ]));
   if (!fullWeek) {
     view.append(
       el("div", { class: "legend" }, [
@@ -3321,8 +3497,34 @@ function calendarDetectedHost() {
   return calendarIsRemoteSession() ? "" : host;
 }
 
+function sanitizeCalendarHost(value) {
+  let host = String(value || "").trim();
+  if (!host) return "";
+  const schemeEnd = host.indexOf(":" + "//");
+  if (schemeEnd > 0) host = host.slice(schemeEnd + 3);
+  host = host.split("/")[0].split("?")[0].split("#")[0];
+  if (host.startsWith("[")) {
+    const closing = host.indexOf("]");
+    if (closing < 0) return "";
+    host = host.slice(1, closing);
+  } else if (host.split(":").length === 2) {
+    host = host.split(":")[0];
+  }
+  return host.replace(/\.+$/, "").trim().toLowerCase();
+}
+
 function calendarHost() {
-  return state.calendarHost || calendarDetectedHost();
+  const data = calendarData();
+  const resolved = data ? sanitizeCalendarHost(data.host) : "";
+  const stored = sanitizeCalendarHost(readStoredText(CALENDAR_HOST_KEY));
+  if (data && data.host_source === CALENDAR_HOST_FALLBACK) {
+    return calendarDetectedHost() || stored || resolved;
+  }
+  return resolved || calendarDetectedHost() || stored;
+}
+
+function calendarHostForUrl(host) {
+  return String(host || "").includes(":") ? `[${host}]` : host;
 }
 
 function calendarData() {
@@ -3344,7 +3546,7 @@ function calendarFeedUrl(subscription, scheme) {
   const host = calendarHost();
   const path = (subscription && subscription.path) || "";
   if (!host || !path) return "";
-  return `${scheme}://${host}:${calendarPort()}${path}`;
+  return `${scheme}://${calendarHostForUrl(host)}:${calendarPort()}${path}`;
 }
 
 async function loadCalendarSubscriptions() {
@@ -3385,49 +3587,141 @@ async function openCalendarSheet() {
   state.calendarDraft = null;
   state.calendarQr = "";
   state.calendarBusy = "";
-  state.calendarHost = readStoredText(CALENDAR_HOST_KEY);
-  state.calendarSetupOpen = readStoredText(CALENDAR_SETUP_KEY) !== "1";
-  writeStoredText(CALENDAR_SETUP_KEY, "1");
+  state.calendarPortRestart = false;
+  state.calendarRestarting = false;
   openSheet(calendarSheet);
   await loadCalendarSubscriptions();
   if (state.sheet === calendarSheet) rerender();
 }
 
 function calendarSheet() {
-  const body = [noteBlock(t("calendar.subscribe.warning")), calendarSetupBlock()];
+  const body = [noteBlock(t("calendar.subscribe.warning"))];
   body.push(el("p", { class: "cal-hint" }, t(calendarIsRemoteSession() ? "calendar.subscribe.reach.remote" : "calendar.subscribe.reach")));
   const loaded = state.calendar;
   if (!loaded) body.push(loadingBlock());
   else if (loaded.error || !loaded.data) body.push(plainCard(t("calendar.subscribe.loadFailed")));
   else {
-    if ((loaded.data.subscriptions || []).length) body.push(calendarHostField());
+    const notice = calendarPortNotice(loaded.data);
+    if (notice) body.push(notice);
     for (const node of calendarChildCards(loaded.data)) body.push(node);
   }
   return sheet(t("calendar.subscribe.title"), body);
 }
 
-function calendarSetupBlock() {
-  const open = state.calendarSetupOpen;
-  const wrap = el("div", { class: "cal-setup" });
-  wrap.append(
-    el("button", {
-      class: "cal-setup-head",
-      type: "button",
-      "aria-expanded": String(open),
-      onclick: () => { state.calendarSetupOpen = !state.calendarSetupOpen; rerender(); },
-    }, [
-      el("span", { class: "overline" }, t("calendar.subscribe.setup.title")),
-      el("span", { class: `ico-slot chev-toggle${open ? " open" : ""}`, html: iconSvg("chevron", 16) }),
-    ])
-  );
-  if (!open) return wrap;
-  wrap.append(el("p", { class: "cal-hint" }, t("calendar.subscribe.setup.intro")));
-  const steps = el("ol", { class: "cal-steps" });
-  for (let step = 1; step <= CALENDAR_SETUP_STEPS; step += 1) {
-    steps.append(el("li", {}, t(`calendar.subscribe.setup.step${step}`, { port: String(calendarPort()) })));
+function calendarRestartPanel() {
+  if (state.calendarRestarting) {
+    return el("div", { class: "cal-port cal-restart" }, [
+      el("div", { class: "note" }, [
+        el("span", { class: "spin" }),
+        el("span", {}, t("calendar.subscribe.restart.running")),
+      ]),
+    ]);
   }
-  wrap.append(steps);
-  return wrap;
+  return el("div", { class: "cal-port cal-restart" }, [
+    el("p", { class: "cal-hint" }, t("calendar.subscribe.restart.hint")),
+    el("button", {
+      class: "btn cal-restart-go",
+      type: "button",
+      onclick: restartAddon,
+    }, t("calendar.subscribe.restart.action")),
+  ]);
+}
+
+let restartWatchToken = 0;
+
+async function restartAddon() {
+  if (state.calendarRestarting) return;
+  state.calendarRestarting = true;
+  writeStoredText(CALENDAR_RESUME_KEY, "1");
+  restartWatchToken += 1;
+  const token = restartWatchToken;
+  rerender();
+  awaitAddonReturn(0, token, false);
+  let result = null;
+  try {
+    result = await postJson("api/calendar/restart", {});
+  } catch (error) {
+    return;
+  }
+  if (result && result.ok === false) abortAddonRestart(token, result);
+}
+
+function abortAddonRestart(token, result) {
+  if (token !== restartWatchToken) return;
+  restartWatchToken += 1;
+  state.calendarRestarting = false;
+  writeStoredText(CALENDAR_RESUME_KEY, "");
+  rerender();
+  toast(apiMessage(result, "api.calendar.error.restartFailed"), "bad");
+}
+
+function awaitAddonReturn(attempt, token, seenDown) {
+  if (token !== restartWatchToken) return;
+  if (attempt >= CALENDAR_RESTART_MAX_TRIES) {
+    window.location.reload();
+    return;
+  }
+  window.setTimeout(async () => {
+    if (token !== restartWatchToken) return;
+    let up = false;
+    try {
+      await getJson("api/health");
+      up = true;
+    } catch (error) {
+      up = false;
+    }
+    if (token !== restartWatchToken) return;
+    if (up && seenDown) {
+      window.location.reload();
+      return;
+    }
+    awaitAddonReturn(attempt + 1, token, seenDown || !up);
+  }, attempt === 0 ? CALENDAR_RESTART_GRACE_MS : CALENDAR_RESTART_POLL_MS);
+}
+
+function resumeCalendarSheet() {
+  if (readStoredText(CALENDAR_RESUME_KEY) !== "1") return;
+  writeStoredText(CALENDAR_RESUME_KEY, "");
+  openCalendarSheet();
+}
+
+function calendarPortNotice(data) {
+  if (data.restart_pending || state.calendarPortRestart) return calendarRestartPanel();
+  if (data.port_open) return null;
+  if (!(data.subscriptions || []).length) return null;
+  if (!data.supervisor) return el("p", { class: "cal-hint" }, t("calendar.subscribe.port.manual", { port: String(calendarPort()) }));
+  const busy = state.calendarBusy === CALENDAR_PORT_BUSY;
+  const button = el("button", {
+    class: "btn ghost slim cal-port-open",
+    type: "button",
+    disabled: busy ? "disabled" : null,
+    onclick: openCalendarPort,
+  }, busy ? [el("span", { class: "spin" }), t("calendar.subscribe.port.open")] : [t("calendar.subscribe.port.open")]);
+  return el("div", { class: "cal-port" }, [
+    el("p", { class: "cal-hint" }, t("calendar.subscribe.port.closed")),
+    button,
+  ]);
+}
+
+async function openCalendarPort() {
+  if (state.calendarBusy) return;
+  state.calendarBusy = CALENDAR_PORT_BUSY;
+  rerender();
+  let result = null;
+  try {
+    result = await postJson("api/calendar/port", {});
+  } catch (error) {
+    result = null;
+  }
+  state.calendarBusy = "";
+  if (result && result.ok) {
+    state.calendarPortRestart = !!result.restart_required;
+    await loadCalendarSubscriptions();
+    rerender();
+    return;
+  }
+  rerender();
+  toast(apiMessage(result, "api.calendar.error.portFailed"), "bad");
 }
 
 function calendarChildCards(data) {
@@ -3629,6 +3923,13 @@ async function submitCalendarDraft(draft) {
   await loadCalendarSubscriptions();
   rerender();
   toast(t(wasUpdate ? "common.saved" : "calendar.subscribe.created"));
+  if (!wasUpdate) await autoOpenCalendarPort();
+}
+
+async function autoOpenCalendarPort() {
+  const data = calendarData();
+  if (!data || data.port_open || !data.supervisor) return;
+  await openCalendarPort();
 }
 
 function calendarSubscriptionBlock(subscription, child) {
@@ -3650,27 +3951,12 @@ function calendarSubscriptionBlock(subscription, child) {
   return nodes;
 }
 
-function calendarHostField() {
-  const input = el("input", {
-    class: "inp",
-    type: "text",
-    value: calendarHost(),
-    placeholder: t("calendar.subscribe.host.placeholder"),
-    autocomplete: "off",
-    spellcheck: "false",
-    dir: "ltr",
-    "aria-label": t("calendar.subscribe.host"),
-  });
-  input.addEventListener("input", () => {
-    state.calendarHost = input.value.trim();
-    writeStoredText(CALENDAR_HOST_KEY, state.calendarHost);
-  });
-  input.addEventListener("change", rerender);
-  return el("label", { class: "field cal-host" }, [
-    el("span", { class: "lbl" }, t("calendar.subscribe.host")),
-    input,
-    el("span", { class: "hint" }, t("calendar.subscribe.host.hint")),
-  ]);
+function handOffCalendarUrl(feedUrl) {
+  try {
+    window.location.href = feedUrl;
+  } catch (error) {
+    toast(t("calendar.subscribe.add.failed"), "bad");
+  }
 }
 
 function calendarActions(subscription, child) {
@@ -3679,7 +3965,11 @@ function calendarActions(subscription, child) {
   const plainUrl = calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN);
   const busy = !!state.calendarBusy;
   if (feedUrl) {
-    nodes.push(el("a", { class: "btn cal-add", href: feedUrl, rel: "noreferrer" }, [
+    nodes.push(el("button", {
+      class: "btn cal-add",
+      type: "button",
+      onclick: () => handOffCalendarUrl(feedUrl),
+    }, [
       icon("calendarAdd", 18),
       t("calendar.subscribe.add"),
     ]));
@@ -3836,7 +4126,10 @@ function timetableGrid(data) {
   for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
     blocked.push(!!fullWeek || holidayBlocksLessons(isoDate(addDays(monday, day))));
   }
-  const grid = el("div", { class: "tt" });
+  const grid = el("div", { class: state.spotlightSubject ? "tt spotlight" : "tt" });
+  grid.addEventListener("click", spotlightBackgroundTap);
+  grid.addEventListener("keydown", spotlightEscape);
+  setupWeekSwipe(grid);
   grid.append(el("div", { style: "grid-column:1;grid-row:1" }));
   for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
     const date = addDays(monday, day);
@@ -3890,6 +4183,130 @@ function timetableGrid(data) {
   return grid;
 }
 
+const SWIPE_MIN_DISTANCE = 48;
+const SWIPE_AXIS_RATIO = 1.6;
+const SWIPE_AXIS_MIN = 12;
+
+function documentIsRtl() {
+  return RTL_LANGUAGES.includes(i18n.language);
+}
+
+function weekStepForDelta(deltaX) {
+  const backwards = documentIsRtl() ? deltaX < 0 : deltaX > 0;
+  return backwards ? -1 : 1;
+}
+
+function canShiftWeek(step) {
+  const target = state.weekOffset + step;
+  return target >= WEEK_MIN && target <= WEEK_MAX;
+}
+
+function setupWeekSwipe(grid) {
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  grid.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) {
+      tracking = false;
+      return;
+    }
+    startX = event.touches[0].clientX;
+    startY = event.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+  grid.addEventListener("touchmove", (event) => {
+    if (!tracking || event.touches.length !== 1) return;
+    const deltaY = Math.abs(event.touches[0].clientY - startY);
+    const deltaX = Math.abs(event.touches[0].clientX - startX);
+    if (Math.max(deltaX, deltaY) < SWIPE_AXIS_MIN) return;
+    if (deltaY > deltaX * SWIPE_AXIS_RATIO) tracking = false;
+  }, { passive: true });
+  grid.addEventListener("touchend", (event) => {
+    if (!tracking) return;
+    tracking = false;
+    const touch = event.changedTouches && event.changedTouches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    if (Math.abs(deltaX) < SWIPE_MIN_DISTANCE) return;
+    if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_AXIS_RATIO) return;
+    const step = weekStepForDelta(deltaX);
+    if (!canShiftWeek(step)) return;
+    shiftWeek(step);
+  }, { passive: true });
+}
+
+function weekSwipeHint(step, className) {
+  if (!canShiftWeek(step)) return null;
+  return el("span", {
+    class: `tt-edge ${className}`,
+    "aria-hidden": "true",
+  }, [el("span", { class: "ico-slot", html: iconSvg("chevron", 16) })]);
+}
+
+function lessonSubjectKey(lesson) {
+  return String(lesson.subject_code || lesson.subject_label || "");
+}
+
+function setSpotlight(subject) {
+  const next = subject || null;
+  if (state.spotlightSubject === next) return;
+  state.spotlightSubject = next;
+  applySpotlight();
+}
+
+function applySpotlight() {
+  const grid = root() && root().querySelector(".tt");
+  if (!grid) return;
+  const subject = state.spotlightSubject;
+  grid.classList.toggle("spotlight", !!subject);
+  for (const cell of grid.querySelectorAll(".tt-cell")) {
+    cell.classList.toggle("spot", !!subject && cell.dataset.subject === subject);
+  }
+}
+
+function spotlightEscape(event) {
+  if (event.key !== "Escape" || !state.spotlightSubject) return;
+  event.stopPropagation();
+  setSpotlight(null);
+}
+
+function spotlightBackgroundTap(event) {
+  if (event.target.closest(".tt-cell:not(.free)")) return;
+  setSpotlight(null);
+}
+
+function timetableWeekLessons() {
+  const data = state.timetable;
+  return data && Array.isArray(data.lessons) ? data.lessons : [];
+}
+
+function overviewWeekLessons(childId) {
+  const week = overviewWeekData(childId, 0);
+  return week && Array.isArray(week.lessons) ? week.lessons : [];
+}
+
+function weekSubjectOccurrences(subject, weekLessons) {
+  return (weekLessons || [])
+    .filter((lesson) => lessonSubjectKey(lesson) === subject
+      && lesson.change_kind !== "cancelled"
+      && !holidayBlocksLessons(lessonIso(lesson)))
+    .sort((left, right) =>
+      Number(left.day_of_week) - Number(right.day_of_week) || Number(left.period) - Number(right.period));
+}
+
+function lessonWeekPosition(lesson, weekLessons) {
+  const subject = lessonSubjectKey(lesson);
+  if (!subject) return null;
+  const occurrences = weekSubjectOccurrences(subject, weekLessons);
+  const total = occurrences.length;
+  if (total < 1) return null;
+  const position = occurrences.findIndex((entry) =>
+    Number(entry.day_of_week) === Number(lesson.day_of_week) && Number(entry.period) === Number(lesson.period)) + 1;
+  if (position < 1) return null;
+  return { position, total };
+}
+
 function gridCell(lessons, time) {
   if (lessons.length === 1) return lessonCell(lessons[0], time, false);
   return el(
@@ -3904,11 +4321,16 @@ function lessonCell(lesson, time, compact) {
   const mark = markOfLesson(lesson, state.childId);
   const base = kind === "cancelled" ? "tt-cell out" : kind ? "tt-cell subbed" : "tt-cell";
   const roomLabel = kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : lesson.room;
+  const subject = lessonSubjectKey(lesson);
   const cell = el("button", {
     class: compact ? `${base} chip` : base,
     type: "button",
+    "data-subject": subject || null,
     "aria-label": lessonAriaLabel(lesson, kind, mark),
-    onclick: () => openLessonSheet(lesson, time, state.childId),
+    onclick: () => {
+      if (subject) setSpotlight(subject);
+      openLessonSheet(lesson, time, state.childId, timetableWeekLessons());
+    },
   }, [
     kind && kind !== "cancelled" ? el("span", { class: "bar" }) : null,
     iservText("span", { class: "sub" }, lesson.subject_code || lesson.subject_label || "?"),
@@ -3916,6 +4338,7 @@ function lessonCell(lesson, time, compact) {
     mark ? el("span", { class: "exam-flag", html: iconSvg("exam", 11) }) : null,
   ]);
   if (mark) cell.classList.add("marked");
+  if (subject && subject === state.spotlightSubject) cell.classList.add("spot");
   if (!kind) {
     const color = subjectColor(lesson);
     cell.style.background = `color-mix(in srgb, ${color} var(--subject-fill), var(--surface))`;
@@ -3982,11 +4405,12 @@ function lessonPeriodFact(lesson, time) {
   return t(time ? "timetable.fact.periodValueTime" : "timetable.fact.periodValue", vars);
 }
 
-function openLessonSheet(lesson, time, childId) {
-  openSheet(() => lessonSheet(lesson, time, markChildOf(childId)));
+function openLessonSheet(lesson, time, childId, weekLessons) {
+  const week = weekLessons || [];
+  openSheet(() => lessonSheet(lesson, time, markChildOf(childId), week));
 }
 
-function lessonSheet(lesson, time, childId) {
+function lessonSheet(lesson, time, childId, weekLessons) {
   const facts = [
     [t("timetable.field.subject"), lesson.subject_label || lesson.subject_code || t("common.none")],
     [t("timetable.fact.period"), lessonPeriodFact(lesson, time)],
@@ -3997,6 +4421,13 @@ function lessonSheet(lesson, time, childId) {
   if (lesson.is_class_teacher) facts.push([t("timetable.fact.role"), t("timetable.fact.classTeacher")]);
   const mark = markOfLesson(lesson, childId);
   const body = [];
+  const weekPosition = lessonWeekPosition(lesson, weekLessons);
+  if (weekPosition) {
+    body.push(el("p", { class: "lesson-week-count" }, tCount("timetable.lesson.weekCount", weekPosition.total, {
+      position: formatNumber(weekPosition.position),
+      total: formatNumber(weekPosition.total),
+    })));
+  }
   const banner = changeBanner(lesson);
   if (banner) body.push(banner);
   if (mark) body.push(markPanel(mark, childId, lesson, time));
@@ -4449,15 +4880,80 @@ function matchesLetterQuery(letter, query) {
   return haystack.includes(query);
 }
 
-function lettersView() {
+function postView() {
+  const lead = postSegment();
+  return postSegmentIs("pinboard") ? pinboardView(lead) : lettersView(lead);
+}
+
+function postSegment() {
+  return el("div", { class: "segment", role: "tablist" }, [
+    segmentButton(t("post.segment.letters"), postSegmentIs("letters"), lettersUnreadCount(), () =>
+      switchPostTab("letters")
+    ),
+    segmentButton(t("post.segment.pinboard"), postSegmentIs("pinboard"), pinboardUnreadCount(), () =>
+      switchPostTab("pinboard")
+    ),
+  ]);
+}
+
+function switchPostTab(segment) {
+  if (postSegmentIs(segment)) return;
+  state.postTab = segment;
+  state.lettersSelectMode = false;
+  state.lettersSelected = [];
+  state.pinboardSelectMode = false;
+  state.pinboardSelected = [];
+  rerender();
+}
+
+function openPostSegment(segment) {
+  state.postTab = segment;
+  setView("post");
+}
+
+function lettersFolderLabel() {
+  return t(state.lettersTab === "archive" ? "letters.folder.archive" : "letters.folder.current");
+}
+
+function lettersFolderRow() {
+  return el("div", { class: "chipbar" }, [
+    el("button", {
+      class: "chip",
+      type: "button",
+      "aria-pressed": String(state.lettersTab === "archive"),
+      onclick: () => openSheet(letterFolderSheet),
+    }, [icon("folder", 14), el("span", {}, lettersFolderLabel())]),
+  ]);
+}
+
+function letterFolderOption(tab, iconName, title, count) {
+  return el("div", { class: "opt", "aria-pressed": String(tab === state.lettersTab) }, [
+    el("button", {
+      class: "opt-main",
+      type: "button",
+      onclick: () => { setLettersFolder(tab); closeSheet(); },
+    }, [
+      icon(iconName, 20),
+      el("span", {}, [el("b", {}, title)]),
+      count ? el("span", { class: "badge" }, badgeText(count)) : null,
+    ]),
+  ]);
+}
+
+function letterFolderSheet() {
+  return sheet(t("letters.folder.sheet"), [
+    el("div", { class: "opt-list" }, [
+      letterFolderOption("current", "inbox", t("letters.folder.current"), lettersUnreadCount()),
+      letterFolderOption("archive", "archive", t("letters.folder.archive"), 0),
+    ]),
+  ]);
+}
+
+function lettersView(lead) {
   const view = el("div", {});
   const head = el("div", { class: "list-head" });
-  head.append(
-    el("div", { class: "segment", role: "tablist" }, [
-      segmentButton(t("letters.tab.current"), state.lettersTab === "current", () => switchLetters("current")),
-      segmentButton(t("letters.tab.archive"), state.lettersTab === "archive", () => switchLetters("archive")),
-    ])
-  );
+  if (lead) head.append(lead);
+  head.append(lettersFolderRow());
   view.append(head);
   const data = state.letters;
   if (!data || data.tab !== state.lettersTab) {
@@ -4667,12 +5163,28 @@ function letterSelectionBar() {
   return selectionBar(count, exitLetterSelectMode, buttons);
 }
 
+function markReadOutcome(result, singleKey) {
+  const read = Number(result && result.read) || 0;
+  const blocked = Number(result && result.blocked) || 0;
+  if (blocked && !read) {
+    return [t(singleKey && blocked === 1 ? "letters.toast.blocked" : "letters.toast.markedPartial", {
+      read: formatNumber(read),
+      blocked: formatNumber(blocked),
+    }), "bad"];
+  }
+  if (blocked) {
+    return [t("letters.toast.markedPartial", { read: formatNumber(read), blocked: formatNumber(blocked) }), "good"];
+  }
+  if (!read) return [t("letters.toast.nothingToMark"), "good"];
+  return [singleKey ? t("letters.toast.markedSingle") : t("letters.toast.marked", { count: formatNumber(read) }), "good"];
+}
+
 async function bulkMarkLettersRead() {
   const keys = state.lettersSelected.slice();
   if (!keys.length) return;
   try {
     const result = await postJson("api/letters/seen", { keys });
-    toast(result && result.read ? t("letters.toast.marked", { count: formatNumber(result.read) }) : t("letters.toast.nothingToMark"));
+    toast(...markReadOutcome(result, false));
   } catch (error) {
     toast(t("letters.toast.markFailed"), "bad");
   }
@@ -4736,7 +5248,9 @@ async function bulkRestoreLetters() {
 function letterActionsSheet(letter) {
   const isArchive = state.lettersTab === "archive";
   const rows = [];
-  if (!isArchive && letter.unread) {
+  if (!isArchive && letterConfirmationOpen(letter)) {
+    rows.push(letterActionRow("alert", t("letters.action.confirmFirst"), () => { closeSheet(); openLetter(letter); }));
+  } else if (!isArchive && letter.unread) {
     rows.push(letterActionRow("check", t("letters.action.markRead"), () => { closeSheet(); markLetterRead(letter); }));
   }
   if (isArchive) {
@@ -4757,7 +5271,7 @@ function letterActionRow(iconName, label, onclick) {
 async function markLetterRead(letter) {
   try {
     const result = await postJson("api/letters/seen", { keys: [letterKey(letter)] });
-    toast(result && result.read ? t("letters.toast.markedSingle") : t("letters.toast.nothingToMark"));
+    toast(...markReadOutcome(result, true));
   } catch (error) {
     toast(t("letters.toast.markFailed"), "bad");
   }
@@ -4819,15 +5333,24 @@ function attachLetterSwipe(row, swipe, letter) {
   });
 }
 
-function segmentButton(text, selected, onclick) {
-  return el("button", { type: "button", role: "tab", "aria-selected": String(selected), onclick }, text);
+function segmentButton(text, selected, count, onclick) {
+  const button = el("button", {
+    type: "button",
+    role: "tab",
+    "aria-selected": String(selected),
+    "aria-label": count ? t("post.segment.unread", { area: text, count: formatNumber(count) }) : null,
+    onclick,
+  }, [el("span", { class: "seg-label" }, text)]);
+  if (count) button.append(el("span", { class: "badge seg-badge", "aria-hidden": "true" }, badgeText(count)));
+  return button;
 }
 
-function switchLetters(tab) {
+function setLettersFolder(tab) {
   if (tab === state.lettersTab) return;
   state.lettersTab = tab;
   state.letters = null;
-  exitLetterSelectMode();
+  state.lettersSelectMode = false;
+  state.lettersSelected = [];
 }
 
 function letterRow(letter) {
@@ -4877,7 +5400,7 @@ function letterRow(letter) {
 async function markAllLettersRead() {
   try {
     const result = await postJson("api/letters/seen", { all: true });
-    toast(result && result.read ? t("letters.toast.marked", { count: formatNumber(result.read) }) : t("letters.toast.nothingToMark"));
+    toast(...markReadOutcome(result, false));
   } catch (error) {
     toast(t("letters.toast.markFailed"), "bad");
   }
@@ -4887,7 +5410,7 @@ async function markAllLettersRead() {
 
 function restoreUnreadMark(letter) {
   letter.unread = true;
-  if (state.view === "letters") rerender();
+  if (state.view === "post" && postSegmentIs("letters")) rerender();
 }
 
 function markLetterSeen(letter) {
@@ -4903,8 +5426,23 @@ function markLetterSeen(letter) {
     });
 }
 
-async function openLetter(letter) {
-  state.letterDetail = { letter, loading: true };
+function openLetterFromOverview(letter) {
+  rememberOverviewAnchor();
+  state.postTab = "letters";
+  setView("post");
+  openLetter(letter, OVERVIEW_ORIGIN);
+}
+
+function leaveLetterDetail() {
+  const origin = state.letterDetail && state.letterDetail.origin;
+  state.letterDetail = null;
+  if (origin === OVERVIEW_ORIGIN) setView("overview", { keepAnchor: true });
+  else rerender();
+  loadLetters(state.lettersTab);
+}
+
+async function openLetter(letter, origin) {
+  state.letterDetail = { letter, loading: true, origin: origin || null };
   state.sheet = null;
   if (letter.unread) markLetterSeen(letter);
   render();
@@ -4912,10 +5450,10 @@ async function openLetter(letter) {
     const detail = await getJson(
       `api/letters/detail?letter_id=${encodeURIComponent(letter.letter_id)}&recipient_id=${encodeURIComponent(letter.recipient_id)}`
     );
-    state.letterDetail = { letter, detail };
+    state.letterDetail = { letter, detail, origin: origin || null };
   } catch (error) {
     if (handleApiFailure(error)) return;
-    state.letterDetail = { letter, error: errorCode(error) };
+    state.letterDetail = { letter, error: errorCode(error), origin: origin || null };
   }
   rerender();
 }
@@ -4939,7 +5477,7 @@ function letterDetailView() {
     return view;
   }
   if (error || !detail) {
-    view.append(emptyBlock("alert", t("letters.detail.errorTitle"), t("letters.detail.errorText"), retryButton(() => openLetter(letter))));
+    view.append(emptyBlock("alert", t("letters.detail.errorTitle"), t("letters.detail.errorText"), retryButton(() => openLetter(letter, state.letterDetail && state.letterDetail.origin))));
     return view;
   }
   view.append(el("div", { class: "card" }, [el("div", { class: "body-html", dir: "auto", html: detail.body_html || "" })]));
@@ -5102,9 +5640,10 @@ function matchesTileQuery(tile, query) {
   return haystack.includes(query);
 }
 
-function pinboardView() {
+function pinboardView(lead) {
   const view = el("div", {});
   const head = el("div", { class: "list-head" });
+  if (lead) head.append(lead);
   view.append(head);
   const data = state.pinboard;
   if (!data) {
@@ -5465,7 +6004,7 @@ async function markPostRead(tile) {
   } catch (error) {
     tile.unread = true;
     routeOrIgnoreBackgroundFailure(error);
-    if (state.view === "pinboard") rerender();
+    if (state.view === "post" && postSegmentIs("pinboard")) rerender();
   }
 }
 
@@ -5510,24 +6049,58 @@ function messengerUnreadTotal() {
   return Number.isFinite(stored) && stored > 0 ? stored : 0;
 }
 
-function messengerEntryVisible(view) {
-  if (!MESSENGER_ENTRY_VIEWS.includes(view)) return false;
-  return view !== "letters" || !state.letterDetail;
+function messengerRoomUnread() {
+  const room = state.messengerRoom;
+  return room ? Number(room.unread) || 0 : 0;
 }
 
-function messengerEntryButton() {
-  const unread = messengerUnreadTotal();
-  return el("button", {
-    class: "icon-btn messenger-entry",
+function messengerRoomLastEventId() {
+  const room = state.messengerRoom;
+  if (!room) return "";
+  for (let index = room.messages.length - 1; index >= 0; index--) {
+    const eventId = room.messages[index].event_id;
+    if (eventId) return eventId;
+  }
+  return "";
+}
+
+function messengerReadButton() {
+  const room = state.messengerRoom;
+  const button = el("button", {
+    class: "icon-btn messenger-read",
     type: "button",
-    "aria-label": unread ? t("messenger.open.unread") : t("messenger.open"),
-    onclick: openMessenger,
-  }, [icon("messages", 18), unread ? el("span", { class: "entry-dot" }) : null]);
+    "aria-label": t("messenger.read.action"),
+    "aria-busy": room && room.marking ? "true" : "false",
+  }, [room && room.marking ? el("span", { class: "spin" }) : icon("check", 18)]);
+  button.disabled = !!(room && room.marking) || !messengerRoomLastEventId();
+  button.addEventListener("click", () => markMessengerRoomRead());
+  return button;
 }
 
-function openMessenger() {
-  if (state.view !== "messenger") state.messengerReturn = state.view;
-  setView("messenger");
+async function markMessengerRoomRead() {
+  const room = state.messengerRoom;
+  const eventId = messengerRoomLastEventId();
+  if (!room || room.marking || !eventId) return;
+  room.marking = true;
+  rerender();
+  let result = null;
+  try {
+    result = await postJson("api/messenger/read", { room_id: room.room_id, event_id: eventId });
+  } catch (error) {
+    if (handleApiFailure(error)) return;
+    result = null;
+  }
+  if (state.messengerRoom !== room) return;
+  room.marking = false;
+  if (!result || !result.ok) {
+    rerender();
+    toast(apiMessage(result, "api.messenger.read.failed"), "bad");
+    return;
+  }
+  room.unread = 0;
+  rerender();
+  toast(apiMessage(result, "api.messenger.read.ok"));
+  await loadMessengerRooms();
 }
 
 function messengerRoomHeadTitle() {
@@ -5616,9 +6189,13 @@ function messengerView() {
   if (note) head.append(note);
   const rooms = data.rooms || [];
   if (!rooms.length) {
-    view.append(emptyBlock("messages", t("messenger.empty.title"), t("messenger.empty.text")));
+    view.append(
+      emptyBlock("messages", t("messenger.empty.title"), t("messenger.empty.text"), teacherRoomEntry("btn"))
+    );
     return view;
   }
+  const entry = teacherRoomEntry("btn slim");
+  if (entry) head.append(el("div", { class: "list-actions" }, [entry]));
   const hitCount = el("span", { class: "search-hits" });
   const rowsHost = el("div", {});
   function renderRoomRows() {
@@ -5648,6 +6225,8 @@ function openMessengerRoom(room) {
     name: room.name || "",
     memberNames: room.member_names || {},
     selfUserId: (state.messengerRooms && state.messengerRooms.self_user_id) || "",
+    unread: Number(room.unread_count) || 0,
+    marking: false,
     messages: [],
     before: "",
     loading: true,
@@ -5956,6 +6535,390 @@ function setupChatViewport() {
   chatViewportBound = true;
   window.visualViewport.addEventListener("resize", applyChatViewport);
   window.visualViewport.addEventListener("scroll", applyChatViewport);
+}
+
+const TEACHER_SEARCH_DEBOUNCE_MS = 250;
+const TEACHER_ROOM_TIMEOUT_MS = 30000;
+const TEACHER_ROOM_FLOW_TEXTS = {
+  back: "messenger.create.back",
+  goal: "messenger.create.goal",
+  progress: "messenger.create.progress",
+  progressTotal: "messenger.create.progress.total",
+  failed: "messenger.create.failed",
+};
+
+let teacherRoomFlow = null;
+let teacherResultsHost = null;
+let teacherSearchTimer = 0;
+let teacherSearchAbort = null;
+
+function teacherRoomEntry(className) {
+  const data = state.messengerRooms;
+  if (!data || data.error || !data.can_write_to_teacher) return null;
+  return el("button", { class: className, type: "button", onclick: startTeacherRoom }, [
+    icon("plus", 16),
+    el("span", {}, t("messenger.create.action")),
+  ]);
+}
+
+function startTeacherRoom() {
+  state.teacherRoom = {
+    teacher: null,
+    query: "",
+    results: null,
+    searching: false,
+    failed: false,
+    allowed: true,
+    childIds: state.children.length === 1 ? [state.children[0].child_id] : [],
+    addOtherParents: false,
+    duplicate: null,
+  };
+  state.sheet = null;
+  teacherRoomFlowStart();
+  render();
+}
+
+function closeTeacherRoom() {
+  cancelTeacherSearch();
+  window.clearTimeout(teacherSearchTimer);
+  teacherSearchTimer = 0;
+  if (teacherRoomFlow) teacherRoomFlow.destroy();
+  teacherRoomFlow = null;
+  teacherResultsHost = null;
+  state.teacherRoom = null;
+}
+
+function exitTeacherRoom() {
+  closeTeacherRoom();
+  render();
+}
+
+function teacherRoomFlowStart() {
+  if (teacherRoomFlow) teacherRoomFlow.destroy();
+  teacherRoomFlow = window.StepFlow.create({
+    text: teacherRoomText,
+    steps: teacherRoomPath,
+    step: teacherRoomStep,
+    title: () => t("messenger.create.title"),
+    trailing: teacherRoomTrailing,
+    onExit: exitTeacherRoom,
+  });
+  teacherRoomFlow.start(teacherRoomPath()[0]);
+}
+
+function teacherRoomText(name, vars) {
+  const key = TEACHER_ROOM_FLOW_TEXTS[name];
+  return key ? t(key, vars) : "";
+}
+
+function teacherRoomTrailing() {
+  return el("button", {
+    class: "icon-btn",
+    type: "button",
+    "aria-label": t("messenger.create.exit"),
+    onclick: exitTeacherRoom,
+  }, [icon("close", 18)]);
+}
+
+function teacherRoomPath() {
+  const form = state.teacherRoom;
+  if (!form) return ["teacher"];
+  const path = ["teacher"];
+  if (state.children.length > 1) path.push("children");
+  path.push("parents");
+  if (form.duplicate) path.push("duplicate");
+  path.push("review");
+  return path;
+}
+
+function teacherRoomRefresh() {
+  if (teacherRoomFlow) teacherRoomFlow.render();
+}
+
+function cancelTeacherSearch() {
+  if (!teacherSearchAbort) return;
+  teacherSearchAbort.abort();
+  teacherSearchAbort = null;
+}
+
+function queueTeacherSearch(value) {
+  const form = state.teacherRoom;
+  if (!form) return;
+  form.query = value;
+  window.clearTimeout(teacherSearchTimer);
+  cancelTeacherSearch();
+  const query = value.trim();
+  form.failed = false;
+  if (!query) {
+    form.results = null;
+    form.searching = false;
+    renderTeacherResults();
+    return;
+  }
+  form.searching = true;
+  renderTeacherResults();
+  teacherSearchTimer = window.setTimeout(() => runTeacherSearch(query), TEACHER_SEARCH_DEBOUNCE_MS);
+}
+
+async function runTeacherSearch(query) {
+  const form = state.teacherRoom;
+  if (!form) return;
+  const controller = window.AbortController ? new window.AbortController() : null;
+  teacherSearchAbort = controller;
+  let data = null;
+  try {
+    data = await getJson(`api/messenger/teachers?query=${encodeURIComponent(query)}`, controller ? controller.signal : undefined);
+  } catch (error) {
+    if (controller && controller.signal.aborted) return;
+    if (handleApiFailure(error)) return;
+    data = null;
+  }
+  if (state.teacherRoom !== form || form.query.trim() !== query) return;
+  teacherSearchAbort = null;
+  form.searching = false;
+  form.failed = !data;
+  form.allowed = !data || data.allowed !== false;
+  form.results = data ? data.teachers || [] : [];
+  renderTeacherResults();
+}
+
+function findDuplicateRoom(label) {
+  const data = state.messengerRooms;
+  const name = String(label || "").trim().toLowerCase();
+  if (!data || data.error || !name) return null;
+  return (data.rooms || []).find((room) =>
+    String(room.name || "").toLowerCase().includes(name) ||
+    (room.members || []).some((member) => String(member).trim().toLowerCase() === name)
+  ) || null;
+}
+
+function chooseTeacher(hit) {
+  const form = state.teacherRoom;
+  if (!form) return;
+  form.teacher = hit;
+  form.duplicate = findDuplicateRoom(hit.label);
+  renderTeacherResults();
+  if (teacherRoomFlow) teacherRoomFlow.sync();
+}
+
+function teacherHitRow(hit) {
+  const form = state.teacherRoom;
+  const chosen = !!(form.teacher && form.teacher.value === hit.value);
+  const lines = [iservText("b", {}, hit.label)];
+  if (hit.extra) lines.push(iservText("small", {}, hit.extra));
+  return el("button", {
+    class: "opt",
+    type: "button",
+    "aria-pressed": String(chosen),
+    onclick: () => chooseTeacher(hit),
+  }, [el("span", {}, lines)]);
+}
+
+function teacherResultNodes() {
+  const form = state.teacherRoom;
+  if (!form) return [];
+  if (form.searching) return [loadingBlock()];
+  if (form.failed) {
+    return [emptyBlock("alert", t("messenger.create.search.failed.title"), t("messenger.create.search.failed.text"))];
+  }
+  if (!form.allowed) {
+    return [emptyBlock("alert", t("messenger.create.search.forbidden.title"), t("messenger.create.search.forbidden.text"))];
+  }
+  if (form.results === null) {
+    return [emptyBlock("search", t("messenger.create.search.start.title"), t("messenger.create.search.start.text"))];
+  }
+  if (!form.results.length) {
+    return [emptyBlock("search", t("messenger.create.search.empty.title"), t("messenger.create.search.empty.text"))];
+  }
+  return [el("div", { class: "sw-list" }, form.results.map(teacherHitRow))];
+}
+
+function renderTeacherResults() {
+  if (!teacherResultsHost) return;
+  teacherResultsHost.replaceChildren(...teacherResultNodes());
+}
+
+function teacherSearchField() {
+  const form = state.teacherRoom;
+  const input = el("input", {
+    class: "search-input",
+    type: "search",
+    dir: "auto",
+    value: form.query || "",
+    placeholder: t("messenger.create.search.placeholder"),
+    "aria-label": t("messenger.create.search.placeholder"),
+    autocomplete: "off",
+    autocapitalize: "none",
+    spellcheck: "false",
+  });
+  input.addEventListener("input", () => queueTeacherSearch(input.value));
+  return el("div", { class: "search-field" }, [input]);
+}
+
+function toggleTeacherRoomChild(childId, on) {
+  const form = state.teacherRoom;
+  const kept = form.childIds.filter((value) => value !== childId);
+  form.childIds = on ? kept.concat([childId]) : kept;
+}
+
+function teacherRoomChildRow(child) {
+  const form = state.teacherRoom;
+  const box = el("input", { type: "checkbox" });
+  box.checked = form.childIds.includes(child.child_id);
+  box.addEventListener("change", () => {
+    toggleTeacherRoomChild(child.child_id, box.checked);
+    if (teacherRoomFlow) teacherRoomFlow.sync();
+  });
+  return el("label", { class: "cell check" }, [box, iservText("span", {}, overviewChildLabel(child))]);
+}
+
+function teacherRoomParentsField() {
+  const form = state.teacherRoom;
+  const box = el("input", { type: "checkbox" });
+  box.checked = !!form.addOtherParents;
+  box.addEventListener("change", () => {
+    form.addOtherParents = box.checked;
+  });
+  return el("div", { class: "field-group" }, [
+    el("label", { class: "cell check" }, [box, el("span", {}, t("messenger.create.parents.label"))]),
+    el("p", { class: "hint" }, t("messenger.create.parents.origin")),
+  ]);
+}
+
+function teacherRoomChildNames() {
+  const form = state.teacherRoom;
+  return state.children
+    .filter((child) => form.childIds.includes(child.child_id))
+    .map((child) => child.name || "")
+    .filter(Boolean)
+    .join(", ");
+}
+
+function teacherRoomReviewBody() {
+  const form = state.teacherRoom;
+  return el("div", { class: "sw-review" }, [
+    el("div", { class: "create-name" }, [iservText("b", {}, form.teacher ? form.teacher.label : "")]),
+    factList([
+      [t("messenger.create.review.children"), teacherRoomChildNames()],
+      [
+        t("messenger.create.review.parents"),
+        t(form.addOtherParents ? "messenger.create.review.parents.yes" : "messenger.create.review.parents.no"),
+      ],
+    ]),
+    el("p", { class: "hint" }, t("messenger.create.parents.origin")),
+  ]);
+}
+
+function openDuplicateRoom() {
+  const form = state.teacherRoom;
+  const room = form && form.duplicate;
+  if (!room) return;
+  closeTeacherRoom();
+  setView("messenger");
+  openMessengerRoom(room);
+}
+
+const TEACHER_ROOM_STEPS = {
+  teacher(form) {
+    teacherResultsHost = el("div", { class: "sw-results" });
+    window.setTimeout(renderTeacherResults, 0);
+    return {
+      list: true,
+      question: t("messenger.create.step.teacher"),
+      body: [teacherSearchField(), teacherResultsHost],
+      block: form.teacher ? "" : t("messenger.create.block.teacher"),
+    };
+  },
+  children(form) {
+    return {
+      list: true,
+      question: t("messenger.create.step.children"),
+      body: [el("div", { class: "field-group" }, state.children.map(teacherRoomChildRow))],
+      block: form.childIds.length ? "" : t("messenger.create.block.children"),
+    };
+  },
+  parents() {
+    return {
+      question: t("messenger.create.step.parents"),
+      body: [teacherRoomParentsField()],
+    };
+  },
+  duplicate(form) {
+    const room = form.duplicate;
+    return {
+      question: t("messenger.create.step.duplicate"),
+      body: [
+        el("div", { class: "sw-review" }, [
+          el("div", { class: "create-name" }, [iservText("b", {}, room ? room.name || "" : "")]),
+          el("p", { class: "dlg-text" }, t("messenger.create.duplicate.text")),
+          el("button", { class: "btn", type: "button", onclick: openDuplicateRoom }, t("messenger.create.duplicate.open")),
+        ]),
+      ],
+      nextLabel: t("messenger.create.duplicate.continue"),
+    };
+  },
+  review(form) {
+    return {
+      question: t("messenger.create.step.review"),
+      body: [teacherRoomReviewBody()],
+      hint: t("messenger.create.review.warning", { name: form.teacher ? form.teacher.label : "" }),
+      nextLabel: t("messenger.create.submit"),
+      busyLabel: t("common.sending"),
+      danger: true,
+      onNext: submitTeacherRoom,
+    };
+  },
+};
+
+function teacherRoomStep(id) {
+  const form = state.teacherRoom;
+  if (!form) return { question: "", body: [], nextLabel: "" };
+  const builder = TEACHER_ROOM_STEPS[id];
+  if (!builder) return { question: "", body: [], nextLabel: t("common.next") };
+  const step = builder(form);
+  if (!step.nextLabel) step.nextLabel = t("common.next");
+  return step;
+}
+
+async function submitTeacherRoom() {
+  const form = state.teacherRoom;
+  if (!form || !form.teacher) return t("messenger.create.block.teacher");
+  let result = null;
+  try {
+    result = await postJson("api/messenger/room/teacher", {
+      teacher: form.teacher.value,
+      child_ids: form.childIds,
+      add_other_parents: !!form.addOtherParents,
+    }, TEACHER_ROOM_TIMEOUT_MS);
+  } catch (error) {
+    if (handleApiFailure(error)) return false;
+    result = null;
+  }
+  if (state.teacherRoom !== form) return false;
+  if (!result || !result.ok) return teacherRoomFailure(form, result);
+  return finishTeacherRoom(form, result);
+}
+
+async function teacherRoomFailure(form, result) {
+  const message = apiMessage(result, "api.messenger.room.failed");
+  await loadMessengerRooms();
+  if (state.teacherRoom !== form) return false;
+  form.duplicate = findDuplicateRoom(form.teacher.label);
+  if (form.duplicate) return { step: "duplicate" };
+  return message;
+}
+
+async function finishTeacherRoom(form, result) {
+  const roomId = result.room_id || "";
+  const message = apiMessage(result, "api.messenger.room.ok");
+  closeTeacherRoom();
+  await loadMessengerRooms();
+  const rooms = (state.messengerRooms && state.messengerRooms.rooms) || [];
+  const created = rooms.find((room) => room.room_id === roomId) || null;
+  setView("messenger");
+  if (created) openMessengerRoom(created);
+  toast(message);
+  return true;
 }
 
 async function loadConferences() {
@@ -7594,13 +8557,12 @@ function notifyName(service) {
 }
 
 function notifyLabel(service) {
-  if (!service || service === "persistent_notification.create") return t("settings.notify.ha");
   return notifyName(service) || service;
 }
 
 function notifyServicesSummaryLabel(services) {
   const list = services || [];
-  if (!list.length) return t("settings.notify.ha");
+  if (!list.length) return t("settings.notify.summary.none");
   if (list.length === 1) return notifyLabel(list[0]);
   return t("settings.notify.summary.more", {
     name: notifyLabel(list[0]),
@@ -7883,13 +8845,10 @@ const NOTIFY_EVENTS = [
   ["conferences", "settings.notify.event.conferences"],
 ];
 
-const DEFAULT_NOTIFY_SERVICE = "persistent_notification.create";
-
-const NOTIFY_CATEGORY_ORDER = ["mobile", "persistent", "group", "other"];
+const NOTIFY_CATEGORY_ORDER = ["mobile", "group", "other"];
 
 const NOTIFY_CATEGORY_KEYS = {
   mobile: "settings.notify.push",
-  persistent: "settings.notify.category.persistent",
   group: "settings.notify.category.group",
   other: "settings.notify.category.other",
 };
@@ -7902,15 +8861,74 @@ function notifySectionHead(key) {
   return el("div", { class: "section-head notify-head" }, [el("span", { class: "overline" }, t(key))]);
 }
 
+const NOTIFY_SEARCH_THRESHOLD = 6;
+
+function notifyPickerSheet(draft, options, testButton, onChange) {
+  let query = "";
+  const listHost = el("div", {});
+  const hitCount = el("span", { class: "search-hits" });
+  const matches = (entry) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return `${entry.name || ""} ${entry.service}`.toLowerCase().includes(needle);
+  };
+  const drawList = () => {
+    const shown = options.filter(matches);
+    hitCount.textContent = query.trim() ? tCount("common.hits", shown.length) : "";
+    if (!shown.length) {
+      listHost.replaceChildren(emptyBlock("search", t("settings.notify.picker.emptyTitle"), t("settings.notify.picker.emptyText")));
+      return;
+    }
+    const blocks = [];
+    for (const category of NOTIFY_CATEGORY_ORDER) {
+      const entries = shown.filter((entry) => (entry.category || "other") === category);
+      if (!entries.length) continue;
+      blocks.push(notifySectionHead(notifyCategoryKey(category)));
+      blocks.push(el("div", { class: "field-group notify-services-group", "data-category": category },
+        entries.map((entry) => {
+          const label = entry.name || entry.service;
+          const check = el("input", { type: "checkbox" });
+          check.checked = draft.services.includes(entry.service);
+          check.addEventListener("change", () => {
+            draft.services = check.checked
+              ? draft.services.concat(entry.service).filter((value, index, all) => all.indexOf(value) === index)
+              : draft.services.filter((value) => value !== entry.service);
+            onChange();
+          });
+          return el("div", { class: "cell notify-row" }, [
+            el("label", { class: "check notify-pick" }, [
+              check,
+              el("span", { class: "notify-text" }, [
+                iservText("b", {}, label),
+                entry.name ? el("small", { class: "notify-id", dir: "ltr" }, entry.service) : null,
+              ]),
+            ]),
+            testButton(entry.service, label),
+          ]);
+        })
+      ));
+    }
+    listHost.replaceChildren(...blocks);
+  };
+  drawList();
+  const body = [];
+  if (options.length >= NOTIFY_SEARCH_THRESHOLD) {
+    body.push(searchField("", t("settings.notify.picker.search"), (value) => {
+      query = value;
+      drawList();
+    }, hitCount));
+  }
+  body.push(listHost);
+  return sheet(t("settings.notify.picker.sheet"), body);
+}
+
 function notifySheet() {
   const draft = sheetState(() => ({
     services: copy(state.config.notify_services || []),
     events: copy(state.config.notify_events || {}),
-    advanced: false,
     testing: null,
   }));
-  const options = notifyOptions().filter((entry) => entry.service !== DEFAULT_NOTIFY_SERVICE);
-  const known = options.map((entry) => entry.service);
+  const options = notifyOptions().filter((entry) => entry.category !== "persistent");
   const supervisorKnown = state.notifySupervisor !== null;
   const supervisorOk = state.notifySupervisor === true;
 
@@ -7956,98 +8974,34 @@ function notifySheet() {
     return button;
   };
 
-  const targetRow = (service, title, hint, trailing) => {
-    const check = el("input", { type: "checkbox" });
-    check.checked = draft.services.includes(service);
-    check.addEventListener("change", () => toggleService(service, check.checked));
-    return el("div", { class: "cell notify-row" }, [
-      el("label", { class: "check notify-pick" }, [
-        check,
-        el("span", { class: "notify-text" }, [
-          el("b", {}, title),
-          hint ? el("small", { class: "notify-id" }, hint) : null,
-        ]),
-      ]),
-      trailing || null,
-    ]);
-  };
-
-  const defaultGroup = el("div", { class: "field-group notify-default-group" }, [
-    targetRow(
-      DEFAULT_NOTIFY_SERVICE,
-      t("settings.notify.default.title"),
-      t("settings.notify.default.hint"),
-      testButton(DEFAULT_NOTIFY_SERVICE, t("settings.notify.default.title"))
-    ),
-  ]);
-
-  const categoryBlocks = [];
-  for (const category of NOTIFY_CATEGORY_ORDER) {
-    const entries = options.filter((entry) => (entry.category || "other") === category);
-    if (!entries.length) continue;
-    categoryBlocks.push(notifySectionHead(notifyCategoryKey(category)));
-    categoryBlocks.push(el("div", { class: "field-group notify-services-group", "data-category": category },
-      entries.map((entry) => {
-        const label = entry.name || entry.service;
-        return targetRow(entry.service, label, entry.name ? entry.service : null, testButton(entry.service, label));
-      })
-    ));
-  }
-
-  const manualHead = notifySectionHead("settings.notify.category.manual");
-  const manualGroup = el("div", { class: "field-group notify-manual-group" });
-  const drawManual = () => {
-    const manual = draft.services.filter((value) => value !== DEFAULT_NOTIFY_SERVICE && !known.includes(value));
-    manualHead.hidden = !manual.length;
-    manualGroup.hidden = !manual.length;
-    manualGroup.replaceChildren(...manual.map((value) => el("div", { class: "cell notify-row" }, [
-      el("span", { class: "notify-text notify-manual-name", dir: "ltr" }, value),
-      testButton(value, value),
-      el("button", {
-        class: "icon-btn notify-remove",
+  const chipsHost = el("div", { class: "chipbar notify-chips" });
+  const drawChips = () => {
+    if (!draft.services.length) {
+      chipsHost.replaceChildren(el("p", { class: "dlg-text notify-empty" }, t("settings.notify.targets.empty")));
+      return;
+    }
+    chipsHost.replaceChildren(...draft.services.map((service) => {
+      const label = notifyLabel(service);
+      return el("button", {
+        class: "chip notify-chip",
         type: "button",
-        "aria-label": t("settings.notify.remove", { value }),
-        onclick: () => { draft.services = draft.services.filter((entry) => entry !== value); drawManual(); },
-      }, [icon("trash", 16)]),
-    ])));
+        "aria-label": t("settings.notify.targets.remove", { name: label }),
+        onclick: () => {
+          toggleService(service, false);
+          drawChips();
+        },
+      }, [iservText("span", {}, label), el("span", { class: "ico-slot", html: iconSvg("close", 14) })]);
+    }));
   };
-  drawManual();
+  drawChips();
 
-  const addInput = el("input", {
-    class: "inp",
-    type: "text",
-    dir: "ltr",
-    placeholder: t("settings.notify.add.placeholder"),
-    autocomplete: "off",
-    "aria-label": t("settings.notify.add.label"),
-  });
-  const addEntity = () => {
-    const value = addInput.value.trim();
-    if (!value) return;
-    if (!draft.services.includes(value)) draft.services = draft.services.concat(value);
-    addInput.value = "";
-    drawManual();
-  };
-  addInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") { event.preventDefault(); addEntity(); }
-  });
-  const addButton = el("button", { class: "btn ghost slim", type: "button", onclick: addEntity }, [icon("plus", 16), t("settings.notify.add.button")]);
-  const advancedPanel = el("div", { class: "notify-advanced" }, [
-    el("p", { class: "dlg-text" }, t("settings.notify.advanced.hint")),
-    el("div", { class: "field-group" }, [el("div", { class: "cell stack" }, [addInput, addButton])]),
-  ]);
-  advancedPanel.hidden = !draft.advanced;
-  const advancedToggle = el("button", {
-    class: "btn ghost slim notify-advanced-toggle",
+  const openPicker = () => openNestedSheet(() => notifyPickerSheet(draft, options, testButton, drawChips));
+  const pickButton = el("button", {
+    class: "btn ghost slim notify-pick-open",
     type: "button",
-    "aria-expanded": String(!!draft.advanced),
-  }, [icon("plus", 16), t("settings.notify.advanced")]);
-  advancedToggle.addEventListener("click", () => {
-    draft.advanced = !draft.advanced;
-    advancedPanel.hidden = !draft.advanced;
-    advancedToggle.setAttribute("aria-expanded", String(draft.advanced));
-    if (draft.advanced) addInput.focus();
-  });
+    disabled: options.length ? null : "disabled",
+    onclick: openPicker,
+  }, [icon("plus", 16), t("settings.notify.targets.add")]);
 
   let emptyHint = null;
   if (!supervisorKnown) {
@@ -8060,15 +9014,10 @@ function notifySheet() {
   else if (!options.length) emptyHint = el("p", { class: "dlg-text" }, t("settings.notify.noTargets"));
 
   const body = [
-    notifySectionHead("settings.notify.where"),
-    el("p", { class: "dlg-text" }, t("settings.notify.both")),
-    defaultGroup,
-    ...categoryBlocks,
+    notifySectionHead("settings.notify.targets"),
+    chipsHost,
+    pickButton,
     emptyHint,
-    manualHead,
-    manualGroup,
-    advancedToggle,
-    advancedPanel,
     notifySectionHead("settings.notify.events"),
     el("div", { class: "field-group" }, NOTIFY_EVENTS.map(([key, label]) => {
       const check = el("input", { type: "checkbox" });

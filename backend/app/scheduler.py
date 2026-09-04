@@ -14,7 +14,10 @@ def _make_notifier(store, event="timetable"):
         config = store.load_config()
         if not config.get("notify_events", {}).get(event, True):
             return False
-        services = config.get("notify_services") or [None]
+        services = [value for value in (config.get("notify_services") or []) if value]
+        if not services:
+            logger.info("no notification target configured, %s push skipped", event)
+            return False
         sent_any = False
         for service in services:
             try:

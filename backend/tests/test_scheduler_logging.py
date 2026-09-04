@@ -1,6 +1,8 @@
 import logging
 import threading
 
+import pytest
+
 from app import scheduler
 from app.store import Store
 
@@ -24,6 +26,32 @@ def test_poll_cycle_failure_is_logged(caplog, monkeypatch):
         thread = scheduler.start_poller(BoomService(), interval_seconds=0)
         thread.join(timeout=2)
     assert "poll cycle failed" in caplog.text
+
+
+def test_make_notifier_without_a_target_sends_nothing(tmp_path, monkeypatch):
+    store = Store(tmp_path / "data")
+    store.save_config({"notify_services": []})
+
+    monkeypatch.setattr(
+        scheduler, "notify", lambda *a, **k: pytest.fail("must not push without a target")
+    )
+
+    send = scheduler._make_notifier(store)
+
+    assert send("child", "hello") is False
+
+
+def test_make_notifier_ignores_blank_targets(tmp_path, monkeypatch):
+    store = Store(tmp_path / "data")
+    store.save_config({"notify_services": ["", None]})
+
+    monkeypatch.setattr(
+        scheduler, "notify", lambda *a, **k: pytest.fail("must not push without a target")
+    )
+
+    send = scheduler._make_notifier(store)
+
+    assert send("child", "hello") is False
 
 
 def test_make_notifier_delivers_to_remaining_service_when_one_fails(tmp_path, monkeypatch):

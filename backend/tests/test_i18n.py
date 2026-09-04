@@ -9,7 +9,13 @@ BASE_LANGUAGE = "de"
 LANGUAGES = ("de", "en", "ar", "tr", "ru", "uk")
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
-SCANNED_FILES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js")
+SCANNED_FILES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
+VENDOR_EXEMPT_PATHS = ("frontend/vendor",)
+
+
+def is_vendor_exempt(path):
+    relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
+    return any(relative == prefix or relative.startswith(prefix + "/") for prefix in VENDOR_EXEMPT_PATHS)
 STRING_LITERAL = re.compile(
     r'"(?:[^"\\\n]|\\.)*"'
     r"|'(?:[^'\\\n]|\\.)*'"
@@ -123,6 +129,8 @@ def find_hardcoded_german():
     offenders = []
     for name in SCANNED_FILES:
         path = FRONTEND / name
+        if is_vendor_exempt(path):
+            continue
         text = path.read_text(encoding="utf-8")
         for match in STRING_LITERAL.finditer(text):
             literal = match.group(0)
@@ -182,7 +190,7 @@ def test_index_html_static_translation_hooks_resolve():
     assert [key for key in keys if key not in base] == []
 
 
-STYLESHEETS = ("styles.css", "wizard.css")
+STYLESHEETS = ("styles.css", "wizard.css", "pdfviewer.css")
 PHYSICAL_PROPERTY = re.compile(
     r"(?<![\w-])(margin|padding|border)-(left|right)\s*:"
     r"|(?<![\w-])text-align\s*:\s*(left|right)\b"
@@ -198,7 +206,7 @@ CENTERED_BARS = {
     ".tabbar": "one centred bar, left: 50% plus translateX(-50%), symmetric in both directions",
 }
 
-JS_SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js")
+JS_SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
 JS_PHYSICAL_STYLE = re.compile(
     r"style\s*:\s*[\"'`][^\"'`]*?(?<![\w-])(left|right|float)\s*:"
     r"|\.style\.(left|right|marginLeft|marginRight|paddingLeft|paddingRight|borderLeft|borderRight|float|boxShadow|textAlign)\s*="
@@ -294,3 +302,13 @@ def test_the_stylesheet_mirrors_every_direction_sensitive_class_it_defines():
     css = (FRONTEND / "styles.css").read_text(encoding="utf-8")
     for selector in (".chev-prev", ".chev-next", ".chev-toggle", ".header-back", ".swap .arrow"):
         assert f'[dir="rtl"] {selector}' in css, f"{selector} has no right-to-left counterpart"
+
+
+def test_the_vendor_exemption_covers_only_the_vendor_directory():
+    assert VENDOR_EXEMPT_PATHS == ("frontend/vendor",)
+    assert is_vendor_exempt(FRONTEND / "vendor" / "pdfjs" / "pdf.mjs")
+    assert is_vendor_exempt(FRONTEND / "vendor" / "readme.md")
+    assert not is_vendor_exempt(FRONTEND / "app.js")
+    assert not is_vendor_exempt(FRONTEND / "vendored.js")
+    assert not is_vendor_exempt(ROOT / "backend" / "vendor" / "pdf.mjs")
+    assert find_hardcoded_german() == []

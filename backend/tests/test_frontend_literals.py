@@ -11,7 +11,13 @@ from tests.test_frontend_direction import (
 )
 
 BUNDLE = json.loads((FRONTEND / "i18n" / "de.json").read_text(encoding="utf-8"))
-SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js")
+SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
+VENDOR_EXEMPT_PATHS = ("frontend/vendor",)
+
+
+def is_vendor_exempt(path):
+    relative = path.resolve().relative_to(FRONTEND.parent.resolve()).as_posix()
+    return any(relative == prefix or relative.startswith(prefix + "/") for prefix in VENDOR_EXEMPT_PATHS)
 
 TEXT_LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'")
 TEMPLATE_WITH_HOLE = re.compile(r"`(?:[^`\\]|\\.)*\$\{", re.S)
@@ -33,13 +39,19 @@ COUNT_INDEPENDENT_KEYS = {
     "settings.subjects.count": "the sentence names no counted noun, only the bare number",
     "settings.teachers.count": "the sentence names no counted noun, only the bare number",
     "common.badge.overflow": "the badge cap is always the same nine, the plus sign carries the rest",
+    "nav.unread": "a spoken tab label that names the area and the bare number, no counted noun is inflected",
+    "post.segment.unread": "a spoken segment label that names the area and the bare number, no counted noun is inflected",
 }
 
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
 
 def sources():
-    return [FRONTEND / name for name in SOURCES if (FRONTEND / name).is_file()]
+    return [
+        FRONTEND / name
+        for name in SOURCES
+        if (FRONTEND / name).is_file() and not is_vendor_exempt(FRONTEND / name)
+    ]
 
 
 def plural_families():
@@ -207,3 +219,12 @@ def test_the_number_scanner_flags_a_planted_cast():
     assert number_children("app.js", 'el("span", {}, items.length)')
     assert number_children("app.js", 'el("span", {}, formatNumber(count))') == []
     assert number_children("app.js", 'el("span", { "aria-pressed": String(active) }, label)') == []
+
+
+def test_the_vendor_exemption_covers_only_the_vendor_directory():
+    assert VENDOR_EXEMPT_PATHS == ("frontend/vendor",)
+    assert is_vendor_exempt(FRONTEND / "vendor" / "pdfjs" / "pdf.mjs")
+    assert is_vendor_exempt(FRONTEND / "vendor" / "readme.md")
+    assert not is_vendor_exempt(FRONTEND / "app.js")
+    assert not is_vendor_exempt(FRONTEND / "vendored.js")
+    assert not is_vendor_exempt(FRONTEND.parent / "backend" / "vendor" / "pdf.mjs")
