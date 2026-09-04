@@ -43,7 +43,7 @@ describe("[P100-BUG] overviewToday renders every lesson as a tile", () => {
     expect(section.querySelector(".lead")).toBeNull();
     const tiles = section.querySelectorAll(".rows.flat .row");
     expect(tiles.length).toBe(4);
-    expect(tiles[0].classList.contains("next")).toBe(true);
+    expect(tiles[0].classList.contains("next")).toBe(false);
     expect(tiles[1].classList.contains("next")).toBe(false);
   });
 
@@ -79,7 +79,7 @@ describe("[P100-BUG] overviewToday renders every lesson as a tile", () => {
     expect(button.textContent).toBe("Zum Stundenplan");
   });
 
-  test("[P178] with configured period times the head link becomes the end of the school day", () => {
+  test("[P207] the head keeps the timetable link and never shows an end time", () => {
     const { window } = loadApp();
     const week = {
       lessons: [
@@ -90,7 +90,36 @@ describe("[P100-BUG] overviewToday renders every lesson as a tile", () => {
     };
     const section = renderOverviewTodayAt(window, "2026-09-01T06:00:00", week, { 1: "08:00", 2: "08:50" });
     const button = section.querySelector(".panel-head .panel-link");
-    expect(button.textContent).toBe("bis 09:35");
+    expect(button.textContent).toBe("Zum Stundenplan");
+    expect(section.textContent).not.toContain("bis ");
+  });
+
+  test("[P207] only the last lesson shows a span, the earlier ones keep their start time", () => {
+    const { window } = loadApp();
+    const week = {
+      lessons: [
+        { day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D" },
+        { day_of_week: 2, period: 2, start_time: "08:50", subject_code: "M" },
+      ],
+      period_times: {},
+    };
+    const section = renderOverviewTodayAt(window, "2026-09-01T06:00:00", week, { 1: "08:00", 2: "08:50" });
+    const metas = [...section.querySelectorAll(".rows.flat .row .row-meta")].map((node) => node.textContent);
+    expect(metas).toEqual(["08:00", "08:50–09:35"]);
+  });
+
+  test("[P207] a cancelled last lesson moves the span to the last lesson that still happens", () => {
+    const { window } = loadApp();
+    const week = {
+      lessons: [
+        { day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D" },
+        { day_of_week: 2, period: 2, start_time: "08:50", subject_code: "M", change_kind: "cancelled" },
+      ],
+      period_times: {},
+    };
+    const section = renderOverviewTodayAt(window, "2026-09-01T06:00:00", week, { 1: "08:00", 2: "08:50" });
+    const metas = [...section.querySelectorAll(".rows.flat .row .row-meta")].map((node) => node.textContent);
+    expect(metas).toEqual(["08:00–08:45", "08:50"]);
   });
 });
 

@@ -157,50 +157,62 @@ describe("[P197] an in-app overlay opens for images and PDFs, everything else do
   });
 });
 
-describe("[P197] the pdf overlay renders inline, but falls back to a download on failure", () => {
-  test("a pdf that loads a real document stays in the overlay and is never downloaded", async () => {
+describe("[P216] the pdf overlay renders every page in one scrolling column", () => {
+  test("the overlay hands the pdf to the vendored viewer instead of an iframe", async () => {
     const { window } = loadApp();
+    const created = [];
+    window.PdfViewer.create = (options) => {
+      created.push(options);
+      return {
+        node: window.document.createElement("div"),
+        ready: Promise.resolve({ ok: true, pages: 3 }),
+        destroy() {},
+        rescale() {},
+      };
+    };
     mockBlobResponse(window, { type: "application/pdf" });
-    const downloads = trackDownloads(window);
     tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
     await settle(window);
-    const frame = window.document.querySelector(".viewer-overlay .viewer-pdf");
-    expect(frame).toBeTruthy();
-    expect(frame.getAttribute("src")).toBe("blob:mock-url");
-    window.pdfFrameIsEmpty = () => false;
-    frame.dispatchEvent(new window.Event("load"));
-    await new Promise((resolve) => window.setTimeout(resolve, 400));
-    expect(window.document.querySelector(".viewer-overlay .viewer-pdf")).toBeTruthy();
-    expect(downloads).toEqual([]);
+    expect(window.document.querySelector(".viewer-overlay iframe")).toBeNull();
+    expect(created.length).toBe(1);
+    expect(created[0].url).toBe("blob:mock-url");
   });
 
-  test("a pdf whose document stays empty after load falls back to a download and a friendly toast", async () => {
+  test("a broken pdf falls back to a download and a friendly toast", async () => {
     const { window } = loadApp();
-    mockBlobResponse(window, { type: "application/pdf" });
     const downloads = trackDownloads(window);
+    window.PdfViewer.create = (options) => {
+      window.setTimeout(() => options.onError(), 0);
+      return {
+        node: window.document.createElement("div"),
+        ready: Promise.resolve({ ok: false, error: "broken" }),
+        destroy() {},
+        rescale() {},
+      };
+    };
+    mockBlobResponse(window, { type: "application/pdf" });
     tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
     await settle(window);
-    const frame = window.document.querySelector(".viewer-overlay .viewer-pdf");
-    expect(frame).toBeTruthy();
-    window.pdfFrameIsEmpty = () => true;
-    frame.dispatchEvent(new window.Event("load"));
-    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
     expect(window.document.querySelector(".viewer-overlay")).toBeNull();
     expect(downloads).toEqual([{ href: "blob:mock-url", download: "Elternbrief.pdf" }]);
-    expect(window.eval("state.toast && state.toast.kind")).toBe("good");
   });
 
-  test("a pdf that never fires a load event within the timeout falls back to a download", async () => {
+  test("closing the overlay tears the viewer down so nothing keeps rendering", async () => {
     const { window } = loadApp();
+    let destroyed = 0;
+    window.PdfViewer.create = () => ({
+      node: window.document.createElement("div"),
+      ready: Promise.resolve({ ok: true, pages: 2 }),
+      destroy() { destroyed += 1; },
+      rescale() {},
+    });
     mockBlobResponse(window, { type: "application/pdf" });
-    const downloads = trackDownloads(window);
     tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
     await settle(window);
-    expect(window.document.querySelector(".viewer-overlay .viewer-pdf")).toBeTruthy();
-    await new Promise((resolve) => window.setTimeout(resolve, 5300));
-    expect(window.document.querySelector(".viewer-overlay")).toBeNull();
-    expect(downloads).toEqual([{ href: "blob:mock-url", download: "Elternbrief.pdf" }]);
-  }, 8000);
+    window.document.querySelector(".viewer-close").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(destroyed).toBe(1);
+  });
 });
 
 describe("[P197] the overlay closes cleanly and gives focus back", () => {
@@ -287,5 +299,96 @@ describe("[P150/P191] structural tripwire: no target=_blank on our own api paths
     const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
     expect(source).toContain("URL.createObjectURL(blob)");
     expect(source).not.toMatch(/src:\s*["'`]https?:/);
+  });
+});
+
+describe("[R2-5/6] the pdf overlay survives rerenders and cleans up when it fails", () => {
+  function stubViewer(window, record) {
+    window.PdfViewer.create = () => {
+      const node = window.document.createElement("div");
+      node.className = "pdfv";
+      record.node = node;
+      return {
+        node,
+        ready: Promise.resolve({ ok: true, pages: 2 }),
+        destroy() { record.destroyed = (record.destroyed || 0) + 1; },
+        rescale() {},
+      };
+    };
+  }
+
+  test("a rerender while a pdf is open never detaches the viewer node", async () => {
+    const { window } = loadApp();
+    const record = {};
+    stubViewer(window, record);
+    mockBlobResponse(window, { type: "application/pdf" });
+    tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
+    await settle(window);
+
+    const before = record.node.parentElement;
+    expect(before).toBeTruthy();
+    expect(window.document.querySelector(".viewer-overlay")).toBeTruthy();
+
+    window.eval("rerender();");
+    window.eval("rerender();");
+
+    expect(record.node.parentElement).toBe(before);
+    expect(record.node.isConnected).toBe(true);
+    expect(record.destroyed || 0).toBe(0);
+    expect(window.document.querySelectorAll(".viewer-overlay").length).toBe(1);
+  });
+
+  test("the overlay lives outside the rerendered app tree", async () => {
+    const { window } = loadApp();
+    const record = {};
+    stubViewer(window, record);
+    mockBlobResponse(window, { type: "application/pdf" });
+    tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
+    await settle(window);
+
+    const overlay = window.document.querySelector(".viewer-overlay");
+    const app = window.document.getElementById("app");
+    expect(app.contains(overlay)).toBe(false);
+    expect(overlay.parentElement).toBe(window.document.body);
+  });
+
+  test("closing after a rerender still tears the viewer down exactly once", async () => {
+    const { window } = loadApp();
+    const record = {};
+    stubViewer(window, record);
+    mockBlobResponse(window, { type: "application/pdf" });
+    tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
+    await settle(window);
+
+    window.eval("rerender();");
+    window.document.querySelector(".viewer-close").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+    expect(record.destroyed).toBe(1);
+    expect(window.document.querySelector(".viewer-overlay")).toBeNull();
+  });
+
+  test("a failed pdf destroys the viewer instead of leaking it", async () => {
+    const { window } = loadApp();
+    const record = {};
+    window.PdfViewer.create = (options) => {
+      const node = window.document.createElement("div");
+      record.node = node;
+      window.setTimeout(() => options.onError(), 0);
+      return {
+        node,
+        ready: Promise.resolve({ ok: false, error: "broken" }),
+        destroy() { record.destroyed = (record.destroyed || 0) + 1; },
+        rescale() {},
+      };
+    };
+    mockBlobResponse(window, { type: "application/pdf" });
+    trackDownloads(window);
+    tapAttachment(window, { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" });
+    await settle(window);
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+    expect(record.destroyed).toBe(1);
+    expect(window.document.querySelector(".viewer-overlay")).toBeNull();
+    expect(record.node.isConnected).toBe(false);
   });
 });

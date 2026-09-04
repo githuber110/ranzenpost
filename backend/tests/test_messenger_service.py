@@ -8,27 +8,52 @@ from app.messenger import MessengerService
 BASE = "https://school.example"
 BOOTSTRAP_HTML = (
     "<html><body><script>"
-    '{"messenger_authentication":{"access_token":"tok-1","device_id":"dev-1",'
+    '{"messenger_user_privileges":{"canCreateRoom":false,"canWriteToTeacher":true},'
+    '"messenger_authentication":{"access_token":"tok-1","device_id":"dev-1",'
     '"home_server":"srv-1","user_id":"@me:srv-1","iserv_token":"it-1","iserv_cryptkey":"ck-1"}}'
     "</script></body></html>"
+)
+KNOWN_PRIVILEGES = {"messenger_privileges_known": "1", "messenger_can_write_to_teacher": "1"}
+TEACHER_FORM_HTML = (
+    '<html><body><form method="post">'
+    '<input name="teacher_room[_token]" value="csrf-9">'
+    '<input name="teacher_room[teacher_id]" value="">'
+    "</form></body></html>"
 )
 
 
 class FakePage:
-    def __init__(self, status_code=200, text=""):
+    def __init__(self, status_code=200, text="", url="", json_data=None, headers=None):
         self.status_code = status_code
         self.text = text
+        self.url = url
+        self.headers = headers or {}
+        self._json = json_data
+
+    def json(self):
+        if self._json is None:
+            raise ValueError("no json")
+        return self._json
 
 
 class FakeIServClient:
-    def __init__(self, base_url=BASE, page=None):
+    def __init__(self, base_url=BASE, page=None, pages=None, posted=None):
         self.base_url = base_url
         self.page = page or FakePage(200, BOOTSTRAP_HTML)
+        self.pages = pages or {}
+        self.posted = posted
         self.fetched_paths = []
+        self.fetched_params = []
+        self.posts = []
 
-    def fetch(self, path):
+    def fetch(self, path, params=None):
         self.fetched_paths.append(path)
-        return self.page
+        self.fetched_params.append(params)
+        return self.pages.get(path, self.page)
+
+    def post_absolute(self, url, data, timeout=30):
+        self.posts.append((url, data))
+        return self.posted or FakePage(200, "")
 
 
 class FakeIServ:
@@ -126,7 +151,13 @@ def test_the_bootstrap_page_is_fetched_through_the_normal_iserv_session():
 
 
 def test_a_stored_token_is_reused_without_a_fresh_bootstrap_fetch():
-    store = DictStore({"messenger_access_token": "cached-tok", "messenger_home_server": "srv-1"})
+    store = DictStore(
+        dict(
+            KNOWN_PRIVILEGES,
+            messenger_access_token="cached-tok",
+            messenger_home_server="srv-1",
+        )
+    )
     client = FakeIServClient()
     iserv = FakeIServ(store, client)
     tokens_seen = []
@@ -137,7 +168,7 @@ def test_a_stored_token_is_reused_without_a_fresh_bootstrap_fetch():
 
 
 def test_a_401_triggers_exactly_one_bootstrap_refresh_then_succeeds():
-    store = DictStore({"messenger_access_token": "stale-tok"})
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="stale-tok"))
     client = FakeIServClient()
     iserv = FakeIServ(store, client)
     tokens_seen = []
@@ -156,7 +187,7 @@ def test_a_401_triggers_exactly_one_bootstrap_refresh_then_succeeds():
 
     service = MessengerService(iserv, matrix_client_factory=factory)
     result = service.rooms()
-    assert result == {"rooms": [], "self_user_id": "@me:srv-1"}
+    assert result == {"rooms": [], "self_user_id": "@me:srv-1", "can_write_to_teacher": True}
     assert tokens_seen == ["stale-tok", "tok-1"]
     assert client.fetched_paths == ["/iserv/messenger/"]
 
@@ -251,7 +282,9 @@ def test_room_messages_forwards_the_before_token_and_builds_media_urls():
 
 
 def test_both_read_endpoints_name_the_own_matrix_user_so_the_ui_can_tell_the_sides_apart():
-    store = DictStore({"messenger_access_token": "tok-1", "messenger_user_id": "@me:srv"})
+    store = DictStore(
+        dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1", messenger_user_id="@me:srv")
+    )
     iserv = FakeIServ(store)
     plan = {
         "sync": FakeMatrixResponse(json_data={"rooms": {"join": {}}}),
@@ -291,3 +324,204 @@ def test_media_rejects_a_malformed_server_name_or_media_id():
         service.media("../etc", "media-1")
     with pytest.raises(DataError):
         service.media("school-server", "../../secret")
+
+
+def test_an_installation_without_a_stored_privilege_flag_learns_it_once():
+    store = DictStore({"messenger_access_token": "cached-tok"})
+    client = FakeIServClient()
+    iserv = FakeIServ(store, client)
+    service = MessengerService(iserv, matrix_client_factory=make_factory({}))
+    assert service.rooms()["can_write_to_teacher"] is True
+    assert client.fetched_paths == ["/iserv/messenger/"]
+    assert service.rooms()["can_write_to_teacher"] is True
+    assert client.fetched_paths == ["/iserv/messenger/"]
+
+
+def test_an_account_without_the_teacher_privilege_reports_it_to_the_ui():
+    page = FakePage(
+        200,
+        BOOTSTRAP_HTML.replace('"canWriteToTeacher":true', '"canWriteToTeacher":false'),
+    )
+    store = DictStore()
+    iserv = FakeIServ(store, FakeIServClient(page=page))
+    service = MessengerService(iserv, matrix_client_factory=make_factory({}))
+    assert service.rooms()["can_write_to_teacher"] is False
+
+
+def test_marking_a_room_read_sends_exactly_one_read_marker_for_the_named_event():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    iserv = FakeIServ(store)
+    markers = []
+
+    def factory(base_url, access_token):
+        matrix = FakeMatrixClient(base_url, access_token)
+        matrix.send_read_marker = lambda room_id, event_id: (
+            markers.append((room_id, event_id)) or FakeMatrixResponse(status_code=200)
+        )
+        return matrix
+
+    service = MessengerService(iserv, matrix_client_factory=factory)
+    result = service.mark_room_read("!room:school.example", "$evt-9")
+    assert result["ok"] is True
+    assert markers == [("!room:school.example", "$evt-9")]
+
+
+def test_marking_a_room_read_rejects_a_malformed_room_or_event_id():
+    from app.iserv.errors import DataError
+
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    service = MessengerService(FakeIServ(store), matrix_client_factory=make_factory({}))
+    with pytest.raises(DataError):
+        service.mark_room_read("not-a-room", "$evt-9")
+    with pytest.raises(DataError):
+        service.mark_room_read("!room:school.example", "evt-9")
+
+
+def test_the_teacher_search_forwards_the_query_and_keeps_the_value_untouched():
+    store = DictStore(KNOWN_PRIVILEGES)
+    page = FakePage(
+        200,
+        json_data=[
+            {"label": "Fr. Behrend", "value": "userid:11111111-2222-3333-4444-555555555555"},
+            {"label": "", "value": "userid:empty"},
+        ],
+    )
+    client = FakeIServClient(pages={"/iserv/messenger/autocomplete/teacher": page})
+    service = MessengerService(FakeIServ(store, client), matrix_client_factory=make_factory({}))
+    result = service.search_teachers("Beh")
+    assert client.fetched_paths == ["/iserv/messenger/autocomplete/teacher"]
+    assert client.fetched_params == [{"type": "userid", "query": "Beh"}]
+    assert result["teachers"] == [
+        {
+            "label": "Fr. Behrend",
+            "value": "userid:11111111-2222-3333-4444-555555555555",
+            "extra": "",
+        }
+    ]
+
+
+def test_an_empty_teacher_query_never_reaches_iserv():
+    store = DictStore(KNOWN_PRIVILEGES)
+    client = FakeIServClient()
+    service = MessengerService(FakeIServ(store, client), matrix_client_factory=make_factory({}))
+    assert service.search_teachers("  ") == {"teachers": [], "allowed": True}
+    assert client.fetched_paths == []
+
+
+def test_the_teacher_search_stays_shut_without_the_privilege():
+    store = DictStore({"messenger_privileges_known": "1", "messenger_can_write_to_teacher": ""})
+    client = FakeIServClient()
+    service = MessengerService(FakeIServ(store, client), matrix_client_factory=make_factory({}))
+    assert service.search_teachers("Beh") == {"teachers": [], "allowed": False}
+    assert client.fetched_paths == []
+
+
+def _teacher_room_service(store, posted, sync_plan=None):
+    form = FakePage(200, TEACHER_FORM_HTML, url=BASE + "/iserv/messenger/form/room/teacher_new")
+    client = FakeIServClient(
+        pages={"/iserv/messenger/form/room/teacher_new": form}, posted=posted
+    )
+    service = MessengerService(
+        FakeIServ(store, client),
+        matrix_client_factory=make_factory(sync_plan or {}),
+    )
+    service.sleeper = lambda seconds: None
+    return service, client
+
+
+def test_creating_a_teacher_room_pulls_a_fresh_token_and_posts_the_iserv_field_names():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    posted = FakePage(
+        200,
+        "",
+        json_data={"room_id": "!new:school.example"},
+        headers={"content-type": "application/json"},
+    )
+    sync = {
+        "sync": FakeMatrixResponse(json_data={"rooms": {"join": {"!new:school.example": {}}}})
+    }
+    service, client = _teacher_room_service(store, posted, sync)
+    result = service.create_teacher_room("userid:abc", ["child-1", "child-2"], True)
+    assert result["ok"] is True
+    assert result["room_id"] == "!new:school.example"
+    assert result["joined"] is True
+    url, data = client.posts[0]
+    assert url == BASE + "/iserv/messenger/form/room/teacher_new"
+    assert data == [
+        ("teacher_room[_token]", "csrf-9"),
+        ("teacher_room[teacher_id]", "userid:abc"),
+        ("teacher_room[add_other_parents]", "1"),
+        ("teacher_room[child_ids][]", "child-1"),
+        ("teacher_room[child_ids][]", "child-2"),
+    ]
+
+
+def test_the_parent_flag_travels_as_zero_when_the_box_stays_empty():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    posted = FakePage(
+        200,
+        "",
+        json_data={"room_id": "!new:school.example"},
+        headers={"content-type": "application/json"},
+    )
+    sync = {
+        "sync": FakeMatrixResponse(json_data={"rooms": {"join": {"!new:school.example": {}}}})
+    }
+    service, client = _teacher_room_service(store, posted, sync)
+    service.create_teacher_room("userid:abc", ["child-1"], False)
+    assert ("teacher_room[add_other_parents]", "0") in client.posts[0][1]
+
+
+def test_an_html_answer_is_a_generic_failure_and_never_parsed():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    posted = FakePage(200, "<html><form>error</form></html>", headers={"content-type": "text/html"})
+    service, _client = _teacher_room_service(store, posted)
+    result = service.create_teacher_room("userid:abc", ["child-1"], False)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.messenger.room.rejected"
+
+
+def test_json_without_a_room_id_counts_as_rejected():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    posted = FakePage(200, "", json_data={"ok": True}, headers={"content-type": "application/json"})
+    service, _client = _teacher_room_service(store, posted)
+    result = service.create_teacher_room("userid:abc", ["child-1"], False)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.messenger.room.rejected"
+
+
+def test_a_room_that_never_joins_within_the_timeout_ends_in_the_pending_way_out():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    posted = FakePage(
+        200,
+        "",
+        json_data={"room_id": "!new:school.example"},
+        headers={"content-type": "application/json"},
+    )
+    sync = {"sync": FakeMatrixResponse(json_data={"rooms": {"join": {}}})}
+    service, _client = _teacher_room_service(store, posted, sync)
+    ticks = iter([0.0, 5.0, 10.0, 20.0, 30.0, 40.0])
+    service.clock = lambda: next(ticks)
+    result = service.create_teacher_room("userid:abc", ["child-1"], False)
+    assert result["ok"] is True
+    assert result["joined"] is False
+    assert result["message_key"] == "api.messenger.room.pending"
+
+
+def test_creating_a_room_without_a_child_never_touches_the_network():
+    store = DictStore(dict(KNOWN_PRIVILEGES, messenger_access_token="tok-1"))
+    service, client = _teacher_room_service(store, None)
+    result = service.create_teacher_room("userid:abc", [], False)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.messenger.room.incomplete"
+    assert client.fetched_paths == []
+    assert client.posts == []
+
+
+def test_creating_a_room_without_the_privilege_never_touches_the_network():
+    store = DictStore({"messenger_privileges_known": "1", "messenger_can_write_to_teacher": ""})
+    service, client = _teacher_room_service(store, None)
+    result = service.create_teacher_room("userid:abc", ["child-1"], False)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.messenger.room.forbidden"
+    assert client.posts == []

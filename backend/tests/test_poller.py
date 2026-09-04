@@ -48,20 +48,55 @@ class PublisherRecorder:
 
 
 class NotifierRecorder:
-    def __init__(self):
+    def __init__(self, delivers=True):
         self.calls = []
+        self.delivers = delivers
 
     def __call__(self, name, message):
         self.calls.append({"name": name, "message": message})
+        return self.delivers
 
 
-def _timetable(last_updated, lessons=None, changes=None):
+def _timetable(
+    last_updated,
+    lessons=None,
+    changes=None,
+    start_date="2026-08-31",
+    end_date="2026-09-04",
+):
     return {
         "last_updated": last_updated,
-        "start_date": "2026-08-31",
-        "end_date": "2026-09-04",
+        "start_date": start_date,
+        "end_date": end_date,
         "lessons": lessons if lessons is not None else [],
         "changes": changes if changes is not None else [],
+    }
+
+
+def _display_lesson(
+    date="2026-08-31",
+    period=1,
+    subject_code="MA",
+    teacher_code="ABC",
+    room="R1",
+    color="#123456",
+    subject_label="Mathe",
+):
+    return {
+        "date": date,
+        "day_of_week": 1,
+        "period": period,
+        "start_time": "08:00",
+        "subject_code": subject_code,
+        "subject_label": subject_label,
+        "color": color,
+        "teacher_code": teacher_code,
+        "teacher_label": teacher_code,
+        "is_class_teacher": False,
+        "room": room,
+        "change_kind": "",
+        "changed_fields": [],
+        "previous": {"subject": "", "teacher": "", "room": ""},
     }
 
 
@@ -280,6 +315,7 @@ def test_bad_credentials_marker_resets_after_successful_poll_and_notifies_again(
     assert len(auth_notifier.calls) == 1
 
     poller.poll_once()
+    assert "auth_incident_sent" not in store.load_config()
     assert "auth_incident" not in store.load_config()
 
     service._fail_times = 1
@@ -418,3 +454,375 @@ def test_a_new_letter_without_an_open_receipt_keeps_the_plain_push():
         notifiers=notifiers,
     ).poll_once()
     assert sent == [messages.text_count("de", "notify.letters.new", 1)]
+
+
+def test_base_plan_rebuild_without_marked_changes_pushes_plan_key():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T11:00",
+        lessons=[_display_lesson(room="R2")],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["name"] == "Alice"
+    assert notifier.calls[0]["message"] == messages.text_in("de", "notify.timetable.plan", {"name": "Alice"})
+
+    before = len(notifier.calls)
+    poller.poll_once()
+    assert len(notifier.calls) == before
+
+
+def test_pure_colour_or_label_change_pushes_nothing():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T11:00",
+        lessons=[_display_lesson(color="#ffffff", subject_label="MathX")],
+    )
+    poller.poll_once()
+    assert notifier.calls == []
+
+
+def test_changes_cleared_pushes_cleared_key_then_stays_silent():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {
+        "c1": _timetable(
+            "2026-08-31T10:00",
+            lessons=[_display_lesson()],
+            changes=[{"lesson": 3, "note": "Entfall"}],
+        )
+    }
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T12:00",
+        lessons=[_display_lesson()],
+        changes=[],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 2
+    assert notifier.calls[1]["message"] == messages.text_in("de", "notify.timetable.cleared", {"name": "Alice"})
+
+    before = len(notifier.calls)
+    poller.poll_once()
+    assert len(notifier.calls) == before
+
+
+def test_changes_count_change_still_pushes_changes_key():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {
+        "c1": _timetable(
+            "2026-08-31T10:00",
+            lessons=[_display_lesson()],
+            changes=[{"lesson": 3, "note": "Entfall"}],
+        )
+    }
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T12:00",
+        lessons=[_display_lesson()],
+        changes=[{"lesson": 3, "note": "Entfall"}, {"lesson": 4, "note": "Vertretung"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 2
+    assert notifier.calls[1]["message"] == messages.text_count("de", "notify.timetable.changes", 2, {"name": "Alice"})
+
+
+def test_first_run_pushes_nothing_even_with_lessons():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert notifier.calls == []
+
+
+def test_upgrade_migration_without_plan_signature_pushes_nothing_on_first_poll_after_upgrade():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    old_lessons = [_display_lesson()]
+    old_timetable = _timetable("2026-08-31T10:00", lessons=old_lessons)
+    store = FakeStore(
+        {
+            "children": children,
+            "poll_state": {
+                "c1": {
+                    "last_updated": "2026-08-31T10:00",
+                    "changes_count": 0,
+                    "signature": Poller._signature(old_lessons, []),
+                    "changes_signature": Poller._changes_signature([]),
+                }
+            },
+        }
+    )
+    timetables = {"c1": _timetable("2026-08-31T11:00", lessons=[_display_lesson(room="R2")])}
+    notifier = NotifierRecorder()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
+    poller.poll_once()
+    assert notifier.calls == []
+    assert "plan_signature" in store.load_config()["poll_state"]["c1"]
+
+    timetables["c1"] = _timetable("2026-08-31T12:00", lessons=[_display_lesson(room="R3")])
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["message"] == messages.text_in("de", "notify.timetable.plan", {"name": "Alice"})
+
+
+def _next_week(last_updated, lessons=None, changes=None):
+    return _timetable(
+        last_updated,
+        lessons=lessons,
+        changes=changes,
+        start_date="2026-09-07",
+        end_date="2026-09-11",
+    )
+
+
+def _week_after_next(last_updated, lessons=None, changes=None):
+    return _timetable(
+        last_updated,
+        lessons=lessons,
+        changes=changes,
+        start_date="2026-09-14",
+        end_date="2026-09-18",
+    )
+
+
+def _poller(children, timetables, notifier, store=None):
+    return Poller(
+        FakeService(children, timetables),
+        notifier=notifier,
+        store=store if store is not None else FakeStore(),
+    )
+
+
+def test_an_unchanged_timetable_across_the_week_rollover_pushes_nothing():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _next_week(
+        "2026-09-07T10:00", lessons=[_display_lesson(date="2026-09-07")]
+    )
+    poller.poll_once()
+    assert notifier.calls == []
+
+    poller.poll_once()
+    assert notifier.calls == []
+
+
+def test_an_active_change_falling_out_of_the_new_week_does_not_push_cleared():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T09:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T10:00",
+        lessons=[_display_lesson(teacher_code="XYZ")],
+        changes=[{"lesson": 1, "note": "Vertretung"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+    timetables["c1"] = _next_week(
+        "2026-09-07T08:00", lessons=[_display_lesson(date="2026-09-07")], changes=[]
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+
+def test_a_vacation_week_pushes_nothing_at_either_boundary():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+
+    timetables["c1"] = _next_week("2026-09-07T10:00", lessons=[])
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _week_after_next(
+        "2026-09-14T10:00", lessons=[_display_lesson(date="2026-09-14")]
+    )
+    poller.poll_once()
+    assert notifier.calls == []
+
+
+def test_a_genuine_change_within_the_same_week_still_pushes():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T11:00",
+        lessons=[_display_lesson()],
+        changes=[{"lesson": 3, "note": "Entfall"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["message"] == messages.text_count(
+        "de", "notify.timetable.changes", 1, {"name": "Alice"}
+    )
+
+
+def test_a_genuine_plan_rebuild_within_the_same_week_still_pushes_the_plan_key():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T11:00", lessons=[_display_lesson(period=2, room="R2")]
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["message"] == messages.text_in(
+        "de", "notify.timetable.plan", {"name": "Alice"}
+    )
+
+
+def test_the_first_poll_in_a_new_week_re_seeds_the_stored_anchor():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    store = FakeStore()
+    poller = _poller(children, timetables, NotifierRecorder(), store=store)
+    poller.poll_once()
+    assert store.load_config()["poll_state"]["c1"]["week_anchor"] == "2026-08-31"
+
+    timetables["c1"] = _next_week(
+        "2026-09-07T10:00", lessons=[_display_lesson(date="2026-09-07")]
+    )
+    poller.poll_once()
+    assert store.load_config()["poll_state"]["c1"]["week_anchor"] == "2026-09-07"
+
+
+def test_withdrawn_changes_back_to_the_known_regular_plan_still_say_cleared():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T09:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T10:00",
+        lessons=[_display_lesson(teacher_code="XYZ")],
+        changes=[{"lesson": 1, "note": "Vertretung"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T12:00", lessons=[_display_lesson()], changes=[]
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 2
+    assert notifier.calls[1]["message"] == messages.text_in(
+        "de", "notify.timetable.cleared", {"name": "Alice"}
+    )
+
+
+def test_a_plan_rebuild_alongside_withdrawn_changes_never_claims_the_plan_is_regular():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T09:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T10:00",
+        lessons=[_display_lesson(teacher_code="XYZ")],
+        changes=[{"lesson": 1, "note": "Vertretung"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+    timetables["c1"] = _timetable(
+        "2026-08-31T12:00", lessons=[_display_lesson(room="R9")], changes=[]
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 2
+    assert notifier.calls[1]["message"] == messages.text_in(
+        "de", "notify.timetable.plan", {"name": "Alice"}
+    )
+    assert notifier.calls[1]["message"] != messages.text_in(
+        "de", "notify.timetable.cleared", {"name": "Alice"}
+    )
+
+
+def test_bad_credentials_without_a_target_are_not_latched_and_warn_once_one_exists():
+    store = FakeStore()
+    undeliverable = NotifierRecorder(delivers=False)
+    service = AuthFailingService(store, fail_times=4)
+
+    Poller(service, store=store, notifiers={"auth": undeliverable}).poll_once()
+    Poller(service, store=store, notifiers={"auth": undeliverable}).poll_once()
+    assert len(undeliverable.calls) == 2
+    assert "auth_incident_sent" not in store.load_config()
+
+    delivering = NotifierRecorder()
+    Poller(service, store=store, notifiers={"auth": delivering}).poll_once()
+    assert len(delivering.calls) == 1
+    assert store.load_config()["auth_incident_sent"] is True
+
+    Poller(service, store=store, notifiers={"auth": delivering}).poll_once()
+    assert len(delivering.calls) == 1
+
+
+def test_bad_credentials_with_a_target_are_delivered_once_and_not_repeated():
+    store = FakeStore()
+    notifier = NotifierRecorder()
+    service = AuthFailingService(store, fail_times=3)
+    poller = Poller(service, store=store, notifiers={"auth": notifier})
+
+    poller.poll_once()
+    poller.poll_once()
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert store.load_config()["auth_incident_sent"] is True
+
+
+def test_a_legacy_latched_incident_is_warned_about_again():
+    store = FakeStore({"auth_incident": True})
+    notifier = NotifierRecorder()
+    service = AuthFailingService(store, fail_times=2)
+    poller = Poller(service, store=store, notifiers={"auth": notifier})
+
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert "auth_incident" not in store.load_config()
+
+    poller.poll_once()
+    assert len(notifier.calls) == 1

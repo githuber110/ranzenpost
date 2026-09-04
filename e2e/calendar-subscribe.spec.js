@@ -23,11 +23,6 @@ const TIMETABLE_TAB = 1;
 const FEED_HOST = "homeassistant.local";
 
 async function prepare(page) {
-  await page.addInitScript((host) => {
-    try {
-      window.localStorage.setItem("calendarHost", host);
-    } catch (error) {}
-  }, FEED_HOST);
   await goto(page);
 }
 
@@ -72,7 +67,7 @@ for (const viewport of VIEWPORTS) {
           await expect(page.locator(".cal-card")).toBeVisible();
           await expect(page.locator(".cal-url")).toContainText(`${FEED_HOST}:8100/calendar/`);
           await expect(page.locator(".cal-url")).toHaveAttribute("dir", "ltr");
-          await expect(page.locator("a.cal-add")).toHaveAttribute("href", /^webcal:/);
+          await expect(page.locator("button.cal-add")).toBeVisible();
           await assertClean(page, `${viewport.name}/${language.key}/sheet`);
         });
 
@@ -95,15 +90,14 @@ for (const viewport of VIEWPORTS) {
           await assertClean(page, `${viewport.name}/${language.key}/edit-form`);
         });
 
-        test(`stays contained with the setup steps collapsed (${language.key})`, async ({ page }) => {
+        test(`[P214] asks for no address and shows no setup steps (${language.key})`, async ({ page }) => {
           await prepare(page);
           await openCalendarSheet(page);
-          await expect(page.locator(".cal-setup-head")).toHaveAttribute("aria-expanded", "true");
-          await page.locator(".cal-setup-head").click();
-          await expect(page.locator(".cal-setup-head")).toHaveAttribute("aria-expanded", "false");
+          await expect(page.locator(".cal-host")).toHaveCount(0);
+          await expect(page.locator(".cal-setup-head")).toHaveCount(0);
           await expect(page.locator(".cal-steps")).toHaveCount(0);
           await waitForSheetSettled(page);
-          await assertClean(page, `${viewport.name}/${language.key}/setup-collapsed`);
+          await assertClean(page, `${viewport.name}/${language.key}/no-setup`);
         });
       });
     }
@@ -127,12 +121,45 @@ test.describe("calendar subscription sheet: writing actions", () => {
     expect(rotateCalls).toEqual([]);
   });
 
-  test("without a stored host the address is withheld and the host field is offered", async ({ page }) => {
+  test("[P214] the restart is offered as a button and only fires on the click", async ({ page }) => {
+    const restartCalls = [];
+    await page.route("**/api/calendar/restart", (route) => {
+      restartCalls.push(route.request().method());
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, restarting: true, message_key: "api.calendar.restart.accepted" }),
+      });
+    });
     await goto(page);
     await openCalendarSheet(page);
-    await expect(page.locator(".cal-url")).toHaveCount(0);
-    await expect(page.locator("a.cal-add")).toHaveCount(0);
-    await expect(page.locator(".cal-host input")).toBeVisible();
-    await assertClean(page, "390/de/no-host");
+    await expect(page.locator(".cal-restart-go")).toHaveCount(0);
+
+    await page.evaluate(() => {
+      window.location.reload = () => {};
+      state.calendarPortRestart = true;
+      rerender();
+    });
+    await waitForSheetSettled(page);
+    const button = page.locator(".cal-restart-go");
+    await expect(button).toBeVisible();
+    expect(restartCalls, "nothing may restart before the click").toEqual([]);
+    await assertClean(page, "390/de/restart-offer");
+
+    await button.click();
+    await expect.poll(() => restartCalls.length).toBe(1);
+    expect(restartCalls[0]).toBe("POST");
+    await expect(page.locator(".cal-restart-go")).toHaveCount(0);
+  });
+
+  test("[P214] the address needs no input at all and carries exactly one port", async ({ page }) => {
+    await goto(page);
+    await openCalendarSheet(page);
+    await expect(page.locator(".cal-host")).toHaveCount(0);
+    const url = await page.locator(".cal-url").first().textContent();
+    expect(url).toContain(`${FEED_HOST}:8100/calendar/`);
+    const authority = url.split("://")[1].split("/")[0];
+    expect(authority).toBe(`${FEED_HOST}:8100`);
+    await assertClean(page, "390/de/no-host-field");
   });
 });

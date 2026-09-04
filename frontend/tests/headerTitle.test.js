@@ -27,9 +27,9 @@ describe("[P155] compact header: screen title sits level with the settings gear"
     expect(bar.querySelector(".header-actions .child-switch")).not.toBeNull();
   });
 
-  test("pinboard always shows a title, no back button", () => {
+  test("post always shows a title, no back button", () => {
     const { window } = loadApp();
-    const bar = window.eval("header('pinboard')");
+    const bar = window.eval("header('post')");
     expect(bar.querySelector(".header-title")).not.toBeNull();
     expect(bar.querySelector(".header-back")).toBeNull();
   });
@@ -39,7 +39,7 @@ describe("[P155] compact header: screen title sits level with the settings gear"
     window.eval(
       "state.letterDetail = { letter: { title: 'Infobrief', letter_id: '1', recipient_id: '2' }, loading: false };"
     );
-    const bar = window.eval("header('letters')");
+    const bar = window.eval("header('post')");
     const row = bar.querySelector(".header-title-row");
     expect(row).not.toBeNull();
     expect(row.querySelector(".header-back")).not.toBeNull();
@@ -49,7 +49,7 @@ describe("[P155] compact header: screen title sits level with the settings gear"
 
   test("settings gear is present on every screen except settings itself", () => {
     const { window } = loadApp();
-    const withGear = window.eval("header('pinboard')");
+    const withGear = window.eval("header('post')");
     const withoutGear = window.eval("header('settings')");
     expect(withGear.querySelector(".header-actions .icon-btn")).not.toBeNull();
     expect(withoutGear.querySelector(".header-actions .icon-btn")).toBeNull();

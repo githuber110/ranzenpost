@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 function renderLetters(window, tab, data) {
-  const run = window.eval("(function (tab, data) { state.lettersTab = tab; state.letters = data; return lettersView(); })");
+  const run = window.eval("(function (tab, data) { state.view = 'post'; state.postTab = 'letters'; state.lettersTab = tab; state.letters = data; return postView(); })");
   return run(tab, data);
 }
 
@@ -15,14 +15,15 @@ describe("[P112] letters header + toolbar stay sticky", () => {
     expect(head).not.toBeNull();
     expect(head.querySelector(".page-title")).toBeNull();
     expect(head.querySelector(".segment[role='tablist']")).not.toBeNull();
+    expect(head.querySelector(".chipbar .chip")).not.toBeNull();
     expect(head.querySelector(".section-head .letters-tools")).not.toBeNull();
     expect(view.querySelector(".rows")).not.toBeNull();
     expect(head.contains(view.querySelector(".rows"))).toBe(false);
-    const bar = window.eval("header('letters')");
+    const bar = window.eval("header('post')");
     expect(bar.querySelector(".header-title").textContent).not.toBe("");
   });
 
-  test("archive tab: page title and segment still sit inside the sticky head", () => {
+  test("archive folder: the segment and the folder row still sit inside the sticky head", () => {
     const { window } = loadApp();
     const data = { tab: "archive", letters: [{ letter_id: "1", recipient_id: "2", title: "Altbrief", unread: false }] };
     const view = renderLetters(window, "archive", data);

@@ -6,6 +6,8 @@ APP_JS = FRONTEND / "app.js"
 
 SEND_ENDPOINT = "api/messenger/send"
 SEND_FUNCTION = "sendMessengerMessage"
+READ_ENDPOINT = "api/messenger/read"
+READ_FUNCTION = "markMessengerRoomRead"
 TOP_LEVEL_FUNCTION = re.compile(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", re.M)
 BACKGROUND_FUNCTIONS = (
     "pollMessengerRoom",
@@ -82,3 +84,29 @@ def test_the_client_never_names_a_read_marker_or_receipt_route():
     text = source()
     for forbidden in ("read_markers", "/receipt/", "m.fully_read"):
         assert forbidden not in text
+
+
+def test_the_frontend_calls_the_read_endpoint_from_exactly_one_place():
+    text = source()
+    assert text.count(READ_ENDPOINT) == 1
+    assert functions_mentioning(text, READ_ENDPOINT) == {READ_FUNCTION}
+
+
+def test_the_read_function_is_reached_only_from_the_header_click_handler():
+    text = source()
+    callers = functions_mentioning(text, READ_FUNCTION + "(")
+    assert callers == {READ_FUNCTION, "messengerReadButton"}
+    button = function_spans(text)["messengerReadButton"][0]
+    wiring = [line.strip() for line in button.split("\n") if READ_FUNCTION + "(" in line]
+    assert len(wiring) == 1
+    assert wiring[0].startswith('button.addEventListener("click"')
+
+
+def test_no_timer_or_refresh_path_can_reach_the_read_function():
+    spans = function_spans(source())
+    offenders = []
+    for name in BACKGROUND_FUNCTIONS:
+        for body in spans.get(name, []):
+            if READ_FUNCTION in body or READ_ENDPOINT in body:
+                offenders.append(name)
+    assert offenders == []

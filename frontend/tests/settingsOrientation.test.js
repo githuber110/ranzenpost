@@ -45,7 +45,7 @@ describe("[C17] settings orientation: remembers where it was opened from", () =>
 
   test("the gear is shown on every other view", () => {
     const { window } = loadApp();
-    for (const view of ["overview", "timetable", "absence", "letters", "pinboard", "conferences"]) {
+    for (const view of ["overview", "timetable", "absence", "post", "conferences"]) {
       const gear = window.eval(`header(${JSON.stringify(view)}).querySelector('.icon-btn[aria-label="Einstellungen"]')`);
       expect(gear).not.toBeNull();
     }

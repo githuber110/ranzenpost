@@ -67,7 +67,9 @@ for (const viewport of VIEWPORTS) {
 
         test(`pinboard folder sheet and post sheet fit (${lang.key})`, async ({ page }) => {
           await goto(page);
-          await page.locator(".tabbar .tab").nth(4).click();
+          await page.locator(".tabbar .tab").nth(3).click();
+          await waitForContentSettled(page);
+          await page.locator(".list-head .segment button").nth(1).click();
           await waitForContentSettled(page);
 
           await page.locator(".chipbar .chip").nth(2).click();

@@ -15,8 +15,9 @@ const VIEWS = [
   { key: "overview", tabIndex: null },
   { key: "timetable", tabIndex: 1 },
   { key: "absence", tabIndex: 2 },
-  { key: "letters", tabIndex: 3 },
-  { key: "pinboard", tabIndex: 4 },
+  { key: "post-letters", tabIndex: 3 },
+  { key: "post-pinboard", tabIndex: 3, segment: 1 },
+  { key: "chat", tabIndex: 4 },
 ];
 
 async function assertNoOverlapOrCoverage(page, label) {
@@ -40,6 +41,10 @@ for (const viewport of VIEWPORTS) {
         if (view.tabIndex !== null) {
           await page.locator(".tabbar .tab").nth(view.tabIndex).click();
           await waitForContentSettled(page);
+          if (view.segment !== undefined) {
+            await page.locator(".list-head .segment button").nth(view.segment).click();
+            await waitForContentSettled(page);
+          }
         }
 
         const sizeOffenders = await checkTapTargets(page);

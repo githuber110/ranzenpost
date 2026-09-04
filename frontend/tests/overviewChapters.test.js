@@ -28,17 +28,17 @@ function areas(view) {
   return [...view.querySelectorAll(".panel")].map((panel) => panel.dataset.area);
 }
 
-describe("[P178] the overview is always the same four chapters", () => {
-  test("four panels in a fixed order, whatever the data says", () => {
+describe("[P213] the overview only shows chapters that have something to say", () => {
+  test("three panels in a fixed order when upcoming has nothing to show", () => {
     const { window } = loadApp();
-    expect(areas(renderOverview(window))).toEqual(["today", "letters", "pinboard", "upcoming"]);
+    expect(areas(renderOverview(window))).toEqual(["today", "letters", "pinboard"]);
   });
 
-  test("still four panels while every source is still loading", () => {
+  test("still three panels while every source is still loading, upcoming stays hidden until it knows", () => {
     const { window } = loadApp();
     const view = renderOverview(window, "state.letters = null; state.pinboard = null; state.conferences = null; state.absence = null; state.overviewWeeks = {}; state.timetable = null;");
-    expect(areas(view)).toEqual(["today", "letters", "pinboard", "upcoming"]);
-    expect(view.querySelectorAll(".loading").length).toBe(4);
+    expect(areas(view)).toEqual(["today", "letters", "pinboard"]);
+    expect(view.querySelectorAll(".loading").length).toBe(3);
   });
 
   test("[C21] the old single 'Wird aktualisiert' line is gone, each chapter carries its own state", () => {
@@ -51,11 +51,11 @@ describe("[P178] the overview is always the same four chapters", () => {
     expect(pinboard.querySelector(".loading")).toBeNull();
   });
 
-  test("[M19] exactly one HEUTE heading, and exactly four headings in total", () => {
+  test("[M19] exactly one HEUTE heading, and exactly three headings when upcoming is empty", () => {
     const { window } = loadApp();
     const view = renderOverview(window);
     const headings = [...view.querySelectorAll("h2.section-label")].map((node) => node.textContent);
-    expect(headings).toEqual(["Heute", "Elternbriefe", "Pinnwand", "Anstehend"]);
+    expect(headings).toEqual(["Heute", "Elternbriefe", "Pinnwand"]);
   });
 
   test("[M19] the HEUTE head link switches the timetable to the child that is on screen", () => {
@@ -97,7 +97,7 @@ describe("[M9] a failing source keeps its own chapter honest and leaves the othe
     test(`${source.name}: its chapter shows the partial failure with a retry, the others do not`, () => {
       const { window } = loadApp();
       const view = renderOverview(window, source.seed);
-      expect(areas(view)).toEqual(["today", "letters", "pinboard", "upcoming"]);
+      expect(areas(view)).toEqual(["today", "letters", "pinboard"]);
       const failed = [...view.querySelectorAll(".panel")].filter((panel) => panel.querySelector(".overview-failed"));
       expect(failed.map((panel) => panel.dataset.area)).toEqual([source.area]);
       expect(failed[0].textContent).toContain(window.eval('t("overview.partial.failed")'));
@@ -110,10 +110,23 @@ describe("[M9] a failing source keeps its own chapter honest and leaves the othe
 
   test("chapter 4 with only the conferences broken keeps the absence half alive", () => {
     const { window } = loadApp();
-    const view = renderOverview(window, 'state.conferences = { error: "network" };');
+    const view = renderOverview(window, `
+      state.conferences = { error: "network" };
+      state.absence = { data: { children: [], entries: [{ id: "a1", label_key: "absence.entry.kind.sick", from_date: "2026-09-04", till_date: "2026-09-04" }] } };
+      window.__realDate = Date;
+      function FixedDate(...args) {
+        if (args.length === 0) return new window.__realDate("2026-09-03T08:00:00");
+        return new window.__realDate(...args);
+      }
+      FixedDate.prototype = window.__realDate.prototype;
+      Date = FixedDate;
+    `);
     const upcoming = [...view.querySelectorAll(".panel")].find((panel) => panel.dataset.area === "upcoming");
+    expect(upcoming).toBeTruthy();
     expect(upcoming.querySelectorAll(".overview-failed").length).toBe(1);
-    expect(upcoming.querySelector(".row-all")).not.toBeNull();
+    expect(upcoming.querySelector(".row-all")).toBeNull();
+    expect(upcoming.querySelectorAll(".rows .row").length).toBe(1);
+    window.eval("Date = window.__realDate;");
   });
 
   test("chapter 4 with both sources broken shows one failure, not two empty promises", () => {
@@ -169,19 +182,53 @@ describe("[P178] the defined amount each chapter shows", () => {
     `);
     const panel = [...view.querySelectorAll(".panel")].find((node) => node.dataset.area === "upcoming");
     const titles = [...panel.querySelectorAll(".rows .row-title")].map((node) => node.textContent);
-    expect(titles).toEqual(["Krankmeldung", "Sprechtag", window.eval('t("overview.all.upcoming")')]);
+    expect(titles).toEqual(["Krankmeldung", "Sprechtag"]);
     window.eval("Date = window.__realDate;");
   });
 
-  test("a rest state says what it checked and never removes the chapter", () => {
+  test("a rest state says what it checked and never removes the letters or pinboard chapter", () => {
     const { window } = loadApp();
     const view = renderOverview(window);
     const panels = [...view.querySelectorAll(".panel")];
     const letters = panels.find((panel) => panel.dataset.area === "letters");
     const pinboard = panels.find((panel) => panel.dataset.area === "pinboard");
-    const upcoming = panels.find((panel) => panel.dataset.area === "upcoming");
     expect(letters.textContent).toContain(window.eval('t("overview.letters.none")'));
     expect(pinboard.textContent).toContain(window.eval('t("overview.pinboard.none")'));
-    expect(upcoming.textContent).toContain(window.eval('t("overview.upcoming.none")'));
+  });
+});
+
+describe("[P213] upcoming only appears when it has something real to say", () => {
+  test("no chapter at all when there is nothing upcoming and nothing failed", () => {
+    const { window } = loadApp();
+    const view = renderOverview(window);
+    const upcoming = [...view.querySelectorAll(".panel")].find((panel) => panel.dataset.area === "upcoming");
+    expect(upcoming).toBeUndefined();
+    expect(window.eval("t('overview.chapter.upcoming')").length).toBeGreaterThan(0);
+  });
+
+  test("appears directly behind today as soon as it has content", () => {
+    const { window } = loadApp();
+    const view = renderOverview(window, `
+      state.conferences = { items: [{ cells: ["Sprechtag", "05.09.2026"] }] };
+      window.__realDate = Date;
+      function FixedDate(...args) {
+        if (args.length === 0) return new window.__realDate("2026-09-03T08:00:00");
+        return new window.__realDate(...args);
+      }
+      FixedDate.prototype = window.__realDate.prototype;
+      Date = FixedDate;
+    `);
+    expect(areas(view)).toEqual(["today", "upcoming", "letters", "pinboard"]);
+    window.eval("Date = window.__realDate;");
+  });
+
+  test("still appears with just its error block when a source failed, even with zero rows", () => {
+    const { window } = loadApp();
+    const view = renderOverview(window, 'state.conferences = { error: "network" }; state.absence = { error: "network" };');
+    expect(areas(view)).toEqual(["today", "upcoming", "letters", "pinboard"]);
+    const upcoming = [...view.querySelectorAll(".panel")].find((panel) => panel.dataset.area === "upcoming");
+    expect(upcoming.querySelectorAll(".overview-failed").length).toBe(1);
+    expect(upcoming.querySelector(".row-all")).toBeNull();
+    expect(upcoming.querySelector(".panel-link")).toBeNull();
   });
 });

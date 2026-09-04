@@ -54,7 +54,7 @@ describe("[P195] letter list marks an open read confirmation", () => {
   test("a read letter with an open confirmation still counts for the tab badge", () => {
     const { window } = loadApp();
     const count = window.eval(
-      "(function (letters) { state.letters = { tab: 'current', letters }; return badgeCount('letters'); })"
+      "(function (letters) { state.letters = { tab: 'current', letters }; return badgeCount('post'); })"
     )([letterWith(OPEN_SEEN), letterWith(null)]);
     expect(count).toBe(1);
   });
@@ -166,3 +166,73 @@ describe("[P195] confirming asks first and never fires on its own", () => {
     );
   });
 });
+
+describe("[P196] marking read stops lying about letters that still need a confirmation", () => {
+  function seenReply(window, body) {
+    window.fetch = () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        json: () => Promise.resolve(body),
+      });
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test("a single blocked letter says so instead of claiming success", async () => {
+    const { window } = loadApp();
+    seenReply(window, { read: 0, blocked: 1 });
+    await window.eval("markLetterRead({ letter_id: '1', recipient_id: '2' })");
+    await settle();
+    expect(window.eval("state.toast.message")).toBe(window.eval("t('letters.toast.blocked')"));
+    expect(window.eval("state.toast.kind")).toBe("bad");
+  });
+
+  test("a mixed batch names both halves", async () => {
+    const { window } = loadApp();
+    seenReply(window, { read: 2, blocked: 1 });
+    await window.eval("markAllLettersRead()");
+    await settle();
+    expect(window.eval("state.toast.message")).toBe(
+      window.eval("t('letters.toast.markedPartial', { read: '2', blocked: '1' })")
+    );
+    expect(window.eval("state.toast.kind")).toBe("good");
+  });
+
+  test("a clean batch keeps the old wording", async () => {
+    const { window } = loadApp();
+    seenReply(window, { read: 3, blocked: 0 });
+    await window.eval("markAllLettersRead()");
+    await settle();
+    expect(window.eval("state.toast.message")).toBe(
+      window.eval("t('letters.toast.marked', { count: '3' })")
+    );
+  });
+
+  test("the swipe menu offers the confirmation instead of a mark that cannot work", () => {
+    const { window } = loadApp();
+    const blocked = window.eval(
+      "(function (letter) { state.lettersTab = 'current'; return letterActionsSheet(letter); })"
+    )({ letter_id: "1", recipient_id: "2", title: "Infobrief", unread: true, confirmation: { type: "seen", open: true } });
+    expect(blocked.textContent).toContain(window.eval("t('letters.action.confirmFirst')"));
+    expect(blocked.textContent).not.toContain(window.eval("t('letters.action.markRead')"));
+    const plain = window.eval(
+      "(function (letter) { state.lettersTab = 'current'; return letterActionsSheet(letter); })"
+    )({ letter_id: "1", recipient_id: "2", title: "Infobrief", unread: true });
+    expect(plain.textContent).toContain(window.eval("t('letters.action.markRead')"));
+  });
+
+  test("an optimistic read is taken back when the server reports it blocked", async () => {
+    const { window } = loadApp();
+    seenReply(window, { read: 0, blocked: 1 });
+    const letter = window.eval(
+      "(function () { const l = { letter_id: '1', recipient_id: '2', unread: true }; markLetterSeen(l); return l; })"
+    )();
+    expect(letter.unread).toBe(false);
+    await settle();
+    await settle();
+    expect(letter.unread).toBe(true);
+  });
+});
+

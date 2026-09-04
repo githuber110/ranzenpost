@@ -23,23 +23,29 @@ const SUBSCRIPTION = {
   path: "/calendar/token-1.ics",
 };
 
-function payloadFor(region, subscriptions) {
+function payloadFor(region, subscriptions, host = {}) {
   return {
     subscriptions,
     components: ["timetable", "school_holidays", "public_holidays"],
     holiday_region: region,
     path_template: "/calendar/{token}.ics",
     port: 8100,
+    host: "ha.example",
+    host_source: "config_entry",
+    supervisor: true,
+    port_open: true,
+    mapped_port: 8100,
+    ...host,
   };
 }
 
-function setup({ region = "DE-NI", subscriptions = [], responses = {} } = {}) {
+function setup({ region = "DE-NI", subscriptions = [], responses = {}, host = {} } = {}) {
   const { window } = loadApp();
   const calls = [];
   window.eval("render = function () { window.__renders = (window.__renders || 0) + 1; };");
   window.eval('state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
-  window.eval('state.view = "timetable"; state.calendarHost = "ha.example";');
-  window.eval(`state.calendar = { data: ${JSON.stringify(payloadFor(region, subscriptions))}, error: false };`);
+  window.eval('state.view = "timetable";');
+  window.eval(`state.calendar = { data: ${JSON.stringify(payloadFor(region, subscriptions, host))}, error: false };`);
   window.fetch = (url, options) => {
     const target = String(url);
     calls.push({ url: target, options: options || {} });
@@ -49,7 +55,7 @@ function setup({ region = "DE-NI", subscriptions = [], responses = {} } = {}) {
     return Promise.resolve({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(payloadFor(region, subscriptions)),
+      json: () => Promise.resolve(payloadFor(region, subscriptions, host)),
     });
   };
   return { window, calls };
@@ -228,26 +234,222 @@ describe("[P164] renewing the token asks first", () => {
 
 describe("[P164] the subscription address is built from the host of this device", () => {
   test("the sheet shows the feed address and offers webcal, copy and QR", () => {
-    const { window } = setup({ subscriptions: [SUBSCRIPTION] });
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "ha.example", port_open: true } });
     window.eval(qrJs);
+    window.eval("window.__handoff = null; handOffCalendarUrl = (url) => { window.__handoff = url; };");
     const sheetNode = window.eval("calendarSheet()");
 
     expect(sheetNode.querySelector(".cal-url").textContent).toBe("http://ha.example:8100/calendar/token-1.ics");
-    const link = sheetNode.querySelector("a.cal-add");
-    expect(link.getAttribute("href")).toBe("webcal://ha.example:8100/calendar/token-1.ics");
+    const addButton = buttonWithText(sheetNode, base["calendar.subscribe.add"]);
+    expect(addButton).not.toBeNull();
+    expect(addButton.classList.contains("cal-add")).toBe(true);
+    addButton.click();
+    expect(window.eval("window.__handoff")).toBe("webcal://ha.example:8100/calendar/token-1.ics");
     expect(buttonWithText(sheetNode, base["calendar.subscribe.copy"])).not.toBeNull();
     expect(buttonWithText(sheetNode, base["calendar.subscribe.qr.show"])).not.toBeNull();
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.warning"]);
   });
 
-  test("without a usable host the address is withheld and the host field is asked for", () => {
-    const { window } = setup({ subscriptions: [SUBSCRIPTION] });
-    window.eval('state.calendarHost = "";');
+  test("without a usable host the address is withheld", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "", port_open: true } });
     const sheetNode = window.eval("calendarSheet()");
 
     expect(sheetNode.querySelector(".cal-url")).toBeNull();
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.host.missing"]);
-    expect(sheetNode.querySelector("a.cal-add")).toBeNull();
+    expect(sheetNode.querySelector("button.cal-add")).toBeNull();
+  });
+});
+
+describe("[P214] the port notice reflects the backend's supervisor state", () => {
+  test("an open port shows no notice at all", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: true, supervisor: true } });
+    const sheetNode = window.eval("calendarSheet()");
+
+    expect(sheetNode.querySelector(".cal-port")).toBeNull();
+    expect(sheetNode.textContent).not.toContain(base["calendar.subscribe.port.closed"]);
+    expect(sheetNode.textContent).not.toContain(window.eval('t("calendar.subscribe.port.manual", { port: "8100" })'));
+  });
+
+  test("a closed port on a supervisor install offers the open-port button", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
+    const sheetNode = window.eval("calendarSheet()");
+
+    expect(sheetNode.textContent).toContain(base["calendar.subscribe.port.closed"]);
+    const openButton = buttonWithText(sheetNode, base["calendar.subscribe.port.open"]);
+    expect(openButton).not.toBeNull();
+    expect(openButton.classList.contains("cal-port-open")).toBe(true);
+  });
+
+  test("a closed port without supervisor access shows the manual hint instead", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: false } });
+    const sheetNode = window.eval("calendarSheet()");
+
+    const manualHint = window.eval('t("calendar.subscribe.port.manual", { port: "8100" })');
+    expect(sheetNode.textContent).toContain(manualHint);
+    expect(sheetNode.querySelector(".cal-port-open")).toBeNull();
+  });
+
+  test("[P214] after opening the port the restart button replaces the notice and warns honestly", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
+    window.eval("state.calendarPortRestart = true;");
+    const sheetNode = window.eval("calendarSheet()");
+
+    const button = sheetNode.querySelector(".cal-restart-go");
+    expect(button).toBeTruthy();
+    expect(button.textContent).toBe(base["calendar.subscribe.restart.action"]);
+    expect(sheetNode.textContent).toContain(base["calendar.subscribe.restart.hint"]);
+    expect(sheetNode.textContent).not.toContain(base["calendar.subscribe.port.closed"]);
+    expect(sheetNode.querySelector(".cal-port-open")).toBeNull();
+  });
+
+  test("[P214] without a required restart there is no restart button at all", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: true, supervisor: true } });
+    const sheetNode = window.eval("calendarSheet()");
+    expect(sheetNode.querySelector(".cal-restart-go")).toBeNull();
+
+    const closed = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
+    const closedNode = closed.window.eval("calendarSheet()");
+    expect(closedNode.querySelector(".cal-restart-go")).toBeNull();
+    expect(closedNode.querySelector(".cal-port-open")).toBeTruthy();
+  });
+
+  test("[P214] the pending restart comes from the server, so closing the sheet cannot lose it", () => {
+    const { window } = setup({
+      subscriptions: [SUBSCRIPTION],
+      host: { port_open: true, supervisor: true, restart_pending: true },
+    });
+    const sheetNode = window.eval("calendarSheet()");
+
+    expect(window.eval("state.calendarPortRestart")).toBe(false);
+    expect(sheetNode.querySelector(".cal-restart-go")).toBeTruthy();
+    expect(sheetNode.textContent).toContain(base["calendar.subscribe.restart.hint"]);
+  });
+
+  test("[P214] the marker and the watch are armed before the request, not after it", async () => {
+    const { window, calls } = setup({
+      subscriptions: [SUBSCRIPTION],
+      host: { port_open: false, supervisor: true },
+      responses: {
+        "api/calendar/restart": () => {
+          throw new TypeError("Failed to fetch");
+        },
+      },
+    });
+    window.eval("state.calendarPortRestart = true;");
+    window.eval("window.location.reload = function () { window.__reloaded = true; };");
+    const sheetNode = window.eval("calendarSheet()");
+    window.document.body.append(sheetNode);
+
+    sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+    expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("1");
+    expect(window.eval("state.calendarRestarting")).toBe(true);
+    expect(window.eval("state.toast")).toBe(null);
+    expect(calls.filter((call) => call.url.includes("api/calendar/restart")).length).toBe(1);
+  });
+
+  test("[P214] a dying connection during the restart is the expected path, not an error", async () => {
+    const { window } = setup({
+      subscriptions: [SUBSCRIPTION],
+      host: { port_open: false, supervisor: true },
+      responses: {
+        "api/calendar/restart": () => {
+          throw new TypeError("NetworkError when attempting to fetch resource.");
+        },
+      },
+    });
+    window.eval("state.calendarPortRestart = true;");
+    window.eval("window.location.reload = function () { window.__reloaded = true; };");
+    const sheetNode = window.eval("calendarSheet()");
+    window.document.body.append(sheetNode);
+
+    sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+    expect(window.eval("state.toast")).toBe(null);
+    expect(window.eval("state.calendarRestarting")).toBe(true);
+    expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("1");
+  });
+
+  test("[P214] nothing restarts on its own: the supervisor is only called after the click", async () => {
+    const { window, calls } = setup({
+      subscriptions: [SUBSCRIPTION],
+      host: { port_open: false, supervisor: true },
+      responses: {
+        "api/calendar/restart": () => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ok: true, restarting: true, message_key: "api.calendar.restart.accepted" }),
+        }),
+      },
+    });
+    window.eval("state.calendarPortRestart = true;");
+    window.eval("window.location.reload = function () { window.__reloaded = true; };");
+    const sheetNode = window.eval("calendarSheet()");
+    window.document.body.append(sheetNode);
+
+    expect(calls.filter((call) => call.url.includes("api/calendar/restart"))).toEqual([]);
+
+    sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    const restartCalls = calls.filter((call) => call.url.includes("api/calendar/restart"));
+    expect(restartCalls.length).toBe(1);
+    expect(restartCalls[0].options.method).toBe("POST");
+    expect(window.eval("state.calendarRestarting")).toBe(true);
+    expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("1");
+  });
+
+  test("[P214] while restarting the sheet says so instead of offering the button again", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
+    window.eval("state.calendarPortRestart = true; state.calendarRestarting = true;");
+    const sheetNode = window.eval("calendarSheet()");
+
+    expect(sheetNode.querySelector(".cal-restart-go")).toBeNull();
+    expect(sheetNode.textContent).toContain(base["calendar.subscribe.restart.running"]);
+    expect(sheetNode.querySelector(".cal-restart .spin")).toBeTruthy();
+  });
+
+  test("[P214] a refused restart keeps the button and never claims the app is restarting", async () => {
+    const { window } = setup({
+      subscriptions: [SUBSCRIPTION],
+      host: { port_open: false, supervisor: true },
+      responses: {
+        "api/calendar/restart": () => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ok: false, restarting: false, message_key: "api.calendar.error.restartFailed" }),
+        }),
+      },
+    });
+    window.eval("state.calendarPortRestart = true;");
+    const sheetNode = window.eval("calendarSheet()");
+    window.document.body.append(sheetNode);
+
+    sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(window.eval("state.calendarRestarting")).toBe(false);
+    expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("");
+    expect(window.eval("state.toast && state.toast.kind")).toBe("bad");
+  });
+
+  test("[P214] after the reload the subscription sheet comes back instead of stranding the user", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION] });
+    window.eval('writeStoredText("calendarResumeSheet", "1");');
+    window.eval("state.sheet = null; resumeCalendarSheet();");
+
+    expect(window.eval("state.sheet === calendarSheet")).toBe(true);
+    expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("");
+  });
+
+  test("[P214] a normal start does not reopen the sheet", () => {
+    const { window } = setup({ subscriptions: [SUBSCRIPTION] });
+    window.eval('writeStoredText("calendarResumeSheet", "");');
+    window.eval("state.sheet = null; resumeCalendarSheet();");
+
+    expect(window.eval("state.sheet")).toBe(null);
   });
 });
 

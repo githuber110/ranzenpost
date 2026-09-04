@@ -96,7 +96,9 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(items[1].querySelector(".row-title").style.textDecoration).toBe("line-through");
     const metas = pairRow.querySelectorAll(".row-meta");
     expect(metas.length).toBe(1);
-    expect(metas[0].textContent).toBe("10:40");
+    expect(metas[0].textContent).toBe(
+      window.eval('t("overview.time.range", { start: "10:40", end: "11:25" })')
+    );
   });
 
   test("[P140b] .row-pair lays out its two cells side by side with a divider, not stacked", () => {

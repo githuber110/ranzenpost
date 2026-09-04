@@ -21,6 +21,28 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
             lambda: service.messenger_send(body.get("room_id", ""), body.get("text", ""))
         )
 
+    @app.post("/api/messenger/read")
+    def messenger_read(body: dict = Body(...)):
+        return write_endpoint(
+            lambda: service.messenger_mark_read(body.get("room_id", ""), body.get("event_id", "")),
+            fallback="read_failed",
+        )
+
+    @app.get("/api/messenger/teachers")
+    def messenger_teachers(query: str = ""):
+        return read_endpoint(lambda: service.messenger_teacher_search(query))
+
+    @app.post("/api/messenger/room/teacher")
+    def messenger_teacher_room(body: dict = Body(...)):
+        return write_endpoint(
+            lambda: service.messenger_create_teacher_room(
+                body.get("teacher", ""),
+                body.get("child_ids") or [],
+                bool(body.get("add_other_parents")),
+            ),
+            fallback="room_failed",
+        )
+
     @app.get("/api/messenger/media/{server_name}/{media_id}")
     def messenger_media(server_name: str, media_id: str):
         try:

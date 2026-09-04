@@ -1370,7 +1370,7 @@ def test_marking_a_letter_read_opens_it_in_iserv(tmp_path):
     service, _ = make(tmp_path)
     service.client_factory = lambda url: LetterClient(url)
     result = service.mark_letters_read(["10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"])
-    assert result == {"read": 1}
+    assert result == {"read": 1, "blocked": 0}
     assert any("/parent/show/" in path for path in opened)
 
 
@@ -1397,7 +1397,7 @@ def test_marking_a_letter_read_never_hides_it_if_iserv_keeps_reporting_unread(tm
     assert target_before["unread"] is True
     assert "technical" not in target_before
 
-    assert service.mark_letters_read([key]) == {"read": 1}
+    assert service.mark_letters_read([key]) == {"read": 1, "blocked": 0}
     assert not (store.dir / "letters_read_override.json").exists()
 
     after = service.letters("current")["letters"]
@@ -1457,7 +1457,7 @@ def test_marking_all_read_only_opens_the_unread_ones(tmp_path):
 
     service, _ = make(tmp_path)
     service.client_factory = lambda url: LetterClient(url)
-    assert service.mark_letters_read(mark_all=True) == {"read": 1}
+    assert service.mark_letters_read(mark_all=True) == {"read": 1, "blocked": 0}
     assert sum(1 for path in opened if "/parent/show/" in path) == 1
 
 
@@ -1797,3 +1797,74 @@ def test_letters_without_a_confirmation_are_not_refetched(tmp_path):
     service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_detail.html")])
     assert service.enrich_letters_search("current") == 3
     assert service.enrich_letters_search("current") == 0
+
+
+def test_a_letter_with_an_open_confirmation_is_reported_blocked_not_read(tmp_path):
+    from pathlib import Path as _P
+
+    index = (_P(__file__).parent / "fixtures" / "letters_index.html").read_text(encoding="utf-8")
+    confirm = (_P(__file__).parent / "fixtures" / "letter_confirm_seen.html").read_text(
+        encoding="utf-8"
+    )
+
+    class ConfirmingLetterClient(FakeClient):
+        def fetch(self, path, params=None):
+            body = confirm if "/parent/show/" in path else index
+
+            class R:
+                status_code = 200
+                text = body
+                url = "https://school.example" + path
+
+            return R()
+
+    service, _ = make(tmp_path)
+    service.client_factory = lambda url: ConfirmingLetterClient(url)
+    key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
+    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 1}
+
+
+def test_mark_all_read_separates_the_blocked_letters_from_the_read_ones(tmp_path):
+    from pathlib import Path as _P
+
+    index = (_P(__file__).parent / "fixtures" / "letters_index.html").read_text(encoding="utf-8")
+    confirm = (_P(__file__).parent / "fixtures" / "letter_confirm_seen.html").read_text(
+        encoding="utf-8"
+    )
+
+    class ConfirmingLetterClient(FakeClient):
+        def fetch(self, path, params=None):
+            body = confirm if "/parent/show/" in path else index
+
+            class R:
+                status_code = 200
+                text = body
+                url = "https://school.example" + path
+
+            return R()
+
+    service, _ = make(tmp_path)
+    service.client_factory = lambda url: ConfirmingLetterClient(url)
+    assert service.mark_letters_read(mark_all=True) == {"read": 0, "blocked": 1}
+
+
+def test_a_letter_page_that_fails_counts_as_neither_read_nor_blocked(tmp_path):
+    from pathlib import Path as _P
+
+    index = (_P(__file__).parent / "fixtures" / "letters_index.html").read_text(encoding="utf-8")
+
+    class BrokenLetterClient(FakeClient):
+        def fetch(self, path, params=None):
+            failing = "/parent/show/" in path
+
+            class R:
+                status_code = 500 if failing else 200
+                text = "" if failing else index
+                url = "https://school.example" + path
+
+            return R()
+
+    service, _ = make(tmp_path)
+    service.client_factory = lambda url: BrokenLetterClient(url)
+    key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
+    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 0}

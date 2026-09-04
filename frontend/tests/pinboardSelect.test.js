@@ -109,11 +109,12 @@ describe("[P128] pinboard: view-entry reset via setView", () => {
       state.config = {};
       state.children = [];
       state.absence = { data: { children: [], rules: {} } };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
       state.pinboardSelectMode = true;
       state.pinboardSelected = [1];
       setView("overview");
-      setView("pinboard");
+      setView("post");
     `);
     expect(window.eval("state.pinboardSelectMode")).toBe(false);
     expect(window.eval("state.pinboardSelected")).toEqual([]);
@@ -125,10 +126,11 @@ describe("[P128] pinboard: view-entry reset via setView", () => {
       state.config = {};
       state.children = [];
       state.absence = { data: { children: [], rules: {} } };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
       state.pinboardSearch = "Sportfest";
       setView("overview");
-      setView("pinboard");
+      setView("post");
     `);
     expect(window.eval("state.pinboardSearch")).toBe("");
   });

@@ -290,3 +290,76 @@ def test_parse_room_messages_drops_event_types_it_does_not_model():
 def test_parse_room_messages_carries_the_pagination_token():
     result = parse_room_messages(MESSAGES_BODY)
     assert result["before"] == "prev-batch-token"
+
+
+def test_privileges_are_read_from_the_same_inline_script_as_the_token():
+    from app.iserv.messenger import parse_privileges
+
+    html = (
+        "<html><body><script>window.data = "
+        '{"messenger_user_privileges":{"canCreateRoom":false,"canWriteToTeacher":true}}'
+        ";</script></body></html>"
+    )
+    assert parse_privileges(html) == {"can_write_to_teacher": True}
+
+
+def test_a_page_without_a_privilege_block_reports_nothing_instead_of_guessing():
+    from app.iserv.messenger import parse_privileges
+
+    assert parse_privileges("<html><body></body></html>") is None
+
+
+def test_the_teacher_suggestion_value_is_handed_through_untouched():
+    from app.iserv.messenger import parse_teacher_suggestions
+
+    payload = [
+        {"label": "Fr. Behrend", "value": "userid:11111111", "certainty": 1.0},
+        {"label": "Hr. Kaya", "value": "userid:22222222", "extra": "Klasse 3b"},
+        {"label": "no value", "value": ""},
+        "not a dict",
+    ]
+    assert parse_teacher_suggestions(payload) == [
+        {"label": "Fr. Behrend", "value": "userid:11111111", "extra": ""},
+        {"label": "Hr. Kaya", "value": "userid:22222222", "extra": "Klasse 3b"},
+    ]
+
+
+def test_the_teacher_room_payload_repeats_the_child_field_for_every_child():
+    from app.iserv.messenger import build_teacher_room_payload
+
+    assert build_teacher_room_payload("tok", "userid:1", ["a", "b"], False) == [
+        ("teacher_room[_token]", "tok"),
+        ("teacher_room[teacher_id]", "userid:1"),
+        ("teacher_room[add_other_parents]", "0"),
+        ("teacher_room[child_ids][]", "a"),
+        ("teacher_room[child_ids][]", "b"),
+    ]
+
+
+def test_the_fresh_csrf_token_is_taken_from_the_form_page():
+    from app.iserv.messenger import find_teacher_room_token
+
+    html = (
+        '<html><body><form method="post">'
+        '<input name="teacher_room[_token]" value="csrf-42">'
+        "</form></body></html>"
+    )
+    assert find_teacher_room_token(html, "https://school.example/form") == "csrf-42"
+    assert find_teacher_room_token("<html></html>", "https://school.example/form") == ""
+
+
+def test_room_membership_names_the_state_the_sync_reports():
+    from app.iserv.messenger import room_membership
+
+    body = {"rooms": {"join": {"!a:srv": {}}, "invite": {"!b:srv": {}}}}
+    assert room_membership(body, "!a:srv") == "join"
+    assert room_membership(body, "!b:srv") == "invite"
+    assert room_membership(body, "!c:srv") == ""
+
+
+def test_the_read_marker_body_names_both_markers_so_the_counter_can_drop():
+    from app.iserv.messenger import build_read_marker
+
+    body = build_read_marker("$evt-1")
+    assert set(body.values()) == {"$evt-1"}
+    assert len(body) == 2

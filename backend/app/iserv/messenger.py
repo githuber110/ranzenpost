@@ -5,7 +5,11 @@ import uuid
 import requests
 from bs4 import BeautifulSoup
 
+from .forms import parse_forms
+
 BOOTSTRAP_MARKER = "messenger_authentication"
+PRIVILEGE_MARKER = "messenger_user_privileges"
+TEACHER_PRIVILEGE_FIELD = "canWriteToTeacher"
 AUTH_FIELDS = (
     "access_token",
     "device_id",
@@ -19,8 +23,18 @@ MATRIX_SYNC_PATH = "/_matrix/client/v3/sync"
 MATRIX_MESSAGES_PATH = "/_matrix/client/v3/rooms/{room_id}/messages"
 MATRIX_SEND_PATH = "/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
 MATRIX_MEDIA_PATH = "/_matrix/client/v1/media/download/{server_name}/{media_id}"
+MATRIX_READ_MARKER_PATH = "/_matrix/client/v3/rooms/{room_id}/read_markers"
 
 FORBIDDEN_MATRIX_PATH_FRAGMENTS = ("/read_markers", "/receipt/")
+SANCTIONED_READ_MARKER_PATH = re.compile(r"^/_matrix/client/v3/rooms/[^/]+/read_markers$")
+
+TEACHER_AUTOCOMPLETE_PATH = "/iserv/messenger/autocomplete/teacher"
+TEACHER_AUTOCOMPLETE_TYPE = "userid"
+TEACHER_ROOM_FORM_PATH = "/iserv/messenger/form/room/teacher_new"
+TEACHER_ROOM_TOKEN_FIELD = "teacher_room[_token]"
+TEACHER_ROOM_TEACHER_FIELD = "teacher_room[teacher_id]"
+TEACHER_ROOM_CHILDREN_FIELD = "teacher_room[child_ids][]"
+TEACHER_ROOM_PARENTS_FIELD = "teacher_room[add_other_parents]"
 
 MXC_RE = re.compile(r"^mxc://([^/]+)/(.+)$")
 
@@ -52,39 +66,89 @@ def _candidate_objects(text):
             yield obj
 
 
-def _find_bootstrap(node):
+def _find_marked(node, marker):
     if isinstance(node, dict):
-        candidate = node.get(BOOTSTRAP_MARKER)
+        candidate = node.get(marker)
         if isinstance(candidate, dict):
             return candidate
         for value in node.values():
-            found = _find_bootstrap(value)
+            found = _find_marked(value, marker)
             if found is not None:
                 return found
     elif isinstance(node, list):
         for item in node:
-            found = _find_bootstrap(item)
+            found = _find_marked(item, marker)
             if found is not None:
                 return found
     return None
 
 
-def parse_bootstrap(html):
+def _marked_objects(html, marker):
     soup = BeautifulSoup(html or "", "html.parser")
     for script in soup.find_all("script"):
         text = script.string
         if text is None:
             text = script.get_text()
-        if not text or BOOTSTRAP_MARKER not in text:
+        if not text or marker not in text:
             continue
         for candidate in _candidate_objects(text):
-            auth = _find_bootstrap(candidate)
-            if auth is None:
-                continue
-            cleaned = {field: str(auth.get(field) or "") for field in AUTH_FIELDS}
-            if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
-                return cleaned
+            found = _find_marked(candidate, marker)
+            if found is not None:
+                yield found
+
+
+def parse_bootstrap(html):
+    for auth in _marked_objects(html, BOOTSTRAP_MARKER):
+        cleaned = {field: str(auth.get(field) or "") for field in AUTH_FIELDS}
+        if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
+            return cleaned
     raise BootstrapNotFoundError("messenger bootstrap data not found")
+
+
+def parse_privileges(html):
+    for privileges in _marked_objects(html, PRIVILEGE_MARKER):
+        return {"can_write_to_teacher": bool(privileges.get(TEACHER_PRIVILEGE_FIELD))}
+    return None
+
+
+def parse_teacher_suggestions(payload):
+    items = payload if isinstance(payload, list) else (payload or {}).get("results")
+    suggestions = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        value = str(item.get("value") or "").strip()
+        label = str(item.get("label") or "").strip()
+        if not value or not label:
+            continue
+        suggestions.append({"value": value, "label": label, "extra": str(item.get("extra") or "").strip()})
+    return suggestions
+
+
+def build_teacher_room_payload(token, teacher_value, child_ids, add_other_parents):
+    payload = [
+        (TEACHER_ROOM_TOKEN_FIELD, token),
+        (TEACHER_ROOM_TEACHER_FIELD, teacher_value),
+        (TEACHER_ROOM_PARENTS_FIELD, "1" if add_other_parents else "0"),
+    ]
+    payload.extend((TEACHER_ROOM_CHILDREN_FIELD, child_id) for child_id in child_ids)
+    return payload
+
+
+def find_teacher_room_token(html, base_url):
+    for form in parse_forms(html or "", base_url):
+        token = form.fields.get(TEACHER_ROOM_TOKEN_FIELD)
+        if token:
+            return str(token)
+    return ""
+
+
+def room_membership(sync_body, room_id):
+    rooms = (sync_body or {}).get("rooms") or {}
+    for membership in ("join", "invite", "leave"):
+        if room_id in (rooms.get(membership) or {}):
+            return membership
+    return ""
 
 
 def parse_mxc(url):
@@ -102,6 +166,10 @@ def build_text_message(body):
     return {"msgtype": "m.text", "body": body}
 
 
+def build_read_marker(event_id):
+    return {"m.fully_read": event_id, "m.read": event_id}
+
+
 class MatrixClient:
     def __init__(self, base_url, access_token, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
@@ -112,10 +180,13 @@ class MatrixClient:
     def _headers(self):
         return {"Authorization": f"Bearer {self.access_token}"}
 
-    def _guard(self, path):
+    def _guard(self, path, sanctioned=False):
         for fragment in FORBIDDEN_MATRIX_PATH_FRAGMENTS:
-            if fragment in path:
-                raise ForbiddenMatrixCallError(path)
+            if fragment not in path:
+                continue
+            if sanctioned and SANCTIONED_READ_MARKER_PATH.match(path):
+                continue
+            raise ForbiddenMatrixCallError(path)
 
     def _get(self, path, params=None):
         self._guard(path)
@@ -126,8 +197,8 @@ class MatrixClient:
             raise MatrixAuthError("matrix token rejected")
         return response
 
-    def _put(self, path, json_body):
-        self._guard(path)
+    def _put(self, path, json_body, sanctioned=False):
+        self._guard(path, sanctioned=sanctioned)
         response = self.session.put(
             f"{self.base_url}{path}", headers=self._headers(), json=json_body, timeout=self.timeout
         )
@@ -152,6 +223,13 @@ class MatrixClient:
 
     def fetch_media(self, server_name, media_id):
         return self._get(MATRIX_MEDIA_PATH.format(server_name=server_name, media_id=media_id))
+
+    def send_read_marker(self, room_id, event_id):
+        return self._put(
+            MATRIX_READ_MARKER_PATH.format(room_id=room_id),
+            build_read_marker(event_id),
+            sanctioned=True,
+        )
 
 
 def _all_state_events(room):

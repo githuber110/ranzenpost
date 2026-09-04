@@ -63,6 +63,20 @@ async function settingRow(page, key) {
   return page.locator(".setting-row").filter({ has: page.locator(".lbl", { hasText: label }) });
 }
 
+async function todayCell(page) {
+  const todayHead = page.locator(".tt-head.today");
+  if ((await todayHead.count()) === 0) return null;
+  const headBox = await todayHead.boundingBox();
+  const cells = page.locator(".tt-cell:not(.free)");
+  const count = await cells.count();
+  for (let index = 0; index < count; index += 1) {
+    const cell = cells.nth(index);
+    const box = await cell.boundingBox();
+    if (box && Math.abs(box.x - headBox.x) < 2) return cell;
+  }
+  return null;
+}
+
 for (const viewport of VIEWPORTS) {
   test.describe(`exam marks @ ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
@@ -81,7 +95,10 @@ for (const viewport of VIEWPORTS) {
 
           try {
             await openTimetable(page);
-            await page.locator(".tt-cell:not(.free)").first().click();
+            const todayLesson = await todayCell(page);
+            const markingToday = todayLesson !== null;
+            const marking = todayLesson || page.locator(".tt-cell:not(.free)").first();
+            await marking.click();
             await waitForSheetSettled(page);
             await assertNoOverflow(page, `${tag}/lesson-sheet`);
             await assertTapTargets(page, `${tag}/lesson-sheet`);
@@ -113,7 +130,12 @@ for (const viewport of VIEWPORTS) {
             await settled(page);
             await page.locator(".tabbar .tab").nth(0).click();
             await settled(page);
-            await expect(page.locator(".rows.flat .tag.exam").first()).toBeVisible();
+            if (markingToday) {
+              await expect(page.locator(".rows.flat .tag.exam").first()).toBeVisible();
+            } else {
+              const noSchool = await text(page, "overview.noSchool");
+              await expect(page.locator(".panel-rest", { hasText: noSchool })).toBeVisible();
+            }
             await assertNoOverflow(page, `${tag}/overview-marked`);
           } finally {
             await clearMarks(page);

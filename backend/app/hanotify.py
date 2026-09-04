@@ -2,8 +2,6 @@ import os
 import re
 from urllib.parse import quote
 
-DEFAULT_SERVICE = "persistent_notification.create"
-
 SERVICE_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
 
@@ -15,15 +13,14 @@ def notify(message, service=None, title="Ranzenpost"):
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
         return False
-    target = (service or DEFAULT_SERVICE).strip()
+    target = str(service or "").strip()
     if not is_valid_service_format(target):
         return False
-    if target != DEFAULT_SERVICE:
-        from .haservices import allowed_service_ids, list_notify_services
+    from .haservices import allowed_service_ids, list_notify_services
 
-        allowlist = list_notify_services()
-        if allowlist.get("supervisor") and target not in allowed_service_ids(allowlist):
-            return False
+    allowlist = list_notify_services()
+    if allowlist.get("supervisor") and target not in allowed_service_ids(allowlist):
+        return False
     domain, _, name = target.partition(".")
     import requests
 

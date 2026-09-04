@@ -33,7 +33,7 @@ describe("[C15] [P92] child chip only where child context acts", () => {
 
   test("letters/pinboard/conferences/settings views render no chip", () => {
     const { window } = loadApp();
-    for (const view of ["letters", "pinboard", "conferences", "settings"]) {
+    for (const view of ["post", "conferences", "settings"]) {
       const html = renderHeaderFor(window, view, 2);
       expect(html).not.toContain("child-switch");
     }
