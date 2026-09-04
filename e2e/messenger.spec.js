@@ -30,7 +30,7 @@ async function watchForbiddenRoutes(page) {
 }
 
 async function openMessenger(page) {
-  await page.locator(".messenger-entry").first().click();
+  await page.locator(".tabbar .tab").nth(4).click();
   await page.waitForSelector(".rows .row", { timeout: 8000 });
 }
 
@@ -106,7 +106,9 @@ for (const viewport of VIEWPORTS) {
         const before = await entries.count();
         await page.locator(".chat-older-btn").dispatchEvent("click");
         await expect(page.locator(".chat-older-btn")).toHaveCount(0);
-        expect(await entries.count(), `${label}: older page must add entries`).toBeGreaterThan(before);
+        await expect
+          .poll(() => entries.count(), { message: `${label}: older page must add entries` })
+          .toBeGreaterThan(before);
         await expectClean(page, `${label} room after paging`);
       });
 
@@ -126,7 +128,9 @@ for (const viewport of VIEWPORTS) {
         await page.waitForTimeout(60);
         await log.evaluate((node) => { node.scrollTop = 0; });
         await expect(page.locator(".chat-older-btn")).toHaveCount(0);
-        expect(await entries.count(), `${label}: scrolling up must add entries`).toBeGreaterThan(before);
+        await expect
+          .poll(() => entries.count(), { message: `${label}: scrolling up must add entries` })
+          .toBeGreaterThan(before);
       });
 
       test("the input grows, and it stays reachable when the keyboard takes the lower half", async ({ page }) => {

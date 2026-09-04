@@ -3,6 +3,83 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.05
+
+- The overview opens what you tap: a noticeboard post now unfolds in place over the overview and
+  a parent letter opens its page with a back button that leads back to the overview instead of
+  stranding you in the Post tab. Chat rows still jump into the room, because that is where the
+  conversation continues.
+- The timetable can be paged week by week with a horizontal swipe. Hairline arrows sit in the
+  margin beside the grid, appear only in a direction that actually exists, and mirror themselves
+  in Arabic; the grid itself keeps its full width. Swiping never interferes with scrolling, with
+  pull-to-refresh, or with tapping a lesson.
+- Tapping a lesson now also spotlights that subject across the whole week: the other cells dim
+  while the subject keeps its colour and gains a fine outline, without any pulsing. The detail
+  sheet still opens as before and stays; closing it keeps the spotlight, tapping an empty slot
+  clears it, tapping another subject moves it, and switching tabs resets it. The spotlight
+  follows the subject when the week is swiped, and the sheet quietly says which of the week's
+  occurrences you are looking at.
+- The overview no longer highlights the running or the next lesson. Lessons that are over stay
+  greyed out as before, and the entry position when the overview opens still follows the current
+  hour.
+- The "until HH:MM" in the overview head is gone. Instead the last lesson that actually takes
+  place shows its time as a span, which answers the question parents really ask - when is school
+  out. If the last lesson is cancelled, the span moves to the one before it.
+- The chapter head of the overview lost its bullet. It was reading like a list entry next to the
+  subject dots below it; heading and entries are now told apart typographically instead.
+- "Upcoming" only appears when there is something upcoming. With content it sits directly behind
+  "Today", its duplicate "Report" button is gone - that function lives in the Absence tab and
+  nowhere else - and an empty chapter no longer takes up a screen. A load failure is still shown
+  rather than swallowed.
+- The overview sorts itself: sections with something new move up behind "Today", which always
+  stays the anchor. The order is settled when the overview is entered, never while a thumb is
+  scrolling. The peek arrow at the bottom carries the same counter pill as the tab badges, from
+  the same source, and only when there is something to count.
+- The notification settings were cleared out. The "Notification in Home Assistant" row and the
+  free-text field for a custom target are gone - the app can only send to notify entities, so it
+  now says so by offering exactly those, in a selection dialog with search, grouped and with
+  their friendly names. Chosen targets appear as removable chips. Without a target nothing is
+  pushed any more instead of disappearing into an invisible default.
+- The spinner on the test button no longer spins wrongly the first time. There is now a single
+  spinner definition with one fixed rotation, and it can no longer be squashed out of round by
+  its surroundings; spinners outside a button had in fact not been animated at all.
+- Timetable pushes close two gaps. A rebuilt timetable without any marked change now sends a
+  plain "timetable changed", and when the last change is withdrawn the app says so instead of
+  going quiet - the very message that prevents a missed lesson. The signature behind it is built
+  from the IServ fields alone, so recolouring a subject never triggers a push.
+- Subscribing to the calendar no longer asks for an address. The app asks Home Assistant where
+  it lives and builds the address itself; a previously typed address is cleaned up. This also
+  fixes the dead "add to calendar" button, which came from an address that carried a port twice
+  and therefore produced an invalid link. The feed port is opened automatically on the first
+  subscription, and the restart it needs is one button in the sheet: the app says plainly that
+  it will be unreachable for a few seconds, restarts on the tap, waits until it answers again,
+  reloads and puts the subscription sheet back on screen. It never restarts by itself - a guard
+  refuses any restart that does not come from that button, and a tripwire keeps every background
+  module away from the endpoint. A Nabu Casa address still cannot work here, because the remote
+  connection only
+  forwards the Home Assistant port and no add-on ports - the address therefore stays local, and
+  the existing note about home network and VPN stays as it is.
+- Navigation rework decided by the design round: parent letters and the noticeboard share one
+  "Post" tab with a segment that carries a separate unread counter per side, the letter archive
+  moved from a second segment into a folder row, and the freed place became a "Chat" tab. The
+  provisional header entry for the messenger is gone; the tab bar derives its column count from
+  the number of tabs, which also fixes the gap when the school has no timetable.
+- The overview shows unread chat rooms in a chapter of their own, but only while something is
+  unread, and each row jumps straight into that room.
+- Create a room with a teacher: search over the IServ autocomplete (debounced, older requests
+  cancelled), child selection when there is more than one, an optional invitation for the other
+  parents that stays switched off by default, a duplicate check against the local room list, an
+  explicit summary with the teacher's name as the dominant element, and a single form POST with
+  a freshly fetched CSRF token. A failed attempt re-syncs and re-checks for duplicates before it
+  offers a retry; the POST is never repeated on its own.
+- "Mark as read" per room: one deliberate action sends the Matrix read marker up to the newest
+  message. It is the only sanctioned way the app may ever touch a receipt route - the guard now
+  allows exactly one path from exactly one function, and the tripwires prove it stays that way.
+- Marking a parent letter as read no longer reports success for letters that still wait for a
+  read confirmation; IServ does not accept the read there. The app now checks the answer instead
+  of assuming it, names the blocked letters, and offers the confirmation instead of a mark that
+  cannot work.
+
 ## 2609.01.04
 
 - School messenger (read and reply): room list with filter and unread badges, chronological room

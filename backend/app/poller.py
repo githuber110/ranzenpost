@@ -28,7 +28,12 @@ LETTERS_CONFIRM_KEY = "notify.letters.newConfirm"
 PINBOARD_KEY = "notify.pinboard.new"
 CONFERENCES_KEY = "notify.conferences.new"
 TIMETABLE_KEY = "notify.timetable.changes"
+TIMETABLE_CLEARED_KEY = "notify.timetable.cleared"
+TIMETABLE_PLAN_KEY = "notify.timetable.plan"
 MESSENGER_KEY = "notify.messenger.unread"
+PLAN_ORIGIN_FIELDS = ("date", "period", "subject_code", "teacher_code", "room")
+AUTH_NOTIFIED_FLAG = "auth_incident_sent"
+LEGACY_AUTH_FLAG = "auth_incident"
 
 
 class Poller:
@@ -172,13 +177,18 @@ class Poller:
         try:
             children = self.service.children()
         except LoginError:
-            if not config.get("auth_incident"):
-                config["auth_incident"] = True
-                self._notify("auth", "", messages.text_in(language, BAD_CREDENTIALS_KEY))
+            config.pop(LEGACY_AUTH_FLAG, None)
+            if not config.get(AUTH_NOTIFIED_FLAG):
+                delivered = self._notify(
+                    "auth", "", messages.text_in(language, BAD_CREDENTIALS_KEY)
+                )
+                if delivered:
+                    config[AUTH_NOTIFIED_FLAG] = True
             if self.store is not None:
                 self.store.save_config(config)
             return [{"error": "bad_credentials"}]
-        config.pop("auth_incident", None)
+        config.pop(LEGACY_AUTH_FLAG, None)
+        config.pop(AUTH_NOTIFIED_FLAG, None)
         for child in children:
             child_id = child.get("child_id")
             name = child.get("name")
@@ -192,19 +202,56 @@ class Poller:
             lessons = timetable.get("lessons") or []
             changes = timetable.get("changes") or []
             last_updated = timetable.get("last_updated")
+            week_anchor = str(timetable.get("start_date") or "")
             changes_count = len(changes)
             has_changes = changes_count > 0
             signature = self._signature(lessons, changes)
             changes_signature = self._changes_signature(changes)
+            plan_signature = self._plan_signature(lessons)
             previous = poll_state.get(child_id)
             previous_signature = previous.get("signature") if previous else None
             previous_changes_signature = previous.get("changes_signature") if previous else None
+            previous_plan_signature = previous.get("plan_signature") if previous else None
+            previous_anchor = previous.get("week_anchor") if previous else None
+            regular_plan_signature = previous.get("regular_plan_signature") if previous else None
+            same_week = previous is None or previous_anchor == week_anchor
             signature_changed = signature != previous_signature
-            changes_changed = changes_signature != previous_changes_signature
+            changes_changed = same_week and changes_signature != previous_changes_signature
+            plan_changed = same_week and plan_signature != previous_plan_signature
             if signature_changed and self.publisher is not None:
                 self.publisher.publish_state(child_id, last_updated, has_changes, error=None)
             if changes_changed and changes_count > 0:
                 self._notify("timetable", name, self._message(language, name, changes_count))
+            elif (
+                changes_changed
+                and changes_count == 0
+                and previous_changes_signature is not None
+            ):
+                plan_left_regular = (
+                    regular_plan_signature is not None
+                    and plan_signature != regular_plan_signature
+                )
+                self._notify(
+                    "timetable",
+                    name,
+                    messages.text_in(
+                        language,
+                        TIMETABLE_PLAN_KEY if plan_left_regular else TIMETABLE_CLEARED_KEY,
+                        {"name": name},
+                    ),
+                )
+            elif plan_changed and previous_plan_signature is not None:
+                self._notify(
+                    "timetable",
+                    name,
+                    messages.text_in(language, TIMETABLE_PLAN_KEY, {"name": name}),
+                )
+            if changes_count == 0:
+                next_regular_plan_signature = plan_signature
+            elif same_week:
+                next_regular_plan_signature = regular_plan_signature
+            else:
+                next_regular_plan_signature = None
             if child_id in feed_children:
                 self._store_feed_weeks(
                     snapshot,
@@ -218,6 +265,9 @@ class Poller:
                 "changes_count": changes_count,
                 "signature": signature,
                 "changes_signature": changes_signature,
+                "plan_signature": plan_signature,
+                "week_anchor": week_anchor,
+                "regular_plan_signature": next_regular_plan_signature,
             }
             events.append({
                 "child_id": child_id,
@@ -392,6 +442,18 @@ class Poller:
             ensure_ascii=False,
         )
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _plan_signature(lessons):
+        serialized = sorted(
+            json.dumps(
+                {field: item.get(field) for field in PLAN_ORIGIN_FIELDS},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            for item in lessons
+        )
+        return hashlib.sha256(json.dumps(serialized, ensure_ascii=False).encode("utf-8")).hexdigest()
 
     @staticmethod
     def _changes_signature(changes):

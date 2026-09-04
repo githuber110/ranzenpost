@@ -424,45 +424,44 @@ describe("[P198] image posts open the existing viewer", () => {
 });
 
 describe("[P198] the way in", () => {
-  test("overview and letters carry the entry, the letter detail does not", () => {
+  test("the chat is a tab of its own and the header carries no entry any more", () => {
     const { window } = loadApp();
-    const visible = window.eval("(function (view) { return messengerEntryVisible(view); })");
-    expect(visible("overview")).toBe(true);
-    expect(visible("letters")).toBe(true);
-    expect(visible("timetable")).toBe(false);
-    expect(visible("pinboard")).toBe(false);
-    window.eval("(function () { state.letterDetail = { letter: {} }; })")();
-    expect(visible("letters")).toBe(false);
+    const keys = window.eval("VIEWS.map((item) => item.key)");
+    expect(keys).toContain("messenger");
+    expect(keys).not.toContain("letters");
+    expect(keys).not.toContain("pinboard");
+    expect(window.eval("typeof messengerEntryButton")).toBe("undefined");
+    expect(window.eval("typeof openMessenger")).toBe("undefined");
   });
 
-  test("the entry shows a dot and renames itself when something is unread", () => {
-    const { window } = loadApp();
-    setRooms(window, ROOMS);
-    const withUnread = window.eval("(function () { return messengerEntryButton(); })")();
-    expect(withUnread.querySelector(".entry-dot")).not.toBe(null);
-    expect(withUnread.getAttribute("aria-label")).toBe(window.eval("t('messenger.open.unread')"));
-
-    setRooms(window, { self_user_id: SELF, rooms: ROOMS.rooms.map((room) => ({ ...room, unread_count: 0 })) });
-    const quiet = window.eval("(function () { return messengerEntryButton(); })")();
-    expect(quiet.querySelector(".entry-dot")).toBe(null);
-    expect(quiet.getAttribute("aria-label")).toBe(window.eval("t('messenger.open')"));
-  });
-
-  test("before the rooms are loaded the dot comes from the poller state", () => {
+  test("before the rooms are loaded the tab badge comes from the poller state", () => {
     const { window } = loadApp();
     const total = window.eval(
-      "(function (poll) { state.messengerRooms = null; state.config = { poll_state: poll }; return messengerUnreadTotal(); })"
+      "(function (poll) { state.messengerRooms = null; state.config = { poll_state: poll }; return badgeCount('messenger'); })"
     );
     expect(total({ messenger_unread: 4 })).toBe(4);
     expect(total({ messenger_unread: 0 })).toBe(0);
     expect(total({})).toBe(0);
   });
 
-  test("the entry is one call, so the way in can be moved without touching the screens", () => {
+  test("the loaded rooms beat the poller state for the tab badge", () => {
     const { window } = loadApp();
-    window.eval("(function () { state.view = 'letters'; state.messengerReturn = 'overview'; openMessenger(); })")();
+    setRooms(window, ROOMS);
+    window.eval("(function () { state.config = { poll_state: { messenger_unread: 99 } }; })")();
+    expect(window.eval("badgeCount('messenger')")).toBe(3);
+  });
+
+  test("entering the chat tab drops any open room", () => {
+    const { window } = loadApp();
+    window.eval(`
+      state.config = {};
+      state.children = [];
+      state.absence = { data: { children: [], rules: {} } };
+      state.view = "overview";
+      state.messengerRoom = { room_id: "!a:example.test", messages: [] };
+      setView("messenger");
+    `);
     expect(window.eval("state.view")).toBe("messenger");
-    expect(window.eval("state.messengerReturn")).toBe("letters");
     expect(window.eval("state.messengerRoom")).toBe(null);
   });
 });

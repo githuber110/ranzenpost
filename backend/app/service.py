@@ -116,6 +116,9 @@ LETTER_CONFIRM_GONE_KEY = "api.letters.confirm.gone"
 LETTER_CONFIRM_UNSUPPORTED_KEY = "api.letters.confirm.unsupported"
 LETTER_CONFIRM_UPSTREAM_KEY = "api.letters.confirm.upstream"
 LETTER_CONFIRM_REJECTED_KEY = "api.letters.confirm.rejected"
+LETTER_OPEN_READ = "read"
+LETTER_OPEN_BLOCKED = "blocked"
+LETTER_OPEN_FAILED = "failed"
 SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 SAFE_FILENAME = re.compile(r"^[^\x00-\x1f/\\]{1,120}$")
 
@@ -343,6 +346,15 @@ class IServService:
 
     def messenger_media(self, server_name, media_id):
         return self._messenger().media(server_name, media_id)
+
+    def messenger_mark_read(self, room_id, event_id):
+        return self._messenger().mark_room_read(room_id, event_id)
+
+    def messenger_teacher_search(self, query):
+        return self._messenger().search_teachers(query)
+
+    def messenger_create_teacher_room(self, teacher, child_ids, add_other_parents):
+        return self._messenger().create_teacher_room(teacher, child_ids, add_other_parents)
 
     def messenger_unread_pulse(self):
         return self._messenger().unread_pulse()
@@ -649,21 +661,31 @@ class IServService:
                 if entry.get("unread")
             ]
         opened = 0
+        blocked = 0
         for key in targets:
             letter_id, _, recipient_id = str(key).partition(":")
-            if self._open_letter(letter_id, recipient_id):
+            outcome = self._open_letter(letter_id, recipient_id)
+            if outcome == LETTER_OPEN_READ:
                 opened += 1
-        return {"read": opened}
+            elif outcome == LETTER_OPEN_BLOCKED:
+                blocked += 1
+        return {"read": opened, "blocked": blocked}
 
     def _open_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
         recipient_id = _clean_id(recipient_id)
         if not letter_id or not recipient_id:
-            return False
+            return LETTER_OPEN_FAILED
         response = self._session().fetch(
             LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id)
         )
-        return getattr(response, "status_code", 0) == 200
+        if getattr(response, "status_code", 0) != 200:
+            return LETTER_OPEN_FAILED
+        parsed = parse_confirmation(response.text, response.url)
+        self._store_confirmation_cache(f"{letter_id}:{recipient_id}", parsed)
+        if parsed is not None:
+            return LETTER_OPEN_BLOCKED
+        return LETTER_OPEN_READ
 
     def _fetch_letter_page(self, letter_id, recipient_id):
         client = self._session()

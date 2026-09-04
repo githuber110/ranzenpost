@@ -163,6 +163,9 @@ def create_app(
     mark_registry=None,
 ):
     app = FastAPI(title="Ranzenpost")
+    from .supervisor import clear_restart_pending
+
+    clear_restart_pending(service.store)
     holiday_source = holiday_calendar or holidays.HolidayCalendar(service.store)
     region_source = region_suggester or schoolregion.RegionSuggester(service)
     subscription_registry = registry or subscriptions.SubscriptionRegistry(service.store)
@@ -516,14 +519,30 @@ def create_app(
 
     @app.get("/api/calendar/subscriptions")
     def calendar_subscriptions():
+        from .supervisor import calendar_access
+
         config = service.store.load_config()
-        return {
+        body = {
             "subscriptions": subscription_registry.list(),
             "components": list(subscriptions.COMPONENTS),
             "holiday_region": config.get("holiday_region") or "",
             "path_template": "/calendar/{token}.ics",
             "port": int(os.environ.get("ISERV_CALENDAR_PORT", str(CALENDAR_PORT))),
         }
+        body.update(calendar_access(store=service.store))
+        return body
+
+    @app.post("/api/calendar/port")
+    def open_calendar_port():
+        from .supervisor import open_feed_port
+
+        return open_feed_port(store=service.store)
+
+    @app.post("/api/calendar/restart")
+    def restart_calendar_addon():
+        from .supervisor import restart_addon
+
+        return restart_addon(requested_by_user=True)
 
     @app.post("/api/calendar/subscriptions")
     def create_calendar_subscription(body: dict = Body(...)):

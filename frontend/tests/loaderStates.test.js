@@ -33,8 +33,8 @@ const LOADERS = [
     name: "letters",
     route: "api/letters?tab=",
     good: { letters: [{ letter_id: "1", recipient_id: "1", title: "Klassenfahrt", unread: false }] },
-    view: "letters",
-    seed: "state.lettersTab = 'current';",
+    view: "post",
+    seed: "state.postTab = 'letters'; state.lettersTab = 'current';",
     call: "loadLetters('current')",
     stock: "Klassenfahrt",
     errorTitle: "letters.error.title",
@@ -44,8 +44,8 @@ const LOADERS = [
     name: "pinboard",
     route: "api/pinboard",
     good: { feed: [{ id: 7, title: "Sommerfest", unread: false }], folders: [] },
-    view: "pinboard",
-    seed: "",
+    view: "post",
+    seed: "state.postTab = 'pinboard';",
     call: "loadPinboard()",
     stock: "Sommerfest",
     errorTitle: "pinboard.error.title",
@@ -144,7 +144,7 @@ describe("[W6c] one error switch decides where a failure lands", () => {
   test("auth_failed from any loader shows the reconnect screen, not a network empty state", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    window.eval("state.view = 'letters'; state.account = 'erika'; state.letters = null;");
+    window.eval("state.view = 'post'; state.postTab = 'letters'; state.account = 'erika'; state.letters = null;");
     routeFetch(window, [["api/letters", () => jsonResponse({ error: "auth_failed" })]]);
 
     await window.eval("loadLetters('current')");
@@ -191,7 +191,7 @@ describe("[W6c] one error switch decides where a failure lands", () => {
   test("a letter detail that answers with an error code never renders as an empty letter", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    window.eval("state.view = 'letters'; state.children = [];");
+    window.eval("state.view = 'post'; state.postTab = 'letters'; state.children = [];");
     routeFetch(window, [
       ["api/letters/detail", () => jsonResponse({ error: "network" })],
       ["api/letters/seen", () => jsonResponse({ read: 1 })],

@@ -10,77 +10,167 @@ const ENRICHED = [
   { service: "notify.custom_webhook", name: null, name_source: null, category: "other" },
 ];
 
+const SEARCHABLE = [
+  { service: "notify.mobile_app_a", name: "Device A", name_source: "entity", category: "mobile" },
+  { service: "notify.mobile_app_b", name: "Device B", name_source: "entity", category: "mobile" },
+  { service: "notify.mobile_app_c", name: "Device C", name_source: "entity", category: "mobile" },
+  { service: "notify.notify", name: null, name_source: null, category: "group" },
+  { service: "notify.custom_webhook_a", name: null, name_source: null, category: "other" },
+  { service: "notify.custom_webhook_b", name: null, name_source: null, category: "other" },
+];
+
 function openNotifySheet(services, { supervisor = true, config = {} } = {}) {
   const app = loadApp();
+  const supervisorLiteral = supervisor === null ? "null" : supervisor ? "true" : "false";
   app.window.eval(`
     state.config = ${JSON.stringify(Object.assign({ notify_services: [], notify_events: {} }, config))};
     state.notifyServices = ${JSON.stringify(services)};
-    state.notifySupervisor = ${supervisor ? "true" : "false"};
+    state.notifySupervisor = ${supervisorLiteral};
     openSheet(notifySheet);
   `);
   return app;
 }
 
+function openPicker(app) {
+  app.document.querySelector(".notify-pick-open").click();
+  return app;
+}
+
 function overlines(document) {
-  return [...document.querySelectorAll(".section-head .overline")]
-    .filter((node) => !node.closest("[hidden]"))
-    .map((node) => node.textContent);
+  return [...document.querySelectorAll(".section-head .overline")].map((node) => node.textContent);
 }
 
 function rowsOf(document, category) {
   return [...document.querySelectorAll(`.notify-services-group[data-category="${category}"] .notify-row`)];
 }
 
-describe("[P154] notification sheet presents real targets instead of raw entity ids", () => {
-  test("groups the discovered targets by category, each under its own heading", () => {
+function chipsOf(document) {
+  return [...document.querySelectorAll(".notify-chip")];
+}
+
+describe("[P208] notification sheet: chip list + nested picker replace the old free-form form", () => {
+  test("the deleted persistent-notification default row, free-text field and manual group are gone", () => {
     const { document } = openNotifySheet(ENRICHED);
 
-    const heads = overlines(document);
-    expect(heads).toContain("Wohin?");
-    expect(heads).toContain("Push aufs Handy");
-    expect(heads).toContain("In Home Assistant");
-    expect(heads).toContain("An alle Geräte");
-    expect(heads).toContain("Weitere Dienste");
-    expect(heads).toContain("Wobei benachrichtigen?");
-
-    expect(rowsOf(document, "mobile").length).toBe(3);
-    expect(rowsOf(document, "persistent").length).toBe(1);
-    expect(rowsOf(document, "group").length).toBe(1);
-    expect(rowsOf(document, "other").length).toBe(1);
+    expect(document.querySelector(".notify-default-group")).toBeNull();
+    expect(document.querySelector(".notify-advanced")).toBeNull();
+    expect(document.querySelector(".notify-advanced-toggle")).toBeNull();
+    expect(document.querySelector(".notify-manual-group")).toBeNull();
+    expect(document.body.textContent).not.toContain("Mitteilung in Home Assistant");
+    expect(document.body.textContent).not.toContain("Anderes Ziel hinzufügen");
   });
 
-  test("shows the friendly name as the headline and the technical id underneath it", () => {
-    const { document } = openNotifySheet(ENRICHED);
-    const row = rowsOf(document, "mobile")[0];
+  test("the persistent category is filtered out of the picker options entirely", () => {
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
 
+    expect(app.document.querySelector('.notify-services-group[data-category="persistent"]')).toBeNull();
+    expect(app.document.body.textContent).not.toContain("notify.persistent_notification");
+  });
+
+  test("with no target chosen the chip area shows the empty-state hint instead of chips", () => {
+    const { document } = openNotifySheet(ENRICHED);
+
+    expect(chipsOf(document).length).toBe(0);
+    expect(document.querySelector(".notify-empty").textContent).toBe(
+      "Noch kein Ziel gewählt – ohne Ziel wird nichts gesendet."
+    );
+  });
+
+  test("chosen targets render as chips with the friendly name via notifyLabel", () => {
+    const { document } = openNotifySheet(ENRICHED, {
+      config: { notify_services: ["notify.mobile_app_test_phone", "notify.custom_webhook"] },
+    });
+
+    const chips = chipsOf(document);
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent).toContain("Test Phone");
+    expect(chips[0].getAttribute("aria-label")).toBe("Test Phone entfernen");
+    expect(chips[1].textContent).toContain("notify.custom_webhook");
+  });
+
+  test("clicking a chip removes that target from the draft", () => {
+    const { window, document } = openNotifySheet(ENRICHED, {
+      config: { notify_services: ["notify.mobile_app_test_phone", "notify.custom_webhook"] },
+    });
+
+    chipsOf(document)[0].click();
+
+    expect(chipsOf(document).length).toBe(1);
+    expect(chipsOf(document)[0].textContent).toContain("notify.custom_webhook");
+    expect(window.eval("state.sheetForm.services")).toEqual(["notify.custom_webhook"]);
+  });
+
+  test("the picker groups options by category under their heading, each row shows friendly name and raw id", () => {
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+    const { document } = app;
+
+    const heads = overlines(document);
+    expect(heads).toContain("Push aufs Handy");
+    expect(heads).toContain("An alle Geräte");
+    expect(heads).toContain("Weitere Dienste");
+
+    expect(rowsOf(document, "mobile").length).toBe(3);
+    expect(rowsOf(document, "group").length).toBe(1);
+    expect(rowsOf(document, "other").length).toBe(1);
+
+    const row = rowsOf(document, "mobile")[0];
     expect(row.querySelector("b").textContent).toBe("Test Phone");
     expect(row.querySelector(".notify-id").textContent).toBe("notify.mobile_app_test_phone");
   });
 
   test("keeps the technical id as the headline when Home Assistant reports no name", () => {
-    const { document } = openNotifySheet(ENRICHED);
-    const row = rowsOf(document, "mobile")[2];
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+    const row = rowsOf(app.document, "mobile")[2];
 
     expect(row.querySelector("b").textContent).toBe("notify.mobile_app_unnamed_device");
     expect(row.querySelector(".notify-id")).toBeNull();
   });
 
-  test("the fixed Home Assistant default row stays selectable next to the discovered targets", () => {
-    const { window, document } = openNotifySheet(ENRICHED);
-    const defaultRow = document.querySelector(".notify-default-group .notify-row");
-    expect(defaultRow.textContent).toContain("Mitteilung in Home Assistant (Standard)");
+  test("checking a target in the picker adds it and is reflected back once the picker closes", () => {
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
 
-    defaultRow.querySelector("input[type=checkbox]").click();
-    rowsOf(document, "mobile")[1].querySelector("input[type=checkbox]").click();
+    rowsOf(app.document, "mobile")[1].querySelector("input[type=checkbox]").click();
+    app.document.querySelector(".sheet-close").click();
 
-    expect(window.eval("state.sheetForm.services")).toEqual([
-      "persistent_notification.create",
-      "notify.mobile_app_test_tablet",
-    ]);
+    expect(chipsOf(app.document).length).toBe(1);
+    expect(chipsOf(app.document)[0].textContent).toContain("Test Tablet");
+    expect(app.window.eval("state.sheetForm.services")).toEqual(["notify.mobile_app_test_tablet"]);
+  });
+
+  test("[P208 follow-up] closing the picker is a plain go-back, not a discard-changes prompt", () => {
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+
+    rowsOf(app.document, "mobile")[1].querySelector("input[type=checkbox]").click();
+    app.document.querySelector(".sheet-close").click();
+
+    expect(app.document.querySelector(".sheet-confirm")).toBeNull();
+    expect(chipsOf(app.document).length).toBe(1);
+    expect(chipsOf(app.document)[0].textContent).toContain("Test Tablet");
+  });
+
+  test("below the search threshold no search field is rendered", () => {
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+
+    expect(app.document.querySelector(".search-input")).toBeNull();
+  });
+
+  test("at the search threshold a search field is rendered", () => {
+    const app = openNotifySheet(SEARCHABLE);
+    openPicker(app);
+
+    expect(app.document.querySelector(".search-input")).not.toBeNull();
   });
 
   test("every target carries its own test button that posts exactly that service", async () => {
-    const { window, document } = openNotifySheet(ENRICHED);
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+    const { window, document } = app;
     const calls = [];
     let release = null;
     window.fetch = (url, options) => {
@@ -112,55 +202,24 @@ describe("[P154] notification sheet presents real targets instead of raw entity 
   });
 
   test("a failing test reports the backend message instead of pretending success", async () => {
-    const { window, document } = openNotifySheet(ENRICHED);
+    const app = openNotifySheet(ENRICHED);
+    openPicker(app);
+    const { window, document } = app;
     window.fetch = () =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: false, message_key: "api.notify.failed" }) });
 
-    document.querySelector(".notify-default-group button.notify-test").click();
+    document.querySelector("button.notify-test").click();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
     expect(window.eval("state.toast.kind")).toBe("bad");
     expect(window.eval("state.toast.message")).toBe("Senden fehlgeschlagen. Prüfe den Dienst-Namen.");
   });
 
-  test("the free text field is a collapsed fallback that only opens on demand", () => {
-    const { document } = openNotifySheet(ENRICHED);
-    const panel = document.querySelector(".notify-advanced");
-    const toggle = document.querySelector(".notify-advanced-toggle");
+  test("an unknown supervisor connection is explained instead of showing an empty box", () => {
+    const { document } = openNotifySheet([], { supervisor: null });
 
-    expect(panel.hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(toggle.textContent).toContain("Anderes Ziel hinzufügen");
-
-    toggle.click();
-
-    expect(panel.hidden).toBe(false);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(panel.querySelector(".dlg-text").textContent).toContain("notify.my_service");
-  });
-
-  test("a manually added target becomes its own removable group", () => {
-    const { window, document } = openNotifySheet(ENRICHED);
-    document.querySelector(".notify-advanced-toggle").click();
-
-    const input = document.querySelector('.notify-advanced input[aria-label="Entität hinzufügen"]');
-    const addButton = [...document.querySelectorAll(".notify-advanced button")].find((node) =>
-      node.textContent.includes("Entität hinzufügen")
-    );
-    input.value = "notify.custom_device";
-    addButton.click();
-
-    const group = document.querySelector(".notify-manual-group");
-    expect(group.hidden).toBe(false);
-    expect(overlines(document)).toContain("Selbst hinzugefügt");
-    expect(group.textContent).toContain("notify.custom_device");
-    expect(window.eval("state.sheetForm.services")).toEqual(["notify.custom_device"]);
-    expect(group.querySelector("button.notify-test")).not.toBeNull();
-
-    group.querySelector("button.notify-remove").click();
-
-    expect(document.querySelector(".notify-manual-group").hidden).toBe(true);
-    expect(window.eval("state.sheetForm.services")).toEqual([]);
+    expect(document.querySelector(".note").textContent).toContain("Verbindung zu Home Assistant wird geprüft…");
+    expect(document.querySelector(".notify-pick-open").disabled).toBe(true);
   });
 
   test("a missing supervisor connection is explained instead of showing an empty box", () => {
@@ -170,8 +229,7 @@ describe("[P154] notification sheet presents real targets instead of raw entity 
       node.textContent.includes("Die Geräte-Liste erscheint, sobald die App als Add-on in Home Assistant läuft.")
     );
     expect(hint).not.toBeUndefined();
-    expect(document.querySelectorAll(".notify-services-group").length).toBe(0);
-    expect(document.querySelectorAll(".notify-default-group .notify-row").length).toBe(1);
+    expect(document.querySelector(".notify-pick-open").disabled).toBe(true);
   });
 
   test("a reachable supervisor without push targets explains what is missing", () => {
@@ -181,7 +239,6 @@ describe("[P154] notification sheet presents real targets instead of raw entity 
       node.textContent.includes("Installiere die Home-Assistant-App auf dem Handy")
     );
     expect(hint).not.toBeUndefined();
-    expect(document.querySelectorAll(".notify-services-group").length).toBe(0);
   });
 
   test("the event section keeps all four events switched on by default", () => {
@@ -197,7 +254,9 @@ describe("[P154] notification sheet presents real targets instead of raw entity 
   });
 
   test("saving sends every selected target to the config API", () => {
-    const { window, document } = openNotifySheet(ENRICHED, { config: { notify_services: ["notify.custom_webhook"] } });
+    const app = openNotifySheet(ENRICHED, { config: { notify_services: ["notify.custom_webhook"] } });
+    openPicker(app);
+    const { window, document } = app;
     let posted = null;
     window.fetch = (url, options) => {
       if (String(url).includes("api/config") && options && options.method === "POST") {
@@ -208,6 +267,7 @@ describe("[P154] notification sheet presents real targets instead of raw entity 
     };
 
     rowsOf(document, "mobile")[0].querySelector("input[type=checkbox]").click();
+    document.querySelector(".sheet-close").click();
     document.querySelector(".sheet-foot button").click();
 
     return new Promise((resolve) => window.setTimeout(resolve, 0)).then(() => {
@@ -240,8 +300,8 @@ describe("[P154] the settings row names the device instead of counting services"
     expect(window.eval('notifyServicesSummaryLabel(["notify.something_else"])')).toBe("notify.something_else");
   });
 
-  test("no target at all still names the Home Assistant default", () => {
+  test("[P208] no target at all now names the absence of a target, not the old Home Assistant default", () => {
     const { window } = openNotifySheet(ENRICHED);
-    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Home Assistant");
+    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Kein Ziel");
   });
 });

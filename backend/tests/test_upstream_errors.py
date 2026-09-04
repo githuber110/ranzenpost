@@ -35,6 +35,7 @@ READ_ENDPOINTS = (
     ("/api/absences", "GET", None),
     ("/api/messenger/rooms", "GET", None),
     ("/api/messenger/room", "GET", None),
+    ("/api/messenger/teachers", "GET", None),
 )
 
 WRITE_ENDPOINTS = (
@@ -47,6 +48,12 @@ WRITE_ENDPOINTS = (
     ("/api/absences/delete", "POST", {"id": "a1"}),
     ("/api/password/repair", "POST", {"password": "current-pass"}),
     ("/api/messenger/send", "POST", {"room_id": "!r:school.example", "text": "hi"}),
+    ("/api/messenger/read", "POST", {"room_id": "!r:school.example", "event_id": "$e1"}),
+    (
+        "/api/messenger/room/teacher",
+        "POST",
+        {"teacher": "userid:t1", "child_ids": ["c1"], "add_other_parents": False},
+    ),
 )
 
 BINARY_ENDPOINTS = (
@@ -62,6 +69,7 @@ QUERY = {
     "/api/letters/detail": {"letter_id": "l1", "recipient_id": "r1"},
     "/api/absences/sick-note-pdf": {"id": "42"},
     "/api/messenger/room": {"id": "!r:school.example"},
+    "/api/messenger/teachers": {"query": "Beh"},
 }
 
 COVERED_ROUTES = {
@@ -88,6 +96,9 @@ COVERED_ROUTES = {
     "/api/messenger/room",
     "/api/messenger/send",
     "/api/messenger/media/{server_name}/{media_id}",
+    "/api/messenger/read",
+    "/api/messenger/teachers",
+    "/api/messenger/room/teacher",
 }
 
 ROUTES_WITHOUT_UPSTREAM_CALLS = {
@@ -104,6 +115,8 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/calendar/subscriptions": "local subscription registry",
     "/api/calendar/subscriptions/{subscription_id}": "local subscription registry",
     "/api/calendar/subscriptions/{subscription_id}/rotate": "local subscription registry",
+    "/api/calendar/port": "Home Assistant Supervisor, not IServ",
+    "/api/calendar/restart": "Home Assistant Supervisor, not IServ",
     "/api/marks": "local mark registry",
     "/api/marks/{mark_id}": "local mark registry",
     "/api/wizard": "wizard state machine with its own error object",

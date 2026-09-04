@@ -46,7 +46,7 @@ def test_notify_rejects_malformed_service(monkeypatch):
     assert calls == []
 
 
-def test_notify_sends_default_service_without_allowlist_check(monkeypatch):
+def test_notify_without_a_target_sends_nothing(monkeypatch):
     calls = []
 
     def fake_post(url, headers=None, json=None, timeout=None):
@@ -57,8 +57,10 @@ def test_notify_sends_default_service_without_allowlist_check(monkeypatch):
         haservices, "list_notify_services", lambda: pytest.fail("must not be called")
     )
 
-    assert hanotify.notify("hi") is True
-    assert calls == ["http://supervisor/core/api/services/persistent_notification/create"]
+    assert hanotify.notify("hi") is False
+    assert hanotify.notify("hi", service="") is False
+    assert hanotify.notify("hi", service=None) is False
+    assert calls == []
 
 
 def test_notify_allows_service_present_in_allowlist(monkeypatch):

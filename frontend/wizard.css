@@ -561,3 +561,7 @@
   letter-spacing: normal !important;
   text-transform: none !important;
 }
+
+.sw-results { display: flex; flex-direction: column; gap: var(--s-4); min-block-size: 0; }
+.sw-results .empty { padding-block: var(--s-7); }
+.sw-body .search-field { margin-block-end: var(--s-5); }

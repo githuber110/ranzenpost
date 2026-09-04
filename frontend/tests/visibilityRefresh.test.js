@@ -7,7 +7,8 @@ describe("[C04] visibility refresh: app does not age in the background", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
       state.sheet = () => document.createElement("div");
       lastVisibilityRefreshAt = Date.now() - 6 * 60 * 1000;
       Object.defineProperty(document, "hidden", { value: false, configurable: true });
@@ -46,7 +47,8 @@ describe("[C04] visibility refresh: app does not age in the background", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
     `);
     await window.eval("refreshActiveView()");
     expect(window.eval("window.__calls")).toBe(1);

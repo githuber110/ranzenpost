@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 function renderPinboard(window, data) {
-  const run = window.eval("(function (data) { state.pinboard = data; return pinboardView(); })");
+  const run = window.eval("(function (data) { state.view = 'post'; state.postTab = 'pinboard'; state.pinboard = data; return postView(); })");
   return run(data);
 }
 
@@ -19,7 +19,7 @@ describe("[P113] pinboard header stays sticky", () => {
     expect(head.querySelector(".page-title")).toBeNull();
     expect(head.querySelector(".chipbar")).not.toBeNull();
     expect(head.contains(view.querySelector(".rows"))).toBe(false);
-    const bar = window.eval("header('pinboard')");
+    const bar = window.eval("header('post')");
     expect(bar.querySelector(".header-title").textContent).not.toBe("");
   });
 });

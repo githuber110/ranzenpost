@@ -103,7 +103,8 @@ describe("[W7] state that a rerender must not lose", () => {
     const { window, document } = loadApp();
     await quiet(window);
     window.eval(`
-      state.view = "letters";
+      state.view = "post";
+      state.postTab = "letters";
       state.lettersTab = "current";
       state.letters = { tab: "current", letters: [{ letter_id: "1", recipient_id: "1", title: "A" }] };
       state.lettersSelectMode = true;

@@ -29,7 +29,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
     `);
     const screen = makeScreen(window);
     screen.scrollTop = 0;
@@ -45,7 +46,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
     `);
     const screen = makeScreen(window);
     screen.scrollTop = 0;
@@ -61,7 +63,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
       state.sheet = () => document.createElement("div");
     `);
     const screen = makeScreen(window);
@@ -78,7 +81,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
       state.absenceForm = { type: "sick" };
     `);
     const screen = makeScreen(window);
@@ -95,7 +99,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
     `);
     const screen = makeScreen(window);
     screen.scrollTop = 0;
@@ -111,7 +116,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     window.eval(`
       window.__calls = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
-      state.view = "pinboard";
+      state.view = "post";
+      state.postTab = "pinboard";
     `);
     const screen = makeScreen(window);
     screen.scrollTop = 40;

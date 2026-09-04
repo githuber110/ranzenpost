@@ -11,7 +11,7 @@ const {
 const PORT = process.env.E2E_PORT || "8199";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-const AREAS = ["today", "letters", "pinboard", "upcoming"];
+const BASE_AREAS = ["today", "upcoming", "letters", "pinboard", "messenger"];
 const MAX_PAGES = 4;
 const MIN_BLOCKS_PER_PAGE = 3;
 
@@ -82,8 +82,12 @@ function pagesOf(view, area) {
   return view.panels.filter((panel) => panel.area === area);
 }
 
-function assertCompleteness(view, label) {
-  for (const area of AREAS) {
+function areasOf(view) {
+  return view.panels.map((panel) => panel.area).filter((area, index, all) => all.indexOf(area) === index);
+}
+
+function assertCompleteness(view, label, areas) {
+  for (const area of areas) {
     const pages = pagesOf(view, area);
     expect(pages.length, `${label}/${area}: chapter missing`).toBeGreaterThan(0);
     const seen = pages.flatMap((panel) => panel.blocks);
@@ -95,7 +99,7 @@ function assertCompleteness(view, label) {
   }
 }
 
-function assertBudget(view, label) {
+function assertBudget(view, label, areas) {
   if (view.snap !== "on") return;
   expect(view.panelHeight, `${label}: no measured panel height`).toBeGreaterThan(0);
   for (const panel of view.panels) {
@@ -108,7 +112,7 @@ function assertBudget(view, label) {
       `${label}/${panel.area} page ${panel.page}: the page scrolls inside itself`
     ).toBeLessThanOrEqual(1);
   }
-  for (const area of AREAS) {
+  for (const area of areas) {
     const pages = pagesOf(view, area);
     expect(pages.length, `${label}/${area}: more than ${MAX_PAGES} pages`).toBeLessThanOrEqual(MAX_PAGES);
     if (pages.length > 1) {
@@ -133,9 +137,9 @@ function assertReachable(view, label) {
   }
 }
 
-function assertStructure(view, label) {
-  expect(view.headings, `${label}: the heading rotor must hold exactly four entries`).toBe(4);
-  for (const area of AREAS) {
+function assertStructure(view, label, areas) {
+  expect(view.headings, `${label}: the heading rotor holds one entry per chapter`).toBe(areas.length);
+  for (const area of areas) {
     const pages = pagesOf(view, area);
     expect(pages[0].headings, `${label}/${area}: page one carries no h2`).toBe(1);
     for (const panel of pages.slice(1)) {
@@ -145,7 +149,7 @@ function assertStructure(view, label) {
   }
 }
 
-function assertArrows(view, label) {
+function assertArrows(view, label, areas) {
   if (view.snap !== "on") {
     expect(view.arrows, `${label}: arrows must disappear when the cut is off`).toBe(0);
     expect(view.counters, `${label}: counters must disappear when the cut is off`).toBe(0);
@@ -168,7 +172,7 @@ function assertArrows(view, label) {
       expect(panel.arrowLabel, `${label}: the page arrow must not name a chapter`).not.toContain(nextTitle);
     }
   });
-  for (const area of AREAS) {
+  for (const area of areas) {
     const pages = pagesOf(view, area);
     for (const panel of pages) {
       if (pages.length > 1) expect(panel.counter, `${label}/${area}: missing page counter`).toBeTruthy();
@@ -207,13 +211,15 @@ for (const language of LANGUAGES) {
             await gotoScenario(page, fixture, fontSize);
             const view = await inspect(page);
             expect(view.present, `${label}: no overview`).toBe(true);
-            expect(view.panels.map((panel) => panel.area).filter((area, index, all) => all.indexOf(area) === index))
-              .toEqual(AREAS);
-            assertCompleteness(view, label);
-            assertBudget(view, label);
+            const areas = areasOf(view);
+            expect(areas[0], `${label}: today must stay the anchor`).toBe("today");
+            expect(areas.filter((area) => !BASE_AREAS.includes(area)), `${label}: unknown chapter`).toEqual([]);
+            expect(new Set(areas).size, `${label}: a chapter appears twice`).toBe(areas.length);
+            assertCompleteness(view, label, areas);
+            assertBudget(view, label, areas);
             assertReachable(view, label);
-            assertStructure(view, label);
-            assertArrows(view, label);
+            assertStructure(view, label, areas);
+            assertArrows(view, label, areas);
           }
         });
       });
@@ -266,8 +272,8 @@ test.describe("overview chapters: the cut switches itself off @ 320x568", () => 
     expect(view.snapType === "none" || view.snapType === "").toBe(true);
     expect(view.arrows).toBe(0);
     expect(view.counters).toBe(0);
-    assertCompleteness(view, "two-long/28px");
-    assertStructure(view, "two-long/28px");
+    assertCompleteness(view, "two-long/28px", areasOf(view));
+    assertStructure(view, "two-long/28px", areasOf(view));
   });
 
   test("the twelve entry cap holds and the trailing row leads into the tab", async ({ page }) => {
@@ -291,8 +297,8 @@ test.describe("overview chapters: landscape keeps free scrolling", () => {
     expect(view.snap).toBe("off");
     expect(view.arrows).toBe(0);
     expect(view.counters).toBe(0);
-    assertCompleteness(view, "landscape");
-    assertStructure(view, "landscape");
+    assertCompleteness(view, "landscape", areasOf(view));
+    assertStructure(view, "landscape", areasOf(view));
   });
 });
 
@@ -311,8 +317,8 @@ test.describe("overview chapters: the child pills carry the day @ 390x844", () =
     expect(after.startsWith("child-2:")).toBe(true);
     expect(after).not.toBe(before);
     const view = await inspect(page);
-    assertCompleteness(view, "two-children/after-switch");
-    assertStructure(view, "two-children/after-switch");
+    assertCompleteness(view, "two-children/after-switch", areasOf(view));
+    assertStructure(view, "two-children/after-switch", areasOf(view));
   });
 
   test("the arrow steps exactly one page and the way back returns to it", async ({ page }) => {
