@@ -432,7 +432,8 @@ class IServService:
                 return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
             code = _next_totp_code(secret, self._last_code)
             removed = client.delete_totp_token(uuid, code, csrf_token)
-        except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException):
+        except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException):
+            logger.warning("removing the two-factor token could not be confirmed", exc_info=True)
             return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
         return _disconnect_result(True, removed, DISCONNECT_REMOVED_KEY if removed else DISCONNECT_FAILED_KEY)
 
