@@ -270,11 +270,24 @@
       ];
     }
 
+    function childrenFailureText() {
+      const failure = children.failure || {};
+      if (failure.message_key) return label(failure.message_key, failure.message_vars);
+      return label("wizard.child.failed.title");
+    }
+
     function childBody() {
       if (children.status === "loading") return [el("p", { class: "wz-sub" }, label("common.loading"))];
       if (children.status === "error") {
         return [
           el("div", { class: "wz-error", role: "alert" }, label("wizard.error.service.text")),
+          el("button", { class: "wz-skip", type: "button", onclick: loadChildren }, label("common.reload")),
+        ];
+      }
+      if (children.status === "failed") {
+        return [
+          el("div", { class: "wz-error", role: "alert" }, childrenFailureText()),
+          el("p", { class: "wz-sub" }, label("wizard.child.failed.text")),
           el("button", { class: "wz-skip", type: "button", onclick: loadChildren }, label("common.reload")),
         ];
       }
@@ -436,21 +449,25 @@
         };
       }
       if (id === "child") {
+        const failed = children.status === "failed";
         const empty = children.status === "ready" && !children.list.length;
+        const without = empty || failed;
         return {
           list: true,
           scroll: true,
-          question: label(empty ? "wizard.child.none.title" : "wizard.child.title"),
+          question: label(
+            failed ? "wizard.child.failed.title" : empty ? "wizard.child.none.title" : "wizard.child.title"
+          ),
           body: childBody,
-          hint: empty ? "" : label("wizard.child.text"),
+          hint: without ? "" : label("wizard.child.text"),
           block: () => {
-            if (empty || children.status !== "ready") return "";
+            if (without || children.status !== "ready") return "";
             return children.picked ? "" : need("wizard.child.title");
           },
-          nextLabel: label(empty ? "wizard.child.none.finish" : "common.next"),
+          nextLabel: label(without ? "wizard.child.none.finish" : "common.next"),
           busyLabel: label("common.pleaseWait"),
           onNext: () => {
-            if (empty) return post("api/wizard/skip-child");
+            if (without) return post("api/wizard/skip-child");
             const child = children.list.find((entry) => entry.child_id === children.picked);
             if (!child) return false;
             return post("api/wizard/child", {
@@ -551,9 +568,13 @@
       refresh();
       api("GET", "api/children")
         .then((list) => {
-          const items = Array.isArray(list) ? list : [];
-          const keep = items.some((entry) => entry.child_id === children.picked) ? children.picked : "";
-          children = { status: "ready", list: items, picked: keep || (items.length === 1 ? items[0].child_id : "") };
+          if (!Array.isArray(list)) {
+            children = { status: "failed", list: [], picked: "", failure: list || {} };
+            refresh();
+            return;
+          }
+          const keep = list.some((entry) => entry.child_id === children.picked) ? children.picked : "";
+          children = { status: "ready", list, picked: keep || (list.length === 1 ? list[0].child_id : "") };
           refresh();
         })
         .catch(() => {

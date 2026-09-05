@@ -1079,6 +1079,8 @@
   "viewer.pdf.position": "صفحة {current} من {total}",
   "viewer.pdf.protected": "ملف PDF هذا محمي بكلمة مرور.",
   "viewer.pdf.region": "مستند PDF",
+  "wizard.child.failed.text": "يمكنك إكمال الإعداد رغم ذلك. وبمجرد أن يوفّر IServ قائمة الأطفال مجددًا ستظهر تلقائيًا.",
+  "wizard.child.failed.title": "تعذّر تحميل قائمة الأطفال",
   "wizard.child.none.finish": "إنهاء الإعداد",
   "wizard.child.none.text": "لا يوجد طفل مرتبط بحسابك — يرجى التواصل مع المدرسة.",
   "wizard.child.none.title": "لا يوجد طفل مرتبط",
