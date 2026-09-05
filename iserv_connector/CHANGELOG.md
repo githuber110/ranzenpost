@@ -3,6 +3,26 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.07
+
+- Wherever the app says "this is where you are" or "this is what you picked", it now says it
+  loudly: the current tab, the open segment, the chosen chip and the selected row in every picker
+  all sit on a filled accent surface with inverted text, in the light theme as much as the dark
+  one. Before this, that mark was a tint with barely more contrast than the background it sat on -
+  in the light theme 1.08:1, which is close to invisible - so the app quietly relied on colour
+  hue alone to tell you where you were.
+- The mark never rests on colour alone any more: every selected control also carries a heavier
+  label, so it still reads for anyone who cannot separate the two hues.
+- The "Now" mark on the running lesson became a filled pill, and "Next" finally looks like a mark
+  at all - it used to render in the same grey as any other row detail, which meant the word was
+  there but nobody could see it.
+- A lesson you marked yourself showed no ring when it happened to sit inside a double period. The
+  rule that draws the ring could never match those rows, so the mark was silently invisible in
+  exactly the case where two lessons share one slot.
+- Styling that no longer belonged to anything - a highlight for a row class that is never set, and
+  two leftovers from an older wizard - is gone rather than lying in wait to be picked up by
+  accident, which is how a stacked lesson silently inherited the wrong tap area last time.
+
 ## 2609.01.06
 
 - The overview says again what is happening right now. The lesson you are in carries a quiet

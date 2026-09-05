@@ -1,7 +1,7 @@
 {
   "name": "ranzenpost",
   "private": true,
-  "version": "2609.01.06",
+  "version": "2609.01.07",
   "description": "Home Assistant app that pulls timetable, notices, and letters from IServ into a dedicated UI.",
   "license": "MIT",
   "scripts": {
