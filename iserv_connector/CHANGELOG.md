@@ -3,6 +3,21 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.08
+
+- Every parent letter now says which child it is about. The child's first name sits beside the
+  class as a chip - in the letter list, in the letter itself, and in the overview where new
+  letters appear. Before this the name was hidden behind a rule that only showed it to households
+  with more than one child, and in the letter itself it was buried in the grey line of sender and
+  date, where nobody looks.
+- The overview now tells you the same things about a letter as the list does. It used to leave out
+  why a letter was there at all: a letter also appears when only a reading confirmation is still
+  open, and the row said nothing about it. All three views now build their chips from one place,
+  so they cannot drift apart again.
+- The strip below the tab bar no longer shows through in a foreign colour. The bar is deliberately
+  translucent, but the surface behind the document carried no colour of its own, so in the Home
+  Assistant frame the white underneath came through.
+
 ## 2609.01.07
 
 - Wherever the app says "this is where you are" or "this is what you picked", it now says it

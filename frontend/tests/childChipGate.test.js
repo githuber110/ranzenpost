@@ -47,7 +47,7 @@ describe("[C15] [P92] child chip only where child context acts", () => {
 });
 
 describe("[C15] letter card child tag gated on >1 child", () => {
-  test("child tag hidden with a single child", () => {
+  test("[P234] the child tag is shown even with a single child", () => {
     const { window } = loadApp();
     const run = window.eval(`
       (function () {
@@ -56,7 +56,8 @@ describe("[C15] letter card child tag gated on >1 child", () => {
       })
     `);
     const html = run();
-    expect(html).not.toContain("tag soft");
+    expect(html).toContain("tag child");
+    expect(html).toContain("Alice");
   });
 
   test("child tag shown with more than one child", () => {
@@ -68,7 +69,7 @@ describe("[C15] letter card child tag gated on >1 child", () => {
       })
     `);
     const html = run();
-    expect(html).toContain("tag soft");
+    expect(html).toContain("tag child");
     expect(html).toContain("Alice");
   });
 });

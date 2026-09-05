@@ -112,3 +112,16 @@ describe("[P232] every selected state is loud enough to see", () => {
     expect(wizardCss).not.toMatch(/\.wz-child\.picked/);
   });
 });
+
+describe("[P233] the translucent bar never runs against a white canvas", () => {
+  test("the document canvas carries the app background, not the host's", () => {
+    const canvas = rule(stylesCss, "html, body");
+    expect(canvas).toMatch(/background:\s*var\(--bg\)/);
+  });
+
+  test("the tab bar is translucent on purpose, which is why the canvas must be set", () => {
+    const token = /--bar-bg:\s*([^;]+);/.exec(stylesCss);
+    expect(token).not.toBeNull();
+    expect(token[1]).toMatch(/transparent/);
+  });
+});
