@@ -1,0 +1,11 @@
+**/__pycache__
+**/*.pyc
+**/node_modules
+.git
+.github
+.venv
+backend/tests
+e2e
+frontend/tests
+playwright-report
+test-results
