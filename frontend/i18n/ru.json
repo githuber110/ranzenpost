@@ -243,6 +243,7 @@
   "api.cancellations.error.date": "Дата вне ближайших восьми недель.",
   "api.cancellations.error.notFound": "Этой отмены больше нет.",
   "api.cancellations.error.period": "Модель уроков не знает такого урока.",
+  "api.children.forbidden": "IServ не открывает для этой учётной записи раздел расписания. Дети указаны именно там, и без него приложение не может их прочитать.",
   "api.children.unreadable": "IServ выдал страницу со списком детей не в ожидаемом виде.",
   "api.config.unknownKeys": "Приложение не знает эти настройки: {keys}",
   "api.disconnect.failed": "Не удалось удалить ключ — проверьте это в IServ в разделе «Einstellungen → Zwei-Faktor» (настройки → двухфакторная защита).",

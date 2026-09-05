@@ -5,7 +5,13 @@ from .pages import base_shape
 
 CHILD_SELECT_ID = "timetable-filter-child-select"
 CHILD_PAGE_MESSAGE_KEY = "api.children.unreadable"
+CHILD_PAGE_FORBIDDEN_KEY = "api.children.forbidden"
+FORBIDDEN_STATUSES = (401, 403)
 LOGIN_FIELD = "_password"
+
+
+def child_page_message_key(status):
+    return CHILD_PAGE_FORBIDDEN_KEY if status in FORBIDDEN_STATUSES else CHILD_PAGE_MESSAGE_KEY
 
 
 def parse_children(html):

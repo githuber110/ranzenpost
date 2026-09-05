@@ -245,6 +245,7 @@
   "api.cancellations.error.date": "التاريخ خارج الأسابيع الثمانية القادمة.",
   "api.cancellations.error.notFound": "لم يعد هذا الإلغاء موجودًا.",
   "api.cancellations.error.period": "نموذج الحصص لا يعرف هذه الحصة.",
+  "api.children.forbidden": "لا يتيح IServ قسم الجدول الدراسي لهذا الحساب. أسماء الأطفال موجودة هناك، وبدونه لا يمكن للتطبيق قراءتها.",
   "api.children.unreadable": "لم يقدّم IServ صفحة قائمة الأطفال بالشكل المتوقع.",
   "api.config.unknownKeys": "التطبيق لا يعرف هذه الإعدادات: {keys}",
   "api.disconnect.failed": "تعذّر حذف الرمز — يرجى التحقق في IServ ضمن الإعدادات ثم المصادقة الثنائية.",

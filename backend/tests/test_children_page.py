@@ -136,3 +136,34 @@ def test_the_route_answers_with_the_reason_instead_of_an_empty_list():
 
 def test_the_parser_itself_is_unchanged_for_a_normal_page():
     assert [child.name for child in parse_children(SELECT_PAGE)] == ["Kim", "Alex"]
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_module_iserv_refuses_is_named_as_refused_not_as_unreadable(status):
+    from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+
+    with pytest.raises(DataError) as caught:
+        _client(FakePage(status, "<html><body>Zugriff verweigert</body></html>")).get_children()
+    assert caught.value.message_key == CHILD_PAGE_FORBIDDEN_KEY
+    assert caught.value.detail["status"] == status
+    assert caught.value.detail["login_form"] is False
+
+
+@pytest.mark.parametrize("status", [404, 500, 503])
+def test_a_page_that_broke_for_another_reason_keeps_the_general_wording(status):
+    with pytest.raises(DataError) as caught:
+        _client(FakePage(status, "<html><body>Fehler</body></html>")).get_children()
+    assert caught.value.message_key == CHILD_PAGE_MESSAGE_KEY
+
+
+def test_both_wordings_exist_in_every_language():
+    import json
+    import pathlib
+
+    from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+
+    bundles = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "i18n"
+    for language in ("de", "en", "ar", "tr", "ru", "uk"):
+        texts = json.loads((bundles / f"{language}.json").read_text(encoding="utf-8"))
+        for key in (CHILD_PAGE_MESSAGE_KEY, CHILD_PAGE_FORBIDDEN_KEY):
+            assert str(texts.get(key) or "").strip(), f"{language}: {key}"
