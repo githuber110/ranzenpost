@@ -22,3 +22,4 @@ data-e2e-measure/
 
 # Interne Arbeitsanweisung, gehoert nicht ins oeffentliche Repo
 CLAUDE.md
+.playwright-mcp/
