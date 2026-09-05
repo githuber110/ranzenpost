@@ -131,3 +131,52 @@ def test_the_changelog_describes_the_version_being_shipped(package):
         "the device shows this changelog next to the update button, so the version being installed "
         "has to be described in it"
     )
+
+
+def _ignore_patterns():
+    path = ROOT / ".dockerignore"
+    if not path.is_file():
+        return []
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def _ignored(relative, patterns):
+    parts = relative.split("/")
+    for pattern in patterns:
+        if pattern.startswith("**/"):
+            tail = pattern[3:]
+            if any(part == tail for part in parts) or parts[-1].endswith(tail.lstrip("*")):
+                return True
+        elif relative == pattern or relative.startswith(pattern + "/"):
+            return True
+    return False
+
+
+def test_the_published_image_carries_no_tests_and_no_caches():
+    patterns = _ignore_patterns()
+    offenders = []
+    for line in (ROOT / "Dockerfile").read_text(encoding="utf-8").splitlines():
+        match = COPY_LINE.match(line.strip())
+        if not match:
+            continue
+        source = ROOT / match.group(1)
+        if not source.exists():
+            continue
+        walked = source.rglob("*") if source.is_dir() else [source]
+        for path in walked:
+            if not path.is_file():
+                continue
+            relative = path.relative_to(ROOT).as_posix()
+            if _ignored(relative, patterns):
+                continue
+            parts = relative.split("/")
+            if "tests" in parts or "__pycache__" in parts or relative.endswith(".pyc"):
+                offenders.append(relative)
+    assert offenders == [], (
+        "the image built in CI serves its frontend directory to the browser, so anything copied "
+        f"into it is published: {offenders[:10]}"
+    )
