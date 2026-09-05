@@ -241,6 +241,7 @@
   "api.cancellations.error.date": "Das Datum liegt außerhalb der nächsten acht Wochen.",
   "api.cancellations.error.notFound": "Diesen Ausfall gibt es nicht mehr.",
   "api.cancellations.error.period": "Diese Stunde kennt das Stundenmodell nicht.",
+  "api.children.forbidden": "IServ gibt den Stundenplan-Bereich für dieses Konto nicht frei. Die Kinder stehen dort — ohne ihn kann die App sie nicht lesen.",
   "api.children.unreadable": "IServ hat die Seite mit der Kinderliste nicht wie erwartet ausgeliefert.",
   "api.config.unknownKeys": "Diese Einstellungen kennt die App nicht: {keys}",
   "api.disconnect.failed": "Token konnte nicht entfernt werden — bitte in IServ unter Einstellungen → Zwei-Faktor prüfen.",

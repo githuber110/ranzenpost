@@ -243,6 +243,7 @@
   "api.cancellations.error.date": "Дата поза межами найближчих восьми тижнів.",
   "api.cancellations.error.notFound": "Цього скасування більше немає.",
   "api.cancellations.error.period": "Модель уроків не знає такого уроку.",
+  "api.children.forbidden": "IServ не відкриває для цього облікового запису розділ розкладу. Діти вказані саме там, і без нього застосунок не може їх прочитати.",
   "api.children.unreadable": "IServ надав сторінку зі списком дітей не в очікуваному вигляді.",
   "api.config.unknownKeys": "Застосунок не знає ці налаштування: {keys}",
   "api.disconnect.failed": "Не вдалося видалити токен — перевірте це в IServ: Налаштування → Двофакторна автентифікація (Einstellungen → Zwei-Faktor).",

@@ -7,7 +7,7 @@ import requests
 
 from .auth import apply_login_fields, fill_two_factor_code
 from .children import (
-    CHILD_PAGE_MESSAGE_KEY,
+    child_page_message_key,
     child_select_present,
     page_diagnosis,
     parse_children,
@@ -65,7 +65,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.14")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.15")
         self.timeout = timeout
         self.username = ""
         self.sleeper = time.sleep
@@ -224,7 +224,7 @@ class IServClient:
         if response.status_code != 200 or not child_select_present(response.text):
             raise DataError(
                 "child list page was not readable",
-                message_key=CHILD_PAGE_MESSAGE_KEY,
+                message_key=child_page_message_key(response.status_code),
                 detail=page_diagnosis(response),
             )
         return parse_children(response.text)

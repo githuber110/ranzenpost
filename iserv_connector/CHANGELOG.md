@@ -3,6 +3,13 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.15
+
+- When the school server refuses a whole area to this account, the app says that instead of saying
+  the page came back in an unexpected shape. The children are listed inside the timetable area, so
+  a refusal there leaves the app without a single child even though everything else still works -
+  and the message now names the reason rather than the symptom.
+
 ## 2609.01.14
 
 - Disconnecting the app no longer claims the school server forgot this device when it did not know.
