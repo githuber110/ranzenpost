@@ -23,6 +23,8 @@ AUTH_FIELDS = (
     "iserv_cryptkey",
 )
 
+PHP_DATA_ID = "php-data"
+
 MATRIX_SYNC_PATH = "/_matrix/client/v3/sync"
 INITIAL_SYNC_TIMELINE_LIMIT = 20
 INITIAL_SYNC_FILTER = {
@@ -63,6 +65,7 @@ SCALAR_TYPES = (str, int, float, bool)
 STAGE_MODULE = "module"
 STAGE_LOGIN = "login"
 STAGE_BOOTSTRAP = "bootstrap"
+STAGE_NO_CREDENTIALS = "no_credentials"
 STAGE_MATRIX = "matrix"
 STAGE_NETWORK = "network"
 STAGE_TIMEOUT = "timeout"
@@ -71,6 +74,7 @@ STAGE_MESSAGE_KEYS = {
     STAGE_MODULE: "api.messenger.error.module",
     STAGE_LOGIN: "api.messenger.error.login",
     STAGE_BOOTSTRAP: "api.messenger.error.bootstrap",
+    STAGE_NO_CREDENTIALS: "api.messenger.error.noCredentials",
     STAGE_MATRIX: "api.messenger.error.matrix",
     STAGE_NETWORK: "api.messenger.error.network",
     STAGE_TIMEOUT: "api.messenger.error.timeout",
@@ -241,8 +245,55 @@ def _shape_only(fragment):
     return "".join(out)
 
 
+def php_data(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    element = soup.find(id=PHP_DATA_ID)
+    if element is None:
+        return None
+    try:
+        payload = json.loads(element.get_text())
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def credentials_withheld(html):
+    payload = php_data(html)
+    return isinstance(payload, dict) and payload.get(BOOTSTRAP_MARKER, False) is None
+
+
+def credentials_note(html):
+    payload = php_data(html)
+    if payload is None:
+        return "no %s element" % PHP_DATA_ID
+    if BOOTSTRAP_MARKER not in payload:
+        return "%s without %s" % (PHP_DATA_ID, BOOTSTRAP_MARKER)
+    auth = payload[BOOTSTRAP_MARKER]
+    if auth is None:
+        return "%s is null" % BOOTSTRAP_MARKER
+    if not isinstance(auth, dict):
+        return "%s is %s" % (BOOTSTRAP_MARKER, type(auth).__name__)
+    missing = [field for field in AUTH_FIELDS if not _pick_field(auth, field)]
+    if missing:
+        return "%s misses %s" % (BOOTSTRAP_MARKER, ",".join(missing))
+    return "%s complete" % BOOTSTRAP_MARKER
+
+
+def granted_privileges(html):
+    payload = php_data(html)
+    privileges = (payload or {}).get(PRIVILEGE_MARKER)
+    if not isinstance(privileges, dict):
+        return "no %s" % PRIVILEGE_MARKER
+    granted = sorted(str(name) for name, value in privileges.items() if value is True)
+    return ", ".join(granted) or "none granted"
+
+
 def parse_bootstrap(html):
-    for auth in _marked_objects(html, BOOTSTRAP_MARKER):
+    payload = php_data(html)
+    embedded = payload.get(BOOTSTRAP_MARKER) if isinstance(payload, dict) else None
+    candidates = [embedded] if isinstance(embedded, dict) else []
+    candidates.extend(_marked_objects(html, BOOTSTRAP_MARKER))
+    for auth in candidates:
         cleaned = clean_auth(auth)
         if auth_complete(cleaned):
             return cleaned
@@ -350,7 +401,11 @@ def trusted_homeserver(discovered, base):
 
 
 def parse_privileges(html):
-    for privileges in _marked_objects(html, PRIVILEGE_MARKER):
+    payload = php_data(html)
+    embedded = (payload or {}).get(PRIVILEGE_MARKER)
+    sources = [embedded] if isinstance(embedded, dict) else []
+    sources.extend(_marked_objects(html, PRIVILEGE_MARKER))
+    for privileges in sources:
         return {"can_write_to_teacher": bool(privileges.get(TEACHER_PRIVILEGE_FIELD))}
     return None
 
