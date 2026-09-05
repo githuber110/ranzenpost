@@ -527,3 +527,30 @@ def test_an_unparsable_answer_reports_its_field_names_but_never_a_value():
     assert "accessToken" in shape
     assert "homeServer" in shape
     assert "syt-secret-value" not in shape
+
+
+def test_the_page_diagnosis_describes_the_shape_without_repeating_the_content():
+    from app.iserv.messenger import embedded_shape
+
+    secret = "syt-fake-value-must-not-appear-000000"
+    html = '<html><body><div data-messenger_authentication=\'{"accessToken":"' + secret + '"}\'></div></body></html>'
+    shape = embedded_shape(html)
+    assert "no marked object" in shape
+    assert "occurrences=1" in shape
+    assert "in_script=False" in shape
+    assert secret not in shape
+    assert "accessToken" not in shape
+
+
+def test_the_page_diagnosis_says_when_the_marker_is_not_there_at_all():
+    from app.iserv.messenger import embedded_shape
+
+    assert "marker absent" in embedded_shape("<html><body>nothing here</body></html>")
+
+
+def test_a_non_json_answer_is_described_by_type_and_shape_only():
+    from app.iserv.messenger import _shape_only
+
+    described = _shape_only('<!DOCTYPE h')
+    assert "<" in described
+    assert "DOCTYPE" not in described

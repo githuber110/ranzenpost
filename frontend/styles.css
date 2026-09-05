@@ -115,6 +115,12 @@
   color-scheme: light;
 }
 
+:root[data-embedded="1"] {
+  --safe-t: 0px;
+  --safe-b: 0px;
+  --safe-x: 0px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0e1412;
