@@ -53,7 +53,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     const stacks = grid.querySelectorAll(".tt-stack");
     expect(stacks.length).toBe(1);
     expect(stacks[0].tagName).toBe("DIV");
-    const chips = stacks[0].querySelectorAll("button.tt-cell.chip");
+    const chips = stacks[0].querySelectorAll("button.tt-cell.compact");
     expect(chips.length).toBe(2);
     expect([...chips].map((chip) => chip.querySelector(".sub").textContent)).toEqual(["M", "TEAM"]);
     expect(chips[0].classList.contains("out")).toBe(false);
@@ -66,7 +66,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     const { window } = loadApp();
     const grid = renderGrid(window, sharedWeek);
     const single = [...grid.querySelectorAll("button.tt-cell")].filter(
-      (cell) => !cell.classList.contains("chip")
+      (cell) => !cell.classList.contains("compact")
     );
     expect(single.length).toBe(1);
     expect(single[0].querySelector(".sub").textContent).toBe("D");
@@ -83,7 +83,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
       period_times: { 1: "08:00", 4: "10:40" },
     };
     const section = renderOverviewTodayAt(window, "2026-09-01T06:00:00", week);
-    const rows = section.querySelectorAll(".rows.flat .row");
+    const rows = section.querySelectorAll(".rows.flat .row:not(.row-note)");
     expect(rows.length).toBe(2);
     expect(rows[0].querySelector(".row-title").textContent).toBe("D");
     const pairRow = rows[1];
@@ -96,9 +96,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(items[1].querySelector(".row-title").style.textDecoration).toBe("line-through");
     const metas = pairRow.querySelectorAll(".row-meta");
     expect(metas.length).toBe(1);
-    expect(metas[0].textContent).toBe(
-      window.eval('t("overview.time.range", { start: "10:40", end: "11:25" })')
-    );
+    expect(metas[0].textContent).toBe("10:40");
   });
 
   test("[P140b] .row-pair lays out its two cells side by side with a divider, not stacked", () => {

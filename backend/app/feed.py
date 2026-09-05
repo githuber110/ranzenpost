@@ -3,7 +3,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from . import feed_ics, holidays, marks, messages
+from . import cancellations, feed_ics, holidays, marks, messages
 from .iserv.absences import berlin_offset
 from .subscriptions import (
     COMPONENT_ABSENCES,
@@ -53,6 +53,7 @@ HOLIDAY_FALLBACK_KEYS = {
 MARK_SUMMARY_KEY = "calendar.mark.summary"
 MARK_SUMMARY_NAMED_KEY = "calendar.mark.summary.named"
 MARK_NOTICE_KEY = "calendar.mark.notice"
+OWN_DROP_NOTICE_KEY = "calendar.cancellation.notice"
 MARK_FALLBACK_PREFIX = "!"
 ABSENCE_STATUS_KEYS = {
     "accepted": "absence.status.accepted",
@@ -275,29 +276,49 @@ def subject_category(language, lesson):
     return _subject_of(language, lesson)
 
 
-def timetable_events(language, tag, collected, day_map, blocked, config=None):
+def dropped_slots(entries, child_id):
+    slots = set()
+    for entry in entries or []:
+        if child_id and entry.get("child_id") != child_id:
+            continue
+        day = holidays.parse_day(entry.get("date"))
+        if day is None:
+            continue
+        slots.add((day, int(entry.get("period") or 0)))
+    return slots
+
+
+def timetable_events(language, tag, collected, day_map, blocked, config=None, dropped=()):
     settings = config or {}
+    off = set(dropped)
     events = []
     unscheduled = {}
     for (day, period), slot in sorted(_grouped_lessons(collected).items()):
         if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
             continue
+        own_drop = (day, period) in off
         for index, (_, lesson) in enumerate(slot):
             uid = f"{tag}-{day.strftime('%Y%m%d')}-p{period}-{index}@{UID_DOMAIN}"
             if not lesson.get("start_time"):
                 unscheduled.setdefault(day, []).append(lesson)
                 continue
+            shown = dict(lesson, change_kind="cancelled") if own_drop else lesson
             start = _lesson_start(day, lesson["start_time"])
+            description = lesson_description(language, shown, day, len(slot))
+            if own_drop:
+                notice = _translated(language, OWN_DROP_NOTICE_KEY)
+                if notice:
+                    description = "\n".join([description, notice])
             events.append(
                 FeedEvent(
                     uid=uid,
-                    summary=lesson_summary(language, lesson),
-                    description=lesson_description(language, lesson, day, len(slot)),
+                    summary=lesson_summary(language, shown),
+                    description=description,
                     location=lesson.get("room") or "",
                     start=start,
                     end=start + timedelta(minutes=LESSON_MINUTES),
                     all_day=False,
-                    transparent=lesson.get("change_kind") == "cancelled",
+                    transparent=shown.get("change_kind") == "cancelled",
                     color=subject_color(settings, lesson),
                     category=subject_category(language, lesson),
                 )
@@ -719,7 +740,8 @@ def calendar_name(language, subscription):
 
 
 def build_events(
-    subscription, config, snapshot, day_map, blocked, today, now_epoch, mark_entries=()
+    subscription, config, snapshot, day_map, blocked, today, now_epoch, mark_entries=(),
+    cancellation_entries=(),
 ):
     language = messages.normalize_language(config.get("language"))
     child_id = subscription.get("child_id", "")
@@ -735,7 +757,17 @@ def build_events(
         events.extend(absence_events(language, tag, config, snapshot, child_id, today))
     if COMPONENT_TIMETABLE in components:
         collected = lessons_in_window(snapshot, child_id, window[0], window[1])
-        events.extend(timetable_events(language, tag, collected, day_map, blocked, config))
+        events.extend(
+            timetable_events(
+                language,
+                tag,
+                collected,
+                day_map,
+                blocked,
+                config,
+                dropped_slots(cancellation_entries, child_id),
+            )
+        )
         events.extend(
             notice_events(
                 language,
@@ -850,6 +882,7 @@ def build_feed(subscription, store, holiday_calendar, now=None):
         today,
         epoch,
         marks.entries_of(store.load_marks()),
+        cancellations.entries_of(store.load_cancellations()),
     )
     return render(
         store,

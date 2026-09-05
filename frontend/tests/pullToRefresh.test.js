@@ -24,11 +24,13 @@ function makeScreen(window) {
 }
 
 describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
-  test("pulling past the 70px threshold at scrollTop 0 triggers a reload via refreshActiveView", async () => {
+  test("[P230] pulling past the 70px threshold refreshes the whole app, not just the open tab", async () => {
     const { window } = loadApp();
     window.eval(`
       window.__calls = 0;
+      window.__other = 0;
       loadPinboard = () => { window.__calls += 1; return Promise.resolve(); };
+      loadLetters = () => { window.__other += 1; return Promise.resolve(); };
       state.view = "post";
       state.postTab = "pinboard";
     `);
@@ -38,7 +40,8 @@ describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
     screen.dispatchEvent(touchEvent(window, "touchmove", 90));
     screen.dispatchEvent(touchEvent(window, "touchend", 90));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(window.eval("window.__calls")).toBe(1);
+    expect(window.eval("window.__calls")).toBeGreaterThanOrEqual(1);
+    expect(window.eval("window.__other")).toBeGreaterThanOrEqual(1);
   });
 
   test("pulling below the threshold releases without triggering a reload", async () => {

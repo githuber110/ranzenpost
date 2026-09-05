@@ -84,28 +84,26 @@ for (const viewport of VIEWPORTS) {
 test.describe("[P198] the Post tab holds both areas", () => {
   test.use({ viewport: { width: 390, height: 844 }, locale: "de-DE" });
 
-  test("the segment switches the list and the archive lives in the folder row", async ({ page }) => {
+  test("[P221] inbox and archive stand side by side and one tap switches", async ({ page }) => {
     await goto(page);
     await page.locator(".tabbar .tab").nth(POST_TAB).click();
     await settled(page);
-    await expect(page.locator(".list-head .chipbar .chip")).toHaveCount(1);
-    const inbox = await page.locator(".list-head .chipbar .chip").textContent();
-    expect(await page.locator(".list-head .chipbar .chip").getAttribute("aria-pressed")).toBe("false");
+    const chips = page.locator(".list-head .chipbar .chip");
+    await expect(chips).toHaveCount(2);
+    expect(await chips.nth(0).getAttribute("aria-selected")).toBe("true");
+    expect(await chips.nth(1).getAttribute("aria-selected")).toBe("false");
 
-    await page.locator(".list-head .chipbar .chip").click();
-    await page.waitForSelector(".sheet");
-    await expect(page.locator(".sheet .opt-main")).toHaveCount(2);
-    await page.locator(".sheet .opt-main").nth(1).click();
+    await chips.nth(1).click();
     await settled(page);
-    expect(await page.locator(".list-head .chipbar .chip").textContent()).not.toBe(inbox);
-    expect(await page.locator(".list-head .chipbar .chip").getAttribute("aria-pressed")).toBe("true");
+    await expect(page.locator(".sheet")).toHaveCount(0);
+    expect(await page.locator(".list-head .chipbar .chip").nth(1).getAttribute("aria-selected")).toBe("true");
 
     await page.locator(".list-head .segment button").nth(1).click();
     await settled(page);
     await expect(page.locator(".sort-hint")).toBeVisible();
   });
 
-  test("the segment survives a trip to another tab", async ({ page }) => {
+  test("[P220] the post tab comes back on the letters segment", async ({ page }) => {
     await goto(page);
     await page.locator(".tabbar .tab").nth(POST_TAB).click();
     await settled(page);
@@ -115,7 +113,7 @@ test.describe("[P198] the Post tab holds both areas", () => {
     await settled(page);
     await page.locator(".tabbar .tab").nth(POST_TAB).click();
     await settled(page);
-    expect(await page.locator(".list-head .segment button").nth(1).getAttribute("aria-selected")).toBe("true");
+    expect(await page.locator(".list-head .segment button").nth(0).getAttribute("aria-selected")).toBe("true");
   });
 
   test("[P204] a noticeboard row on the overview opens in place and comes back to the overview", async ({ page }) => {

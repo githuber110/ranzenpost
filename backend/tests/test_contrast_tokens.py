@@ -124,6 +124,8 @@ def test_contrast_tokens_meet_wcag_targets():
     assert contrast_ratio(LIGHT["ink-3"], LIGHT["surface-sunken"]) >= 4.5
     assert contrast_ratio(LIGHT["accent"], LIGHT["bg"]) >= 4.5
     assert contrast_ratio(LIGHT["badge-ink"], LIGHT["danger"]) >= 4.5
+    assert contrast_ratio(LIGHT["accent"], LIGHT["tab-active-bg"]) >= 3.0
+    assert contrast_ratio(LIGHT["tab-active-bg"], LIGHT["bg"]) >= 1.4
 
     for dark in (DARK_MEDIA, DARK_ATTR):
         assert contrast_ratio(dark["badge-ink"], dark["danger"]) >= 4.5
@@ -154,3 +156,15 @@ def test_subject_color_cells_meet_wcag_on_new_fill():
                 f"{theme_name} {subject_hex}: label {label} on fill {fill} "
                 f"only {ratio:.2f}:1"
             )
+
+
+def test_the_active_tab_is_marked_by_more_than_a_colour():
+    pill = re.search(r'\.tab\[aria-current="page"\] \.ico-slot\s*\{([^}]*)\}', CSS)
+    assert pill, "the active tab has no pill rule"
+    assert "var(--tab-active-bg)" in pill.group(1)
+    label = re.search(r'\.tab\[aria-current="page"\]\s*\{([^}]*)\}', CSS)
+    assert label, "the active tab has no own rule"
+    assert "font-weight" in label.group(1), "colour alone must not carry the active tab"
+    slot = re.search(r'\.tab \.ico-slot\s*\{([^}]*)\}', CSS)
+    assert slot, "every tab needs the same slot geometry so the bar does not jump"
+    assert "inline-size" in slot.group(1) and "block-size" in slot.group(1)

@@ -43,7 +43,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.05")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.06")
         self.timeout = timeout
         self.username = ""
         self.sleeper = time.sleep

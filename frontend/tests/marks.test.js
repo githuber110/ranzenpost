@@ -225,7 +225,10 @@ describe("[P179] the clarification tile, one anchor state at a time", () => {
       const buttons = [...tile.querySelectorAll(".btn")].map((node) => node.textContent.trim());
       expect(buttons).toEqual(ways.map((key) => label(window, key)));
       const foot = [...document.querySelectorAll(".sheet-foot .btn")].map((node) => node.textContent.trim());
-      expect(foot).toEqual([label(window, "marks.action.rename")]);
+      expect(foot).toEqual([
+        label(window, "marks.action.rename"),
+        label(window, "timetable.cancel.action.add"),
+      ]);
     });
   }
 

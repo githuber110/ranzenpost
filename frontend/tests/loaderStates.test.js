@@ -62,6 +62,17 @@ const LOADERS = [
     errorTitle: "timetable.error.title",
     reset: "state.timetable = null;",
   },
+  {
+    name: "messenger",
+    route: "api/messenger/rooms",
+    good: { rooms: [{ room_id: "!r:s", name: "Klasse 5a", members: [], unread_count: 0 }], self_user_id: "@me:s" },
+    view: "messenger",
+    seed: "state.messengerRoom = null; state.messengerRetrying = false;",
+    call: "loadMessengerRooms()",
+    stock: "Klasse 5a",
+    errorTitle: "messenger.error.title",
+    reset: "state.messengerRooms = null;",
+  },
 ];
 
 describe("[W8] every loader tells the truth about first load, refresh and retry", () => {

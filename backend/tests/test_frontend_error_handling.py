@@ -1,7 +1,6 @@
 import re
-from pathlib import Path
 
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+from tests.frontend_sources import FRONTEND, SCRIPT_SUFFIXES, shipped_paths
 
 EMPTY_CATCH = re.compile(
     r"catch\s*(?:\([^()]*\)\s*)?\{\s*\}"
@@ -42,7 +41,7 @@ EMPTY_CATCH_DEBT = {site: allowed for site, (allowed, _reason) in DELIBERATE_EMP
 
 
 def sources():
-    return sorted(path for path in FRONTEND.glob("*.js") if path.is_file())
+    return list(shipped_paths(SCRIPT_SUFFIXES))
 
 
 def enclosing_function(lines, index):

@@ -2,6 +2,11 @@ import json
 import re
 from pathlib import Path
 
+from tests.frontend_sources import (
+    VENDOR_EXEMPT_PATHS,
+    is_vendor_exempt,
+    script_names,
+)
 from tests.test_frontend_direction import (
     FRONTEND,
     element_calls,
@@ -11,13 +16,7 @@ from tests.test_frontend_direction import (
 )
 
 BUNDLE = json.loads((FRONTEND / "i18n" / "de.json").read_text(encoding="utf-8"))
-SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
-VENDOR_EXEMPT_PATHS = ("frontend/vendor",)
-
-
-def is_vendor_exempt(path):
-    relative = path.resolve().relative_to(FRONTEND.parent.resolve()).as_posix()
-    return any(relative == prefix or relative.startswith(prefix + "/") for prefix in VENDOR_EXEMPT_PATHS)
+SOURCES = script_names
 
 TEXT_LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'")
 TEMPLATE_WITH_HOLE = re.compile(r"`(?:[^`\\]|\\.)*\$\{", re.S)
@@ -49,7 +48,7 @@ PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 def sources():
     return [
         FRONTEND / name
-        for name in SOURCES
+        for name in SOURCES()
         if (FRONTEND / name).is_file() and not is_vendor_exempt(FRONTEND / name)
     ]
 

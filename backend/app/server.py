@@ -9,7 +9,7 @@ from fastapi import Body, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import holidays, marks, messages, schoolregion, subscriptions
+from . import cancellations, holidays, marks, messages, schoolregion, subscriptions
 from .calendar_listener import DEFAULT_PORT as CALENDAR_PORT
 from .iserv.errors import LoginError, PasswordError, TwoFactorError
 from .iserv.sick_note_pdf import UnsupportedTextError
@@ -69,14 +69,25 @@ UPSTREAM_ERROR_MESSAGE_KEYS = {
 }
 
 
-def upstream_error(code):
+def upstream_error(code, error=None):
     body = {"error": code}
-    body.update(messages.payload(UPSTREAM_ERROR_MESSAGE_KEYS[code]))
+    body.update(messages.payload(getattr(error, "message_key", "") or UPSTREAM_ERROR_MESSAGE_KEYS[code]))
+    detail = getattr(error, "detail", None)
+    if isinstance(detail, dict) and detail:
+        body["diagnosis"] = detail
     return body
 
 
-def upstream_write_error(code):
-    return messages.result(False, UPSTREAM_ERROR_MESSAGE_KEYS[code], error=code)
+def upstream_write_error(code, error=None):
+    body = messages.result(
+        False,
+        getattr(error, "message_key", "") or UPSTREAM_ERROR_MESSAGE_KEYS[code],
+        error=code,
+    )
+    detail = getattr(error, "detail", None)
+    if isinstance(detail, dict) and detail:
+        body["diagnosis"] = detail
+    return body
 
 
 def _upstream_code(error):
@@ -91,14 +102,14 @@ def read_endpoint(call):
     try:
         return call()
     except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-        return upstream_error(_upstream_code(error))
+        return upstream_error(_upstream_code(error), error)
 
 
 def write_endpoint(call, fallback=None):
     try:
         return call()
     except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-        return upstream_write_error(_upstream_code(error))
+        return upstream_write_error(_upstream_code(error), error)
     except Exception:
         if fallback is None:
             raise
@@ -170,6 +181,7 @@ def create_app(
     region_source = region_suggester or schoolregion.RegionSuggester(service)
     subscription_registry = registry or subscriptions.SubscriptionRegistry(service.store)
     marks_registry = mark_registry or marks.MarkRegistry(service.store)
+    cancellation_registry = cancellations.CancellationRegistry(service.store)
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -621,6 +633,31 @@ def create_app(
             return marks_registry.delete(mark_id)
         except marks.MarkError as error:
             return _mark_error(error)
+
+    def _cancellation_error(error):
+        return JSONResponse(status_code=400, content=messages.result(False, error.message_key))
+
+    @app.get("/api/cancellations")
+    def list_cancellations(child_id: str = ""):
+        return cancellation_registry.list(child_id)
+
+    @app.post("/api/cancellations")
+    def create_cancellation(body: dict = Body(...)):
+        try:
+            return cancellation_registry.create(
+                body.get("child_id", ""),
+                body.get("date", ""),
+                body.get("period"),
+            )
+        except cancellations.CancellationError as error:
+            return _cancellation_error(error)
+
+    @app.delete("/api/cancellations/{cancellation_id}")
+    def delete_cancellation(cancellation_id: str):
+        try:
+            return cancellation_registry.delete(cancellation_id)
+        except cancellations.CancellationError as error:
+            return _cancellation_error(error)
 
     from .messenger_routes import register_routes as register_messenger_routes
 
