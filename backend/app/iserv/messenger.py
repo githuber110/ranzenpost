@@ -1,11 +1,15 @@
 import json
+import logging
 import re
 import uuid
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from .forms import parse_forms
+from .forms import find_client_redirect, parse_forms
+
+logger = logging.getLogger(__name__)
 
 BOOTSTRAP_MARKER = "messenger_authentication"
 PRIVILEGE_MARKER = "messenger_user_privileges"
@@ -20,6 +24,14 @@ AUTH_FIELDS = (
 )
 
 MATRIX_SYNC_PATH = "/_matrix/client/v3/sync"
+INITIAL_SYNC_TIMELINE_LIMIT = 20
+INITIAL_SYNC_FILTER = {
+    "room": {
+        "timeline": {"limit": INITIAL_SYNC_TIMELINE_LIMIT},
+        "ephemeral": {"limit": 0, "types": []},
+    },
+    "presence": {"limit": 0, "types": []},
+}
 MATRIX_MESSAGES_PATH = "/_matrix/client/v3/rooms/{room_id}/messages"
 MATRIX_SEND_PATH = "/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
 MATRIX_MEDIA_PATH = "/_matrix/client/v1/media/download/{server_name}/{media_id}"
@@ -37,6 +49,55 @@ TEACHER_ROOM_CHILDREN_FIELD = "teacher_room[child_ids][]"
 TEACHER_ROOM_PARENTS_FIELD = "teacher_room[add_other_parents]"
 
 MXC_RE = re.compile(r"^mxc://([^/]+)/(.+)$")
+
+
+WELL_KNOWN_PATH = "/.well-known/matrix/client"
+AUTH_PAGE_MARKERS = ("/iserv/auth/", "/iserv/login", "/idesk/login")
+AUTHENTICATE_PATHS = ("/iserv/messenger/authenticate", "/messenger/authenticate")
+ROUTING_MARKER = "messenger_routing"
+ROUTING_FIELD = "messenger_authenticate"
+LOGIN_FORM_FIELDS = ("_username", "_password")
+MAX_CONTINUATION_HOPS = 4
+SCALAR_TYPES = (str, int, float, bool)
+
+STAGE_MODULE = "module"
+STAGE_LOGIN = "login"
+STAGE_BOOTSTRAP = "bootstrap"
+STAGE_MATRIX = "matrix"
+STAGE_NETWORK = "network"
+STAGE_TIMEOUT = "timeout"
+
+STAGE_MESSAGE_KEYS = {
+    STAGE_MODULE: "api.messenger.error.module",
+    STAGE_LOGIN: "api.messenger.error.login",
+    STAGE_BOOTSTRAP: "api.messenger.error.bootstrap",
+    STAGE_MATRIX: "api.messenger.error.matrix",
+    STAGE_NETWORK: "api.messenger.error.network",
+    STAGE_TIMEOUT: "api.messenger.error.timeout",
+}
+
+
+def _scalar(value):
+    if value is None or isinstance(value, SCALAR_TYPES):
+        return value
+    if isinstance(value, dict):
+        return ", ".join(f"{key}={_scalar(item)}" for key, item in value.items())
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(str(_scalar(item)) for item in value)
+    return str(value)
+
+
+def flat_detail(detail):
+    return {str(key): _scalar(value) for key, value in (detail or {}).items()}
+
+
+class MessengerStageError(requests.RequestException):
+    def __init__(self, stage, detail=None, note=""):
+        super().__init__(note or stage)
+        self.stage = stage
+        self.message_key = STAGE_MESSAGE_KEYS[stage]
+        self.detail = flat_detail(detail)
+        self.detail["stage"] = stage
 
 
 class BootstrapNotFoundError(Exception):
@@ -103,6 +164,106 @@ def parse_bootstrap(html):
         if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
             return cleaned
     raise BootstrapNotFoundError("messenger bootstrap data not found")
+
+
+def parse_authentication(payload):
+    if not isinstance(payload, dict):
+        raise BootstrapNotFoundError("messenger authentication payload is not an object")
+    found = _find_marked(payload, BOOTSTRAP_MARKER)
+    auth = found if isinstance(found, dict) else payload
+    cleaned = {field: str(auth.get(field) or "") for field in AUTH_FIELDS}
+    if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
+        return cleaned
+    raise BootstrapNotFoundError("messenger authentication payload is incomplete")
+
+
+def parse_authenticate_paths(html):
+    paths = []
+    for routing in _marked_objects(html, ROUTING_MARKER):
+        candidate = str(routing.get(ROUTING_FIELD) or "").strip()
+        if candidate.startswith("/") and candidate not in paths:
+            paths.append(candidate)
+    for fallback in AUTHENTICATE_PATHS:
+        if fallback not in paths:
+            paths.append(fallback)
+    return paths
+
+
+def looks_like_auth_page(url):
+    lowered = str(url or "").lower()
+    return any(marker in lowered for marker in AUTH_PAGE_MARKERS)
+
+
+def carries_login_form(html):
+    text = html or ""
+    return all(field in text for field in LOGIN_FORM_FIELDS)
+
+
+def _same_origin(target, url):
+    left = urlparse(str(target or ""))
+    right = urlparse(str(url or ""))
+    return (left.scheme.lower(), left.netloc.lower()) == (right.scheme.lower(), right.netloc.lower())
+
+
+def continuation_target(response):
+    if int(getattr(response, "status_code", 0) or 0) != 200:
+        return ""
+    text = getattr(response, "text", "") or ""
+    if BOOTSTRAP_MARKER in text or carries_login_form(text):
+        return ""
+    url = str(getattr(response, "url", "") or "")
+    target = find_client_redirect(text, url) or ""
+    if not target or not _same_origin(target, url):
+        return ""
+    return target
+
+
+def page_diagnosis(response, marker=BOOTSTRAP_MARKER):
+    text = getattr(response, "text", "") or ""
+    headers = getattr(response, "headers", None) or {}
+    return {
+        "status": int(getattr(response, "status_code", 0) or 0),
+        "final_path": _path_of(getattr(response, "url", "")),
+        "content_type": str(headers.get("content-type") or "").split(";")[0].strip(),
+        "length": len(text),
+        "marker_present": bool(marker) and marker in text,
+        "script_blocks": text.count("<script"),
+    }
+
+
+def _path_of(url):
+    text = str(url or "").split("#", 1)[0].split("?", 1)[0]
+    if "://" not in text:
+        return text
+    rest = text.split("://", 1)[1]
+    slash = rest.find("/")
+    return rest[slash:] if slash >= 0 else "/"
+
+
+def discover_matrix_base_url(response, fallback):
+    base = str(fallback or "").rstrip("/")
+    if response is None or getattr(response, "status_code", 0) != 200:
+        return base
+    try:
+        payload = response.json()
+    except ValueError:
+        return base
+    homeserver = (payload or {}).get("m.homeserver")
+    if not isinstance(homeserver, dict):
+        return base
+    discovered = str(homeserver.get("base_url") or "").strip().rstrip("/")
+    if not trusted_homeserver(discovered, base):
+        logger.warning("matrix well-known named an untrusted homeserver, keeping the iserv root")
+        return base
+    return discovered
+
+
+def trusted_homeserver(discovered, base):
+    target = urlparse(str(discovered or ""))
+    root = urlparse(str(base or ""))
+    if target.scheme != "https" or not target.netloc:
+        return False
+    return target.netloc.lower() == root.netloc.lower()
 
 
 def parse_privileges(html):
@@ -194,6 +355,7 @@ class MatrixClient:
             f"{self.base_url}{path}", headers=self._headers(), params=params, timeout=self.timeout
         )
         if response.status_code == 401:
+            logger.warning("matrix rejected the token on a read of %s", path)
             raise MatrixAuthError("matrix token rejected")
         return response
 
@@ -203,6 +365,7 @@ class MatrixClient:
             f"{self.base_url}{path}", headers=self._headers(), json=json_body, timeout=self.timeout
         )
         if response.status_code == 401:
+            logger.warning("matrix rejected the token on a write to %s", path)
             raise MatrixAuthError("matrix token rejected")
         return response
 
@@ -210,6 +373,8 @@ class MatrixClient:
         params = {"timeout": timeout_ms}
         if since:
             params["since"] = since
+        else:
+            params["filter"] = json.dumps(INITIAL_SYNC_FILTER, separators=(",", ":"))
         return self._get(MATRIX_SYNC_PATH, params=params)
 
     def room_messages(self, room_id, before_token=None, limit=30):

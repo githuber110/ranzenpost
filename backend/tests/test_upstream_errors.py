@@ -119,6 +119,8 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/calendar/restart": "Home Assistant Supervisor, not IServ",
     "/api/marks": "local mark registry",
     "/api/marks/{mark_id}": "local mark registry",
+    "/api/cancellations": "local cancellation registry",
+    "/api/cancellations/{cancellation_id}": "local cancellation registry",
     "/api/wizard": "wizard state machine with its own error object",
     "/api/wizard/url": "wizard state machine with its own error object",
     "/api/wizard/login": "wizard state machine with its own error object",

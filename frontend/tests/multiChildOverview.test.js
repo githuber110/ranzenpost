@@ -62,7 +62,7 @@ describe("[P178] HEUTE shows one child at a time, chosen through the pill row", 
     expect(pills[1].getAttribute("aria-pressed")).toBe("false");
     expect(pills[0].textContent).toContain("Alice");
     expect(pills[0].textContent).toContain("3b");
-    const rows = panel.querySelectorAll(".rows.flat .row");
+    const rows = panel.querySelectorAll(".rows.flat .row:not(.row-note)");
     expect(rows.length).toBe(5);
   });
 
@@ -112,7 +112,7 @@ describe("[P178] HEUTE shows one child at a time, chosen through the pill row", 
     const { window } = loadApp();
     const panel = renderTodayChapterAt(window, "2026-09-01T06:00:00", [CHILDREN[0]], { c1: WEEKS.c1 });
     expect(panel.querySelector(".chipbar.overview-pills")).toBeNull();
-    expect(panel.querySelectorAll(".rows.flat .row").length).toBe(5);
+    expect(panel.querySelectorAll(".rows.flat .row:not(.row-note)").length).toBe(5);
   });
 
   test("children not loaded yet still reserve the pill row, so the budget never shrinks later", () => {

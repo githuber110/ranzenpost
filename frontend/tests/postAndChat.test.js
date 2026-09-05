@@ -183,29 +183,34 @@ describe("[P198] the Post screen", () => {
     expect(pinboard.textContent).toContain("Sommerfest");
   });
 
-  test("the archive is a folder row now, not a second segment", () => {
+  test("[P221] inbox and archive stand side by side as chips, no intermediate sheet", () => {
     const { window } = loadApp();
     seed(window);
     window.eval("(function () { state.view = 'post'; state.postTab = 'letters'; })")();
     const view = window.eval("(function () { return postView(); })")();
     expect(view.querySelectorAll(".list-head .segment").length).toBe(1);
-    const chip = view.querySelector(".list-head .chipbar .chip");
-    expect(chip).not.toBeNull();
-    expect(chip.textContent).toContain(window.eval("t('letters.folder.current')"));
+    const chips = [...view.querySelectorAll(".list-head .chipbar .chip")];
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent).toContain(window.eval("t('letters.folder.current')"));
+    expect(chips[1].textContent).toContain(window.eval("t('letters.folder.archive')"));
+    expect(chips[0].getAttribute("role")).toBe("tab");
+    expect(chips[0].getAttribute("aria-selected")).toBe("true");
+    expect(chips[1].getAttribute("aria-selected")).toBe("false");
   });
 
-  test("the folder sheet moves between inbox and archive", () => {
+  test("[P221] one tap on the archive chip switches straight over", () => {
     const { window } = loadApp();
     seed(window);
-    const sheetNode = window.eval("(function () { return letterFolderSheet(); })")();
-    const options = sheetNode.querySelectorAll(".opt-main");
-    expect(options.length).toBe(2);
-    options[1].click();
+    window.eval("(function () { state.view = 'post'; state.postTab = 'letters'; render(); })")();
+    const chips = [...window.document.querySelectorAll(".list-head .chipbar .chip")];
+    chips[1].click();
     expect(window.eval("state.lettersTab")).toBe("archive");
     expect(window.eval("state.letters")).toBe(null);
+    const after = [...window.document.querySelectorAll(".list-head .chipbar .chip")];
+    expect(after[1].getAttribute("aria-selected")).toBe("true");
   });
 
-  test("the segment remembers itself across a trip to another tab", () => {
+  test("[P220] the post tab always comes back on the letters segment", () => {
     const { window } = loadApp();
     seed(window);
     window.eval(`
@@ -214,7 +219,56 @@ describe("[P198] the Post screen", () => {
       setView("overview");
       setView("post");
     `);
-    expect(window.eval("state.postTab")).toBe("pinboard");
+    expect(window.eval("state.postTab")).toBe("letters");
+  });
+});
+
+describe("[P222] the pinboard filter chip names the folder it filters by", () => {
+  function pinboardHead(window, folderId) {
+    return window.eval(`
+      (function (folderId) {
+        state.view = "post";
+        state.postTab = "pinboard";
+        state.pinboardFolder = folderId;
+        state.pinboard = {
+          feed: [],
+          folders: [
+            { id: "f1", title: "Elternbriefe der ganzen Schule und aller Klassen" },
+            { id: "f2", title: "Kurz" },
+          ],
+        };
+        return pinboardView(null);
+      })
+    `)(folderId);
+  }
+
+  test("without a folder the chip reads 'all folders' and wears the filter icon", () => {
+    const { window } = loadApp();
+    const view = pinboardHead(window, null);
+    const chip = view.querySelector(".chipbar .chip-filter");
+    expect(chip).not.toBeNull();
+    expect(chip.textContent).toContain(window.eval("t('pinboard.folder.all')"));
+    const drawn = chip.querySelector("svg path").getAttribute("d");
+    expect(window.eval("ICON_SHAPES.filter")).toContain(drawn);
+    expect(window.eval("ICON_SHAPES.folder")).not.toContain(drawn);
+  });
+
+  test("a chosen folder replaces the label with its own name", () => {
+    const { window } = loadApp();
+    const view = pinboardHead(window, "f2");
+    const chip = view.querySelector(".chipbar .chip-filter");
+    expect(chip.textContent).toContain("Kurz");
+    expect(chip.textContent).not.toContain(window.eval("t('pinboard.folder.all')"));
+  });
+
+  test("a long folder name reaches the clipping label whole, never shortened in javascript", () => {
+    const { window } = loadApp();
+    const view = pinboardHead(window, "f1");
+    const label = view.querySelector(".chipbar .chip-filter .chip-label");
+    expect(label).not.toBeNull();
+    expect(label.getAttribute("dir")).toBe("auto");
+    expect(label.textContent).toBe("Elternbriefe der ganzen Schule und aller Klassen");
+    expect(label.textContent).not.toContain("…");
   });
 });
 

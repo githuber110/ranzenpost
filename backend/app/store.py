@@ -45,6 +45,7 @@ class Store:
         self.calendar_snapshot_path = self.dir / "calendar_snapshot.json"
         self.calendar_state_path = self.dir / "calendar_state.json"
         self.marks_path = self.dir / "marks.json"
+        self.cancellations_path = self.dir / "cancellations.json"
         self.salt_path = self.dir / "salt"
         env_key = os.environ.get("ISERV_KEY_PATH")
         self.key_path = Path(env_key) if env_key else (self.dir / "key")
@@ -200,3 +201,9 @@ class Store:
 
     def save_marks(self, data):
         self._save_private_json(self.marks_path, data)
+
+    def load_cancellations(self):
+        return self._load_json_object(self.cancellations_path)
+
+    def save_cancellations(self, data):
+        self._save_private_json(self.cancellations_path, data)

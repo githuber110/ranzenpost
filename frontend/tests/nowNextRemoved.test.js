@@ -22,8 +22,8 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
   return run(fixedDate, week, configPeriodTimes);
 }
 
-describe("[P206] the today card no longer highlights the running or the next lesson", () => {
-  test("during a lesson nothing carries the highlight class or the now label", () => {
+describe("[P206] the today card no longer paints the running or the next lesson", () => {
+  test("[P224] during a lesson the row carries a word mark but never the highlight class", () => {
     const { window } = loadApp();
     const week = {
       lessons: [{ day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D" }],
@@ -31,10 +31,11 @@ describe("[P206] the today card no longer highlights the running or the next les
     };
     const section = renderOverviewTodayAt(window, "2026-09-01T08:20:00", week, { 1: "08:00" });
     expect(section.querySelector(".row.next")).toBeNull();
-    expect(section.querySelector(".row-now-label")).toBeNull();
+    expect(section.querySelector(".row.now")).toBeNull();
+    expect(section.querySelector(".row-when.now")).not.toBeNull();
   });
 
-  test("before the first lesson nothing is marked as next", () => {
+  test("[P224] before the first lesson the next one is named in words, not painted", () => {
     const { window } = loadApp();
     const week = {
       lessons: [{ day_of_week: 2, period: 1, start_time: "10:00", subject_code: "D" }],
@@ -42,7 +43,7 @@ describe("[P206] the today card no longer highlights the running or the next les
     };
     const section = renderOverviewTodayAt(window, "2026-09-01T06:00:00", week, { 1: "10:00" });
     expect(section.querySelector(".row.next")).toBeNull();
-    expect(section.querySelector(".row-now-label")).toBeNull();
+    expect(section.querySelector(".row-when.next")).not.toBeNull();
   });
 
   test("past lessons stay greyed out", () => {
@@ -56,7 +57,7 @@ describe("[P206] the today card no longer highlights the running or the next les
     };
     const configPeriodTimes = { 1: "08:00", 2: "08:50", 3: "09:50", 4: "10:40" };
     const section = renderOverviewTodayAt(window, "2026-09-01T10:00:00", week, configPeriodTimes);
-    const rows = section.querySelectorAll(".rows.flat .row");
+    const rows = section.querySelectorAll(".rows.flat .row:not(.row-note)");
     expect(rows[0].querySelector(".row-title").textContent).toBe("M");
     expect(rows[0].classList.contains("past")).toBe(true);
     expect(rows[1].querySelector(".row-title").textContent).toBe("SP");
