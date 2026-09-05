@@ -3,6 +3,14 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.11
+
+- The messenger diagnosis now also lists the addresses the page itself points at. The two places
+  this app had been reading were both wrong: the page carries only a yes/no flag saying the
+  messenger exists, and the address that looked like an interface simply returns the web page
+  again. Whatever really hands out the credentials is named somewhere in that page, and this
+  lists the candidates - paths only, never a query or a value.
+
 ## 2609.01.10
 
 - Inside Home Assistant the app no longer keeps space free for the edges of the phone screen. It
