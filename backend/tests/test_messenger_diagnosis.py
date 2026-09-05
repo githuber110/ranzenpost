@@ -554,3 +554,23 @@ def test_a_non_json_answer_is_described_by_type_and_shape_only():
     described = _shape_only('<!DOCTYPE h')
     assert "<" in described
     assert "DOCTYPE" not in described
+
+
+def test_the_diagnosis_lists_the_addresses_the_page_points_at():
+    from app.iserv.messenger import endpoint_hints
+
+    html = (
+        '<script>{"messenger_authentication":true,'
+        '"routes":{"a":"/iserv/messenger/api/session","b":"/iserv/mail/inbox",'
+        '"c":"/_matrix/client/v3/login"}}</script>'
+    )
+    hints = endpoint_hints(html)
+    assert "/iserv/messenger/api/session" in hints
+    assert "/_matrix/client/v3/login" in hints
+    assert "/iserv/mail/inbox" not in hints
+
+
+def test_a_page_without_any_such_address_says_so():
+    from app.iserv.messenger import endpoint_hints
+
+    assert endpoint_hints("<html><body>nothing</body></html>") == "none"

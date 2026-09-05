@@ -680,6 +680,7 @@
   "messenger.diagnosis.final_path": "Остання викликана адреса",
   "messenger.diagnosis.length": "Символів",
   "messenger.diagnosis.marker_present": "Мітку знайдено",
+  "messenger.diagnosis.page_endpoints": "Адреси на сторінці",
   "messenger.diagnosis.page_fields": "Поля на сторінці",
   "messenger.diagnosis.script_blocks": "Блоки скриптів",
   "messenger.diagnosis.stage": "Етап",

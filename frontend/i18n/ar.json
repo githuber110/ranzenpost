@@ -696,6 +696,7 @@
   "messenger.diagnosis.final_path": "آخر عنوان تم فتحه",
   "messenger.diagnosis.length": "عدد الأحرف",
   "messenger.diagnosis.marker_present": "تم العثور على العلامة",
+  "messenger.diagnosis.page_endpoints": "العناوين في الصفحة",
   "messenger.diagnosis.page_fields": "الحقول في الصفحة",
   "messenger.diagnosis.script_blocks": "كتل البرمجة",
   "messenger.diagnosis.stage": "المرحلة",

@@ -664,6 +664,7 @@
   "messenger.diagnosis.final_path": "Zuletzt aufgerufene Adresse",
   "messenger.diagnosis.length": "Zeichen",
   "messenger.diagnosis.marker_present": "Kennung gefunden",
+  "messenger.diagnosis.page_endpoints": "Adressen in der Seite",
   "messenger.diagnosis.page_fields": "Felder in der Seite",
   "messenger.diagnosis.script_blocks": "Skriptblöcke",
   "messenger.diagnosis.stage": "Stufe",
