@@ -12,6 +12,7 @@ from .iserv.messenger import (
     BOOTSTRAP_MARKER,
     MAX_CONTINUATION_HOPS,
     STAGE_BOOTSTRAP,
+    STAGE_NO_CREDENTIALS,
     STAGE_LOGIN,
     STAGE_MATRIX,
     STAGE_MODULE,
@@ -41,6 +42,9 @@ from .iserv.messenger import (
     parse_room_list,
     _shape_only,
     embedded_shape,
+    credentials_note,
+    granted_privileges,
+    credentials_withheld,
     endpoint_hints,
     shape_of,
     parse_room_messages,
@@ -194,8 +198,13 @@ class MessengerService:
         try:
             auth = parse_bootstrap(response.text)
         except BootstrapNotFoundError:
+            diagnosis["page_credentials"] = credentials_note(response.text)
+            diagnosis["page_privileges"] = granted_privileges(response.text)
             diagnosis["page_fields"] = embedded_shape(response.text)
             diagnosis["page_endpoints"] = endpoint_hints(response.text)
+            if credentials_withheld(response.text):
+                logger.warning("iserv served the messenger page without credentials: %s", diagnosis)
+                raise MessengerStageError(STAGE_NO_CREDENTIALS, diagnosis)
             logger.warning("messenger page carried no embedded credentials: %s", diagnosis)
             auth = self._authentication_over_xhr(client, response, diagnosis)
         if auth is None:

@@ -127,6 +127,30 @@ describe("[P228] the messenger says what actually went wrong", () => {
     expect(after).toContain(window.eval('t("api.messenger.error.network")'));
   });
 
+  test("[P228] credentials IServ withheld are named, not sold as an unexpected answer", async () => {
+    const { window, document } = loadApp();
+    await quiet(window);
+    await failWith(window, {
+      error: "network",
+      message_key: "api.messenger.error.noCredentials",
+      diagnosis: {
+        stage: "no_credentials",
+        page_credentials: "messenger_authentication is null",
+        page_privileges: "canWriteToTeacher, isParent",
+      },
+    });
+    const text = document.getElementById("app").textContent;
+    expect(text).toContain(window.eval('t("api.messenger.error.noCredentials")'));
+    expect(text).not.toContain(window.eval('t("api.messenger.error.bootstrap")'));
+
+    document.querySelector(".empty .tech-btn").click();
+    const sheet = document.querySelector(".sheet");
+    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.page_credentials")'));
+    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.page_privileges")'));
+    expect(sheet.textContent).not.toContain("page_credentials");
+    expect(sheet.textContent).not.toContain("page_privileges");
+  });
+
   test("[P228] a request that runs into the timeout is not sold as a network outage", async () => {
     const { window, document } = loadApp();
     await quiet(window);

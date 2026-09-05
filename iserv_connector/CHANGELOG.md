@@ -3,13 +3,32 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.12
+
+- The messenger now says the true reason it stays shut. IServ hands the messenger's credentials to
+  its own web app in a data block inside the page, and for this account that block says plainly
+  that there are none. The app used to answer that with a general "IServ replied unexpectedly" and
+  then made two further calls that could not help. It now reads the data block the way IServ's own
+  app reads it, recognises withheld credentials as their own case, names it, and stops.
+- The test data this part was built against had been written by hand rather than taken from a real
+  IServ page, and it was wrong in every checkable detail - the name of the data block, the address
+  it claimed, and the shape of the answer. It has been replaced by the real structure, in two
+  variants: with credentials and without.
+- A guard now fails the build if any detail the messenger can report lacks its wording in one of
+  the six languages, so no detail can reach the reader as a bare English field name.
+- Correction to 2609.01.11: that entry read the diagnosis as saying the page carries only a
+  yes/no flag. It does not. The page carries the full data block, and the credentials in it are
+  empty - which is why the app can now name that case instead of guessing around it.
+
 ## 2609.01.11
 
-- The messenger diagnosis now also lists the addresses the page itself points at. The two places
-  this app had been reading were both wrong: the page carries only a yes/no flag saying the
-  messenger exists, and the address that looked like an interface simply returns the web page
-  again. Whatever really hands out the credentials is named somewhere in that page, and this
-  lists the candidates - paths only, never a query or a value.
+- The messenger diagnosis now also lists the addresses the page itself points at. The address
+  that had looked like an interface simply returns the web page again, so whatever really hands
+  out the credentials had to be named elsewhere - this lists the candidates, paths only, never a
+  query or a value.
+  (Corrected in 2609.01.12: this entry also claimed the page carries nothing but a yes/no flag
+  saying the messenger exists. That was a misreading. The page carries the whole data block in the
+  expected shape; the credentials inside it are simply empty.)
 
 ## 2609.01.10
 

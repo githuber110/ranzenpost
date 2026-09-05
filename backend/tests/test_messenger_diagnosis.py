@@ -1,5 +1,7 @@
 import json
 import logging
+import pathlib
+import re
 
 import pytest
 import requests
@@ -16,7 +18,9 @@ from app.iserv.messenger import (
     STAGE_MESSAGE_KEYS,
     STAGE_MODULE,
     STAGE_NETWORK,
+    STAGE_NO_CREDENTIALS,
     STAGE_TIMEOUT,
+    BootstrapNotFoundError,
     MessengerStageError,
     discover_matrix_base_url,
     flat_detail,
@@ -574,3 +578,159 @@ def test_a_page_without_any_such_address_says_so():
     from app.iserv.messenger import endpoint_hints
 
     assert endpoint_hints("<html><body>nothing</body></html>") == "none"
+
+
+DIAGNOSIS_ASSIGNMENT = re.compile(r'diagnosis\["([a-z_]+)"\]\s*=')
+
+
+def _diagnosis_keys():
+    source = (pathlib.Path(__file__).resolve().parents[1] / "app" / "messenger.py").read_text(
+        encoding="utf-8"
+    )
+    assigned = set(DIAGNOSIS_ASSIGNMENT.findall(source))
+    assert assigned, "the scan found no diagnosis field at all, so it guards nothing"
+    return assigned | set(page_diagnosis(FakePage(200, "", url=BASE))) | {"stage"}
+
+
+def test_every_reported_diagnosis_field_has_a_wording_in_every_language():
+    bundles = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "i18n"
+    missing = []
+    for language in ("de", "en", "ar", "tr", "ru", "uk"):
+        texts = json.loads((bundles / f"{language}.json").read_text(encoding="utf-8"))
+        for field in sorted(_diagnosis_keys()):
+            if not str(texts.get(f"messenger.diagnosis.{field}") or "").strip():
+                missing.append(f"{language}: {field}")
+    assert missing == [], (
+        "a diagnosis field without a wording reaches the reader as a raw English field "
+        f"name: {missing}"
+    )
+
+
+FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
+WITH_CREDENTIALS = (FIXTURES / "messenger_page.html").read_text(encoding="utf-8")
+WITHOUT_CREDENTIALS = (FIXTURES / "messenger_page_without_credentials.html").read_text(
+    encoding="utf-8"
+)
+
+
+def test_the_credentials_are_read_from_the_element_iserv_puts_them_in():
+    from app.iserv.messenger import PHP_DATA_ID, php_data
+
+    assert PHP_DATA_ID in WITH_CREDENTIALS
+    payload = php_data(WITH_CREDENTIALS)
+    assert payload["messenger_authentication"]["access_token"].startswith("fixture-access-token")
+    assert payload["messenger_routing_basepath"] == "/iserv/messenger"
+    assert php_data("<html><body>no such element</body></html>") is None
+    assert php_data('<script type="application/json" id="php-data">not json</script>') is None
+
+
+def test_a_page_whose_credentials_iserv_left_empty_is_told_apart_from_a_missing_page():
+    from app.iserv.messenger import credentials_note, credentials_withheld
+
+    assert credentials_withheld(WITHOUT_CREDENTIALS)
+    assert not credentials_withheld(WITH_CREDENTIALS)
+    assert not credentials_withheld("<html><body></body></html>")
+    assert credentials_note(WITHOUT_CREDENTIALS) == "messenger_authentication is null"
+    assert credentials_note(WITH_CREDENTIALS) == "messenger_authentication complete"
+    assert credentials_note("<html><body></body></html>") == "no php-data element"
+
+
+def test_a_page_whose_credentials_are_incomplete_names_the_missing_fields_only():
+    from app.iserv.messenger import credentials_note
+
+    half = WITH_CREDENTIALS.replace('"iserv_cryptkey"', '"unused_field"')
+    note = credentials_note(half)
+    assert note == "messenger_authentication misses iserv_cryptkey"
+    assert "fixture-cryptkey" not in note
+
+
+DECOY_SCRIPT = (
+    "<script>window.old = "
+    '{"messenger_authentication":{"access_token":"stale-token-from-another-script",'
+    '"home_server":"stale.example","user_id":"@stale:stale.example"}}'
+    ";</script>"
+)
+
+
+def test_the_credentials_come_from_the_element_iserv_reads_not_from_any_script_that_names_them():
+    from app.iserv.messenger import parse_bootstrap
+
+    auth = parse_bootstrap(WITH_CREDENTIALS)
+    assert auth["access_token"].startswith("fixture-access-token")
+    assert auth["user_id"].startswith("@")
+
+    decoyed = WITH_CREDENTIALS.replace("<body>", "<body>" + DECOY_SCRIPT, 1)
+    assert "stale-token-from-another-script" in decoyed
+    assert parse_bootstrap(decoyed)["access_token"].startswith("fixture-access-token")
+
+    with pytest.raises(BootstrapNotFoundError):
+        parse_bootstrap(WITHOUT_CREDENTIALS)
+
+
+def _page_client(html):
+    return FakeIServClient(
+        page=FakePage(404, "", url=f"{BASE}/messenger/authenticate"),
+        pages={"/iserv/messenger/": FakePage(200, html, url=f"{BASE}/iserv/messenger/")},
+    )
+
+
+def test_withheld_credentials_are_their_own_answer_not_the_catch_all_bootstrap_one():
+    client = _page_client(WITHOUT_CREDENTIALS)
+    with pytest.raises(MessengerStageError) as caught:
+        _service(client)._bootstrap()
+    assert caught.value.stage == STAGE_NO_CREDENTIALS
+    assert caught.value.message_key == "api.messenger.error.noCredentials"
+    assert caught.value.detail["page_credentials"] == "messenger_authentication is null"
+
+
+def test_withheld_credentials_stop_the_pointless_calls_that_follow():
+    client = _page_client(WITHOUT_CREDENTIALS)
+    with pytest.raises(MessengerStageError):
+        _service(client)._bootstrap()
+    assert not any("authenticate" in path for path in client.fetched_paths)
+
+
+def test_a_page_that_does_carry_credentials_signs_in_without_any_extra_call():
+    client = _page_client(WITH_CREDENTIALS)
+    auth = _service(client)._bootstrap()
+    assert auth["access_token"].startswith("fixture-access-token")
+    assert not any("authenticate" in path for path in client.fetched_paths)
+
+
+def test_the_withheld_answer_never_carries_a_value_out_of_the_page():
+    client = _page_client(WITHOUT_CREDENTIALS)
+    with pytest.raises(MessengerStageError) as caught:
+        _service(client)._bootstrap()
+    rendered = json.dumps(caught.value.detail)
+    assert "fixture-csrf-token" not in rendered
+    assert "11111111-1111-1111-1111-111111111111" not in rendered
+
+
+def test_the_new_stage_is_readable_in_every_language():
+    key = MessengerStageError(STAGE_NO_CREDENTIALS).message_key
+    for language in messages.LANGUAGES:
+        assert messages.text_in(language, key).strip()
+
+
+def test_the_diagnosis_names_the_permissions_iserv_did_grant():
+    from app.iserv.messenger import granted_privileges
+
+    granted = granted_privileges(WITHOUT_CREDENTIALS)
+    assert "canWriteToTeacher" in granted
+    assert "isParent" in granted
+    assert "isStudent" not in granted
+    assert granted_privileges("<html><body></body></html>") == "no messenger_user_privileges"
+
+
+def test_a_withheld_answer_says_whether_iserv_knows_this_account_in_the_messenger_at_all():
+    client = _page_client(WITHOUT_CREDENTIALS)
+    with pytest.raises(MessengerStageError) as caught:
+        _service(client)._bootstrap()
+    assert "canWriteToTeacher" in caught.value.detail["page_privileges"]
+
+
+def test_the_teacher_permission_is_read_from_the_element_iserv_puts_it_in():
+    from app.iserv.messenger import parse_privileges
+
+    assert parse_privileges(WITH_CREDENTIALS) == {"can_write_to_teacher": True}
+    assert parse_privileges("<html><body></body></html>") is None
