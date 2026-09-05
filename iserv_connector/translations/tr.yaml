@@ -1,2 +1,2 @@
 network:
-  "8100/tcp": "Takvim aboneliği (ICS). Port girilmediği sürece takvim kapalı kalır. Buraya bir port girmek, takvim adresini ev ağında parolasız erişilebilir yapar — bağlantının kendisi paroladar. Yönlendiriciden dışarıya asla açmayın; dışarıdan erişim için HTTPS'li ters vekil sunucu veya VPN kullanın."
+  "8100/tcp": "Takvim aboneliği (ICS). Port girilmediği sürece takvim kapalı kalır. Buraya bir port girmek, takvim adresini ev ağında parolasız erişilebilir yapar — bağlantının kendisi paroladır. Yönlendiriciden dışarıya asla açmayın; dışarıdan erişim için HTTPS'li ters vekil sunucu veya VPN kullanın."
