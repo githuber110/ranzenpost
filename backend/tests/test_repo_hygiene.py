@@ -87,6 +87,7 @@ def test_no_commit_message_carries_an_assistant_signature():
 def test_no_commit_message_leaks_the_internal_process():
     if not _has_git():
         pytest.skip("no git checkout")
+    _require_full_history()
     offenders = []
     for line in _git("log", "--format=%h\t%s").splitlines():
         if "\t" not in line:
