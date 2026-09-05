@@ -125,3 +125,20 @@ describe("[P233] the translucent bar never runs against a white canvas", () => {
     expect(token[1]).toMatch(/transparent/);
   });
 });
+
+describe("[P233] the safe area under the tab bar is opaque, never frosted over nothing", () => {
+  test("the bar reserves the safe area and paints it with a solid colour", () => {
+    const under = rule(stylesCss, ".tabbar::before");
+    expect(under).not.toBe("");
+    expect(under).toMatch(/block-size:\s*var\(--pad-b\)/);
+    expect(under).toMatch(/background:\s*var\(--bg\)/);
+    expect(under).toMatch(/bottom:\s*0/);
+  });
+
+  test("the bar itself stays translucent, which is exactly why the safe area needs its own ground", () => {
+    const bar = rule(stylesCss, ".tabbar");
+    expect(bar).toMatch(/backdrop-filter/);
+    const token = /--bar-bg:\s*([^;]+);/.exec(stylesCss);
+    expect(token[1]).toMatch(/transparent/);
+  });
+});

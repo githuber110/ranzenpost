@@ -158,10 +158,46 @@ def _marked_objects(html, marker):
                 yield found
 
 
+def _field_aliases(field):
+    parts = field.split("_")
+    camel = parts[0] + "".join(part.title() for part in parts[1:])
+    return (field, camel, field.replace("_", ""))
+
+
+def _pick_field(source, field):
+    for alias in _field_aliases(field):
+        value = source.get(alias)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def clean_auth(source):
+    return {field: _pick_field(source, field) for field in AUTH_FIELDS}
+
+
+def auth_complete(cleaned):
+    return bool(cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"])
+
+
+def shape_of(source):
+    if not isinstance(source, dict):
+        return type(source).__name__
+    names = sorted(str(key) for key in source)
+    return ",".join(names[:20])
+
+
+def embedded_shape(html):
+    shapes = []
+    for auth in _marked_objects(html, BOOTSTRAP_MARKER):
+        shapes.append(shape_of(auth))
+    return " | ".join(shapes) if shapes else "no marked object"
+
+
 def parse_bootstrap(html):
     for auth in _marked_objects(html, BOOTSTRAP_MARKER):
-        cleaned = {field: str(auth.get(field) or "") for field in AUTH_FIELDS}
-        if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
+        cleaned = clean_auth(auth)
+        if auth_complete(cleaned):
             return cleaned
     raise BootstrapNotFoundError("messenger bootstrap data not found")
 
@@ -171,8 +207,8 @@ def parse_authentication(payload):
         raise BootstrapNotFoundError("messenger authentication payload is not an object")
     found = _find_marked(payload, BOOTSTRAP_MARKER)
     auth = found if isinstance(found, dict) else payload
-    cleaned = {field: str(auth.get(field) or "") for field in AUTH_FIELDS}
-    if cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"]:
+    cleaned = clean_auth(auth)
+    if auth_complete(cleaned):
         return cleaned
     raise BootstrapNotFoundError("messenger authentication payload is incomplete")
 
