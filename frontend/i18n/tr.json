@@ -241,6 +241,7 @@
   "api.cancellations.error.date": "Tarih önümüzdeki sekiz haftanın dışında.",
   "api.cancellations.error.notFound": "Bu iptal artık yok.",
   "api.cancellations.error.period": "Ders modeli bu saati tanımıyor.",
+  "api.children.forbidden": "IServ bu hesap için ders programı bölümünü açmıyor. Çocuklar orada listeleniyor; bu bölüm olmadan uygulama onları okuyamaz.",
   "api.children.unreadable": "IServ, çocuk listesi sayfasını beklendiği gibi göndermedi.",
   "api.config.unknownKeys": "Uygulama bu ayarları tanımıyor: {keys}",
   "api.disconnect.failed": "Anahtar kaldırılamadı — lütfen IServ'de Einstellungen → Zwei-Faktor (Ayarlar → İki faktör) bölümünden kontrol edin.",

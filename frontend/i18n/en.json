@@ -241,6 +241,7 @@
   "api.cancellations.error.date": "The date lies outside the next eight weeks.",
   "api.cancellations.error.notFound": "This cancellation no longer exists.",
   "api.cancellations.error.period": "The period model does not know this lesson.",
+  "api.children.forbidden": "IServ does not release the timetable area for this account. The children are listed there, and without it the app cannot read them.",
   "api.children.unreadable": "IServ did not deliver the page with the child list as expected.",
   "api.config.unknownKeys": "The app does not know these settings: {keys}",
   "api.disconnect.failed": "The token could not be removed — please check in IServ under Settings → Two-factor.",
