@@ -3,6 +3,18 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.10
+
+- Inside Home Assistant the app no longer keeps space free for the edges of the phone screen. It
+  was reserving room for the notch at the top and the home indicator at the bottom, but in that
+  frame those edges belong to Home Assistant, not to the app - so the greeting started too far
+  down and the bar left an odd band underneath. Both ends came from the same reserve, and the app
+  now only claims it when it really is the thing at the edge of the screen.
+- The messenger diagnosis now describes how IServ delivers its credentials, not just that the app
+  could not read them: whether the marker sits in a script or in an attribute, how often it occurs,
+  and what an endpoint answered with when it was not the expected data. Shapes and types only -
+  never the content itself. Reading the credentials still fails; this is what tells us why.
+
 ## 2609.01.09
 
 - The pale strip below the tab bar is gone. The bar is deliberately frosted, but in the last few
