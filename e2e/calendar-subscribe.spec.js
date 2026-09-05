@@ -95,7 +95,7 @@ for (const viewport of VIEWPORTS) {
           await openCalendarSheet(page);
           await expect(page.locator(".cal-host")).toHaveCount(0);
           await expect(page.locator(".cal-setup-head")).toHaveCount(0);
-          await expect(page.locator(".cal-steps")).toHaveCount(0);
+          await expect(page.locator(".cal-webview")).toHaveCount(0);
           await waitForSheetSettled(page);
           await assertClean(page, `${viewport.name}/${language.key}/no-setup`);
         });

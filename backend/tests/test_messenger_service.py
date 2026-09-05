@@ -147,7 +147,7 @@ def test_the_bootstrap_page_is_fetched_through_the_normal_iserv_session():
     iserv = FakeIServ(store, client)
     service = MessengerService(iserv, matrix_client_factory=make_factory({}))
     service.rooms()
-    assert client.fetched_paths == ["/iserv/messenger/"]
+    assert client.fetched_paths == ["/iserv/messenger/", "/.well-known/matrix/client"]
 
 
 def test_a_stored_token_is_reused_without_a_fresh_bootstrap_fetch():
@@ -189,7 +189,7 @@ def test_a_401_triggers_exactly_one_bootstrap_refresh_then_succeeds():
     result = service.rooms()
     assert result == {"rooms": [], "self_user_id": "@me:srv-1", "can_write_to_teacher": True}
     assert tokens_seen == ["stale-tok", "tok-1"]
-    assert client.fetched_paths == ["/iserv/messenger/"]
+    assert client.fetched_paths == ["/iserv/messenger/", "/.well-known/matrix/client"]
 
 
 def test_a_401_after_refresh_raises_a_login_error_instead_of_looping():
@@ -332,9 +332,9 @@ def test_an_installation_without_a_stored_privilege_flag_learns_it_once():
     iserv = FakeIServ(store, client)
     service = MessengerService(iserv, matrix_client_factory=make_factory({}))
     assert service.rooms()["can_write_to_teacher"] is True
-    assert client.fetched_paths == ["/iserv/messenger/"]
+    assert client.fetched_paths == ["/iserv/messenger/", "/.well-known/matrix/client"]
     assert service.rooms()["can_write_to_teacher"] is True
-    assert client.fetched_paths == ["/iserv/messenger/"]
+    assert client.fetched_paths == ["/iserv/messenger/", "/.well-known/matrix/client"]
 
 
 def test_an_account_without_the_teacher_privilege_reports_it_to_the_ui():

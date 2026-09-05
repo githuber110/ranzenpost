@@ -2,20 +2,21 @@ import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-FRONTEND = ROOT / "frontend"
+from tests.frontend_sources import (
+    FRONTEND,
+    ROOT,
+    VENDOR_EXEMPT_PATHS,
+    is_vendor_exempt,
+    script_names,
+    stylesheet_names,
+)
+
 BUNDLE_DIR = FRONTEND / "i18n"
 BASE_LANGUAGE = "de"
 LANGUAGES = ("de", "en", "ar", "tr", "ru", "uk")
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
-SCANNED_FILES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
-VENDOR_EXEMPT_PATHS = ("frontend/vendor",)
-
-
-def is_vendor_exempt(path):
-    relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
-    return any(relative == prefix or relative.startswith(prefix + "/") for prefix in VENDOR_EXEMPT_PATHS)
+SCANNED_FILES = script_names
 STRING_LITERAL = re.compile(
     r'"(?:[^"\\\n]|\\.)*"'
     r"|'(?:[^'\\\n]|\\.)*'"
@@ -127,7 +128,7 @@ def hardcoded_german(text):
 
 def find_hardcoded_german():
     offenders = []
-    for name in SCANNED_FILES:
+    for name in SCANNED_FILES():
         path = FRONTEND / name
         if is_vendor_exempt(path):
             continue
@@ -172,7 +173,7 @@ def test_every_translation_key_used_in_the_frontend_exists_in_the_base_bundle():
     families = set(plural_families(base))
     call = re.compile(r'\b(?:t|label|tCount)\(\s*"([a-z][\w.]*)"')
     missing = []
-    for name in SCANNED_FILES:
+    for name in SCANNED_FILES():
         text = (FRONTEND / name).read_text(encoding="utf-8")
         for match in call.finditer(text):
             key = match.group(1)
@@ -190,7 +191,7 @@ def test_index_html_static_translation_hooks_resolve():
     assert [key for key in keys if key not in base] == []
 
 
-STYLESHEETS = ("styles.css", "wizard.css", "pdfviewer.css")
+STYLESHEETS = stylesheet_names
 PHYSICAL_PROPERTY = re.compile(
     r"(?<![\w-])(margin|padding|border)-(left|right)\s*:"
     r"|(?<![\w-])text-align\s*:\s*(left|right)\b"
@@ -206,7 +207,7 @@ CENTERED_BARS = {
     ".tabbar": "one centred bar, left: 50% plus translateX(-50%), symmetric in both directions",
 }
 
-JS_SOURCES = ("app.js", "wizard.js", "steps.js", "qr.js", "bootdir.js", "pdfviewer.js")
+JS_SOURCES = script_names
 JS_PHYSICAL_STYLE = re.compile(
     r"style\s*:\s*[\"'`][^\"'`]*?(?<![\w-])(left|right|float)\s*:"
     r"|\.style\.(left|right|marginLeft|marginRight|paddingLeft|paddingRight|borderLeft|borderRight|float|boxShadow|textAlign)\s*="
@@ -224,7 +225,7 @@ def rule_selector(text, index):
 
 def find_physical_direction_rules():
     offenders = []
-    for name in STYLESHEETS:
+    for name in STYLESHEETS():
         text = (FRONTEND / name).read_text(encoding="utf-8")
         for match in PHYSICAL_PROPERTY.finditer(text):
             token = " ".join(match.group(0).split())
@@ -238,7 +239,7 @@ def find_physical_direction_rules():
 
 def find_physical_inline_styles():
     offenders = []
-    for name in JS_SOURCES:
+    for name in JS_SOURCES():
         path = FRONTEND / name
         if not path.is_file():
             continue
@@ -290,7 +291,7 @@ def test_the_inline_style_tripwire_still_catches_a_planted_assignment():
 
 def test_no_inline_rotation_survives_where_rtl_cannot_reach_it():
     offenders = []
-    for name in SCANNED_FILES:
+    for name in SCANNED_FILES():
         text = (FRONTEND / name).read_text(encoding="utf-8")
         for match in INLINE_ROTATE.finditer(text):
             line = text.count("\n", 0, match.start()) + 1

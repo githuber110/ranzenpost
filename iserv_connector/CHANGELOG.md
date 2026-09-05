@@ -3,6 +3,59 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.06
+
+- The overview says again what is happening right now. The lesson you are in carries a quiet
+  "Now", and in the gap between two lessons the coming one carries "Next" - words, not colour.
+- A lesson counts as over 45 minutes after it started, not when the next one begins. That was the
+  actual defect: at 09:38 the 08:45 sport lesson stayed bright while the 09:00 lesson was already
+  greyed out. The rule now holds for the last lesson of the day and across free periods too.
+- The end time no longer hangs off the last lesson. Every row shows its start time, and where the
+  "lessons are over" line appears there now stands, beforehand, the sentence that answers the real
+  question: school is out today at HH:MM.
+- A lesson can be marked as cancelled by hand for the case where the school informs parents but
+  does not maintain the timetable. It looks like a school cancellation in the grid and in the
+  overview, says openly in its sheet that only this app knows about it, can be taken back, and is
+  left out when the end of the school day is worked out. The marker lives beside the colours and
+  the exam marks and never touches the data that comes from IServ, so marking something never
+  sends a push.
+- Tapping a lesson now only opens its details. The spotlight across the week comes from a press
+  and hold, or from a named action in the detail sheet; while a spotlight stands, the first tap
+  anywhere clears it and does nothing else.
+- Every view is entered in a defined state: scrolled to the top, sub-tabs on their default, Post
+  always on Letters. Switching between Letters and the noticeboard scrolls back up as well.
+- Inbox and archive stand side by side as two chips - one tap switches, no intermediate sheet.
+- The noticeboard filter reads "All folders" behind a funnel icon; a chosen folder replaces the
+  label and a long folder name is cut with an ellipsis instead of wrapping.
+- The tab you are in is unmistakable now: the active tab sits on a filled pill and carries a
+  heavier label, in the light theme as much as the dark one, so the mark never rests on colour
+  alone.
+- One pull refreshes the whole app, not just the tab you pulled in. When it works, the "could not
+  refresh" note goes away everywhere at once instead of having to be pulled away tab by tab - and
+  where a part really did fail, its note honestly stays.
+- The calendar subscription now fits the device it is shown on. Inside the Home Assistant app,
+  where the direct handover is swallowed, copying is the main path with a two-step instruction
+  that names the browser the phone actually has; the direct button appears only in a real browser.
+  Where no address can be worked out at all, it says so instead of offering a dead button.
+- The messenger says what actually went wrong instead of one card for everything: module not
+  available, sign-in refused, unexpected answer, network, timeout - each with a diagnosis that can
+  be shown to someone. Retrying keeps a visible loading state and owns up when it fails again.
+  Every messenger path logs its failures with a stack trace, and a guard now fails the suite when
+  a module that talks to a foreign system carries no logger at all.
+- The messenger bootstrap now survives IServ's own sign-in detour. IServ does not hand the
+  messenger over with a plain redirect: it answers with a page that forwards itself, and the app
+  used to stop there and report a refused sign-in. It now follows that forwarding page - only on
+  the school's own host, and only a few hops - recognises a real login page for what it is, and
+  falls back to fetching the credentials over the authenticate endpoint when the page embeds none.
+  The Matrix homeserver from well-known is accepted only over https and only on the school host,
+  so the access token can never be sent somewhere else in the clear, and the diagnosis no longer
+  carries the address's query string, where a one-time sign-in code would have been sitting.
+- Two lessons in one slot are two real tap targets again at 320 px, and the test fixture numbers
+  its weekdays the way the app does, so Friday is no longer structurally empty.
+- The guards find the files they watch by glob instead of a hand-kept list, with a named,
+  reasoned exemption for third-party code, and a further guard fails when a shipped file is
+  watched by none of them.
+
 ## 2609.01.05
 
 - The overview opens what you tap: a noticeboard post now unfolds in place over the overview and

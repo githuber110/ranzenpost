@@ -481,7 +481,7 @@ class FixtureService:
                 "week_offset": week_offset,
             }
         lessons = []
-        for day in range(0, 5):
+        for day in range(1, 6):
             for period in range(1, 7):
                 if (day + period) % 4 == 0:
                     continue
@@ -506,7 +506,7 @@ class FixtureService:
         lessons.append(
             {
                 "date": "31.08.2026",
-                "day_of_week": 0,
+                "day_of_week": 1,
                 "period": 1,
                 "start_time": "8:00",
                 "subject_code": "ENG",

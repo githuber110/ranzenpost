@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 from urllib.parse import quote
@@ -8,16 +9,31 @@ from . import messages
 from .iserv.errors import DataError, LoginError
 from .iserv.messenger import (
     AUTH_FIELDS,
+    MAX_CONTINUATION_HOPS,
+    STAGE_BOOTSTRAP,
+    STAGE_LOGIN,
+    STAGE_MATRIX,
+    STAGE_MODULE,
+    STAGE_NETWORK,
+    STAGE_TIMEOUT,
     TEACHER_AUTOCOMPLETE_PATH,
     TEACHER_AUTOCOMPLETE_TYPE,
     TEACHER_ROOM_FORM_PATH,
+    WELL_KNOWN_PATH,
     BootstrapNotFoundError,
     MatrixAuthError,
     MatrixClient,
+    MessengerStageError,
     build_teacher_room_payload,
     build_text_message,
+    continuation_target,
+    discover_matrix_base_url,
     find_teacher_room_token,
+    looks_like_auth_page,
     new_txn_id,
+    page_diagnosis,
+    parse_authenticate_paths,
+    parse_authentication,
     parse_bootstrap,
     parse_mxc,
     parse_privileges,
@@ -28,6 +44,8 @@ from .iserv.messenger import (
     total_unread,
 )
 
+logger = logging.getLogger(__name__)
+
 MESSENGER_PAGE_PATH = "/iserv/messenger/"
 MEDIA_PROXY_URL = "api/messenger/media/{server_name}/{media_id}"
 ROOM_ID_RE = re.compile(r"^![\w.=~-]{1,255}:[\w.-]{1,255}$")
@@ -35,6 +53,7 @@ SERVER_NAME_RE = re.compile(r"^[\w.-]{1,255}$")
 MEDIA_ID_RE = re.compile(r"^[\w.=~-]{1,255}$")
 EVENT_ID_RE = re.compile(r"^\$[\w.=~+/-]{1,255}$")
 
+MATRIX_BASE_URL_KEY = "messenger_matrix_base_url"
 PRIVILEGES_KNOWN_KEY = "messenger_privileges_known"
 TEACHER_PRIVILEGE_KEY = "messenger_can_write_to_teacher"
 JOIN_TIMEOUT_SECONDS = 15
@@ -91,24 +110,92 @@ class MessengerService:
         self.clock = time.monotonic
         self.sleeper = time.sleep
 
+    def _fetch_page(self, client, path):
+        try:
+            return client.fetch(path)
+        except requests.Timeout as error:
+            logger.warning("messenger page timed out at %s", path, exc_info=True)
+            raise MessengerStageError(STAGE_TIMEOUT, {"path": path}) from error
+        except requests.RequestException as error:
+            logger.warning("messenger page unreachable at %s", path, exc_info=True)
+            raise MessengerStageError(STAGE_NETWORK, {"path": path}) from error
+
+    def _fetch_messenger_page(self, client):
+        response = self._fetch_page(client, MESSENGER_PAGE_PATH)
+        hops = 0
+        while hops < MAX_CONTINUATION_HOPS:
+            target = continuation_target(response)
+            if not target:
+                break
+            hops += 1
+            logger.info("messenger bootstrap follows a client-side continuation, hop %s", hops)
+            response = self._fetch_page(client, target)
+        return response, hops
+
+    def _authentication_over_xhr(self, client, response, diagnosis):
+        attempts = []
+        for path in parse_authenticate_paths(response.text):
+            try:
+                answer = client.fetch(path)
+            except requests.RequestException:
+                logger.warning("messenger authenticate call failed at %s", path, exc_info=True)
+                attempts.append({"path": path, "status": 0})
+                continue
+            status = int(getattr(answer, "status_code", 0) or 0)
+            attempts.append({"path": path, "status": status})
+            if status != 200:
+                logger.warning("messenger authenticate answered %s at %s", status, path)
+                continue
+            try:
+                return parse_authentication(answer.json())
+            except (ValueError, BootstrapNotFoundError):
+                logger.warning("messenger authenticate answered without usable data at %s", path, exc_info=True)
+        diagnosis["authenticate_attempts"] = ", ".join(
+            f"{attempt['path']} {attempt['status']}" for attempt in attempts
+        )
+        return None
+
     def _bootstrap(self):
         client = self.iserv.iserv_session()
-        response = client.fetch(MESSENGER_PAGE_PATH)
-        if getattr(response, "status_code", 0) != 200:
-            raise requests.RequestException(
-                f"messenger bootstrap page failed: {response.status_code}"
-            )
+        response, continuation_hops = self._fetch_messenger_page(client)
+        diagnosis = page_diagnosis(response)
+        diagnosis["continuation_hops"] = continuation_hops
+        status = diagnosis["status"]
+        if looks_like_auth_page(getattr(response, "url", "")):
+            logger.warning("messenger bootstrap landed on the login flow: %s", diagnosis)
+            raise MessengerStageError(STAGE_LOGIN, diagnosis)
+        if status != 200:
+            logger.warning("messenger module answered %s: %s", status, diagnosis)
+            raise MessengerStageError(STAGE_MODULE, diagnosis)
+        auth = None
         try:
             auth = parse_bootstrap(response.text)
-        except BootstrapNotFoundError as error:
-            raise requests.RequestException("messenger bootstrap data not found") from error
+        except BootstrapNotFoundError:
+            logger.warning("messenger page carried no embedded credentials: %s", diagnosis)
+            auth = self._authentication_over_xhr(client, response, diagnosis)
+        if auth is None:
+            logger.warning("messenger bootstrap exhausted every path: %s", diagnosis)
+            raise MessengerStageError(STAGE_BOOTSTRAP, diagnosis)
         privileges = parse_privileges(response.text) or {}
         secrets = self.store.load_secrets()
         secrets.update({f"messenger_{field}": auth.get(field, "") for field in AUTH_FIELDS})
         secrets[PRIVILEGES_KNOWN_KEY] = "1"
         secrets[TEACHER_PRIVILEGE_KEY] = "1" if privileges.get("can_write_to_teacher") else ""
+        secrets[MATRIX_BASE_URL_KEY] = self._matrix_base_url(client)
         self.store.save_secrets(secrets)
         return auth
+
+    def _matrix_base_url(self, client):
+        fallback = client.base_url
+        try:
+            response = client.fetch(WELL_KNOWN_PATH)
+        except requests.RequestException:
+            logger.warning("matrix well-known lookup failed at %s", WELL_KNOWN_PATH, exc_info=True)
+            return fallback
+        discovered = discover_matrix_base_url(response, fallback)
+        if discovered != fallback:
+            logger.info("matrix homeserver discovered through well-known")
+        return discovered
 
     def _can_write_to_teacher(self):
         secrets = self.store.load_secrets()
@@ -121,22 +208,43 @@ class MessengerService:
         secrets = self.store.load_secrets()
         if force_refresh or not secrets.get("messenger_access_token"):
             auth = self._bootstrap()
+            secrets = self.store.load_secrets()
         else:
             auth = {field: secrets.get(f"messenger_{field}", "") for field in AUTH_FIELDS}
-        base_url = self.iserv.iserv_session().base_url
+        base_url = secrets.get(MATRIX_BASE_URL_KEY) or self.iserv.iserv_session().base_url
         return self.matrix_client_factory(base_url, auth["access_token"])
 
     def _with_matrix(self, call):
         client = self._matrix_client()
         try:
-            return call(client)
+            return self._guarded(call, client)
         except MatrixAuthError:
-            pass
+            logger.warning("matrix token was rejected, refreshing the messenger bootstrap")
         client = self._matrix_client(force_refresh=True)
         try:
-            return call(client)
+            return self._guarded(call, client)
         except MatrixAuthError as error:
+            logger.warning("matrix token was rejected after a fresh bootstrap", exc_info=True)
             raise LoginError("messenger token was rejected after refresh") from error
+
+    def _guarded(self, call, client):
+        try:
+            return call(client)
+        except (MatrixAuthError, MessengerStageError):
+            raise
+        except requests.Timeout as error:
+            logger.warning("matrix call timed out", exc_info=True)
+            raise MessengerStageError(STAGE_TIMEOUT, {"where": "matrix"}) from error
+        except requests.RequestException as error:
+            logger.warning("matrix call failed", exc_info=True)
+            raise MessengerStageError(STAGE_NETWORK, {"where": "matrix"}) from error
+
+    def _require_matrix_ok(self, label, response):
+        status = int(getattr(response, "status_code", 0) or 0)
+        if status == 200:
+            return response
+        logger.warning("matrix %s answered %s", label, status)
+        raise MessengerStageError(STAGE_MATRIX, {"where": label, "status": status})
 
     def _own_user_id(self):
         return self.store.load_secrets().get("messenger_user_id", "")
@@ -146,8 +254,7 @@ class MessengerService:
 
         def call(client):
             response = client.sync(timeout_ms=0)
-            if response.status_code != 200:
-                raise requests.RequestException(f"messenger sync failed: {response.status_code}")
+            self._require_matrix_ok("sync", response)
             own_user_id = self._own_user_id()
             return {
                 "rooms": parse_room_list(response.json(), own_user_id),
@@ -161,8 +268,7 @@ class MessengerService:
     def _sync_body(self):
         def call(client):
             response = client.sync(timeout_ms=0)
-            if response.status_code != 200:
-                raise requests.RequestException(f"messenger sync failed: {response.status_code}")
+            self._require_matrix_ok("sync", response)
             return response.json()
 
         return self._with_matrix(call)
@@ -176,6 +282,7 @@ class MessengerService:
 
         response = self._with_matrix(call)
         if response.status_code not in (200, 201, 204):
+            logger.warning("the read marker answered %s", response.status_code)
             return messages.result(False, READ_FAILED_KEY)
         return messages.result(True, READ_OK_KEY)
 
@@ -190,11 +297,15 @@ class MessengerService:
             TEACHER_AUTOCOMPLETE_PATH, params={"type": TEACHER_AUTOCOMPLETE_TYPE, "query": query}
         )
         if getattr(response, "status_code", 0) != 200:
-            raise requests.RequestException(f"teacher search failed: {response.status_code}")
+            logger.warning("teacher search answered %s", getattr(response, "status_code", 0))
+            raise MessengerStageError(
+                STAGE_MODULE, {"where": "teacher_search", "status": getattr(response, "status_code", 0)}
+            )
         try:
             payload = response.json()
         except ValueError as error:
-            raise requests.RequestException("teacher search answered without json") from error
+            logger.warning("teacher search answered without json", exc_info=True)
+            raise MessengerStageError(STAGE_BOOTSTRAP, {"where": "teacher_search"}) from error
         return {"teachers": parse_teacher_suggestions(payload), "allowed": True}
 
     def create_teacher_room(self, teacher, child_ids, add_other_parents):
@@ -208,9 +319,13 @@ class MessengerService:
         client = self.iserv.iserv_session()
         form = client.fetch(TEACHER_ROOM_FORM_PATH)
         if getattr(form, "status_code", 0) != 200:
-            raise requests.RequestException(f"teacher room form failed: {form.status_code}")
+            logger.warning("teacher room form answered %s", getattr(form, "status_code", 0))
+            raise MessengerStageError(
+                STAGE_MODULE, {"where": "teacher_room_form", "status": getattr(form, "status_code", 0)}
+            )
         token = find_teacher_room_token(form.text, form.url)
         if not token:
+            logger.warning("teacher room form carried no token: %s", page_diagnosis(form, ""))
             return messages.result(False, ROOM_FAILED_KEY)
         created = client.post_absolute(
             form.url, data=build_teacher_room_payload(token, teacher, wanted, add_other_parents)
@@ -219,15 +334,19 @@ class MessengerService:
 
     def _teacher_room_outcome(self, created):
         if getattr(created, "status_code", 0) not in (200, 201):
+            logger.warning("teacher room creation answered %s", getattr(created, "status_code", 0))
             return messages.result(False, ROOM_FAILED_KEY)
         if "json" not in str(created.headers.get("content-type") or "").lower():
+            logger.warning("teacher room creation answered without json: %s", page_diagnosis(created, ""))
             return messages.result(False, ROOM_REJECTED_KEY)
         try:
             body = created.json()
         except ValueError:
+            logger.warning("teacher room creation answered with broken json", exc_info=True)
             return messages.result(False, ROOM_REJECTED_KEY)
         room_id = str((body or {}).get("room_id") or "")
         if not room_id:
+            logger.warning("teacher room creation answered without a room id")
             return messages.result(False, ROOM_REJECTED_KEY)
         joined = self._await_join(room_id)
         return messages.result(
@@ -240,6 +359,7 @@ class MessengerService:
             try:
                 body = self._sync_body()
             except (requests.RequestException, LoginError):
+                logger.warning("waiting for the new room, a sync failed", exc_info=True)
                 body = {}
             if room_membership(body, room_id) == "join":
                 return True
@@ -252,10 +372,7 @@ class MessengerService:
 
         def call(client):
             response = client.room_messages(room_id, before_token=before or None)
-            if response.status_code != 200:
-                raise requests.RequestException(
-                    f"messenger history failed: {response.status_code}"
-                )
+            self._require_matrix_ok("history", response)
             payload = parse_room_messages(response.json(), _media_proxy_url)
             payload["self_user_id"] = self._own_user_id()
             return payload
@@ -274,6 +391,7 @@ class MessengerService:
 
         response = self._with_matrix(call)
         if response.status_code not in (200, 201):
+            logger.warning("sending a message answered %s", response.status_code)
             return messages.result(False, "api.messenger.send.failed")
         body = {}
         try:
@@ -294,8 +412,7 @@ class MessengerService:
     def unread_pulse(self):
         def call(client):
             response = client.sync(timeout_ms=0)
-            if response.status_code != 200:
-                raise requests.RequestException(f"messenger pulse failed: {response.status_code}")
+            self._require_matrix_ok("pulse", response)
             return total_unread(response.json())
 
         return self._with_matrix(call)

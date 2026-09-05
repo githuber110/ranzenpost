@@ -214,6 +214,12 @@ def resolved_lesson(snapshot, entry, now_epoch):
     return None
 
 
+def today_for(clock):
+    return holidays.berlin_today(
+        datetime.fromtimestamp(clock(), timezone.utc).replace(tzinfo=None)
+    )
+
+
 def in_range(entry, start, end):
     day = holidays.parse_day(entry.get("date"))
     return day is not None and start <= day <= end
@@ -232,9 +238,7 @@ class MarkRegistry:
         self.store.save_marks({"marks": entries})
 
     def _today(self):
-        return holidays.berlin_today(
-            datetime.fromtimestamp(self.clock(), timezone.utc).replace(tzinfo=None)
-        )
+        return today_for(self.clock)
 
     def _refuse_duplicate(self, entries, candidate):
         taken = slot_of(candidate)

@@ -255,6 +255,7 @@ const state = {
   weekOffset: 0,
   spotlightSubject: null,
   marks: null,
+  cancellations: null,
   holidays: null,
   holidayRegions: null,
   holidaySuggestion: null,
@@ -264,6 +265,7 @@ const state = {
   _overviewOrder: null,
   _overviewPinboardOrder: null,
   _overviewNow: true,
+  _scrollTop: false,
   pinboard: null,
   pinboardFolder: null,
   pinboardOnlyNew: false,
@@ -279,6 +281,8 @@ const state = {
   letterDetail: null,
   postTab: "letters",
   messengerRooms: null,
+  messengerRetrying: false,
+  messengerRetryFailed: false,
   messengerSearch: "",
   messengerRoom: null,
   teacherRoom: null,
@@ -344,6 +348,11 @@ function apiError(code, body) {
 
 function errorCode(error) {
   return error && error.name === API_ERROR && error.code ? error.code : ERROR_NETWORK;
+}
+
+function isTimeoutError(error) {
+  const name = error && error.name;
+  return name === "TimeoutError" || name === "AbortError";
 }
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -418,6 +427,7 @@ const ICON_SHAPES = {
   phone: '<path d="M6.2 3.6h3.1l1.6 3.9-2 1.2a11 11 0 0 0 5 5l1.2-2 3.9 1.6v3.1a1.8 1.8 0 0 1-2 1.8A15.6 15.6 0 0 1 4.4 5.6a1.8 1.8 0 0 1 1.8-2z"/>',
   back: '<path d="M14.6 5.4 8 12l6.6 6.6"/>',
   folder: '<path d="M3.4 6.6a2 2 0 0 1 2-2h3.4l2 2.4h7.8a2 2 0 0 1 2 2v8.4a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2z"/>',
+  filter: '<path d="M3.6 5.2h16.8l-6.5 7.7v6l-3.8 1.9v-7.9z" stroke-linejoin="round"/>',
   trash: '<path d="M4.6 6.8h14.8M9.4 6.8V4.6h5.2v2.2M6.6 6.8l.9 12.2a1.6 1.6 0 0 0 1.6 1.5h5.8a1.6 1.6 0 0 0 1.6-1.5l.9-12.2"/>',
   archive: '<rect x="3.4" y="4.4" width="17.2" height="4.4" rx="1.6"/><path d="M5.2 8.8v9.2a2 2 0 0 0 2 2h9.6a2 2 0 0 0 2-2V8.8"/><path d="M10 12.6h4"/>',
   restore: '<path d="M4.4 10.6a8 8 0 1 1 .6 6"/><path d="M3.6 4.8v5.8h5.8"/>',
@@ -664,6 +674,10 @@ function render() {
     const bar = screen.querySelector(".header");
     if (bar) bar.classList.toggle("scrolled", screen.scrollTop > 4);
   });
+  if (state.view === "timetable") {
+    screen.addEventListener("pointerdown", spotlightPointerDown, true);
+    screen.addEventListener("click", spotlightSwallowTap, true);
+  }
   if (!chat) setupPullToRefresh(screen);
   const nodes = chat ? [screen] : [screen, tabbar()];
   if (state.sheet) nodes.push(state.sheet());
@@ -674,6 +688,10 @@ function render() {
   if (state._keepScroll) {
     screen.scrollTop = state._keepScroll;
     state._keepScroll = 0;
+  }
+  if (state._scrollTop) {
+    state._scrollTop = false;
+    screen.scrollTop = 0;
   }
   applyOverviewPagination();
   if (chat) {
@@ -715,44 +733,75 @@ function leaveAbsenceForm(after) {
   }).then((ok) => { if (ok) after(); });
 }
 
-const VIEW_ENTRY_RESETS = {
-  post: resetPostEntryState,
-  messenger: resetMessengerEntryState,
+const ALL_VIEWS = VIEWS.map((item) => item.key).concat(["conferences", "settings"]);
+
+const VIEW_ENTRY_DEFAULTS = {
+  overview: {
+    _overviewAnchor: null,
+    _overviewNow: true,
+    _overviewOrder: null,
+    _overviewPinboardOrder: null,
+  },
+  timetable: {
+    weekOffset: 0,
+    spotlightSubject: null,
+  },
+  absence: {
+    absenceHistoryOpen: false,
+  },
+  post: {
+    postTab: "letters",
+    lettersTab: "current",
+    lettersSelectMode: false,
+    lettersSelected: [],
+    lettersSearch: "",
+    pinboardSelectMode: false,
+    pinboardSelected: [],
+    pinboardSearch: "",
+    pinboardOnlyNew: false,
+    pinboardFolder: null,
+  },
+  messenger: {
+    messengerRoom: null,
+    messengerSearch: "",
+    messengerRetrying: false,
+    messengerRetryFailed: false,
+  },
+  conferences: {},
+  settings: {},
 };
 
 function postSegmentIs(segment) {
   return state.postTab === segment;
 }
 
-function resetPostEntryState() {
-  resetLettersEntryState();
-  resetPinboardEntryState();
+function applyViewEntryDefaults(name) {
+  const defaults = VIEW_ENTRY_DEFAULTS[name];
+  if (!defaults) return;
+  for (const key of Object.keys(defaults)) {
+    const value = defaults[key];
+    state[key] = Array.isArray(value) ? value.slice() : value;
+  }
 }
 
-function resetMessengerEntryState() {
-  state.messengerRoom = null;
-  state.messengerSearch = "";
-}
-
-function resetLettersEntryState() {
-  state.lettersTab = "current";
-  state.lettersSelectMode = false;
-  state.lettersSelected = [];
-  state.lettersSearch = "";
-}
-
-function resetPinboardEntryState() {
-  state.pinboardSelectMode = false;
-  state.pinboardSelected = [];
-  state.pinboardSearch = "";
-  state.pinboardOnlyNew = false;
-  state.pinboardFolder = null;
+function enterView(name, options) {
+  const opts = options || {};
+  state._keepScroll = 0;
+  state._scrollTop = true;
+  if (opts.keepEntryState) return;
+  if (name === "overview" && opts.keepAnchor) return;
+  const weekBefore = state.weekOffset;
+  applyViewEntryDefaults(name);
+  if (name === "post" && opts.segment) state.postTab = opts.segment;
+  if (name === "timetable" && weekBefore !== state.weekOffset) {
+    state.timetable = null;
+    reloadTimetable();
+  }
 }
 
 function setView(name, options) {
   leaveAbsenceForm(() => {
     const changed = state.view !== name;
-    const keepEntryState = !!(options && options.keepEntryState);
     state.view = name;
     state.sheet = null;
     state.onSheetClose = null;
@@ -762,13 +811,7 @@ function setView(name, options) {
     discardFileViewer();
     closeAbsenceForm();
     closeTeacherRoom();
-    if (changed && !keepEntryState && VIEW_ENTRY_RESETS[name]) VIEW_ENTRY_RESETS[name]();
-    if (changed && name === "overview" && !(options && options.keepAnchor)) {
-      state._overviewAnchor = null;
-      state._overviewNow = true;
-      state._overviewOrder = null;
-      state._overviewPinboardOrder = null;
-    }
+    if (changed) enterView(name, options);
     render();
   });
 }
@@ -934,7 +977,7 @@ function headerTitleFor(view) {
   if (view === "settings") {
     return {
       text: t("settings.title"),
-      onBack: () => setView(state.settingsReturn || "overview", { keepEntryState: true }),
+      onBack: () => setView(state.settingsReturn || "overview"),
     };
   }
   if (view === "overview") return { node: greetingHeadline(new Date(), "header-title greeting-head") };
@@ -1638,6 +1681,7 @@ function loadRest() {
   loadPinboard();
   loadConferences();
   loadMarks();
+  loadCancellations();
   loadAbsences();
   loadMessengerRooms();
 }
@@ -1669,6 +1713,7 @@ async function refreshActiveView() {
         loadHolidays(),
         loadAbsences(),
         loadMarks(),
+        loadCancellations(),
         loadLetters(state.lettersTab),
         loadPinboard(),
         loadConferences(),
@@ -1678,7 +1723,7 @@ async function refreshActiveView() {
       break;
     }
     case "timetable":
-      await Promise.all([loadHolidays(), loadMarks(), reloadTimetable()]);
+      await Promise.all([loadHolidays(), loadMarks(), loadCancellations(), reloadTimetable()]);
       rerender();
       break;
     case "absence":
@@ -1697,6 +1742,25 @@ async function refreshActiveView() {
     default:
       rerender();
   }
+}
+
+async function refreshEverything() {
+  lastVisibilityRefreshAt = Date.now();
+  const jobs = [
+    ...state.children.map((child) => loadOverviewWeek(child.child_id, 0)),
+    loadHolidays(),
+    loadAbsences(),
+    loadMarks(),
+    loadCancellations(),
+    loadLetters(state.lettersTab),
+    loadPinboard(),
+    loadConferences(),
+    loadMessengerRooms(),
+  ];
+  if (state.timetableAvailable) jobs.push(reloadTimetable());
+  if (state.messengerRoom) jobs.push(loadMessengerHistory());
+  await Promise.all(jobs);
+  rerender();
 }
 
 const PULL_REFRESH_THRESHOLD = 70;
@@ -1761,7 +1825,7 @@ function setupPullToRefresh(screen) {
     if (armed && indicator) {
       refreshing = true;
       indicator.style.height = `${PULL_REFRESH_THRESHOLD}px`;
-      Promise.resolve(refreshActiveView()).finally(() => {
+      Promise.resolve(refreshEverything()).finally(() => {
         refreshing = false;
         cleanup();
       });
@@ -2043,7 +2107,8 @@ function overviewChildLabel(child) {
 function overviewChildHasChange(child) {
   const week = overviewWeekData(child.child_id, 0);
   if (!week || week.error || !Array.isArray(week.lessons)) return false;
-  return todayLessons(week, weekdayIndex(new Date())).some((lesson) => !!lesson.change_kind);
+  return todayLessons(week, weekdayIndex(new Date()))
+    .some((lesson) => !!displayChangeKind(lesson, child.child_id));
 }
 
 function overviewPills(activeId) {
@@ -2096,24 +2161,48 @@ function overviewBrackets(groups) {
   return keys;
 }
 
-function lastAttendedGroup(groups) {
-  for (let index = groups.length - 1; index >= 0; index -= 1) {
-    if (groups[index].lessons.some((lesson) => lesson.change_kind !== "cancelled")) return index;
-  }
-  return -1;
-}
-
 function clockText(minutes) {
   const total = ((minutes % 1440) + 1440) % 1440;
-  const hours = String(Math.floor(total / 60)).padStart(2, "0");
-  return `${hours}:${String(total % 60).padStart(2, "0")}`;
+  const date = new Date();
+  date.setHours(Math.floor(total / 60), total % 60, 0, 0);
+  return formatTime(date);
 }
 
-function lessonTimeRange(time) {
-  const parts = /^(\d{1,2}):(\d{2})/.exec(String(time || ""));
-  if (!parts) return "";
-  const start = Number(parts[1]) * 60 + Number(parts[2]);
-  return t("overview.time.range", { start: time, end: clockText(start + LESSON_MINUTES) });
+function timeMinutes(value) {
+  const parts = /^(\d{1,2}):(\d{2})/.exec(String(value || ""));
+  return parts ? Number(parts[1]) * 60 + Number(parts[2]) : null;
+}
+
+function lessonSlotStatus(start, minutesNow) {
+  if (start === null) return "unknown";
+  if (minutesNow >= start + LESSON_MINUTES) return "past";
+  return minutesNow >= start ? "now" : "future";
+}
+
+function todayTimeline(groups, times, childId, minutesNow) {
+  const starts = groups.map((group) =>
+    timeMinutes(group.lessons[0].start_time || times[String(group.period)] || ""));
+  const teaching = groups.map((group) =>
+    group.lessons.some((lesson) => !lessonDropped(lesson, childId)));
+  const statuses = starts.map((start) => lessonSlotStatus(start, minutesNow));
+  let nowIndex = -1;
+  let nextIndex = -1;
+  groups.forEach((group, index) => {
+    if (!teaching[index]) return;
+    if (nowIndex < 0 && statuses[index] === "now") nowIndex = index;
+    if (nextIndex < 0 && statuses[index] === "future") nextIndex = index;
+  });
+  const taught = starts.filter((start, index) => teaching[index]);
+  const complete = taught.length > 0 && taught.every((start) => start !== null);
+  const schoolEnd = complete ? Math.max(...taught) + LESSON_MINUTES : null;
+  const dayOver = taught.length === 0 || (schoolEnd !== null && minutesNow >= schoolEnd);
+  return {
+    statuses,
+    nowIndex,
+    nextIndex: nowIndex < 0 && !dayOver ? nextIndex : -1,
+    schoolEnd,
+    dayOver,
+  };
 }
 
 function todayChapter() {
@@ -2155,47 +2244,48 @@ function todayChapter() {
   const minutesNow = now.getHours() * 60 + now.getMinutes();
   const groups = groupTodayLessons(lessons);
   const brackets = overviewBrackets(groups);
-  const { schedule, nowPeriod, nextPeriod } = currentPeriodStatus(groups.map((group) => group.period), minutesNow);
-  const displayMinutes = lessons.map((lesson) => {
-    const time = lesson.start_time || times[String(lesson.period)] || "";
-    const parts = /^(\d{1,2}):(\d{2})/.exec(time);
-    return parts ? Number(parts[1]) * 60 + Number(parts[2]) : -1;
-  });
-  const dayOver = displayMinutes.every((minutes) => minutes >= 0 && minutes + 45 < minutesNow);
+  const timeline = todayTimeline(groups, times, child.child_id, minutesNow);
   chapter.bodyClass = "rows flat";
   const todayIso = isoDate(now);
   for (const node of todayLeadingRows(child.child_id, todayIso)) {
     chapter.blocks.push(overviewBlock(node.key, node.node));
   }
   const firstLessonIndex = chapter.blocks.length;
-  const lastActive = lastAttendedGroup(groups);
   groups.forEach((group, position) => {
-    const isNow = group.period === nowPeriod;
-    const isPast = periodStatus(schedule, group.period, minutesNow) === "past";
+    const isNow = position === timeline.nowIndex;
+    const isPast = timeline.statuses[position] === "past";
     const entries = group.lessons.map((lesson) => ({
       lesson,
       time: lesson.start_time || times[String(lesson.period)] || "",
       childId: child.child_id,
       mark: markAt(child.child_id, lessonIso(lesson), lesson.period),
     }));
-    if (position === lastActive) entries[0].meta = lessonTimeRange(entries[0].time);
+    entries[0].when = isNow ? "now" : position === timeline.nextIndex ? "next" : null;
     const node = entries.length > 1
       ? compactLessonPair(entries, isPast)
       : compactLesson(entries[0], isPast);
     if (isNow) node.setAttribute("aria-current", "true");
-    const changed = group.lessons.some((lesson) => !!lesson.change_kind);
+    const changed = group.lessons.some((lesson) => !!displayChangeKind(lesson, child.child_id));
     chapter.blocks.push(overviewBlock(`${child.child_id}:${group.period}`, node, brackets[position], changed));
   });
-  if (dayOver) {
-    chapter.blocks.push(overviewBlock(
-      `${child.child_id}:dayOver`,
-      el("div", { class: "row row-note" }, [el("p", { class: "dlg-text", style: "margin:0" }, t("overview.dayOver"))])
-    ));
-  }
-  const anchorPeriod = nowPeriod !== null ? nowPeriod : nextPeriod;
-  if (anchorPeriod !== null && anchorPeriod !== undefined) chapter.nowKey = `${child.child_id}:${anchorPeriod}`;
-  else chapter.nowKey = dayOver ? chapter.blocks[chapter.blocks.length - 1].key : chapter.blocks[firstLessonIndex].key;
+  const note = todayNoteRow(child.child_id, timeline);
+  if (note) chapter.blocks.push(note);
+  const anchor = timeline.nowIndex >= 0 ? timeline.nowIndex : timeline.nextIndex;
+  if (anchor >= 0) chapter.nowKey = `${child.child_id}:${groups[anchor].period}`;
+  else chapter.nowKey = timeline.dayOver ? chapter.blocks[chapter.blocks.length - 1].key : chapter.blocks[firstLessonIndex].key;
   return chapter;
+}
+
+function todayNoteRow(childId, timeline) {
+  if (timeline.dayOver) return overviewNoteBlock(`${childId}:dayOver`, t("overview.dayOver"));
+  if (timeline.schoolEnd === null) return null;
+  return overviewNoteBlock(`${childId}:schoolEnd`, t("overview.schoolEnds", { time: clockText(timeline.schoolEnd) }));
+}
+
+function overviewNoteBlock(key, text) {
+  return overviewBlock(key, el("div", { class: "row row-note" }, [
+    el("p", { class: "dlg-text", style: "margin:0" }, text),
+  ]));
 }
 
 function todayFreeChapter(chapter, child, iso) {
@@ -2916,53 +3006,6 @@ function periodTimes(week) {
   return (week && week.period_times) || (state.config && state.config.period_times) || {};
 }
 
-function configuredPeriodTimes() {
-  return (state.config && state.config.period_times) || {};
-}
-
-function periodStartMinutes(times, period) {
-  const raw = times[String(period)];
-  const parts = raw ? /^(\d{1,2}):(\d{2})/.exec(raw) : null;
-  return parts ? Number(parts[1]) * 60 + Number(parts[2]) : null;
-}
-
-function buildPeriodSchedule() {
-  const times = configuredPeriodTimes();
-  const known = Object.keys(times)
-    .map((raw) => ({ period: Number(raw), start: periodStartMinutes(times, Number(raw)) }))
-    .filter((entry) => entry.start !== null)
-    .sort((a, b) => a.start - b.start);
-  const schedule = new Map();
-  known.forEach((entry, i) => {
-    const end = i + 1 < known.length ? known[i + 1].start : entry.start + 45;
-    schedule.set(entry.period, { start: entry.start, end });
-  });
-  return schedule;
-}
-
-function periodStatus(schedule, period, minutesNow) {
-  const info = schedule.get(period);
-  if (!info) return "unknown";
-  if (minutesNow >= info.start && minutesNow < info.end) return "now";
-  if (minutesNow < info.start) return "future";
-  return "past";
-}
-
-function currentPeriodStatus(periods, minutesNow) {
-  const schedule = buildPeriodSchedule();
-  const dayPeriods = [...new Set(periods)].sort((a, b) => a - b);
-  let nowPeriod = null;
-  let nextPeriod = null;
-  let allPast = dayPeriods.length > 0;
-  for (const period of dayPeriods) {
-    const status = periodStatus(schedule, period, minutesNow);
-    if (status !== "past") allPast = false;
-    if (status === "now") nowPeriod = period;
-    if (status === "future" && nextPeriod === null) nextPeriod = period;
-  }
-  return { schedule, nowPeriod, nextPeriod, dayOver: allPast };
-}
-
 function groupTodayLessons(lessons) {
   const order = [];
   const byPeriod = new Map();
@@ -3003,12 +3046,22 @@ function markTag(mark) {
   ]);
 }
 
+function whenTag(when) {
+  if (!when) return null;
+  return el("span", { class: `row-when ${when}` }, t(when === "now" ? "overview.mark.now" : "overview.mark.next"));
+}
+
+function compactLessonTitle(lesson, kind) {
+  const title = iservText("div", { class: "row-title" }, lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback"));
+  if (kind === "cancelled") title.style.textDecoration = "line-through";
+  return title;
+}
+
 function compactLesson(entry, isPast) {
   const lesson = entry.lesson;
+  const kind = displayChangeKind(lesson, entry.childId);
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectColor(lesson);
-  const title = iservText("div", { class: "row-title" }, lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback"));
-  if (lesson.change_kind === "cancelled") title.style.textDecoration = "line-through";
   const sub = [lesson.room ? t("timetable.room", { room: lesson.room }) : "", lesson.teacher_label || ""].filter(Boolean).join(" · ");
   const row = el("button", {
     class: rowClassNames(isPast),
@@ -3016,10 +3069,11 @@ function compactLesson(entry, isPast) {
     onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
   }, [
     dot,
-    el("div", { class: "row-main" }, [title, sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
+    el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
     el("div", { class: "row-side" }, [
-      el("span", { class: "row-meta" }, entry.meta || entry.time || periodShort(lesson.period)),
-      changeTag(lesson.change_kind),
+      whenTag(entry.when),
+      el("span", { class: "row-meta" }, entry.time || periodShort(lesson.period)),
+      changeTag(kind),
     ]),
   ]);
   if (entry.mark) row.classList.add("marked");
@@ -3028,10 +3082,9 @@ function compactLesson(entry, isPast) {
 
 function compactLessonPairItem(entry) {
   const lesson = entry.lesson;
+  const kind = displayChangeKind(lesson, entry.childId);
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectColor(lesson);
-  const title = iservText("div", { class: "row-title" }, lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback"));
-  if (lesson.change_kind === "cancelled") title.style.textDecoration = "line-through";
   const sub = [lesson.room ? t("timetable.room", { room: lesson.room }) : "", lesson.teacher_label || ""].filter(Boolean).join(" · ");
   const item = el("button", {
     class: "row-pair-item",
@@ -3039,8 +3092,8 @@ function compactLessonPairItem(entry) {
     onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
   }, [
     dot,
-    el("div", { class: "row-main" }, [title, sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
-    changeTag(lesson.change_kind),
+    el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
+    changeTag(kind),
   ]);
   if (entry.mark) item.classList.add("marked");
   return item;
@@ -3052,7 +3105,8 @@ function compactLessonPair(entries, isPast) {
   return el("div", { class: rowClassNames(isPast) }, [
     el("div", { class: "row-pair" }, items),
     el("div", { class: "row-side" }, [
-      el("span", { class: "row-meta" }, entries[0].meta || time || periodShort(entries[0].lesson.period)),
+      whenTag(entries[0].when),
+      el("span", { class: "row-meta" }, time || periodShort(entries[0].lesson.period)),
     ]),
   ]);
 }
@@ -3959,12 +4013,64 @@ function handOffCalendarUrl(feedUrl) {
   }
 }
 
+const WEBVIEW_UA_MARKERS = ["homeassistant", "home assistant", "; wv)"];
+
+function isEmbeddedWebView() {
+  const agent = String(navigator.userAgent || "").toLowerCase();
+  if (WEBVIEW_UA_MARKERS.some((marker) => agent.includes(marker))) return true;
+  if (window.externalApp) return true;
+  const handlers = window.webkit && window.webkit.messageHandlers;
+  if (handlers && (handlers.externalBus || handlers.getExternalAuth)) return true;
+  const appleTouch = /\b(iphone|ipad|ipod)\b/.test(agent)
+    || (agent.includes("macintosh") && Number(navigator.maxTouchPoints || 0) > 1);
+  return appleTouch && agent.includes("applewebkit") && !agent.includes("safari/");
+}
+
+function isApplePlatform() {
+  const agent = String(navigator.userAgent || "").toLowerCase();
+  return agent.includes("iphone") || agent.includes("ipad") || agent.includes("ipod")
+    || (agent.includes("macintosh") && Number(navigator.maxTouchPoints || 0) > 1);
+}
+
+function calendarWebViewSteps() {
+  const firstStep = isApplePlatform()
+    ? "calendar.subscribe.webview.step1"
+    : "calendar.subscribe.webview.step1Other";
+  return el("div", { class: "cal-webview" }, [
+    el("span", { class: "overline" }, t("calendar.subscribe.webview.title")),
+    el("ol", { class: "cal-step-list" }, [
+      el("li", {}, t(firstStep)),
+      el("li", {}, t("calendar.subscribe.webview.step2")),
+    ]),
+    el("p", { class: "cal-hint" }, t("calendar.subscribe.webview.hint")),
+  ]);
+}
+
+function calendarCopyPrimaryButton(url) {
+  const button = el("button", {
+    class: "btn cal-add cal-copy-primary",
+    type: "button",
+    disabled: url ? null : "disabled",
+  }, [icon("clip", 18), t("calendar.subscribe.copy")]);
+  button.addEventListener("click", async () => {
+    const copied = await copyToClipboard(url);
+    toast(t(copied ? "calendar.subscribe.copied" : "calendar.subscribe.copyFailed"), copied ? "good" : "bad");
+  });
+  return button;
+}
+
 function calendarActions(subscription, child) {
   const nodes = [];
   const feedUrl = calendarFeedUrl(subscription, CALENDAR_SCHEME_WEB);
   const plainUrl = calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN);
   const busy = !!state.calendarBusy;
-  if (feedUrl) {
+  const embedded = isEmbeddedWebView();
+  if (embedded && plainUrl) {
+    nodes.push(calendarCopyPrimaryButton(plainUrl));
+    nodes.push(calendarWebViewSteps());
+  } else if (embedded) {
+    nodes.push(noteBlock(t("calendar.subscribe.host.missing")));
+  } else if (feedUrl) {
     nodes.push(el("button", {
       class: "btn cal-add",
       type: "button",
@@ -3975,9 +4081,9 @@ function calendarActions(subscription, child) {
     ]));
   }
   const row = el("div", { class: "cal-action-row" });
-  row.append(calendarCopyButton(plainUrl));
+  if (!embedded) row.append(calendarCopyButton(plainUrl));
   if (typeof qrMatrix === "function" && feedUrl) row.append(calendarQrButton(subscription));
-  nodes.push(row);
+  if (row.childNodes.length) nodes.push(row);
   if (state.calendarQr === subscription.id && feedUrl) {
     const panel = calendarQrPanel(feedUrl);
     if (panel) nodes.push(panel);
@@ -4127,7 +4233,6 @@ function timetableGrid(data) {
     blocked.push(!!fullWeek || holidayBlocksLessons(isoDate(addDays(monday, day))));
   }
   const grid = el("div", { class: state.spotlightSubject ? "tt spotlight" : "tt" });
-  grid.addEventListener("click", spotlightBackgroundTap);
   grid.addEventListener("keydown", spotlightEscape);
   setupWeekSwipe(grid);
   grid.append(el("div", { style: "grid-column:1;grid-row:1" }));
@@ -4248,11 +4353,84 @@ function lessonSubjectKey(lesson) {
   return String(lesson.subject_code || lesson.subject_label || "");
 }
 
+const SPOTLIGHT_HOLD_MS = 450;
+const SPOTLIGHT_HOLD_SLOP = 10;
+let spotlightHoldTimer = null;
+let spotlightHoldFired = false;
+
 function setSpotlight(subject) {
   const next = subject || null;
   if (state.spotlightSubject === next) return;
   state.spotlightSubject = next;
   applySpotlight();
+}
+
+function cancelSpotlightHold() {
+  if (spotlightHoldTimer === null) return;
+  window.clearTimeout(spotlightHoldTimer);
+  spotlightHoldTimer = null;
+}
+
+function beginSpotlightHold(subject) {
+  cancelSpotlightHold();
+  if (!subject) return;
+  spotlightHoldTimer = window.setTimeout(() => {
+    spotlightHoldTimer = null;
+    spotlightHoldFired = true;
+    setSpotlight(subject);
+  }, SPOTLIGHT_HOLD_MS);
+}
+
+function spotlightPointerDown() {
+  spotlightHoldFired = false;
+}
+
+function spotlightSwallowTap(event) {
+  if (spotlightHoldFired) {
+    spotlightHoldFired = false;
+    event.stopPropagation();
+    event.preventDefault();
+    return;
+  }
+  if (!state.spotlightSubject) return;
+  event.stopPropagation();
+  event.preventDefault();
+  setSpotlight(null);
+}
+
+function bindSpotlightHold(cell, subject) {
+  if (!subject) return;
+  let startX = 0;
+  let startY = 0;
+  cell.addEventListener("pointerdown", (event) => {
+    if (event.button) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    beginSpotlightHold(subject);
+  });
+  cell.addEventListener("pointerup", cancelSpotlightHold);
+  cell.addEventListener("pointermove", (event) => {
+    if (Math.abs(event.clientX - startX) > SPOTLIGHT_HOLD_SLOP
+      || Math.abs(event.clientY - startY) > SPOTLIGHT_HOLD_SLOP) cancelSpotlightHold();
+  });
+  cell.addEventListener("pointercancel", cancelSpotlightHold);
+  cell.addEventListener("pointerleave", cancelSpotlightHold);
+  cell.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
+function spotlightWorthwhile(subject) {
+  return !!subject && weekSubjectOccurrences(subject, timetableWeekLessons()).length > 1;
+}
+
+function spotlightSheetAction(lesson, weekLessons) {
+  if (state.view !== "timetable") return null;
+  const subject = lessonSubjectKey(lesson);
+  if (!subject || weekSubjectOccurrences(subject, weekLessons).length < 2) return null;
+  return iservText("button", {
+    class: "btn ghost",
+    type: "button",
+    onclick: () => { setSpotlight(subject); discardSheet(); },
+  }, t("timetable.spotlight.action", { subject: lesson.subject_label || lesson.subject_code || subject }));
 }
 
 function applySpotlight() {
@@ -4271,11 +4449,6 @@ function spotlightEscape(event) {
   setSpotlight(null);
 }
 
-function spotlightBackgroundTap(event) {
-  if (event.target.closest(".tt-cell:not(.free)")) return;
-  setSpotlight(null);
-}
-
 function timetableWeekLessons() {
   const data = state.timetable;
   return data && Array.isArray(data.lessons) ? data.lessons : [];
@@ -4289,7 +4462,7 @@ function overviewWeekLessons(childId) {
 function weekSubjectOccurrences(subject, weekLessons) {
   return (weekLessons || [])
     .filter((lesson) => lessonSubjectKey(lesson) === subject
-      && lesson.change_kind !== "cancelled"
+      && displayChangeKind(lesson, state.childId) !== "cancelled"
       && !holidayBlocksLessons(lessonIso(lesson)))
     .sort((left, right) =>
       Number(left.day_of_week) - Number(right.day_of_week) || Number(left.period) - Number(right.period));
@@ -4317,20 +4490,17 @@ function gridCell(lessons, time) {
 }
 
 function lessonCell(lesson, time, compact) {
-  const kind = lesson.change_kind;
+  const kind = displayChangeKind(lesson, state.childId);
   const mark = markOfLesson(lesson, state.childId);
   const base = kind === "cancelled" ? "tt-cell out" : kind ? "tt-cell subbed" : "tt-cell";
   const roomLabel = kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : lesson.room;
   const subject = lessonSubjectKey(lesson);
   const cell = el("button", {
-    class: compact ? `${base} chip` : base,
+    class: compact ? `${base} compact` : base,
     type: "button",
     "data-subject": subject || null,
     "aria-label": lessonAriaLabel(lesson, kind, mark),
-    onclick: () => {
-      if (subject) setSpotlight(subject);
-      openLessonSheet(lesson, time, state.childId, timetableWeekLessons());
-    },
+    onclick: () => openLessonSheet(lesson, time, state.childId, timetableWeekLessons()),
   }, [
     kind && kind !== "cancelled" ? el("span", { class: "bar" }) : null,
     iservText("span", { class: "sub" }, lesson.subject_code || lesson.subject_label || "?"),
@@ -4339,6 +4509,7 @@ function lessonCell(lesson, time, compact) {
   ]);
   if (mark) cell.classList.add("marked");
   if (subject && subject === state.spotlightSubject) cell.classList.add("spot");
+  bindSpotlightHold(cell, spotlightWorthwhile(subject) ? subject : null);
   if (!kind) {
     const color = subjectColor(lesson);
     cell.style.background = `color-mix(in srgb, ${color} var(--subject-fill), var(--surface))`;
@@ -4420,6 +4591,7 @@ function lessonSheet(lesson, time, childId, weekLessons) {
   if (lesson.date) facts.splice(1, 0, [t("timetable.fact.day"), showDate(lesson.date)]);
   if (lesson.is_class_teacher) facts.push([t("timetable.fact.role"), t("timetable.fact.classTeacher")]);
   const mark = markOfLesson(lesson, childId);
+  const cancellation = cancellationOfLesson(lesson, childId);
   const body = [];
   const weekPosition = lessonWeekPosition(lesson, weekLessons);
   if (weekPosition) {
@@ -4430,6 +4602,7 @@ function lessonSheet(lesson, time, childId, weekLessons) {
   }
   const banner = changeBanner(lesson);
   if (banner) body.push(banner);
+  if (cancellation) body.push(cancellationPanel());
   if (mark) body.push(markPanel(mark, childId, lesson, time));
   const details = changeDetails(lesson);
   if (details) {
@@ -4439,20 +4612,40 @@ function lessonSheet(lesson, time, childId, weekLessons) {
   }
   body.push(factList(facts));
   const title = lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback");
-  return sheet(title, body, lessonSheetFoot(mark, childId, lesson, time));
+  return sheet(title, body, lessonSheetFoot(mark, cancellation, childId, lesson, time, weekLessons));
 }
 
-function lessonSheetFoot(mark, childId, lesson, time) {
-  if (!markLessonAnchor(lesson, childId)) return null;
-  if (!mark) return [markAddButton(childId, lesson, time)];
-  const rename = el("button", { class: "btn ghost", type: "button", onclick: () => openMarkForm(childId, lesson, time, mark) }, t("marks.action.rename"));
-  if (markNeedsCheck(mark)) return [rename];
-  return [
-    el("div", { class: "btn-stack" }, [
-      rename,
-      el("button", { class: "btn ghost destructive", type: "button", onclick: () => removeMark(mark) }, t("marks.action.remove")),
-    ]),
-  ];
+function lessonSheetFoot(mark, cancellation, childId, lesson, time, weekLessons) {
+  const actions = [];
+  const spotlight = spotlightSheetAction(lesson, weekLessons);
+  if (spotlight) actions.push(spotlight);
+  if (markLessonAnchor(lesson, childId)) {
+    if (!mark) actions.push(markAddButton(childId, lesson, time));
+    else {
+      actions.push(el("button", { class: "btn ghost", type: "button", onclick: () => openMarkForm(childId, lesson, time, mark) }, t("marks.action.rename")));
+      if (!markNeedsCheck(mark)) {
+        actions.push(el("button", { class: "btn ghost destructive", type: "button", onclick: () => removeMark(mark) }, t("marks.action.remove")));
+      }
+    }
+    actions.push(cancellationAction(cancellation, childId, lesson));
+  }
+  if (!actions.length) return null;
+  return [el("div", { class: "btn-stack" }, actions)];
+}
+
+function cancellationAction(cancellation, childId, lesson) {
+  if (cancellation) {
+    return el("button", {
+      class: "btn ghost",
+      type: "button",
+      onclick: () => removeCancellation(cancellation),
+    }, t("timetable.cancel.action.remove"));
+  }
+  return el("button", {
+    class: "btn ghost destructive",
+    type: "button",
+    onclick: () => addCancellation(childId, lesson),
+  }, t("timetable.cancel.action.add"));
 }
 
 function markAddButton(childId, lesson, time) {
@@ -4490,6 +4683,83 @@ function markAt(childId, iso, period) {
   return markList().find(
     (entry) => entry.child_id === childId && entry.date === iso && Number(entry.period) === Number(period)
   ) || null;
+}
+
+function cancellationList() {
+  const box = state.cancellations;
+  return box && box.data && Array.isArray(box.data.cancellations) ? box.data.cancellations : [];
+}
+
+async function loadCancellations() {
+  const keep = !!(state.cancellations && !state.cancellations.error);
+  const outcome = await reload("cancellations", () => getJson("api/cancellations"), keep);
+  if (!outcome) return;
+  if (outcome.data) state.cancellations = { data: outcome.data };
+  else if (outcome.error) state.cancellations = { error: outcome.error };
+  rerender();
+}
+
+function cancellationAt(childId, iso, period) {
+  if (!childId || !iso) return null;
+  return cancellationList().find(
+    (entry) => entry.child_id === childId && entry.date === iso && Number(entry.period) === Number(period)
+  ) || null;
+}
+
+function cancellationOfLesson(lesson, childId) {
+  return cancellationAt(markChildOf(childId), lessonIso(lesson), lesson && lesson.period);
+}
+
+function lessonDropped(lesson, childId) {
+  return lesson.change_kind === "cancelled" || !!cancellationOfLesson(lesson, childId);
+}
+
+function displayChangeKind(lesson, childId) {
+  if (lesson.change_kind) return lesson.change_kind;
+  return cancellationOfLesson(lesson, childId) ? "cancelled" : "";
+}
+
+function cancellationRequest(path, options) {
+  return jsonRequest(path, options, "timetable.cancel.error");
+}
+
+async function runCancellationAction(request, doneKey) {
+  const outcome = await request();
+  if (!outcome.ok) {
+    toast(outcome.message, "bad");
+    return false;
+  }
+  discardSheet();
+  await loadCancellations();
+  toast(t(doneKey));
+  return true;
+}
+
+function addCancellation(childId, lesson) {
+  const anchor = markLessonAnchor(lesson, markChildOf(childId));
+  if (!anchor) return Promise.resolve(false);
+  return runCancellationAction(
+    () => cancellationRequest("api/cancellations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ child_id: anchor.child_id, date: anchor.date, period: anchor.period }),
+    }),
+    "timetable.cancel.toast.saved"
+  );
+}
+
+function removeCancellation(cancellation) {
+  return runCancellationAction(
+    () => cancellationRequest(`api/cancellations/${encodeURIComponent(cancellation.id)}`, { method: "DELETE" }),
+    "timetable.cancel.toast.removed"
+  );
+}
+
+function cancellationPanel() {
+  return el("div", { class: "mark-clarify", role: "group", "aria-label": t("timetable.cancel.title") }, [
+    el("div", { class: "mark-clarify-head" }, [icon("alert", 16), el("b", {}, t("timetable.cancel.title"))]),
+    el("p", { class: "mark-clarify-text" }, t("timetable.cancel.hint")),
+  ]);
 }
 
 function markLessonAnchor(lesson, childId) {
@@ -4617,7 +4887,7 @@ function markDayLessons(childId, iso) {
 function markMoveTargets(mark, childId) {
   return markDayLessons(childId, mark.date).filter((lesson) => {
     if (Number(lesson.period) === Number(mark.period)) return false;
-    if (lesson.change_kind === MARK_STATE_CANCELLED) return false;
+    if (displayChangeKind(lesson, childId) === MARK_STATE_CANCELLED) return false;
     if (!markLessonAnchor(lesson, childId)) return false;
     return !markAt(childId, mark.date, lesson.period);
   });
@@ -4644,14 +4914,18 @@ function markMoveSheet(mark, childId) {
   return sheet(t("marks.move.title"), [el("div", { class: "rows" }, rows)]);
 }
 
-function markRequest(path, options) {
+function jsonRequest(path, options, fallbackKey) {
   return fetch(apiUrl(path), options)
     .then((response) => response.json().catch(() => null).then((body) => ({ response, body })))
     .then(({ response, body }) => {
       if (response.ok) return { ok: true, data: body };
-      return { ok: false, message: apiMessage(body, "marks.error.failed") };
+      return { ok: false, message: apiMessage(body, fallbackKey) };
     })
-    .catch(() => ({ ok: false, message: t("marks.error.failed") }));
+    .catch(() => ({ ok: false, message: t(fallbackKey) }));
+}
+
+function markRequest(path, options) {
+  return jsonRequest(path, options, "marks.error.failed");
 }
 
 function markPost(path, body) {
@@ -4835,7 +5109,7 @@ async function reload(key, run, keepOnFailure) {
       return { kept: true };
     }
     delete state.refreshFailed[key];
-    return { error: code };
+    return { error: code, body: (error && error.body) || null, timedOut: isTimeoutError(error) };
   }
 }
 
@@ -4903,50 +5177,40 @@ function switchPostTab(segment) {
   state.lettersSelected = [];
   state.pinboardSelectMode = false;
   state.pinboardSelected = [];
-  rerender();
+  state._keepScroll = 0;
+  state._scrollTop = true;
+  render();
 }
 
 function openPostSegment(segment) {
-  state.postTab = segment;
-  setView("post");
+  setView("post", { segment });
 }
 
-function lettersFolderLabel() {
-  return t(state.lettersTab === "archive" ? "letters.folder.archive" : "letters.folder.current");
+function lettersFolderChip(tab, iconName, label, count) {
+  const chip = el("button", {
+    class: "chip",
+    type: "button",
+    role: "tab",
+    "aria-selected": String(state.lettersTab === tab),
+    onclick: () => openLettersFolder(tab),
+  }, [icon(iconName, 14), el("span", {}, label)]);
+  if (count) chip.append(el("span", { class: "n" }, formatNumber(count)));
+  return chip;
 }
 
 function lettersFolderRow() {
-  return el("div", { class: "chipbar" }, [
-    el("button", {
-      class: "chip",
-      type: "button",
-      "aria-pressed": String(state.lettersTab === "archive"),
-      onclick: () => openSheet(letterFolderSheet),
-    }, [icon("folder", 14), el("span", {}, lettersFolderLabel())]),
+  return el("div", { class: "chipbar segmented", role: "tablist" }, [
+    lettersFolderChip("current", "inbox", t("letters.folder.current"), lettersUnreadCount()),
+    lettersFolderChip("archive", "archive", t("letters.folder.archive"), 0),
   ]);
 }
 
-function letterFolderOption(tab, iconName, title, count) {
-  return el("div", { class: "opt", "aria-pressed": String(tab === state.lettersTab) }, [
-    el("button", {
-      class: "opt-main",
-      type: "button",
-      onclick: () => { setLettersFolder(tab); closeSheet(); },
-    }, [
-      icon(iconName, 20),
-      el("span", {}, [el("b", {}, title)]),
-      count ? el("span", { class: "badge" }, badgeText(count)) : null,
-    ]),
-  ]);
-}
-
-function letterFolderSheet() {
-  return sheet(t("letters.folder.sheet"), [
-    el("div", { class: "opt-list" }, [
-      letterFolderOption("current", "inbox", t("letters.folder.current"), lettersUnreadCount()),
-      letterFolderOption("archive", "archive", t("letters.folder.archive"), 0),
-    ]),
-  ]);
+function openLettersFolder(tab) {
+  if (tab === state.lettersTab) return;
+  setLettersFolder(tab);
+  state._keepScroll = 0;
+  state._scrollTop = true;
+  render();
 }
 
 function lettersView(lead) {
@@ -5428,8 +5692,7 @@ function markLetterSeen(letter) {
 
 function openLetterFromOverview(letter) {
   rememberOverviewAnchor();
-  state.postTab = "letters";
-  setView("post");
+  setView("post", { segment: "letters" });
   openLetter(letter, OVERVIEW_ORIGIN);
 }
 
@@ -5667,9 +5930,11 @@ function pinboardView(lead) {
         el("span", {}, t("pinboard.filter.new")),
         unread ? el("span", { class: "n" }, formatNumber(unread)) : null,
       ]),
-      el("button", { class: "chip", type: "button", "aria-pressed": String(!!folder), onclick: () => openSheet(folderSheet) }, [
-        icon("folder", 14),
-        el("span", {}, t("pinboard.filter.folder")),
+      el("button", { class: "chip chip-filter", type: "button", "aria-pressed": String(!!folder), onclick: () => openSheet(folderSheet) }, [
+        icon("filter", 14),
+        folder
+          ? iservText("span", { class: "chip-label" }, folder.title || t("pinboard.folder.fallback"))
+          : el("span", { class: "chip-label" }, t("pinboard.folder.all")),
       ]),
     ])
   );
@@ -6113,8 +6378,73 @@ async function loadMessengerRooms() {
   const outcome = await reload(MESSENGER_LOAD_KEY, () => getJson("api/messenger/rooms"), keep);
   if (!outcome) return;
   if (outcome.data) state.messengerRooms = outcome.data;
-  else if (outcome.error) state.messengerRooms = { error: outcome.error };
+  else if (outcome.error) {
+    state.messengerRooms = {
+      error: outcome.error,
+      body: outcome.body || null,
+      timedOut: !!outcome.timedOut,
+    };
+  }
   rerender();
+}
+
+function messengerFailureText(failure, fallbackKey) {
+  const body = failure && failure.body;
+  if (body && body.message_key) return t(body.message_key, body.message_vars);
+  if (failure && failure.timedOut) return t("api.messenger.error.timeout");
+  return t(fallbackKey || "messenger.error.text");
+}
+
+function diagnosisValueText(value) {
+  if (typeof value === "boolean") return t(value ? "common.yes" : "common.no");
+  if (Array.isArray(value)) return value.map(diagnosisValueText).join(", ");
+  if (value && typeof value === "object") {
+    return Object.keys(value).map((key) => `${key}: ${diagnosisValueText(value[key])}`).join(", ");
+  }
+  if (value === null || value === undefined || value === "") return t("common.none");
+  return String(value);
+}
+
+function diagnosisLabel(key) {
+  const candidate = `messenger.diagnosis.${key}`;
+  return hasMessage(candidate) ? t(candidate) : key;
+}
+
+function messengerDiagnosisEntries(failure) {
+  const diagnosis = failure && failure.body && failure.body.diagnosis;
+  if (!diagnosis || typeof diagnosis !== "object") return [];
+  return Object.keys(diagnosis).map((key) => ({
+    label: diagnosisLabel(key),
+    value: diagnosisValueText(diagnosis[key]),
+  }));
+}
+
+async function retryMessengerRooms() {
+  if (state.messengerRetrying) return;
+  state.messengerRetrying = true;
+  state.messengerRetryFailed = false;
+  rerender();
+  state.messengerRooms = null;
+  await loadMessengerRooms();
+  state.messengerRetrying = false;
+  state.messengerRetryFailed = !!(state.messengerRooms && state.messengerRooms.error);
+  rerender();
+}
+
+function messengerErrorBlock() {
+  const failure = state.messengerRooms || {};
+  const block = emptyBlock(
+    "alert",
+    t("messenger.error.title"),
+    messengerFailureText(failure),
+    retryButton(retryMessengerRooms)
+  );
+  if (state.messengerRetryFailed) {
+    block.insertBefore(noteBlock(t("messenger.error.retryFailed")), block.lastChild);
+  }
+  const entries = messengerDiagnosisEntries(failure);
+  if (entries.length) block.append(techDetailsButton(entries));
+  return block;
 }
 
 function matchesRoomQuery(room, query) {
@@ -6170,6 +6500,11 @@ function messengerView() {
   const view = el("div", {});
   const head = el("div", { class: "list-head" });
   view.append(head);
+  if (state.messengerRetrying) {
+    view.append(noteBlock(t("messenger.error.retrying")));
+    view.append(loadingBlock());
+    return view;
+  }
   const data = state.messengerRooms;
   if (!data) {
     autoLoad(MESSENGER_LOAD_KEY, loadMessengerRooms);
@@ -6177,12 +6512,7 @@ function messengerView() {
     return view;
   }
   if (data.error) {
-    view.append(
-      emptyBlock("alert", t("messenger.error.title"), t("messenger.error.text"), retryButton(() => {
-        state.messengerRooms = null;
-        rerender();
-      }))
-    );
+    view.append(messengerErrorBlock());
     return view;
   }
   const note = refreshFailureNote(MESSENGER_LOAD_KEY);
@@ -6292,9 +6622,13 @@ async function loadMessengerHistory(options) {
   room.loadingOlder = false;
   if (outcome.data) {
     room.error = "";
+    room.errorBody = null;
+    room.errorTimedOut = false;
     applyMessengerHistory(room, outcome.data, older);
   } else if (outcome.error) {
     room.error = outcome.error;
+    room.errorBody = outcome.body || null;
+    room.errorTimedOut = !!outcome.timedOut;
   }
   rerender();
 }
@@ -6405,14 +6739,18 @@ function messengerLog(room) {
     return log;
   }
   if (room.error && !room.messages.length) {
-    log.append(
-      emptyBlock("alert", t("messenger.room.error.title"), t("messenger.room.error.text"), retryButton(() => {
-        room.error = "";
-        room.loading = true;
-        rerender();
-        loadMessengerHistory();
-      }))
-    );
+    const failure = { error: room.error, body: room.errorBody, timedOut: room.errorTimedOut };
+    const block = emptyBlock("alert", t("messenger.room.error.title"), messengerFailureText(failure, "messenger.room.error.text"), retryButton(() => {
+      room.error = "";
+      room.errorBody = null;
+      room.errorTimedOut = false;
+      room.loading = true;
+      rerender();
+      loadMessengerHistory();
+    }));
+    const entries = messengerDiagnosisEntries(failure);
+    if (entries.length) block.append(techDetailsButton(entries));
+    log.append(block);
     return log;
   }
   if (!room.messages.length) {
