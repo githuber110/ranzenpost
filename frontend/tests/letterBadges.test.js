@@ -27,7 +27,7 @@ describe("[P99] letter list shows recipients + child badges", () => {
     expect(texts).toContain("Mia");
   });
 
-  test("child badge hidden with exactly 1 child (C15 gate)", () => {
+  test("[P234] the child badge is shown with exactly one child too", () => {
     const { window } = loadApp();
     const children = [{ child_id: "c1", name: "Mia" }];
     const letter = { letter_id: "1", recipient_id: "2", title: "Infobrief", child: "Mia", recipients: "Klasse 2B", unread: true };
@@ -35,7 +35,7 @@ describe("[P99] letter list shows recipients + child badges", () => {
     const tags = row.querySelectorAll(".row-tags .tag");
     const texts = Array.from(tags).map((t) => t.textContent);
     expect(texts).toContain("Klasse 2B");
-    expect(texts).not.toContain("Mia");
+    expect(texts).toContain("Mia");
   });
 
   test("no tags block when neither recipients nor child are known", () => {
