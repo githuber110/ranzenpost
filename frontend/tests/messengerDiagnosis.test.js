@@ -82,7 +82,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     button.click();
     const sheet = document.querySelector(".sheet");
     expect(sheet.textContent).toContain("bootstrap");
-    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.script_blocks")'));
+    expect(sheet.textContent).toContain(window.eval('t("diagnosis.script_blocks")'));
     expect(sheet.textContent).not.toContain("script_blocks");
     expect(sheet.textContent).not.toContain("marker_present");
   });
@@ -97,7 +97,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     });
     document.querySelector(".empty .tech-btn").click();
     const sheet = document.querySelector(".sheet");
-    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.marker_present")'));
+    expect(sheet.textContent).toContain(window.eval('t("diagnosis.marker_present")'));
     expect(sheet.textContent).toContain(window.eval('t("common.no")'));
     expect(sheet.textContent).not.toContain("[object Object]");
     expect(sheet.textContent).not.toContain("false");
@@ -145,8 +145,8 @@ describe("[P228] the messenger says what actually went wrong", () => {
 
     document.querySelector(".empty .tech-btn").click();
     const sheet = document.querySelector(".sheet");
-    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.page_credentials")'));
-    expect(sheet.textContent).toContain(window.eval('t("messenger.diagnosis.page_privileges")'));
+    expect(sheet.textContent).toContain(window.eval('t("diagnosis.page_credentials")'));
+    expect(sheet.textContent).toContain(window.eval('t("diagnosis.page_privileges")'));
     expect(sheet.textContent).not.toContain("page_credentials");
     expect(sheet.textContent).not.toContain("page_privileges");
   });

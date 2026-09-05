@@ -248,6 +248,8 @@ const state = {
   notifyServices: [],
   notifySupervisor: null,
   children: [],
+  childrenFailure: null,
+  childrenRetrying: false,
   childId: null,
   view: "overview",
   sheet: null,
@@ -1627,8 +1629,7 @@ async function bootOnce() {
     }
     state.account = health.username || "";
     state.config = await getJson("api/config");
-    state.children = await getJson("api/children");
-    state.childId = Array.isArray(state.children) && state.children.length ? state.children[0].child_id : null;
+    await loadChildren();
     if (state.childId) {
       try {
         await loadTimetable();
@@ -1652,6 +1653,57 @@ async function bootOnce() {
     if (handleApiFailure(error)) return;
     renderNotice(app, t("app.error.service.title"), t("app.error.service.text"), true);
   }
+}
+
+async function loadChildren() {
+  let answer = null;
+  try {
+    answer = await getJson("api/children");
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === ERROR_AUTH_FAILED || code === ERROR_NOT_CONFIGURED) throw error;
+    state.childrenFailure = (error && error.body) || { error: code };
+    state.children = [];
+    state.childId = null;
+    return;
+  }
+  const list = Array.isArray(answer) ? answer : [];
+  state.childrenFailure = null;
+  state.children = list;
+  state.childId = list.length ? list[0].child_id : null;
+}
+
+function childrenFailureText() {
+  const failure = state.childrenFailure;
+  if (failure && failure.message_key) return t(failure.message_key, failure.message_vars);
+  return t("overview.children.failed");
+}
+
+function childrenFailureCard() {
+  const entries = diagnosisEntries(state.childrenFailure && state.childrenFailure.diagnosis);
+  return el("div", { class: "card overview-failed" }, [
+    el("p", { class: "dlg-text", style: "margin:0 0 12px" }, childrenFailureText()),
+    state.childrenRetrying ? loadingBlock() : retryButton(retryChildren),
+    entries.length ? techDetailsButton(entries) : null,
+  ]);
+}
+
+async function retryChildren() {
+  if (state.childrenRetrying) return;
+  state.childrenRetrying = true;
+  rerender();
+  try {
+    await loadChildren();
+  } catch (error) {
+    if (handleApiFailure(error)) return;
+    state.childrenFailure = { error: errorCode(error) };
+  }
+  state.childrenRetrying = false;
+  if (state.children.length) {
+    await refreshEverything();
+    return;
+  }
+  rerender();
 }
 
 function routeOrIgnoreBackgroundFailure(error) {
@@ -1748,6 +1800,13 @@ async function refreshActiveView() {
 
 async function refreshEverything() {
   lastVisibilityRefreshAt = Date.now();
+  if (state.childrenFailure) {
+    try {
+      await loadChildren();
+    } catch (error) {
+      routeOrIgnoreBackgroundFailure(error);
+    }
+  }
   const jobs = [
     ...state.children.map((child) => loadOverviewWeek(child.child_id, 0)),
     loadHolidays(),
@@ -2217,6 +2276,11 @@ function todayChapter() {
   const now = new Date();
   chapter.meta = formatWeekdayDay(now);
   if (!state.timetableAvailable) return overviewRest(chapter, "today:locked", t("overview.timetable.locked"));
+  if (state.childrenFailure) {
+    chapter.bodyClass = "panel-rest";
+    chapter.blocks = [overviewBlock("today:childrenfailed", childrenFailureCard())];
+    return chapter;
+  }
   if (!state.children.length && !state.childId && !state.timetable) {
     return overviewRest(chapter, "today:nochild", t("overview.noChild"));
   }
@@ -3408,6 +3472,10 @@ function timetableView() {
   const view = el("div", {});
   if (!state.timetableAvailable) {
     view.append(emptyBlock("timetable", t("timetable.locked.title"), t("timetable.locked.text")));
+    return view;
+  }
+  if (state.childrenFailure) {
+    view.append(childrenFailureCard());
     return view;
   }
   if (!state.children.length && !state.childId && !state.timetable) {
@@ -6432,17 +6500,20 @@ function diagnosisValueText(value) {
 }
 
 function diagnosisLabel(key) {
-  const candidate = `messenger.diagnosis.${key}`;
+  const candidate = `diagnosis.${key}`;
   return hasMessage(candidate) ? t(candidate) : key;
 }
 
-function messengerDiagnosisEntries(failure) {
-  const diagnosis = failure && failure.body && failure.body.diagnosis;
+function diagnosisEntries(diagnosis) {
   if (!diagnosis || typeof diagnosis !== "object") return [];
   return Object.keys(diagnosis).map((key) => ({
     label: diagnosisLabel(key),
     value: diagnosisValueText(diagnosis[key]),
   }));
+}
+
+function messengerDiagnosisEntries(failure) {
+  return diagnosisEntries(failure && failure.body && failure.body.diagnosis);
 }
 
 async function retryMessengerRooms() {

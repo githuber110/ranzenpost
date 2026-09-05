@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import cancellations, holidays, marks, messages, schoolregion, subscriptions
 from .calendar_listener import DEFAULT_PORT as CALENDAR_PORT
-from .iserv.errors import LoginError, PasswordError, TwoFactorError
+from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
 from .iserv.sick_note_pdf import UnsupportedTextError
 from .service import NotConfiguredError, SickNoteNotFoundError
 from .store import DEFAULT_CONFIG
@@ -101,7 +101,7 @@ def _upstream_code(error):
 def read_endpoint(call):
     try:
         return call()
-    except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
+    except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException) as error:
         return upstream_error(_upstream_code(error), error)
 
 

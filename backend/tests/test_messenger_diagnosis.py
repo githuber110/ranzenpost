@@ -584,12 +584,19 @@ DIAGNOSIS_ASSIGNMENT = re.compile(r'diagnosis\["([a-z_]+)"\]\s*=')
 
 
 def _diagnosis_keys():
+    from app.iserv.children import page_diagnosis as child_page_diagnosis
+
     source = (pathlib.Path(__file__).resolve().parents[1] / "app" / "messenger.py").read_text(
         encoding="utf-8"
     )
     assigned = set(DIAGNOSIS_ASSIGNMENT.findall(source))
     assert assigned, "the scan found no diagnosis field at all, so it guards nothing"
-    return assigned | set(page_diagnosis(FakePage(200, "", url=BASE))) | {"stage"}
+    return (
+        assigned
+        | set(page_diagnosis(FakePage(200, "", url=BASE)))
+        | set(child_page_diagnosis(FakePage(200, "", url=BASE)))
+        | {"stage"}
+    )
 
 
 def test_every_reported_diagnosis_field_has_a_wording_in_every_language():
@@ -598,7 +605,7 @@ def test_every_reported_diagnosis_field_has_a_wording_in_every_language():
     for language in ("de", "en", "ar", "tr", "ru", "uk"):
         texts = json.loads((bundles / f"{language}.json").read_text(encoding="utf-8"))
         for field in sorted(_diagnosis_keys()):
-            if not str(texts.get(f"messenger.diagnosis.{field}") or "").strip():
+            if not str(texts.get(f"diagnosis.{field}") or "").strip():
                 missing.append(f"{language}: {field}")
     assert missing == [], (
         "a diagnosis field without a wording reaches the reader as a raw English field "
