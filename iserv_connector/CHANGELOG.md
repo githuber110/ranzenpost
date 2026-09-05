@@ -14,9 +14,10 @@ Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release numb
   why a letter was there at all: a letter also appears when only a reading confirmation is still
   open, and the row said nothing about it. All three views now build their chips from one place,
   so they cannot drift apart again.
-- The strip below the tab bar no longer shows through in a foreign colour. The bar is deliberately
-  translucent, but the surface behind the document carried no colour of its own, so in the Home
-  Assistant frame the white underneath came through.
+- The document now carries its own background colour on the canvas as well, so a translucent bar
+  can never blend against an undefined surface. Note honestly: this did NOT remove the pale strip
+  below the tab bar that was reported. That strip is drawn by Home Assistant's own frame around
+  the app - the same frame that puts the burger bar on top - and nothing inside the app reaches it.
 
 ## 2609.01.07
 
