@@ -49,6 +49,14 @@ def _has_git():
     return (ROOT / ".git").exists()
 
 
+def _require_full_history():
+    if _git("rev-parse", "--is-shallow-repository").strip() == "true":
+        pytest.fail(
+            "this checkout carries only the newest commit, so a guard over the history would "
+            "pass without looking at anything - give the checkout fetch-depth: 0"
+        )
+
+
 def test_no_internal_working_notes_are_tracked():
     if not _has_git():
         pytest.skip("no git checkout")
@@ -67,6 +75,7 @@ def test_no_internal_working_notes_are_tracked():
 def test_no_commit_message_carries_an_assistant_signature():
     if not _has_git():
         pytest.skip("no git checkout")
+    _require_full_history()
     messages = _git("log", "--format=%B").lower()
     offenders = [marker for marker in ASSISTANT_TRAILERS if marker in messages]
     assert offenders == [], (
@@ -98,6 +107,7 @@ def test_no_commit_message_leaks_the_internal_process():
 def test_commit_subjects_stay_short_enough_to_read():
     if not _has_git():
         pytest.skip("no git checkout")
+    _require_full_history()
     long_ones = []
     for line in _git("log", "--format=%h\t%s").splitlines():
         if "\t" not in line:
