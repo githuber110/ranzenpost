@@ -3,6 +3,21 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.09
+
+- The pale strip below the tab bar is gone. The bar is deliberately frosted, but in the last few
+  pixels - the safe area an iPhone keeps free for its home indicator - there is nothing behind it
+  to frost, and frosting over nothing came out lighter and uneven. Those pixels now have a solid
+  ground of their own; everywhere the content really scrolls behind, the bar stays frosted.
+  The strip had been there all along and simply could not be seen until the filled tab pill was
+  added next to it - a strong shape makes a faint edge readable. So it looked like a new fault,
+  and in effect it was one.
+- The messenger reads the credentials IServ actually sends. It ships them under names in the other
+  spelling convention than the one this app looked for, so the app found the marker in the page,
+  reached an endpoint that answered perfectly well, and still concluded it had found nothing. Both
+  spellings are now accepted, and if it ever fails again the diagnosis names the fields that were
+  actually delivered - the names, never their values - instead of leaving the next person to guess.
+
 ## 2609.01.08
 
 - Every parent letter now says which child it is about. The child's first name sits beside the
@@ -14,10 +29,8 @@ Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release numb
   why a letter was there at all: a letter also appears when only a reading confirmation is still
   open, and the row said nothing about it. All three views now build their chips from one place,
   so they cannot drift apart again.
-- The document now carries its own background colour on the canvas as well, so a translucent bar
-  can never blend against an undefined surface. Note honestly: this did NOT remove the pale strip
-  below the tab bar that was reported. That strip is drawn by Home Assistant's own frame around
-  the app - the same frame that puts the burger bar on top - and nothing inside the app reaches it.
+- The document also names its own background colour on the canvas. This alone did not remove the
+  pale strip below the tab bar - see 2609.01.09, where the real cause is fixed.
 
 ## 2609.01.07
 
