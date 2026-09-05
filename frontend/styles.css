@@ -197,6 +197,7 @@ html, body {
   margin: 0;
   height: 100%;
   overscroll-behavior: none;
+  background: var(--bg);
 }
 
 body {
@@ -1912,6 +1913,12 @@ button.section-head {
 
 .row-tags { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-bottom: var(--s-3); }
 .row-tags .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 22px; }
+.tag.child {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink-2);
+  font-weight: 700;
+}
 .tag.soft {
   background: transparent;
   border: 0;

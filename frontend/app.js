@@ -2068,10 +2068,12 @@ function overviewFailureBlock(key, run) {
   ]));
 }
 
-function overviewListRow(title, sub, meta, unread, onclick) {
+function overviewListRow(title, sub, meta, unread, onclick, tags) {
+  const chips = (tags || []).filter(Boolean);
   return el("button", { class: unread ? "row" : "row read", type: "button", onclick }, [
     el("span", { class: "row-dot" }, unread ? [el("i", {})] : []),
     el("div", { class: "row-main" }, [
+      chips.length ? el("div", { class: "row-tags" }, chips) : null,
       iservText("div", { class: "row-title" }, title),
       sub ? iservText("div", { class: "row-sub" }, sub) : null,
     ]),
@@ -2383,7 +2385,8 @@ function lettersChapter() {
       letter.sender || "",
       letter.published ? showDate(letter.published) : "",
       true,
-      () => openLetterFromOverview(letter)
+      () => openLetterFromOverview(letter),
+      letterTagNodes(letter)
     )
   ));
   chapter.blocks.push(overviewAllRow("letters:all", t("overview.all.letters"), () => openPostSegment("letters")));
@@ -5617,21 +5620,40 @@ function setLettersFolder(tab) {
   state.lettersSelected = [];
 }
 
+function childFirstName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const given = text.includes(",") ? text.split(",").pop() : text;
+  return given.trim().split(/\s+/)[0] || "";
+}
+
+function letterChildTag(letter) {
+  const name = childFirstName(letter && letter.child);
+  return name ? iservText("span", { class: "tag child" }, name) : null;
+}
+
+function letterClassTag(letter) {
+  return letter && letter.recipients ? iservText("span", { class: "tag" }, letter.recipients) : null;
+}
+
+function letterConfirmTag(letter) {
+  return letterConfirmationOpen(letter)
+    ? el("span", { class: "tag confirm" }, t("letters.confirm.badge"))
+    : null;
+}
+
+function letterTagNodes(letter) {
+  return [letterConfirmTag(letter), letterClassTag(letter), letterChildTag(letter)].filter(Boolean);
+}
+
 function letterRow(letter) {
   const key = letterKey(letter);
   const selectMode = state.lettersSelectMode;
   const selected = state.lettersSelected.includes(key);
   const sub = letter.sender || "";
   const swipe = { wasSwipe: false };
-  const showChildTag = letter.child && state.children.length > 1;
-  const confirmOpen = letterConfirmationOpen(letter);
-  const tags = (letter.recipients || showChildTag || confirmOpen)
-    ? el("div", { class: "row-tags" }, [
-        confirmOpen ? el("span", { class: "tag confirm" }, t("letters.confirm.badge")) : null,
-        letter.recipients ? el("span", { class: "tag" }, letter.recipients) : null,
-        showChildTag ? el("span", { class: "tag soft" }, letter.child) : null,
-      ])
-    : null;
+  const chips = letterTagNodes(letter);
+  const tags = chips.length ? el("div", { class: "row-tags" }, chips) : null;
   const row = el("button", {
     class: `row${letter.unread ? "" : " read"}${selected ? " selected" : ""}`,
     type: "button",
@@ -5733,7 +5755,9 @@ function letterTechEntries(letter) {
 function letterDetailView() {
   const { letter, detail, loading, error } = state.letterDetail;
   const view = el("div", {});
-  const meta = [letter.sender || "", letter.published ? showDate(letter.published) : "", letter.child || ""].filter(Boolean).join(" · ");
+  const chips = letterTagNodes(letter);
+  if (chips.length) view.append(el("div", { class: "row-tags" }, chips));
+  const meta = [letter.sender || "", letter.published ? showDate(letter.published) : ""].filter(Boolean).join(" · ");
   if (meta) view.append(el("div", { class: "row-meta", style: "margin:0 0 20px" }, meta));
   if (loading) {
     view.append(loadingBlock());
