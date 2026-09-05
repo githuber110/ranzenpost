@@ -124,8 +124,13 @@ def test_contrast_tokens_meet_wcag_targets():
     assert contrast_ratio(LIGHT["ink-3"], LIGHT["surface-sunken"]) >= 4.5
     assert contrast_ratio(LIGHT["accent"], LIGHT["bg"]) >= 4.5
     assert contrast_ratio(LIGHT["badge-ink"], LIGHT["danger"]) >= 4.5
-    assert contrast_ratio(LIGHT["accent"], LIGHT["tab-active-bg"]) >= 3.0
-    assert contrast_ratio(LIGHT["tab-active-bg"], LIGHT["bg"]) >= 1.4
+    assert contrast_ratio(LIGHT["accent-ink"], LIGHT["accent"]) >= 4.5
+    assert contrast_ratio(LIGHT["accent"], LIGHT["surface"]) >= 3.0
+
+    for dark in (DARK_MEDIA, DARK_ATTR):
+        assert contrast_ratio(dark["accent-ink"], dark["accent"]) >= 4.5
+        assert contrast_ratio(dark["accent"], dark["bg"]) >= 3.0
+        assert contrast_ratio(dark["accent"], dark["surface"]) >= 3.0
 
     for dark in (DARK_MEDIA, DARK_ATTR):
         assert contrast_ratio(dark["badge-ink"], dark["danger"]) >= 4.5
@@ -158,13 +163,32 @@ def test_subject_color_cells_meet_wcag_on_new_fill():
             )
 
 
+SELECTED_STATE_RULES = (
+    r'\.tab\[aria-current="page"\] \.ico-slot',
+    r'\.segment button\[aria-selected="true"\]',
+    r'\.chip\[aria-selected="true"\]',
+    r'\.pick button\[aria-pressed="true"\]',
+    r'\.opt\[aria-pressed="true"\]',
+)
+
+
 def test_the_active_tab_is_marked_by_more_than_a_colour():
     pill = re.search(r'\.tab\[aria-current="page"\] \.ico-slot\s*\{([^}]*)\}', CSS)
     assert pill, "the active tab has no pill rule"
-    assert "var(--tab-active-bg)" in pill.group(1)
+    assert "var(--accent)" in pill.group(1)
     label = re.search(r'\.tab\[aria-current="page"\]\s*\{([^}]*)\}', CSS)
     assert label, "the active tab has no own rule"
     assert "font-weight" in label.group(1), "colour alone must not carry the active tab"
     slot = re.search(r'\.tab \.ico-slot\s*\{([^}]*)\}', CSS)
     assert slot, "every tab needs the same slot geometry so the bar does not jump"
     assert "inline-size" in slot.group(1) and "block-size" in slot.group(1)
+
+
+def test_every_selected_state_is_a_filled_accent_surface():
+    for pattern in SELECTED_STATE_RULES:
+        match = re.search(pattern + r"\s*\{([^}]*)\}", CSS)
+        assert match, f"no rule found for {pattern}"
+        body = match.group(1)
+        assert "background: var(--accent)" in body, f"{pattern} does not fill with the accent"
+        assert "var(--accent-ink)" in body, f"{pattern} does not invert its content"
+        assert "--accent-soft" not in body, f"{pattern} still uses the near-invisible soft tint"

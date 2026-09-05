@@ -68,7 +68,6 @@
   --accent-press: #0a5257;
   --accent-ink: #ffffff;
   --accent-soft: #d0e4e3;
-  --tab-active-bg: #97c4be;
   --success: #446f2c;
   --success-soft: #edf3e6;
   --warn: #6e4409;
@@ -131,8 +130,7 @@
     --accent-press: #6fd0cd;
     --accent-ink: #06231f;
     --accent-soft: #12332f;
-    --tab-active-bg: #1b4a44;
-    --success: #8fc46a;
+      --success: #8fc46a;
     --success-soft: #1d2a17;
     --warn: #e0a45c;
     --warn-soft: #31251a;
@@ -170,7 +168,6 @@
   --accent-press: #6fd0cd;
   --accent-ink: #06231f;
   --accent-soft: #12332f;
-  --tab-active-bg: #1b4a44;
   --success: #8fc46a;
   --success-soft: #1d2a17;
   --warn: #e0a45c;
@@ -643,8 +640,6 @@ button.section-head {
   overflow: hidden;
 }
 .row.read .row-title { font-weight: 500; color: var(--ink-2); }
-.row.next { background: var(--accent-soft); }
-.row.next .row-title { color: var(--accent); }
 .row-sub {
   font-size: 0.875rem;
   line-height: 1.45;
@@ -679,7 +674,15 @@ button.section-head {
   white-space: nowrap;
   color: var(--ink-3);
 }
-.row-when.now { color: var(--accent); }
+.row-when.now {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  border-radius: var(--r-full);
+  padding-inline: var(--s-3);
+  padding-block: 1px;
+}
+.row-when.next { color: var(--accent); font-weight: 700; }
 .row-clip { color: var(--ink-3); display: flex; }
 .row-clip .ico { width: 16px; height: 16px; }
 .row.swiping { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
@@ -739,8 +742,9 @@ button.section-head {
   inset-inline: 0;
 }
 .segment button[aria-selected="true"] {
-  background: var(--surface);
-  color: var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
   box-shadow: var(--sh-seg);
 }
 
@@ -780,9 +784,10 @@ button.section-head {
 }
 .chip[aria-pressed="true"],
 .chip[aria-selected="true"] {
-  background: var(--accent-soft);
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
 }
 .chip:active { background: color-mix(in srgb, var(--ink) 5%, var(--surface)); transform: scale(0.98); }
 .chip .n { font-variant-numeric: tabular-nums; font-size: 0.75rem; opacity: 0.8; }
@@ -976,9 +981,10 @@ button.section-head {
   font-variant-numeric: tabular-nums;
 }
 .pick button[aria-pressed="true"] {
-  background: var(--accent-soft);
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
 }
 
 .notify-row {
@@ -1032,8 +1038,19 @@ button.section-head {
 .opt > span { min-width: 0; }
 .opt.off { background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .opt.off b { color: var(--ink-2); }
-.opt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
-.opt[aria-pressed="true"]::before { background: var(--accent); }
+.opt[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.opt[aria-pressed="true"]::before { background: var(--accent-ink); }
+.opt[aria-pressed="true"] b { font-weight: 700; }
+.opt[aria-pressed="true"] small { color: var(--accent-ink); }
+.opt[aria-pressed="true"] .ico-slot { color: var(--accent-ink); }
+.opt[aria-pressed="true"] .opt-badge {
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent-ink) 22%, transparent);
+}
 .opt.suggested { border-color: color-mix(in srgb, var(--accent) 50%, transparent); border-style: dashed; }
 .opt:active { background: var(--surface-sunken); }
 .opt .ico-slot { color: var(--accent); }
@@ -1697,7 +1714,7 @@ button.section-head {
   transition: background-color 160ms ease-out;
 }
 .tab[aria-current="page"] { color: var(--accent); font-weight: 700; }
-.tab[aria-current="page"] .ico-slot { background: var(--tab-active-bg); }
+.tab[aria-current="page"] .ico-slot { background: var(--accent); color: var(--accent-ink); }
 .tab[aria-current="page"] .ico { stroke-width: 2.3; }
 .tab:active .ico { transform: scale(0.88); transition-duration: 0s; }
 .tab .badge {
@@ -2260,7 +2277,8 @@ button.cal-copy-primary { margin-bottom: var(--s-4); }
 .tag.exam .ico-slot { line-height: 0; flex: none; }
 .tag.exam span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-main > .tag.exam { margin-block-start: var(--s-3); }
-.row.marked .row-dot i { box-shadow: 0 0 0 2px var(--accent-soft); }
+.row.marked .row-dot i,
+.row-pair-item.marked .row-dot i { box-shadow: 0 0 0 2px var(--accent); }
 
 .row.row-check { align-items: center; }
 .row.row-check .row-dot, .row.row-absence .row-dot {
