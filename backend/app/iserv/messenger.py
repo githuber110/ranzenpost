@@ -196,6 +196,22 @@ def embedded_shape(html):
     return "no marked object; " + marker_context(html)
 
 
+ENDPOINT_HINT = re.compile(r"[\"'](/[A-Za-z0-9._/-]{3,70})[\"']")
+HINT_WORDS = ("messenger", "matrix", "authenticate", "chat")
+
+
+def endpoint_hints(html):
+    found = []
+    for match in ENDPOINT_HINT.finditer(html or ""):
+        path = match.group(1)
+        lowered = path.lower()
+        if any(word in lowered for word in HINT_WORDS) and path not in found:
+            found.append(path)
+    if not found:
+        return "none"
+    return ", ".join(sorted(found)[:14])
+
+
 def marker_context(html):
     text = html or ""
     index = text.find(BOOTSTRAP_MARKER)

@@ -41,6 +41,7 @@ from .iserv.messenger import (
     parse_room_list,
     _shape_only,
     embedded_shape,
+    endpoint_hints,
     shape_of,
     parse_room_messages,
     parse_teacher_suggestions,
@@ -194,6 +195,7 @@ class MessengerService:
             auth = parse_bootstrap(response.text)
         except BootstrapNotFoundError:
             diagnosis["page_fields"] = embedded_shape(response.text)
+            diagnosis["page_endpoints"] = endpoint_hints(response.text)
             logger.warning("messenger page carried no embedded credentials: %s", diagnosis)
             auth = self._authentication_over_xhr(client, response, diagnosis)
         if auth is None:
