@@ -1,3 +1,5 @@
+if (window.self !== window.top) document.documentElement.setAttribute("data-embedded", "1");
+
 const CHILD_COLORS = ["#0e6b70", "#7a4b9c", "#b4602a", "#2f6b3a", "#9c3b5e", "#3a5a9c"];
 const SUBJECT_COLORS = [
   "#84142a", "#f7703e", "#ec932f", "#7b791d", "#404f0e",

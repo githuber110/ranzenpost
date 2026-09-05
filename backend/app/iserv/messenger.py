@@ -191,7 +191,38 @@ def embedded_shape(html):
     shapes = []
     for auth in _marked_objects(html, BOOTSTRAP_MARKER):
         shapes.append(shape_of(auth))
-    return " | ".join(shapes) if shapes else "no marked object"
+    if shapes:
+        return " | ".join(shapes)
+    return "no marked object; " + marker_context(html)
+
+
+def marker_context(html):
+    text = html or ""
+    index = text.find(BOOTSTRAP_MARKER)
+    if index < 0:
+        return "marker absent"
+    tail = text[index + len(BOOTSTRAP_MARKER):index + len(BOOTSTRAP_MARKER) + 6]
+    head = text[max(0, index - 12):index]
+    soup = BeautifulSoup(text, "html.parser")
+    in_script = any(BOOTSTRAP_MARKER in (script.string or "") for script in soup.find_all("script"))
+    return "occurrences=%d in_script=%s before=%s after=%s" % (
+        text.count(BOOTSTRAP_MARKER),
+        in_script,
+        _shape_only(head),
+        _shape_only(tail),
+    )
+
+
+def _shape_only(fragment):
+    out = []
+    for char in fragment:
+        if char.isalnum():
+            out.append("a")
+        elif char.isspace():
+            out.append("_")
+        else:
+            out.append(char)
+    return "".join(out)
 
 
 def parse_bootstrap(html):

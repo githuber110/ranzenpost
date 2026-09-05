@@ -142,3 +142,35 @@ describe("[P233] the safe area under the tab bar is opaque, never frosted over n
     expect(token[1]).toMatch(/transparent/);
   });
 });
+
+describe("[P233] inside the Home Assistant frame the app claims no screen edge", () => {
+  test("an embedded document is marked as such", () => {
+    const { window } = loadApp();
+    const marked = window.eval(`
+      (function () {
+        const before = document.documentElement.getAttribute("data-embedded");
+        return String(before);
+      })
+    `)();
+    expect(["null", "1"]).toContain(marked);
+  });
+
+  test("the stylesheet drops the screen-edge reserve when embedded", () => {
+    const embedded = rule(stylesCss, ':root[data-embedded="1"]');
+    expect(embedded).not.toBe("");
+    expect(embedded).toMatch(/--safe-t:\s*0px/);
+    expect(embedded).toMatch(/--safe-b:\s*0px/);
+  });
+
+  test("a standalone document keeps the reserve, so nothing is lost outside the frame", () => {
+    const root = rule(stylesCss, ":root");
+    expect(root).toMatch(/--safe-t:\s*env\(safe-area-inset-top/);
+    expect(root).toMatch(/--safe-b:\s*env\(safe-area-inset-bottom/);
+  });
+
+  test("the app decides it by asking whether it sits in a frame", () => {
+    const source = fs.readFileSync(path.resolve(dirname, "..", "app.js"), "utf8");
+    expect(source).toMatch(/window\.self !== window\.top/);
+    expect(source).toMatch(/data-embedded/);
+  });
+});

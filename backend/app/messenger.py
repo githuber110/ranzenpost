@@ -39,6 +39,7 @@ from .iserv.messenger import (
     parse_mxc,
     parse_privileges,
     parse_room_list,
+    _shape_only,
     embedded_shape,
     shape_of,
     parse_room_messages,
@@ -154,7 +155,14 @@ class MessengerService:
                 body = answer.json()
             except ValueError:
                 logger.warning("messenger authenticate answered without json at %s", path, exc_info=True)
-                shapes.append("%s: no json" % path)
+                headers = getattr(answer, "headers", None) or {}
+                body = getattr(answer, "text", "") or ""
+                shapes.append("%s: no json, type=%s, len=%d, starts=%s" % (
+                    path,
+                    str(headers.get("content-type") or "?").split(";")[0].strip(),
+                    len(body),
+                    _shape_only(body.strip()[:8]),
+                ))
                 continue
             try:
                 return parse_authentication(body)
