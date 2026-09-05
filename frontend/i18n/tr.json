@@ -995,6 +995,8 @@
   "viewer.pdf.position": "Sayfa {current} / {total}",
   "viewer.pdf.protected": "Bu PDF parola korumalı.",
   "viewer.pdf.region": "PDF belgesi",
+  "wizard.child.failed.text": "Kurulumu yine de tamamlayabilirsin. IServ çocukları yeniden verdiğinde kendiliğinden görünürler.",
+  "wizard.child.failed.title": "Çocuklar yüklenemedi",
   "wizard.child.none.finish": "Kurulumu tamamla",
   "wizard.child.none.text": "Hesabınıza bağlı bir çocuk yok — lütfen okulla iletişime geçin.",
   "wizard.child.none.title": "Bağlı çocuk yok",

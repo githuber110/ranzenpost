@@ -995,6 +995,8 @@
   "viewer.pdf.position": "Page {current} of {total}",
   "viewer.pdf.protected": "This PDF is password protected.",
   "viewer.pdf.region": "PDF document",
+  "wizard.child.failed.text": "You can finish setting up anyway. As soon as IServ hands the children out again, they appear by themselves.",
+  "wizard.child.failed.title": "The children could not be loaded",
   "wizard.child.none.finish": "Finish setup",
   "wizard.child.none.text": "No child is linked to your account — please contact the school.",
   "wizard.child.none.title": "No child linked",

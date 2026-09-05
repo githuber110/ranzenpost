@@ -995,6 +995,8 @@
   "viewer.pdf.position": "Seite {current} von {total}",
   "viewer.pdf.protected": "Dieses PDF ist passwortgeschützt.",
   "viewer.pdf.region": "PDF-Dokument",
+  "wizard.child.failed.text": "Du kannst die Einrichtung trotzdem abschließen. Sobald IServ die Kinder wieder herausgibt, erscheinen sie von selbst.",
+  "wizard.child.failed.title": "Kinder konnten nicht geladen werden",
   "wizard.child.none.finish": "Einrichtung abschließen",
   "wizard.child.none.text": "Deinem Konto ist kein Kind zugeordnet — bitte wende dich an die Schule.",
   "wizard.child.none.title": "Kein Kind zugeordnet",

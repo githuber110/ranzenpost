@@ -3,6 +3,18 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.16
+
+- Setting the app up can be finished even when the school server will not hand out the children.
+  The last step of the setup could only be left by picking a child or by being told the account has
+  none, and a refusal counted as neither - so the button did nothing and the setup could not be
+  completed at all. The step now names what the server answered, offers another attempt, and lets
+  the setup be finished without a child; the children appear on their own once the server hands
+  them out again.
+- That step also stopped saying the account has no child when the truth is that the app was not
+  allowed to look. The old wording sent people to the school office over something the school
+  office cannot see.
+
 ## 2609.01.15
 
 - When the school server refuses a whole area to this account, the app says that instead of saying
