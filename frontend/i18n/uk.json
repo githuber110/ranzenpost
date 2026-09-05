@@ -1037,6 +1037,8 @@
   "viewer.pdf.position": "Сторінка {current} з {total}",
   "viewer.pdf.protected": "Цей PDF захищено паролем.",
   "viewer.pdf.region": "Документ PDF",
+  "wizard.child.failed.text": "Налаштування можна завершити й так. Щойно IServ знову надасть дітей, вони з'являться самі.",
+  "wizard.child.failed.title": "Не вдалося завантажити список дітей",
   "wizard.child.none.finish": "Завершити налаштування",
   "wizard.child.none.text": "До вашого акаунта не прив’язано жодної дитини — зверніться, будь ласка, до школи.",
   "wizard.child.none.title": "Дитину не прив’язано",
