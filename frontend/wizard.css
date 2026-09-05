@@ -225,7 +225,12 @@
 .sw-body .wz-warn,
 .sw-body .wz-error { margin-block: var(--s-3); }
 .sw-body .wz-children { gap: var(--s-3); }
-.sw-body .wz-child[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.sw-body .wz-child[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
 .sw-body .wz-phones { gap: var(--s-3); }
 .sw-body .wz-language-row { margin-top: var(--s-3); }
 .sw.compact .sw-body .wz-sub,
@@ -323,16 +328,6 @@
 .wz-nav.back { color: var(--ink-2); }
 .wz-nav.reset { color: var(--danger); }
 
-.wz-steps { display: flex; justify-content: center; gap: var(--s-4); padding: var(--s-3) 0 var(--s-1); }
-.wz-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--line);
-  transition: background 180ms cubic-bezier(0.2, 0, 0, 1), width 180ms cubic-bezier(0.2, 0, 0, 1);
-}
-.wz-dot.on { width: 22px; border-radius: var(--r-full); background: var(--accent); }
-.wz-dot.done { background: color-mix(in srgb, var(--accent) 55%, var(--surface)); }
 
 .wz-card { padding: var(--s-8) var(--s-7); display: flex; flex-direction: column; gap: var(--s-5); }
 .wz-loading { text-align: center; color: var(--ink-3); }
@@ -452,7 +447,6 @@
   transition: transform 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
 }
 .wz-child:active { transform: scale(0.98); background: var(--surface-2); }
-.wz-child.picked { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .wz-child:disabled { opacity: 0.55; }
 .wz-child-avatar {
   width: 40px;
@@ -544,7 +538,7 @@
 .wz .btn-primary:active { background: var(--accent-press); transform: scale(0.98); transition-duration: 0s; }
 .wz .btn-primary:disabled { background: var(--surface-2); color: var(--ink-3); cursor: default; transform: none; }
 
-.wz-label, .wz-steps, .wz-context, .wz-nav { -webkit-user-select: none; user-select: none; }
+.wz-label, .wz-context, .wz-nav { -webkit-user-select: none; user-select: none; }
 .wz-sub, .wz-title, .wz-hint-line, .wz-lock, .wz-warn, .wz-error { -webkit-user-select: text; user-select: text; }
 
 @media (prefers-reduced-motion: reduce) {
