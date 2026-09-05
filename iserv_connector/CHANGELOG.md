@@ -3,6 +3,17 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.13
+
+- The overview no longer claims that no child is selected when it simply could not read the child
+  list. The app takes the children from the timetable page, and it used to treat that page as
+  authoritative whatever came back: a sign-in page, an error page, a page from a different part of
+  IServ - all of them silently became "this family has no children". It now checks that the page is
+  the one it asked for, and if it is not, it says so, offers another attempt, and can show what
+  came back instead - page shape only, never its content.
+- The detail sheet behind the small info button now serves every part of the app, not only the
+  messenger, so failures elsewhere can carry the same kind of explanation.
+
 ## 2609.01.12
 
 - The messenger now says the true reason it stays shut. IServ hands the messenger's credentials to
