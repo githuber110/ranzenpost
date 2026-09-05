@@ -1,5 +1,5 @@
 name: Ranzenpost (IServ)
-version: "2609.01.13"
+version: "2609.01.14"
 slug: ranzenpost
 description: A friendly parent frontend for IServ school servers - timetable with substitutions, letters, pinboards and absences.
 url: https://github.com/githuber110/ranzenpost

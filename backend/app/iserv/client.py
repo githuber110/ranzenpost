@@ -44,11 +44,28 @@ TWOFACTOR_DELETE_PATH = "/iserv/auth/settings/twofactor/delete/{uuid}"
 MAX_REDIRECTS = 6
 
 
+ACCEPTED_LOGIN_STATUSES = (200, 302)
+
+
+def password_outcome(answer, cookie_names):
+    if int(getattr(answer, "status_code", 0) or 0) not in ACCEPTED_LOGIN_STATUSES:
+        return None
+    text = getattr(answer, "text", "") or ""
+    if LOGIN_FAILED_MARKER in text:
+        return False
+    forms = parse_forms(text, getattr(answer, "url", ""))
+    if find_two_factor_form(forms) is not None:
+        return True
+    if SESSION_COOKIE in (cookie_names or set()):
+        return True
+    return None
+
+
 class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.13")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.14")
         self.timeout = timeout
         self.username = ""
         self.sleeper = time.sleep
@@ -104,18 +121,20 @@ class IServClient:
         return registration
 
     def list_totp_tokens(self):
-        response = self._get(TWOFACTOR_LIST_PATH)
-        return parse_token_names(response.text)
+        return parse_token_names(self.fetch_or_raise(TWOFACTOR_LIST_PATH).text)
 
     def get_twofactor_list_page(self):
         return self._get(TWOFACTOR_LIST_PATH)
 
     def list_totp_token_rows(self):
-        return parse_token_rows(self.get_twofactor_list_page().text)
+        return parse_token_rows(self.fetch_or_raise(TWOFACTOR_LIST_PATH).text)
 
     def delete_totp_token(self, uuid, code, csrf_token):
         path = TWOFACTOR_DELETE_PATH.format(uuid=uuid)
-        self._delete(path, {"delete[code]": code, "delete[_token]": csrf_token})
+        answer = self._delete(path, {"delete[code]": code, "delete[_token]": csrf_token})
+        status = int(getattr(answer, "status_code", 0) or 0)
+        if status >= 400:
+            raise DataError(f"two-factor delete failed: {status}")
         remaining = {row["uuid"] for row in self.list_totp_token_rows()}
         return uuid not in remaining
 
@@ -131,12 +150,12 @@ class IServClient:
         )
         try:
             before = self._token_count(name)
-        except requests.RequestException:
+        except (DataError, requests.RequestException):
             before = None
         result = self._post(registration.action, payload)
         try:
             registered = self._token_count(name) > before if before is not None else None
-        except requests.RequestException:
+        except (DataError, requests.RequestException):
             registered = None
         if registered is None:
             registered = not registration_rejected(result.text)
@@ -159,8 +178,11 @@ class IServClient:
         return self._verify_password_change(current, new, result.text)
 
     def _verify_password_change(self, current, new, html):
-        if self.accepts_password(new) is True:
+        accepts_new = self.accepts_password(new)
+        if accepts_new is True:
             return True
+        if accepts_new is False:
+            raise PasswordError(extract_form_errors(html) or "password change was rejected")
         self.sleeper(LOGIN_RETRY_SECONDS)
         if self.accepts_password(current) is True:
             raise PasswordError(extract_form_errors(html) or "password change was rejected")
@@ -168,11 +190,15 @@ class IServClient:
             return True
         raise PasswordError(PASSWORD_UNVERIFIED)
 
+    def _probe_session(self):
+        probe = requests.Session()
+        probe.headers.update(self.session.headers)
+        return probe
+
     def accepts_password(self, password):
         if not self.username or not password:
             return None
-        probe = requests.Session()
-        probe.headers.update(self.session.headers)
+        probe = self._probe_session()
         try:
             page = probe.get(f"{self.base_url}/iserv/", timeout=self.timeout)
             form = find_login_form(parse_forms(page.text, page.url))
@@ -180,11 +206,18 @@ class IServClient:
                 return None
             payload = apply_login_fields(form.fields, self.username, password)
             answer = probe.post(form.action, data=payload, timeout=self.timeout)
+            for _ in range(MAX_REDIRECTS):
+                if SESSION_COOKIE in {cookie.name for cookie in probe.cookies}:
+                    break
+                target = find_client_redirect(answer.text, answer.url)
+                if not target:
+                    break
+                answer = probe.get(self._url(target), timeout=self.timeout)
+            return password_outcome(answer, {cookie.name for cookie in probe.cookies})
         except requests.RequestException:
             return None
         finally:
             probe.close()
-        return LOGIN_FAILED_MARKER not in answer.text
 
     def get_children(self):
         response = self._get("/iserv/time-table/")

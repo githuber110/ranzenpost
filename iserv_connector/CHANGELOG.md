@@ -3,6 +3,21 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.14
+
+- Disconnecting the app no longer claims the school server forgot this device when it did not know.
+  Removing the authenticator from IServ was judged by looking at the token list afterwards, and
+  neither the removal nor that list was checked for having been answered at all - so a refused
+  request read as "removed", the local credentials were erased, and the authenticator quietly
+  stayed on the school account with no way left to point at it. All three answers are now checked,
+  and an unconfirmed removal says so.
+- The password check no longer treats every answer without one particular error sentence as proof
+  that the password is right. A block page, a server error or a maintenance page counted as
+  "correct" and could get a wrong password stored as verified. It now needs a positive sign - the
+  next step of the sign-in, or a session that really was opened - and answers "cannot tell"
+  otherwise. A password change the server refused is reported as refused instead of being kept as
+  probably done.
+
 ## 2609.01.13
 
 - The overview no longer claims that no child is selected when it simply could not read the child
