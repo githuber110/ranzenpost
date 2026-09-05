@@ -307,7 +307,8 @@ def test_the_bootstrap_diagnosis_names_the_stage_without_leaking_a_secret():
     rendered = json.dumps(detail)
     assert LEAKED_TOKEN not in rendered
     assert LEAKED_CODE not in rendered
-    assert "access_token" not in rendered
+    assert "ISEfakedevice00000000" not in rendered
+    assert detail["page_fields"] == "access_token,device_id"
     assert detail["final_path"] == "/iserv/app/authentication/redirect"
 
 
@@ -489,3 +490,40 @@ def test_the_helpers_read_the_page_the_way_the_spa_writes_it():
     diagnosis = page_diagnosis(FakePage(200, "<script>x</script>", url=f"{BASE}/iserv/messenger/"))
     assert diagnosis["script_blocks"] == 1
     assert diagnosis["marker_present"] is False
+
+
+def test_the_parser_accepts_iservs_camel_case_field_names():
+    from app.iserv.messenger import parse_authentication
+
+    payload = {
+        "messenger_authentication": {
+            "accessToken": "syt-fake-token-for-tests-0000000000",
+            "deviceId": "FAKEDEVICE0000",
+            "homeServer": "11111111-1111-1111-1111-111111111111",
+            "userId": "@22222222-2222-2222-2222-222222222222:11111111-1111-1111-1111-111111111111",
+        }
+    }
+    auth = parse_authentication(payload)
+    assert auth["access_token"] == "syt-fake-token-for-tests-0000000000"
+    assert auth["home_server"] == "11111111-1111-1111-1111-111111111111"
+    assert auth["user_id"].startswith("@")
+
+
+def test_the_parser_still_accepts_snake_case():
+    from app.iserv.messenger import parse_authentication
+
+    payload = {
+        "access_token": "syt-fake-token-for-tests-1111111111",
+        "home_server": "33333333-3333-3333-3333-333333333333",
+        "user_id": "@44444444-4444-4444-4444-444444444444:33333333-3333-3333-3333-333333333333",
+    }
+    assert parse_authentication(payload)["access_token"].endswith("1111111111")
+
+
+def test_an_unparsable_answer_reports_its_field_names_but_never_a_value():
+    from app.iserv.messenger import shape_of
+
+    shape = shape_of({"accessToken": "syt-secret-value", "homeServer": "h", "somethingElse": 1})
+    assert "accessToken" in shape
+    assert "homeServer" in shape
+    assert "syt-secret-value" not in shape

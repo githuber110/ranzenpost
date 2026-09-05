@@ -9,6 +9,7 @@ from . import messages
 from .iserv.errors import DataError, LoginError
 from .iserv.messenger import (
     AUTH_FIELDS,
+    BOOTSTRAP_MARKER,
     MAX_CONTINUATION_HOPS,
     STAGE_BOOTSTRAP,
     STAGE_LOGIN,
@@ -38,6 +39,8 @@ from .iserv.messenger import (
     parse_mxc,
     parse_privileges,
     parse_room_list,
+    embedded_shape,
+    shape_of,
     parse_room_messages,
     parse_teacher_suggestions,
     room_membership,
@@ -134,6 +137,7 @@ class MessengerService:
 
     def _authentication_over_xhr(self, client, response, diagnosis):
         attempts = []
+        shapes = []
         for path in parse_authenticate_paths(response.text):
             try:
                 answer = client.fetch(path)
@@ -147,12 +151,22 @@ class MessengerService:
                 logger.warning("messenger authenticate answered %s at %s", status, path)
                 continue
             try:
-                return parse_authentication(answer.json())
-            except (ValueError, BootstrapNotFoundError):
+                body = answer.json()
+            except ValueError:
+                logger.warning("messenger authenticate answered without json at %s", path, exc_info=True)
+                shapes.append("%s: no json" % path)
+                continue
+            try:
+                return parse_authentication(body)
+            except BootstrapNotFoundError:
                 logger.warning("messenger authenticate answered without usable data at %s", path, exc_info=True)
+                marked = body.get(BOOTSTRAP_MARKER) if isinstance(body, dict) else None
+                shapes.append("%s: %s" % (path, shape_of(marked if isinstance(marked, dict) else body)))
         diagnosis["authenticate_attempts"] = ", ".join(
             f"{attempt['path']} {attempt['status']}" for attempt in attempts
         )
+        if shapes:
+            diagnosis["authenticate_fields"] = " | ".join(shapes)
         return None
 
     def _bootstrap(self):
@@ -171,6 +185,7 @@ class MessengerService:
         try:
             auth = parse_bootstrap(response.text)
         except BootstrapNotFoundError:
+            diagnosis["page_fields"] = embedded_shape(response.text)
             logger.warning("messenger page carried no embedded credentials: %s", diagnosis)
             auth = self._authentication_over_xhr(client, response, diagnosis)
         if auth is None:
