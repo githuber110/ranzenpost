@@ -222,7 +222,9 @@ def test_a_password_change_that_worked_is_still_reported_as_done():
     assert client._verify_password_change("old", "new", REJECT_HTML) is True
 
 
-def test_an_unreadable_token_page_does_not_abort_the_two_factor_registration():
+def test_an_unreadable_token_page_ends_the_registration_honestly_instead_of_crashing():
+    from app.iserv.client import REGISTRATION_UNCONFIRMED_KEY
+    from app.iserv.errors import DataError, TwoFactorError
     from app.iserv.twofactor import TwoFactorRegistration
 
     class Refusing(RecordingSession):
@@ -237,4 +239,10 @@ def test_an_unreadable_token_page_does_not_abort_the_two_factor_registration():
         token="csrf",
         fields={},
     )
-    assert client.confirm_totp_registration(registration, "Ranzenpost", "000000") == registration.secret
+    with pytest.raises(TwoFactorError) as caught:
+        client.confirm_totp_registration(registration, "Ranzenpost", "000000")
+    assert not isinstance(caught.value, DataError), "the unreadable page must not escape as itself"
+    assert caught.value.message_key == REGISTRATION_UNCONFIRMED_KEY, (
+        "an authenticator nobody confirmed must never be stored as if it worked - every later "
+        "sign-in would fail on the second factor with no hint why"
+    )

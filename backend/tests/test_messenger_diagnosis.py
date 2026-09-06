@@ -591,11 +591,15 @@ def _diagnosis_keys():
     )
     assigned = set(DIAGNOSIS_ASSIGNMENT.findall(source))
     assert assigned, "the scan found no diagnosis field at all, so it guards nothing"
+    from app.iserv.client import login_shape, registration_shape
+
     return (
         assigned
         | set(page_diagnosis(FakePage(200, "", url=BASE)))
         | set(child_page_diagnosis(FakePage(200, "", url=BASE)))
-        | {"stage"}
+        | set(login_shape(FakePage(200, "", url=BASE), "session", False))
+        | set(registration_shape(FakePage(200, "", url=BASE), "Ranzenpost"))
+        | {"stage", "refusal"}
     )
 
 
