@@ -483,6 +483,7 @@
   "diagnosis.page_endpoints": "Адреса на странице",
   "diagnosis.page_fields": "Поля на странице",
   "diagnosis.page_privileges": "Права на странице",
+  "diagnosis.refusal": "Формулировка отказа",
   "diagnosis.script_blocks": "Блоки скриптов",
   "diagnosis.select_elements": "Поля выбора на странице",
   "diagnosis.stage": "Этап",

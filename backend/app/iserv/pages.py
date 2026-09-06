@@ -7,6 +7,21 @@ def path_of(url):
     return rest[slash:] if slash >= 0 else "/"
 
 
+REFUSAL_TEXT_LIMIT = 120
+
+
+def refusal_wording(response, soup):
+    if int(getattr(response, "status_code", 0) or 0) < 400:
+        return ""
+    parts = []
+    for tag in ("title", "h1", "h2"):
+        node = soup.find(tag)
+        text = " ".join((node.get_text() if node else "").split())
+        if text and text not in parts:
+            parts.append(text)
+    return " | ".join(parts)[:REFUSAL_TEXT_LIMIT]
+
+
 def base_shape(response):
     text = getattr(response, "text", "") or ""
     headers = getattr(response, "headers", None) or {}

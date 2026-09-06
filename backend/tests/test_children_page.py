@@ -167,3 +167,50 @@ def test_both_wordings_exist_in_every_language():
         texts = json.loads((bundles / f"{language}.json").read_text(encoding="utf-8"))
         for key in (CHILD_PAGE_MESSAGE_KEY, CHILD_PAGE_FORBIDDEN_KEY):
             assert str(texts.get(key) or "").strip(), f"{language}: {key}"
+
+
+REFUSAL_PAGE = (
+    "<html><head><title>Zugriff verweigert</title></head>"
+    "<body><h1>Keine Berechtigung</h1>"
+    "<p>Der Sachbearbeiter Max Mustermann hat den Zugriff entzogen.</p>"
+    "</body></html>"
+)
+
+
+def test_a_refused_page_reports_what_iserv_called_the_refusal():
+    shape = page_diagnosis(FakePage(403, REFUSAL_PAGE, url="https://school.example/iserv/time-table/"))
+    assert shape["refusal"] == "Zugriff verweigert | Keine Berechtigung"
+
+
+def test_the_refusal_wording_never_carries_the_body_of_the_page():
+    shape = page_diagnosis(FakePage(403, REFUSAL_PAGE))
+    assert "Mustermann" not in str(shape)
+    assert "Sachbearbeiter" not in str(shape)
+
+
+def test_a_page_that_was_answered_normally_reports_no_refusal_wording():
+    assert "refusal" not in page_diagnosis(FakePage(200, SELECT_PAGE))
+    assert "refusal" not in page_diagnosis(FakePage(200, REFUSAL_PAGE))
+
+
+def test_a_very_long_refusal_is_cut_to_a_readable_length():
+    from app.iserv.pages import REFUSAL_TEXT_LIMIT
+
+    long_title = "Zugriff " * 200
+    shape = page_diagnosis(FakePage(403, f"<html><head><title>{long_title}</title></head><body></body></html>"))
+    assert len(shape["refusal"]) == REFUSAL_TEXT_LIMIT
+
+
+def test_the_refusal_reaches_the_reader_through_the_route():
+    class Refusing(FailingService):
+        def children(self):
+            raise DataError(
+                "child list page was not readable",
+                message_key=CHILD_PAGE_MESSAGE_KEY,
+                detail=page_diagnosis(FakePage(403, REFUSAL_PAGE)),
+            )
+
+    service = Refusing()
+    service.store = StubStore()
+    payload = TestClient(create_app(service, wizard=StubWizard())).get("/api/children").json()
+    assert payload["diagnosis"]["refusal"] == "Zugriff verweigert | Keine Berechtigung"
