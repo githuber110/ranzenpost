@@ -22,6 +22,12 @@ def refusal_wording(response, soup):
     return " | ".join(parts)[:REFUSAL_TEXT_LIMIT]
 
 
+def refusal_of(response):
+    from bs4 import BeautifulSoup
+
+    return refusal_wording(response, BeautifulSoup(getattr(response, "text", "") or "", "html.parser"))
+
+
 def base_shape(response):
     text = getattr(response, "text", "") or ""
     headers = getattr(response, "headers", None) or {}

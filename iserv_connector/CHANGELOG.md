@@ -3,6 +3,20 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.18
+
+- Setting up the app's own access to the school server no longer counts as done just because the
+  answer did not contain a known error sentence. It used to check by counting the authenticators
+  before and after, and when that list could not be read - which happens on exactly the accounts
+  that have trouble - anything that was not a recognisable rejection passed as success. The app
+  then kept a key the school server had never accepted, and every later sign-in failed on the
+  second factor with no hint as to why. Success now has to be shown: the new authenticator has to
+  appear, either in the count or in the answer itself. If it does not, the setup says so and asks
+  for a look in the school server's own settings.
+- A failed sign-in now says at which step it failed - the password, the second factor, or a session
+  that never opened - instead of one sentence for all three. The details carry the shape of the
+  answer and, when the server refused, the heading it used.
+
 ## 2609.01.17
 
 - When the school server refuses a page, the details now also carry what it called the refusal -
