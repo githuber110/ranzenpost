@@ -4,49 +4,70 @@ import { readdirSync, readFileSync, rmSync } from "node:fs";
 const TEST_DIR = "frontend/tests";
 const SUFFIX = ".test.js";
 const REPORT = "./.vitest-run.json";
+const MAX_ROUNDS = 3;
 
 function onDisk() {
   return readdirSync(TEST_DIR).filter((name) => name.endsWith(SUFFIX)).sort();
 }
 
-const expected = onDisk();
-rmSync(REPORT, { force: true });
-
-const run = spawnSync(
-  process.execPath,
-  [
-    "node_modules/vitest/vitest.mjs",
-    "run",
-    "--reporter=default",
-    "--reporter=json",
-    `--outputFile.json=${REPORT}`,
-    ...process.argv.slice(2),
-  ],
-  { stdio: "inherit" }
-);
-
-let executed = [];
-let readable = true;
-try {
-  const parsed = JSON.parse(readFileSync(REPORT, "utf8"));
-  executed = (parsed.testResults || []).map((entry) => entry.name.split(/[\\/]/).pop()).sort();
-} catch (error) {
-  console.error(`\ncould not read the run report at ${REPORT}: ${error.message}`);
-  readable = false;
-} finally {
+function vitest(args) {
   rmSync(REPORT, { force: true });
+  const run = spawnSync(
+    process.execPath,
+    [
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "--reporter=default",
+      "--reporter=json",
+      `--outputFile.json=${REPORT}`,
+      ...args,
+    ],
+    { stdio: "inherit" }
+  );
+  let ran = null;
+  try {
+    const parsed = JSON.parse(readFileSync(REPORT, "utf8"));
+    ran = (parsed.testResults || []).map((entry) => entry.name.split(/[\\/]/).pop());
+  } catch (error) {
+    console.error(`\ncould not read the run report at ${REPORT}: ${error.message}`);
+    if (run.error) console.error(`the test runner did not start: ${run.error.message}`);
+  } finally {
+    rmSync(REPORT, { force: true });
+  }
+  return { status: run.status ?? 1, ran };
 }
-if (!readable) process.exit(1);
 
-const missing = expected.filter((name) => !executed.includes(name));
+const expected = onDisk();
+const passthrough = process.argv.slice(2);
+const done = new Set();
+let status = 0;
+
+for (let round = 1; round <= MAX_ROUNDS; round += 1) {
+  const outstanding = expected.filter((name) => !done.has(name));
+  if (!outstanding.length) break;
+  if (round > 1) {
+    console.error(
+      `\nthe runner left ${outstanding.length} file(s) out; running them again:\n  ` +
+        outstanding.join("\n  ")
+    );
+  }
+  const args = round === 1 ? passthrough : [...passthrough, ...outstanding.map((name) => `${TEST_DIR}/${name}`)];
+  const result = vitest(args);
+  if (result.ran === null) process.exit(1);
+  for (const name of result.ran) done.add(name);
+  status = result.status;
+  if (status !== 0) break;
+}
+
+const missing = expected.filter((name) => !done.has(name));
 if (missing.length) {
   console.error(
-    `\n${missing.length} of ${expected.length} test files never ran, and the run still called ` +
-      `itself green:\n  ${missing.join("\n  ")}\n` +
+    `\n${missing.length} of ${expected.length} test files never ran, even after ${MAX_ROUNDS} ` +
+      `attempts:\n  ${missing.join("\n  ")}\n` +
       "A run that quietly leaves files out is worse than a failing one, so this counts as a failure."
   );
   process.exit(1);
 }
 
-if (run.status !== 0) process.exit(run.status ?? 1);
+if (status !== 0) process.exit(status);
 console.log(`\nall ${expected.length} test files ran.`);

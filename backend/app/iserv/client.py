@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import requests
 
 from .auth import apply_login_fields, fill_two_factor_code
+from .pages import base_shape, refusal_of
 from .children import (
     child_page_message_key,
     child_select_present,
@@ -45,6 +46,36 @@ MAX_REDIRECTS = 6
 
 
 ACCEPTED_LOGIN_STATUSES = (200, 302)
+REGISTRATION_UNCONFIRMED_KEY = "api.twofactor.unconfirmed"
+LOGIN_CREDENTIALS_KEY = "api.login.credentials"
+LOGIN_TWOFACTOR_KEY = "api.login.twofactor"
+LOGIN_SESSION_KEY = "api.login.session"
+
+
+def login_shape(response, stage, two_factor_offered):
+    text = getattr(response, "text", "") or ""
+    forms = parse_forms(text, getattr(response, "url", ""))
+    shape = base_shape(response)
+    shape.update({
+        "login_stage": stage,
+        "two_factor_offered": two_factor_offered,
+        "two_factor_again": find_two_factor_form(forms) is not None,
+        "login_form_again": find_login_form(forms) is not None,
+    })
+    wording = refusal_of(response)
+    if wording:
+        shape["refusal"] = wording
+    return shape
+
+
+def registration_shape(response, name):
+    shape = base_shape(response)
+    shape["token_listed"] = name in parse_token_names(getattr(response, "text", "") or "")
+    shape["token_rows"] = len(parse_token_rows(getattr(response, "text", "") or ""))
+    wording = refusal_of(response)
+    if wording:
+        shape["refusal"] = wording
+    return shape
 
 
 def password_outcome(answer, cookie_names):
@@ -65,7 +96,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.17")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.18")
         self.timeout = timeout
         self.username = ""
         self.sleeper = time.sleep
@@ -80,10 +111,15 @@ class IServClient:
         payload = apply_login_fields(login_form.fields, username, password)
         response = self._post(login_form.action, payload)
         if LOGIN_FAILED_MARKER in response.text:
-            raise LoginError("invalid username or password")
+            raise LoginError(
+                "invalid username or password",
+                message_key=LOGIN_CREDENTIALS_KEY,
+                detail=login_shape(response, "credentials", False),
+            )
 
         two_factor_form = find_two_factor_form(parse_forms(response.text, response.url))
-        if two_factor_form is not None:
+        offered = two_factor_form is not None
+        if offered:
             code = code_provider()
             payload = fill_two_factor_code(two_factor_form.fields, code)
             if "_remember_me" in payload:
@@ -92,7 +128,12 @@ class IServClient:
 
         response = self._follow_client_redirects(response)
         if not self.is_authenticated():
-            raise TwoFactorError("session was not established")
+            again = find_two_factor_form(parse_forms(response.text, response.url)) is not None
+            raise TwoFactorError(
+                "session was not established",
+                message_key=LOGIN_TWOFACTOR_KEY if offered and again else LOGIN_SESSION_KEY,
+                detail=login_shape(response, "two_factor" if offered else "session", offered),
+            )
         return self
 
     def is_authenticated(self):
@@ -158,11 +199,17 @@ class IServClient:
         except (DataError, requests.RequestException):
             registered = None
         if registered is None:
-            registered = not registration_rejected(result.text)
+            registered = name in parse_token_names(result.text)
         if registered:
             return registration.secret
         errors = extract_form_errors(result.text)
-        raise TwoFactorError(errors[0] if errors else "two-factor registration was rejected")
+        if errors or registration_rejected(result.text):
+            raise TwoFactorError(errors[0] if errors else "two-factor registration was rejected")
+        raise TwoFactorError(
+            "two-factor registration could not be confirmed",
+            message_key=REGISTRATION_UNCONFIRMED_KEY,
+            detail=registration_shape(result, name),
+        )
 
     def register_totp(self, name, verification_code, at=None):
         registration = self.start_totp_registration()
