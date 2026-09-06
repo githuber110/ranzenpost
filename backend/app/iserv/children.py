@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 
 from .models import Child
-from .pages import base_shape
+from .pages import base_shape, refusal_wording
 
 CHILD_SELECT_ID = "timetable-filter-child-select"
 CHILD_PAGE_MESSAGE_KEY = "api.children.unreadable"
@@ -42,4 +42,7 @@ def page_diagnosis(response):
         "select_elements": len(soup.find_all("select")),
         "login_form": soup.find("input", attrs={"name": LOGIN_FIELD}) is not None,
     })
+    wording = refusal_wording(response, soup)
+    if wording:
+        shape["refusal"] = wording
     return shape

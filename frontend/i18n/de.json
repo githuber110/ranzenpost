@@ -477,6 +477,7 @@
   "diagnosis.page_endpoints": "Adressen in der Seite",
   "diagnosis.page_fields": "Felder in der Seite",
   "diagnosis.page_privileges": "Rechte in der Seite",
+  "diagnosis.refusal": "Wortlaut der Verweigerung",
   "diagnosis.script_blocks": "Skriptblöcke",
   "diagnosis.select_elements": "Auswahlfelder in der Seite",
   "diagnosis.stage": "Stufe",

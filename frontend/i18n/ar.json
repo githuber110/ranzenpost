@@ -489,6 +489,7 @@
   "diagnosis.page_endpoints": "العناوين في الصفحة",
   "diagnosis.page_fields": "الحقول في الصفحة",
   "diagnosis.page_privileges": "الصلاحيات في الصفحة",
+  "diagnosis.refusal": "نص الرفض",
   "diagnosis.script_blocks": "كتل البرمجة",
   "diagnosis.select_elements": "حقول الاختيار في الصفحة",
   "diagnosis.stage": "المرحلة",

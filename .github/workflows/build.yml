@@ -73,6 +73,6 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci
-      - run: npx vitest run
+      - run: node scripts/run-frontend-tests.mjs
       - run: npx playwright install --with-deps chromium webkit
       - run: npx playwright test

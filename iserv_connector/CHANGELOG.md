@@ -3,6 +3,14 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.17
+
+- When the school server refuses a page, the details now also carry what it called the refusal -
+  the heading of its own error page. A refusal has a reason written on it, and knowing whether it
+  reads as a missing permission or as something else decides what can be done about it. Only
+  headings are taken, only from an answer the server refused, and only up to a short length, so no
+  content of the page can travel with it.
+
 ## 2609.01.16
 
 - Setting the app up can be finished even when the school server will not hand out the children.
