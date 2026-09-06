@@ -477,6 +477,7 @@
   "diagnosis.page_endpoints": "Addresses in the page",
   "diagnosis.page_fields": "Fields in the page",
   "diagnosis.page_privileges": "Permissions in the page",
+  "diagnosis.refusal": "Wording of the refusal",
   "diagnosis.script_blocks": "Script blocks",
   "diagnosis.select_elements": "Selection fields in the page",
   "diagnosis.stage": "Stage",

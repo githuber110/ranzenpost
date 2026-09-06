@@ -483,6 +483,7 @@
   "diagnosis.page_endpoints": "Адреси на сторінці",
   "diagnosis.page_fields": "Поля на сторінці",
   "diagnosis.page_privileges": "Права на сторінці",
+  "diagnosis.refusal": "Формулювання відмови",
   "diagnosis.script_blocks": "Блоки скриптів",
   "diagnosis.select_elements": "Поля вибору на сторінці",
   "diagnosis.stage": "Етап",
