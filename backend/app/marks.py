@@ -248,6 +248,19 @@ class MarkRegistry:
             if slot_of(entry) == taken:
                 raise MarkError(ERROR_DUPLICATE)
 
+    def move_child(self, old_id, new_id):
+        if not old_id or not new_id or old_id == new_id:
+            return 0
+        entries = self._read()
+        moved = 0
+        for entry in entries:
+            if entry.get("child_id") == old_id:
+                entry["child_id"] = new_id
+                moved += 1
+        if moved:
+            self._write(entries)
+        return moved
+
     def list(self, child_id=""):
         start, end = window(self._today())
         snapshot = self.store.load_calendar_snapshot()

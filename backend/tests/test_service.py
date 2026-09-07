@@ -32,6 +32,16 @@ class FakeClient:
     def get_children(self):
         return [Child("uuid-1", "Mia")]
 
+    def fetch_or_raise(self, path, params=None):
+        response = self.fetch(path, params)
+        status = int(getattr(response, "status_code", 200) or 200)
+        if status != 200:
+            from app.iserv.errors import DataError
+
+            raise DataError("request failed: %s" % status)
+        return response
+
+
     def get_timetable(self, child_id, reference=None):
         lessons = [Lesson("31.08.2026", 1, 1, "D", "BEH", "R1", "1a")]
         return TimetableWeek("31.08.2026", "06.09.2026", "22.07.2026 12:25", lessons, lessons, [])
@@ -163,6 +173,9 @@ class FakeDsa:
         self._boards = boards
 
     def pinboards(self):
+        return self._boards
+
+    def pinboards_or_raise(self):
         return self._boards
 
 
@@ -1370,7 +1383,7 @@ def test_marking_a_letter_read_opens_it_in_iserv(tmp_path):
     service, _ = make(tmp_path)
     service.client_factory = lambda url: LetterClient(url)
     result = service.mark_letters_read(["10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"])
-    assert result == {"read": 1, "blocked": 0}
+    assert result == {"read": 1, "blocked": 0, "failed": 0}
     assert any("/parent/show/" in path for path in opened)
 
 
@@ -1397,7 +1410,7 @@ def test_marking_a_letter_read_never_hides_it_if_iserv_keeps_reporting_unread(tm
     assert target_before["unread"] is True
     assert "technical" not in target_before
 
-    assert service.mark_letters_read([key]) == {"read": 1, "blocked": 0}
+    assert service.mark_letters_read([key]) == {"read": 1, "blocked": 0, "failed": 0}
     assert not (store.dir / "letters_read_override.json").exists()
 
     after = service.letters("current")["letters"]
@@ -1457,7 +1470,7 @@ def test_marking_all_read_only_opens_the_unread_ones(tmp_path):
 
     service, _ = make(tmp_path)
     service.client_factory = lambda url: LetterClient(url)
-    assert service.mark_letters_read(mark_all=True) == {"read": 1, "blocked": 0}
+    assert service.mark_letters_read(mark_all=True) == {"read": 1, "blocked": 0, "failed": 0}
     assert sum(1 for path in opened if "/parent/show/" in path) == 1
 
 
@@ -1514,7 +1527,10 @@ def test_letter_detail_leaves_attachment_filename_empty_instead_of_inventing_one
 
     class FetchClient:
         def fetch(self, path):
-            return type("Response", (), {"text": "", "url": ""})()
+            return type("Response", (), {"text": "", "url": "", "status_code": 200})()
+
+        def fetch_or_raise(self, path, params=None):
+            return self.fetch(path)
 
     monkeypatch.setattr(
         service_module,
@@ -1821,7 +1837,7 @@ def test_a_letter_with_an_open_confirmation_is_reported_blocked_not_read(tmp_pat
     service, _ = make(tmp_path)
     service.client_factory = lambda url: ConfirmingLetterClient(url)
     key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
-    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 1}
+    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 1, "failed": 0}
 
 
 def test_mark_all_read_separates_the_blocked_letters_from_the_read_ones(tmp_path):
@@ -1845,7 +1861,7 @@ def test_mark_all_read_separates_the_blocked_letters_from_the_read_ones(tmp_path
 
     service, _ = make(tmp_path)
     service.client_factory = lambda url: ConfirmingLetterClient(url)
-    assert service.mark_letters_read(mark_all=True) == {"read": 0, "blocked": 1}
+    assert service.mark_letters_read(mark_all=True) == {"read": 0, "blocked": 1, "failed": 0}
 
 
 def test_a_letter_page_that_fails_counts_as_neither_read_nor_blocked(tmp_path):
@@ -1867,4 +1883,4 @@ def test_a_letter_page_that_fails_counts_as_neither_read_nor_blocked(tmp_path):
     service, _ = make(tmp_path)
     service.client_factory = lambda url: BrokenLetterClient(url)
     key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
-    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 0}
+    assert service.mark_letters_read([key]) == {"read": 0, "blocked": 0, "failed": 1}

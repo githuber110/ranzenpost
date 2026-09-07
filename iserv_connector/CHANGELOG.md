@@ -3,6 +3,18 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.20
+
+- Archiving a letter, putting one back, and marking letters as read now check that the school
+  server actually accepted the change. They used to send it and report success without ever
+  looking at the answer, so a refused change still read as done. A refusal is now named, and the
+  count of letters that could not be opened is reported instead of quietly dropped.
+- A list the school server refused to serve is no longer shown as an empty one. The letter list and
+  the pinboard say that they could not be read; an inbox or a board that is genuinely empty still
+  reads as empty.
+- Marks and calendar links follow a child when it is carried over to the school-app identifier, so
+  nothing that was noted on a lesson is lost in the move.
+
 ## 2609.01.19
 
 - The timetable and the children are back. The school server moved its timetable to a new module,
