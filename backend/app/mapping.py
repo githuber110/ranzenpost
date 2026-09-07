@@ -1,3 +1,4 @@
+import re
 DEFAULT_COLORS = [
     "#84142a", "#f7703e", "#ec932f", "#7b791d", "#404f0e",
     "#2dae4b", "#208068", "#135859", "#31aed2", "#2486ed",
@@ -95,17 +96,69 @@ def distinct(values):
     return list(dict.fromkeys(v for v in values if v))
 
 
+NATIVE_COLOR = re.compile(r"^#[0-9a-f]{6}$")
+
+
+def _native_color(value):
+    text = str(value or "").strip().lower()
+    return text if NATIVE_COLOR.match(text) else ""
+
+
+def _native_subjects(lessons):
+    found = {}
+    for lesson in lessons:
+        if not lesson.subject or lesson.subject in found:
+            continue
+        name = str(getattr(lesson, "subject_name", "") or "").strip()
+        color = _native_color(getattr(lesson, "subject_color", ""))
+        if name or color:
+            found[lesson.subject] = (name, color)
+    return found
+
+
+def _native_teachers(lessons):
+    found = {}
+    for lesson in lessons:
+        if not lesson.teacher or lesson.teacher in found:
+            continue
+        name = str(getattr(lesson, "teacher_name", "") or "").strip()
+        if name:
+            found[lesson.teacher] = name
+    return found
+
+
+def _unnamed(entry, code):
+    return not entry.get("label") or entry.get("label") == code
+
+
 def merge_discovered_codes(config, lessons):
     config = migrate_subject_colors(config)
     subjects = dict(config.get("subjects", {}))
     teachers = dict(config.get("teachers", {}))
+    native_subjects = _native_subjects(lessons)
+    native_teachers = _native_teachers(lessons)
     for code in distinct(lesson.subject for lesson in lessons):
+        name, color = native_subjects.get(code, ("", ""))
         if code not in subjects:
-            subjects[code] = {"label": code, "color": "", COLOR_SOURCE: AUTO_COLOR}
+            subjects[code] = {"label": name or code, "color": color, COLOR_SOURCE: AUTO_COLOR}
+            continue
+        entry = dict(subjects[code])
+        if name and _unnamed(entry, code):
+            entry["label"] = name
+        if color and not has_user_color(entry) and not _color_of(entry):
+            entry["color"] = color
+            entry[COLOR_SOURCE] = AUTO_COLOR
+        subjects[code] = entry
     subjects = _assign_auto_colors(subjects)
     for code in distinct(lesson.teacher for lesson in lessons):
+        name = native_teachers.get(code, "")
         if code not in teachers:
-            teachers[code] = {"label": code, "is_class_teacher": False}
+            teachers[code] = {"label": name or code, "is_class_teacher": False}
+            continue
+        entry = dict(teachers[code])
+        if name and _unnamed(entry, code):
+            entry["label"] = name
+        teachers[code] = entry
     merged = dict(config)
     merged["subjects"] = subjects
     merged["teachers"] = teachers
@@ -142,7 +195,8 @@ def to_display(lesson, config, change=None):
         "date": lesson.date,
         "day_of_week": lesson.day_of_week,
         "period": lesson.period,
-        "start_time": times.get(str(lesson.period), ""),
+        "start_time": getattr(lesson, "start_time", "") or times.get(str(lesson.period), ""),
+        "end_time": getattr(lesson, "end_time", "") or "",
         "subject_code": lesson.subject,
         "subject_label": subject.get("label") or lesson.subject,
         "color": subject.get("color") or "",
