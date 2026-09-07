@@ -43,6 +43,7 @@ from .iserv.conferences import parse_conferences
 from .iserv.html import plain_text
 from .iserv.dsa import (
     DieSchulAppClient,
+    parse_children_from_me,
     absence_rules,
     deregister_options,
     enabled_absence_types,
@@ -53,6 +54,7 @@ from .iserv.sick_note_pdf import (
     sick_note_pdf_filename,
     sick_note_title,
 )
+from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
 from .iserv.client import PASSWORD_UNVERIFIED
 from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
 from .iserv.letters import (
@@ -68,6 +70,7 @@ from .iserv.letters import (
     parse_letter_detail,
     parse_letter_list,
 )
+from .iserv.dsa_timetable import parse_current_timetable
 from .iserv.timetable import lesson_key
 from .iserv.totp import generate_code
 from .iserv.twofactor import parse_delete_token
@@ -119,6 +122,10 @@ LETTER_CONFIRM_REJECTED_KEY = "api.letters.confirm.rejected"
 LETTER_OPEN_READ = "read"
 LETTER_OPEN_BLOCKED = "blocked"
 LETTER_OPEN_FAILED = "failed"
+CHILD_PAGE_KEYS = (CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY)
+TIMETABLE_UNREADABLE_KEY = "api.timetable.unreadable"
+SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
+SCHOOL_CACHE_SECONDS = 600
 SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 SAFE_FILENAME = re.compile(r"^[^\x00-\x1f/\\]{1,120}$")
 
@@ -302,6 +309,9 @@ class IServService:
         self._client = None
         self._last_code = {}
         self._messenger_service = None
+        self._timetable_page_denied = False
+        self._children_cache = (0.0, {})
+        self._settings_cache = (0.0, None)
 
     def is_configured(self):
         config = self.store.load_config()
@@ -447,7 +457,26 @@ class IServService:
         self._client = None
 
     def children(self):
-        native = self._session().get_children()
+        self._timetable_page_denied = False
+        listed = self._children_from_school_account()
+        if listed:
+            self._remember_children(listed)
+            self._migrate_stored_children(listed)
+            return listed
+        try:
+            native = self._session().get_children()
+        except DataError as error:
+            if error.message_key not in CHILD_PAGE_KEYS:
+                raise
+            fallback = self._children_from_school_app()
+            if not fallback:
+                raise
+            logger.warning(
+                "the timetable page refused the child list, using the school app list instead",
+                exc_info=True,
+            )
+            self._timetable_page_denied = True
+            return fallback
         try:
             students = self._dsa().students()
         except Exception:
@@ -465,6 +494,108 @@ class IServService:
                 "class_code": student.get("class_code", "") if student else "",
             })
         return result
+
+    def _children_from_school_account(self):
+        try:
+            payload = self._dsa().me_with_children()
+        except Exception:
+            logger.debug("school account lookup failed", exc_info=True)
+            return []
+        return parse_children_from_me(payload)
+
+    def _remember_children(self, children):
+        self._children_cache = (time.time(), {child["child_id"]: child for child in children})
+
+    def _cached_child(self, child_id):
+        stamp, cached = self._children_cache
+        if time.time() - stamp > SCHOOL_CACHE_SECONDS or child_id not in cached:
+            listed = self._children_from_school_account()
+            if listed:
+                self._remember_children(listed)
+                cached = self._children_cache[1]
+        return cached.get(child_id)
+
+    def _migrate_stored_children(self, children):
+        config = self.store.load_config()
+        stored = config.get("children") or []
+        if not stored:
+            return
+        current_ids = {child["child_id"] for child in children}
+        migrated = []
+        changed = False
+        for entry in stored:
+            if not isinstance(entry, dict):
+                continue
+            child_id = str(entry.get("child_id") or "")
+            match = None if child_id in current_ids else student_for_name(children, entry.get("name"))
+            if match is None:
+                migrated.append(entry)
+                continue
+            moved = dict(entry, child_id=match["child_id"])
+            if match.get("class_name"):
+                moved["class_name"] = match["class_name"]
+            migrated.append(moved)
+            changed = True
+            self._move_child_subscriptions(child_id, match["child_id"])
+            logger.info("stored child moved to the school account id")
+        if changed:
+            config["children"] = migrated
+            self.store.save_config(config)
+
+    def _move_child_subscriptions(self, old_id, new_id):
+        from .subscriptions import SubscriptionRegistry
+
+        try:
+            SubscriptionRegistry(self.store).move_child(old_id, new_id)
+        except Exception:
+            logger.warning("calendar subscriptions could not follow the child", exc_info=True)
+
+    def _school_settings(self):
+        stamp, cached = self._settings_cache
+        if cached is not None and time.time() - stamp <= SCHOOL_CACHE_SECONDS:
+            return cached
+        settings = self._dsa().school_settings()
+        self._settings_cache = (time.time(), settings)
+        return settings
+
+    def _substitutions_released(self):
+        try:
+            value = self._school_settings().get(SUBSTITUTIONS_SETTING)
+        except Exception:
+            logger.debug("school settings lookup failed", exc_info=True)
+            return None
+        return value if isinstance(value, bool) else None
+
+    def _school_timetable(self, target, course_ids):
+        payload = self._dsa().current_timetable(
+            target, course_ids, substitutions=self._substitutions_released() is True
+        )
+        if payload is None:
+            raise DataError(
+                "timetable was not readable",
+                message_key=TIMETABLE_UNREADABLE_KEY,
+                detail={"source": "school-app", "date": target.isoformat()},
+            )
+        return parse_current_timetable(payload, target)
+
+    def _children_from_school_app(self):
+        try:
+            students = self._dsa().sick_note_children()
+        except Exception:
+            logger.debug("school app child list lookup failed", exc_info=True)
+            return []
+        return [
+            {
+                "child_id": str(student.get("id")),
+                "name": student.get("name", ""),
+                "class_name": student.get("class_name", ""),
+                "student_id": student.get("id"),
+                "class_full": student.get("class_full", ""),
+                "class_code": student.get("class_code", ""),
+            }
+            for student in students
+            if student.get("id") is not None and student.get("name")
+        ]
 
     def _dsa(self):
         client = self._session()
@@ -840,8 +971,10 @@ class IServService:
         return {str(key): value for key, value in payload.items() if isinstance(value, int)}
 
     def timetable_available(self):
+        if self._timetable_page_denied:
+            return False
         try:
-            settings = self._dsa().school_settings()
+            settings = self._school_settings()
         except Exception:
             logger.debug("timetable availability lookup failed", exc_info=True)
             return True
@@ -1027,7 +1160,11 @@ class IServService:
     def timetable(self, child_id, reference=None, week_offset=0):
         offset = _week_offset(week_offset)
         target = (reference or date.today()) + timedelta(days=7 * offset)
-        week = self._session().get_timetable(child_id, target)
+        child = self._cached_child(str(child_id))
+        if child is not None and child.get("course_ids"):
+            week = self._school_timetable(target, child["course_ids"])
+        else:
+            week = self._session().get_timetable(child_id, target)
         config = self.store.load_config()
         merged = merge_discovered_codes(config, week.combined + week.plain)
         school_times = self._school_period_times()
@@ -1055,4 +1192,6 @@ class IServService:
             "school_period_times": school_times,
             "change_count": sum(1 for entry in lessons if entry["change_kind"]),
             "week_offset": offset,
+            "substitutions_released": self._substitutions_released(),
+            "vacations": list(getattr(week, "vacations", None) or []),
         }

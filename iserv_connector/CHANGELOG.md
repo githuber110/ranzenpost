@@ -3,6 +3,21 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.19
+
+- The timetable and the children are back. The school server moved its timetable to a new module,
+  and the old address the app had always read now refuses this account - which is why the timetable
+  and, with it, the children had gone. The app now reads both from the school-app interface it
+  already uses for letters and absences: the children come with their class and their courses, and
+  the timetable comes per child with the same fields as before plus the ones the new source adds -
+  the subject's full name and colour, the teacher's full name, and the start and end time of every
+  lesson. Holiday weeks now come named from the source itself.
+- A child that was set up under the old address is carried over to the new one automatically,
+  keeping its marks-free calendar links pointing at the right child.
+- Substitutions are only shown as absent when the school actually releases them to parents. This
+  school does not, so the timetable says so plainly instead of pretending there are simply no
+  changes today.
+
 ## 2609.01.18
 
 - Setting up the app's own access to the school server no longer counts as done just because the

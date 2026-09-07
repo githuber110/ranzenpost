@@ -1,10 +1,20 @@
 import re
 from dataclasses import dataclass, field
 
+from .dsa_timetable import course_filter, query_date
 from .absences import ATTACHMENT_FIELD_NAME, BODY_JSON, form_fields
 from .html import clean_html
 
 API_ROOT = "/iserv/dieschulapp/api/1.0"
+CHILDREN_FIELDS = ",".join(
+    (
+        "id", "displayname", "forename", "surname", "roles",
+        "children", "children.id", "children.displayname", "children.forename", "children.surname",
+        "children.mainCourse", "children.mainCourse.id", "children.mainCourse.name",
+        "children.mainCourse.externalId",
+        "children.courses", "children.courses.id", "children.courses.name", "children.courses.type",
+    )
+)
 PINBOARD_FIELDS = (
     "id,title,staticFiles,studentsAndGuardiansCanCreateTiles,author,"
     "columns,columns.tiles"
@@ -81,6 +91,45 @@ def parse_students(payload):
             }
         )
     return students
+
+
+def _full_name(entry):
+    forename = str(entry.get("forename") or "").strip()
+    surname = str(entry.get("surname") or "").strip()
+    if forename and surname:
+        return f"{forename} {surname}"
+    return str(entry.get("displayname") or forename or surname or "").strip()
+
+
+def parse_children_from_me(payload):
+    children = []
+    for entry in (payload or {}).get("children") or []:
+        if not isinstance(entry, dict) or entry.get("id") is None:
+            continue
+        raw_main_course = entry.get("mainCourse") or {}
+        main_course = raw_main_course if isinstance(raw_main_course, dict) else {}
+        course_ids = sorted(
+            {
+                int(course.get("id"))
+                for course in entry.get("courses") or []
+                if isinstance(course, dict) and course.get("id") is not None
+            }
+        )
+        name = _full_name(entry)
+        if not name:
+            continue
+        children.append(
+            {
+                "child_id": str(entry.get("id")),
+                "student_id": entry.get("id"),
+                "name": name,
+                "class_name": normalize_class(raw_main_course),
+                "class_full": main_course.get("name") or "",
+                "class_code": main_course.get("externalId") or "",
+                "course_ids": course_ids,
+            }
+        )
+    return children
 
 
 def class_for_name(students, name):
@@ -249,6 +298,20 @@ class DieSchulAppClient:
 
     def students(self):
         return parse_students(self._get("students/"))
+
+    def me_with_children(self):
+        return self._get("users/me", {"fields": CHILDREN_FIELDS})
+
+    def current_timetable(self, reference, course_ids, substitutions=False):
+        params = {
+            "date": query_date(reference),
+            "week": "true",
+            "substitutions": "true" if substitutions else "false",
+        }
+        selector = course_filter(course_ids)
+        if selector:
+            params["filterBy"] = selector
+        return self._get("current-timetable/", params)
 
     def school(self):
         return parse_school(self._get("schools/"))

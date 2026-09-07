@@ -167,8 +167,7 @@ class Wizard:
     def select_child(self, child_id, name="", class_name=""):
         state = self._release_if_expired(self.store.load_wizard())
         config = self.store.load_config()
-        known = {child.get("child_id") for child in config.get("children", [])}
-        if known and child_id not in known:
+        if not str(child_id or "").strip():
             return self._error(state, "child_unknown", "api.wizard.childUnknown")
         self._persist_child(config, child_id, name, class_name)
         state["selected_child"] = child_id
