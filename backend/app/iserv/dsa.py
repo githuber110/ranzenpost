@@ -3,9 +3,11 @@ from dataclasses import dataclass, field
 
 from .dsa_timetable import course_filter, query_date
 from .absences import ATTACHMENT_FIELD_NAME, BODY_JSON, form_fields
+from .errors import DataError
 from .html import clean_html
 
 API_ROOT = "/iserv/dieschulapp/api/1.0"
+SCHOOL_APP_UNREADABLE_KEY = "api.schoolApp.unreadable"
 CHILDREN_FIELDS = ",".join(
     (
         "id", "displayname", "forename", "surname", "roles",
@@ -287,6 +289,16 @@ class DieSchulAppClient:
         self.session = session
         self.timeout = timeout
 
+    def _require(self, path, params=None):
+        data = self._get(path, params)
+        if data is None:
+            raise DataError(
+                "school app did not answer with data",
+                message_key=SCHOOL_APP_UNREADABLE_KEY,
+                detail={"path": path},
+            )
+        return data
+
     def _get(self, path, params=None):
         response = self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=self.timeout)
         if response.status_code != 200:
@@ -363,6 +375,12 @@ class DieSchulAppClient:
 
     def delete_entry(self, path):
         return self.session.delete(f"{self.base_url}{API_ROOT}/{path}", timeout=self.timeout)
+
+    def pinboards_or_raise(self):
+        return parse_pinboards(self._require("pinboards/", PINBOARD_PARAMS))
+
+    def sick_note_children_or_raise(self):
+        return parse_students(self._require("sickNotes/userSelection/"))
 
     def pinboards(self):
         return parse_pinboards(self._get("pinboards/", PINBOARD_PARAMS))

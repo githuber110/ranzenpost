@@ -108,7 +108,7 @@ def read_endpoint(call):
 def write_endpoint(call, fallback=None):
     try:
         return call()
-    except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
+    except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException) as error:
         return upstream_write_error(_upstream_code(error), error)
     except Exception:
         if fallback is None:
