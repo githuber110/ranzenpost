@@ -19,6 +19,11 @@ class Lesson:
     class_name: str
     lesson_id: Optional[int] = None
     internal_id: Optional[str] = None
+    subject_name: str = ""
+    subject_color: str = ""
+    teacher_name: str = ""
+    start_time: str = ""
+    end_time: str = ""
 
 
 @dataclass

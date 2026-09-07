@@ -1,0 +1,89 @@
+{
+  "students": [
+    {
+      "student": {
+        "id": 500001,
+        "forename": "Kim",
+        "surname": "Muster",
+        "displayname": "Muster Kim",
+        "mainCourse": {
+          "id": 7001,
+          "externalId": "klasse.01d",
+          "externalIds": ["klasse.00d", "klasse.01d", "01D"],
+          "type": "class",
+          "name": "Klasse 01D",
+          "channel": 9001,
+          "isSoftDeleted": false
+        }
+      },
+      "entries": [
+        {
+          "id": 91001,
+          "courseSubject": {
+            "id": 81001,
+            "teachers": [
+              {"id": 3001, "forename": "Katrin", "surname": "Beispiel", "displayname": "Beispiel Katrin", "externalId": "BEI"}
+            ],
+            "subject": {"id": 143953, "name": "Deutsch", "acronym": "D", "hexColor": "#0f3beb"},
+            "course": {"id": 7001, "name": "Klasse 01D", "externalId": "klasse.01d", "type": "class"},
+            "type": "lesson"
+          },
+          "timeTableSlot": {"id": 39163, "number": 1, "startTime": "08:00", "endTime": "08:45", "type": "lesson", "name": "1. Stunde"},
+          "weekday": 0,
+          "room": {"id": 108016, "name": ""},
+          "timetableBlock": null
+        },
+        {
+          "id": 91002,
+          "courseSubject": {
+            "id": 81002,
+            "teachers": [
+              {"id": 3002, "forename": "Frank", "surname": "Lehrer", "displayname": "Lehrer Frank", "externalId": "LEH"}
+            ],
+            "subject": {"id": 143954, "name": "Sport", "acronym": "Sp", "hexColor": "#2dae4b"},
+            "course": {"id": 7001, "name": "Klasse 01D", "externalId": "klasse.01d", "type": "class"},
+            "type": "lesson"
+          },
+          "timeTableSlot": {"id": 39164, "number": 2, "startTime": "08:45", "endTime": "09:30", "type": "lesson", "name": "2. Stunde"},
+          "weekday": 0,
+          "room": {"id": 108020, "name": "Sporthalle"},
+          "timetableBlock": null
+        },
+        {
+          "id": 91003,
+          "courseSubject": {
+            "id": 81003,
+            "teachers": [
+              {"id": 3001, "forename": "Katrin", "surname": "Beispiel", "displayname": "Beispiel Katrin", "externalId": "BEI"},
+              {"id": 3003, "forename": "Olga", "surname": "Zweit", "displayname": "Zweit Olga", "externalId": "ZWE"}
+            ],
+            "subject": {"id": 143960, "name": "TEAM", "acronym": "TE", "hexColor": "#834ac9"},
+            "course": {"id": 7002, "name": "TEAM 1", "externalId": "team.1", "type": "course"},
+            "type": "lesson"
+          },
+          "timeTableSlot": {"id": 39165, "number": 3, "startTime": "09:50", "endTime": "10:35", "type": "lesson", "name": "3. Stunde"},
+          "weekday": 2,
+          "room": {"id": 108030, "name": "Aula"},
+          "timetableBlock": null
+        },
+        {
+          "id": 91004,
+          "courseSubject": {
+            "id": 81004,
+            "teachers": [],
+            "subject": {"id": 143961, "name": "Mathematik", "acronym": "M", "hexColor": "#84142a"},
+            "course": {"id": 7001, "name": "Klasse 01D", "externalId": "klasse.01d", "type": "class"},
+            "type": "lesson"
+          },
+          "timeTableSlot": {"id": 39163, "number": 1, "startTime": "08:00", "endTime": "08:45", "type": "lesson", "name": "1. Stunde"},
+          "weekday": 4,
+          "room": {"id": 108016, "name": "R1"},
+          "timetableBlock": null
+        }
+      ]
+    }
+  ],
+  "vacations": [
+    {"id": 62757, "name": "Herbstferien", "startDate": "2026-10-17", "endDate": "2026-10-31"}
+  ]
+}

@@ -3494,6 +3494,7 @@ function timetableView() {
   }
   const monday = weekMonday();
   const fullWeek = holidayFullWeek(monday, data);
+  if (data.substitutions_released === false) view.append(noteBlock(t("timetable.substitutions.notReleased")));
   view.append(el("div", { class: "tt-frame" }, [
     weekSwipeHint(-1, "tt-edge-prev"),
     timetableGrid(data),
