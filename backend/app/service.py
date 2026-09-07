@@ -123,6 +123,20 @@ LETTER_OPEN_READ = "read"
 LETTER_OPEN_BLOCKED = "blocked"
 LETTER_OPEN_FAILED = "failed"
 CHILD_PAGE_KEYS = (CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY)
+LETTER_ARCHIVE_FAILED_KEY = "api.letters.archiveFailed"
+LETTER_RESTORE_FAILED_KEY = "api.letters.restoreFailed"
+WRITE_OK_STATUSES = (200, 201, 204, 302, 303)
+
+
+def _require_write(response, message_key):
+    status = int(getattr(response, "status_code", 0) or 0)
+    if status not in WRITE_OK_STATUSES:
+        raise DataError(
+            "the school server refused the change",
+            message_key=message_key,
+            detail={"status": status},
+        )
+    return response
 TIMETABLE_UNREADABLE_KEY = "api.timetable.unreadable"
 SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 SCHOOL_CACHE_SECONDS = 600
@@ -543,12 +557,17 @@ class IServService:
             self.store.save_config(config)
 
     def _move_child_subscriptions(self, old_id, new_id):
+        from .marks import MarkRegistry
         from .subscriptions import SubscriptionRegistry
 
         try:
             SubscriptionRegistry(self.store).move_child(old_id, new_id)
         except Exception:
             logger.warning("calendar subscriptions could not follow the child", exc_info=True)
+        try:
+            MarkRegistry(self.store).move_child(old_id, new_id)
+        except Exception:
+            logger.warning("marks could not follow the child", exc_info=True)
 
     def _school_settings(self):
         stamp, cached = self._settings_cache
@@ -605,7 +624,7 @@ class IServService:
         return self._dsa().school()
 
     def pinboard(self):
-        boards = self._dsa().pinboards()
+        boards = self._dsa().pinboards_or_raise()
         seen_state = self.store.load_seen()
         seen = set(seen_state.get("pinboard", []))
         if not seen_state.get("pinboard_initialised"):
@@ -692,7 +711,7 @@ class IServService:
     def letters(self, tab="current"):
         client = self._session()
         path = LETTERS_ARCHIVE_PATH if tab == "archive" else LETTERS_INDEX_PATH
-        response = client.fetch(path)
+        response = client.fetch_or_raise(path)
         entries = parse_letter_list(response.text, response.url)
         entries.sort(key=lambda item: _published_sort_key(item.get("published")), reverse=True)
         search_cache = self.store.load_letters_search_cache()
@@ -794,14 +813,21 @@ class IServService:
             ]
         opened = 0
         blocked = 0
+        failed = 0
         for key in targets:
             letter_id, _, recipient_id = str(key).partition(":")
-            outcome = self._open_letter(letter_id, recipient_id)
+            try:
+                outcome = self._open_letter(letter_id, recipient_id)
+            except DataError:
+                logger.warning("a letter could not be opened while marking it read", exc_info=True)
+                outcome = LETTER_OPEN_FAILED
             if outcome == LETTER_OPEN_READ:
                 opened += 1
             elif outcome == LETTER_OPEN_BLOCKED:
                 blocked += 1
-        return {"read": opened, "blocked": blocked}
+            else:
+                failed += 1
+        return {"read": opened, "blocked": blocked, "failed": failed}
 
     def _open_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
@@ -821,7 +847,7 @@ class IServService:
 
     def _fetch_letter_page(self, letter_id, recipient_id):
         client = self._session()
-        response = client.fetch(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
+        response = client.fetch_or_raise(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
         return client, response
 
     def letter_detail(self, letter_id, recipient_id):
@@ -878,32 +904,40 @@ class IServService:
         letter_id = _clean_id(letter_id)
         recipient_id = _clean_id(recipient_id)
         client = self._session()
-        response = client.fetch(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
+        response = client.fetch_or_raise(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
         detail = parse_letter_detail(response.text, response.url)
         archive_url = detail.get("archive_url")
         if not archive_url:
-            raise DataError("archive action not available")
-        confirm_page = client.fetch(archive_url)
+            raise DataError("archive action not available", message_key=LETTER_ARCHIVE_FAILED_KEY)
+        confirm_page = client.fetch_or_raise(archive_url)
         form = parse_hide_confirm(confirm_page.text, confirm_page.url)
         if form is None:
-            raise DataError("archive confirmation form not found")
-        client.post_absolute(form.action, data=build_hide_payload(form))
+            raise DataError("archive confirmation form not found", message_key=LETTER_ARCHIVE_FAILED_KEY)
+        _require_write(
+            client.post_absolute(form.action, data=build_hide_payload(form)),
+            LETTER_ARCHIVE_FAILED_KEY,
+        )
         return True
 
     def restore_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
         recipient_id = _clean_id(recipient_id)
         client = self._session()
-        response = client.fetch(LETTERS_ARCHIVE_PATH)
+        response = client.fetch_or_raise(LETTERS_ARCHIVE_PATH)
         form = parse_archive_form(response.text, response.url, RESTORE_ACTION)
         if form is None:
-            raise DataError("restore action not available")
+            raise DataError("restore action not available", message_key=LETTER_RESTORE_FAILED_KEY)
         payload = build_archive_payload(form, [f"{letter_id}-{recipient_id}"], RESTORE_ACTION)
-        staged = client.post_absolute(form["action"], data=payload)
+        staged = _require_write(
+            client.post_absolute(form["action"], data=payload), LETTER_RESTORE_FAILED_KEY
+        )
         confirm = parse_batch_confirm(staged.text, staged.url)
         if confirm is None:
-            raise DataError("restore confirmation form not found")
-        client.post_absolute(confirm.action, data=build_batch_confirm_payload(confirm, RESTORE_ACTION))
+            raise DataError("restore confirmation form not found", message_key=LETTER_RESTORE_FAILED_KEY)
+        _require_write(
+            client.post_absolute(confirm.action, data=build_batch_confirm_payload(confirm, RESTORE_ACTION)),
+            LETTER_RESTORE_FAILED_KEY,
+        )
         return True
 
     def letter_attachment(self, attachment_id):
