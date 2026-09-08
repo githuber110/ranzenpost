@@ -1323,10 +1323,13 @@ button.section-head {
 }
 
 .empty { text-align: center; padding: var(--s-11) var(--s-6) var(--s-8); }
-.empty .ico { width: 64px; height: 64px; margin: 0 auto var(--s-6); padding: 18px; background: var(--surface-2); border-radius: 50%; color: var(--ink-2); }
+.empty > .ico-slot > .ico { width: 64px; height: 64px; margin: 0 auto var(--s-6); padding: 18px; background: var(--surface-2); border-radius: 50%; color: var(--ink-2); }
+.empty > .ico-slot { display: block; }
 .empty b { display: block; font-size: 1.0625rem; font-weight: 600; margin-bottom: var(--s-3); }
 .empty p { margin: 0 auto; max-width: 260px; font-size: 0.875rem; color: var(--ink-2); line-height: 1.45; }
-.empty .btn { width: auto; margin: var(--s-7) auto 0; }
+.empty .btn { width: auto; min-inline-size: 220px; margin: var(--s-7) auto 0; }
+.empty .btn ~ .btn { margin-block-start: var(--s-4); }
+.empty .tech-btn { margin: var(--s-6) auto 0; }
 
 .note {
   display: flex;
