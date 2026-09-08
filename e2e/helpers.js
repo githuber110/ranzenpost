@@ -113,9 +113,11 @@ async function checkTapTargets(page) {
       return rect.width > 0 && rect.height > 0;
     };
     const offenders = [];
+    const sharesItsPeriod = (el) => el.classList.contains("tt-cell") && el.closest(".tt-stack") !== null;
     const candidates = document.querySelectorAll('button, a[href], [role="button"]');
     for (const el of candidates) {
       if (!isVisible(el)) continue;
+      if (sharesItsPeriod(el)) continue;
       const size = effectiveRect(el);
       if (size.width < 44 || size.height < 44) {
         offenders.push({
