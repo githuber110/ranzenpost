@@ -123,6 +123,11 @@ for (const viewport of VIEWPORTS) {
         await page.locator(".sw-results .opt").first().click();
 
         await tapNext(page);
+        await expect(page.locator(".sw-body input[type=checkbox]")).toHaveCount(2);
+        await expectClean(page, `${label} wizard children`);
+        await page.locator(".sw-body input[type=checkbox]").first().check();
+
+        await tapNext(page);
         await expect(page.locator(".sw-body input[type=checkbox]")).toHaveCount(1);
         expect(await page.locator(".sw-body input[type=checkbox]").isChecked()).toBe(false);
         await expectClean(page, `${label} wizard parents`);
@@ -148,6 +153,9 @@ for (const viewport of VIEWPORTS) {
         await page.locator(".sw-body .search-input").fill("Behrend");
         await page.waitForSelector(".sw-results .opt", { timeout: 8000 });
         await page.locator(".sw-results .opt").first().click();
+        await tapNext(page);
+        await expect(page.locator(".sw-body input[type=checkbox]")).toHaveCount(2);
+        await page.locator(".sw-body input[type=checkbox]").first().check();
         await tapNext(page);
         await tapNext(page);
         await expect(page.locator(".create-name")).toBeVisible();

@@ -96,7 +96,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.20")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.21")
         self.timeout = timeout
         self.username = ""
         self.sleeper = time.sleep
@@ -326,7 +326,7 @@ class IServClient:
             return path
         return f"{self.base_url}{path}"
 
-    def post_absolute(self, url, data, timeout=30):
+    def post_absolute(self, url, data, timeout=30, follow_redirects=True):
         if not self._is_same_origin(url):
             raise DataError("cross-origin request blocked")
-        return self.session.post(url, data=data, timeout=timeout)
+        return self.session.post(url, data=data, timeout=timeout, allow_redirects=follow_redirects)

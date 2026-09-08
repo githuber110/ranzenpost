@@ -313,3 +313,29 @@ def test_the_vendor_exemption_covers_only_the_vendor_directory():
     assert not is_vendor_exempt(FRONTEND / "vendored.js")
     assert not is_vendor_exempt(ROOT / "backend" / "vendor" / "pdf.mjs")
     assert find_hardcoded_german() == []
+
+
+def test_a_period_with_two_lessons_is_as_tall_as_one_with_a_single_lesson():
+    css = (FRONTEND / "styles.css").read_text(encoding="utf-8")
+    cell = _rule_body(css, ".tt-cell {")
+    stack = _rule_body(css, ".tt-stack {")
+    compact = _rule_body(css, ".tt-cell.compact {")
+    assert "var(--tt-row)" in cell, "a single lesson must take the shared row height"
+    assert "var(--tt-row)" in stack, "a shared period must take the same row height"
+    assert "flex: 1 1 0" in compact, "the two lessons must split that height, not add to it"
+    assert "min-height: 0" in compact, "a floor on the split tiles would make the row taller again"
+
+
+def _rule_body(css, selector):
+    bodies = []
+    cursor = 0
+    while True:
+        found = css.find(selector, cursor)
+        if found < 0:
+            break
+        start = found + len(selector)
+        end = css.index("}", start)
+        bodies.append(css[start:end])
+        cursor = end
+    assert bodies, f"no rule for {selector}"
+    return "\n".join(bodies)

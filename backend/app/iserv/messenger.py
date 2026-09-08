@@ -2,12 +2,12 @@ import json
 import logging
 import re
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from .forms import find_client_redirect, parse_forms
+from .forms import affirmative_submit, find_client_redirect
 from .pages import base_shape
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ SANCTIONED_READ_MARKER_PATH = re.compile(r"^/_matrix/client/v3/rooms/[^/]+/read_
 TEACHER_AUTOCOMPLETE_PATH = "/iserv/messenger/autocomplete/teacher"
 TEACHER_AUTOCOMPLETE_TYPE = "userid"
 TEACHER_ROOM_FORM_PATH = "/iserv/messenger/form/room/teacher_new"
+TEACHER_ROOM_FIELD_PREFIX = "teacher_room["
 TEACHER_ROOM_TOKEN_FIELD = "teacher_room[_token]"
 TEACHER_ROOM_TEACHER_FIELD = "teacher_room[teacher_id]"
 TEACHER_ROOM_CHILDREN_FIELD = "teacher_room[child_ids][]"
@@ -413,22 +414,80 @@ def parse_teacher_suggestions(payload):
     return suggestions
 
 
-def build_teacher_room_payload(token, teacher_value, child_ids, add_other_parents):
+def _checkbox_label(soup, control):
+    control_id = control.get("id")
+    if control_id:
+        label = soup.find("label", attrs={"for": control_id})
+        if label:
+            return label.get_text(" ", strip=True)
+    wrapper = control.find_parent("label")
+    if wrapper:
+        return wrapper.get_text(" ", strip=True)
+    return ""
+
+
+def _teacher_room_element(soup):
+    for element in soup.find_all("form"):
+        names = {control.get("name") or "" for control in element.find_all(["input", "select", "textarea"])}
+        if TEACHER_ROOM_TOKEN_FIELD in names or TEACHER_ROOM_CHILDREN_FIELD in names:
+            return element
+    return None
+
+
+def parse_teacher_room_form(html, base_url):
+    soup = BeautifulSoup(html or "", "html.parser")
+    element = _teacher_room_element(soup)
+    if element is None:
+        return None
+    target = element.get("hx-post") or element.get("action")
+    children = []
+    seen = set()
+    for control in element.find_all("input"):
+        if control.get("name") != TEACHER_ROOM_CHILDREN_FIELD:
+            continue
+        value = str(control.get("value") or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        children.append({"id": value, "name": _checkbox_label(soup, control)})
+    token = ""
+    for control in element.find_all("input"):
+        if control.get("name") == TEACHER_ROOM_TOKEN_FIELD:
+            token = str(control.get("value") or "")
+            break
+    submits = {}
+    for control in element.find_all(["button", "input"]):
+        name = control.get("name") or ""
+        if not name.startswith(TEACHER_ROOM_FIELD_PREFIX):
+            continue
+        kind = (control.get("type") or ("submit" if control.name == "button" else "")).lower()
+        if kind == "submit":
+            submits[name] = str(control.get("value") or "")
+    chosen = affirmative_submit(submits)
+    submit = next(iter(chosen.items()), None)
+    return {
+        "action": urljoin(base_url, target or base_url),
+        "token": token,
+        "children": children,
+        "submit": submit,
+    }
+
+
+def build_teacher_room_payload(form, teacher_value, child_ids, add_other_parents):
     payload = [
-        (TEACHER_ROOM_TOKEN_FIELD, token),
+        (TEACHER_ROOM_TOKEN_FIELD, (form or {}).get("token", "")),
         (TEACHER_ROOM_TEACHER_FIELD, teacher_value),
         (TEACHER_ROOM_PARENTS_FIELD, "1" if add_other_parents else "0"),
     ]
     payload.extend((TEACHER_ROOM_CHILDREN_FIELD, child_id) for child_id in child_ids)
+    submit = (form or {}).get("submit")
+    if submit:
+        payload.append(submit)
     return payload
 
 
-def find_teacher_room_token(html, base_url):
-    for form in parse_forms(html or "", base_url):
-        token = form.fields.get(TEACHER_ROOM_TOKEN_FIELD)
-        if token:
-            return str(token)
-    return ""
+def looks_like_teacher_room_form(html):
+    return parse_teacher_room_form(html, "") is not None
 
 
 def room_membership(sync_body, room_id):
