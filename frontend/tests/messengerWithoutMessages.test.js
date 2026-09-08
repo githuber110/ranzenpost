@@ -57,3 +57,28 @@ describe("[P228-A] the messenger stays usable while the messages are locked away
     expect(view.textContent).toContain(window.eval("t('messenger.empty.text')"));
   });
 });
+
+describe("[P247] the buttons say which one is the point", () => {
+  function buttons(window, data) {
+    const view = seed(window, data);
+    return Array.from(view.querySelectorAll(".empty .btn"));
+  }
+
+  test("writing to a teacher leads, retrying follows as the quiet one", () => {
+    const { window } = loadApp();
+    const found = buttons(window, WITHHELD);
+    expect(found.length).toBe(2);
+    expect(found[0].textContent).toContain(window.eval("t('messenger.create.action')"));
+    expect(found[0].className).not.toContain("ghost");
+    expect(found[1].textContent).toContain(window.eval("t('common.retry')"));
+    expect(found[1].className).toContain("ghost");
+  });
+
+  test("without the privilege the retry is the only and loudest button", () => {
+    const { window } = loadApp();
+    const found = buttons(window, Object.assign({}, WITHHELD, { can_write_to_teacher: false }));
+    expect(found.length).toBe(1);
+    expect(found[0].textContent).toContain(window.eval("t('common.retry')"));
+    expect(found[0].className).not.toContain("ghost");
+  });
+});

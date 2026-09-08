@@ -339,3 +339,18 @@ def _rule_body(css, selector):
         cursor = end
     assert bodies, f"no rule for {selector}"
     return "\n".join(bodies)
+
+def test_the_big_empty_state_icon_never_swells_a_button_icon():
+    css = (FRONTEND / "styles.css").read_text(encoding="utf-8")
+    swelling = [
+        line.strip()
+        for line in css.splitlines()
+        if line.strip().startswith(".empty") and "border-radius: 50%" in line
+    ]
+    assert swelling, "the empty state should still give its own icon the round plate"
+    for rule in swelling:
+        selector = rule.split("{", 1)[0].strip()
+        assert ">" in selector, (
+            "an empty state may carry buttons that bring their own icon; a descendant selector "
+            f"would blow those up to 64px as well: {selector}"
+        )

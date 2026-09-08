@@ -3,6 +3,28 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.22
+
+- The lesson times entered in the settings apply everywhere. Since the school server started
+  sending its own time for each lesson, that time had quietly won over the entered one in the
+  overview, the "now" and "next" markers, the greying of past lessons, the end-of-day line, the
+  lesson detail sheet, the sheet for moving an exam, the period choice in a sick note and the
+  DTSTART of every event in a calendar subscription. Only the week grid still read the settings.
+  An entered time now comes first, the school server's time only fills a period left empty, and
+  an entry that is not a clock time is ignored rather than shown. When an entered time differs
+  from the school's, the lesson ends 45 minutes after it instead of at the school's unrelated end.
+- The settings card for lesson times says what is true now: the entered times apply everywhere,
+  the school's times are shown beneath them as a fallback. A difference is a plain note, not a
+  warning.
+- An empty state no longer inflates every icon it contains. The big round icon at the top used to
+  be styled by a rule that also caught the plus in "Write to a teacher" and the info glyph of the
+  technical-details button, which swelled both to 64 px on a grey disc and pushed the details
+  button off centre. Stacked buttons in an empty state share one width, and the details button is
+  centred.
+- When the messages cannot be read, "Write to a teacher" is the main button and "Try again" the
+  quiet one beneath it. Without the privilege to write to a teacher, "Try again" stays the main
+  button.
+
 ## 2609.01.21
 
 - Marking a lesson as an exam and subscribing to a calendar no longer answer "this child is not

@@ -6537,14 +6537,16 @@ async function retryMessengerRooms() {
 function messengerUnavailableBlock(data) {
   const failure = data && data.messages_unavailable;
   if (!failure) return null;
+  const entry = teacherRoomEntry("btn");
+  const retry = retryButton(retryMessengerRooms);
+  if (entry) retry.classList.add("ghost");
   const block = emptyBlock(
     "alert",
     t("messenger.unavailable.title"),
     t("messenger.unavailable.text", { reason: t(failure.message_key || "messenger.error.text") }),
-    retryButton(retryMessengerRooms)
+    entry || retry
   );
-  const entry = teacherRoomEntry("btn");
-  if (entry) block.append(entry);
+  if (entry) block.append(retry);
   const entries = diagnosisEntries(failure.diagnosis);
   if (entries.length) block.append(techDetailsButton(entries));
   return block;
