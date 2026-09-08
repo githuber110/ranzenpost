@@ -739,3 +739,42 @@ def test_holiday_events_never_carry_a_colour_or_category(tmp_path):
     ics = _build(store, _subscription(store, ("public_holidays",)), FakeHolidayCalendar(days=days))
 
     assert "CATEGORIES:" not in ics
+
+
+def test_the_calendar_follows_the_entered_time_not_the_one_the_school_sent(tmp_path):
+    store = _store(tmp_path)
+    config = store.load_config()
+    config["period_times"] = dict(config["period_times"], **{"1": "07:40"})
+    store.save_config(config)
+    store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
+
+    ics = _build(store, _subscription(store))
+
+    assert "DTSTART;TZID=Europe/Berlin:20260902T074000" in ics
+    assert "DTEND;TZID=Europe/Berlin:20260902T082500" in ics
+    assert "20260902T080000" not in ics, "the school time must not survive anywhere in the event"
+
+
+def test_the_calendar_detail_line_names_the_entered_time_too(tmp_path):
+    store = _store(tmp_path)
+    config = store.load_config()
+    config["period_times"] = dict(config["period_times"], **{"1": "07:40"})
+    store.save_config(config)
+    store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
+
+    ics = _unfold(_build(store, _subscription(store)))
+
+    assert "07:40" in ics
+    assert "08:25" in ics
+
+
+def test_a_period_without_an_entered_time_still_uses_the_school_time(tmp_path):
+    store = _store(tmp_path)
+    config = store.load_config()
+    config["period_times"] = dict(config["period_times"], **{"1": ""})
+    store.save_config(config)
+    store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
+
+    ics = _build(store, _subscription(store))
+
+    assert "DTSTART;TZID=Europe/Berlin:20260902T080000" in ics

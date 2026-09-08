@@ -1884,3 +1884,36 @@ def test_a_letter_page_that_fails_counts_as_neither_read_nor_blocked(tmp_path):
     service.client_factory = lambda url: BrokenLetterClient(url)
     key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
     assert service.mark_letters_read([key]) == {"read": 0, "blocked": 0, "failed": 1}
+
+
+def test_the_period_choice_follows_the_entered_time_not_the_school_one(tmp_path):
+    service, store = with_absences(tmp_path, FakeAbsenceDsa())
+    config = store.load_config()
+    config["period_times"] = {"1": "07:40"}
+    store.save_config(config)
+    assert service.absences_overview()["period_labels"] == [
+        {"number": 1, "label": "1. Stunde 07:40 - 08:25"},
+        {"number": 2, "label": "2. Stunde 08:45 - 09:30"},
+    ]
+
+
+def test_the_period_choice_keeps_the_school_end_when_the_entry_agrees(tmp_path):
+    service, store = with_absences(tmp_path, FakeAbsenceDsa())
+    config = store.load_config()
+    config["period_times"] = {"1": "08:00"}
+    store.save_config(config)
+    assert service.absences_overview()["period_labels"][0] == {
+        "number": 1,
+        "label": "1. Stunde 08:00 - 08:45",
+    }
+
+
+def test_the_period_choice_ignores_a_nonsense_entry(tmp_path):
+    service, store = with_absences(tmp_path, FakeAbsenceDsa())
+    config = store.load_config()
+    config["period_times"] = {"1": "viertel vor acht"}
+    store.save_config(config)
+    assert service.absences_overview()["period_labels"][0] == {
+        "number": 1,
+        "label": "1. Stunde 08:00 - 08:45",
+    }

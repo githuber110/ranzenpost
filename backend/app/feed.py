@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import cancellations, feed_ics, holidays, marks, messages
 from .iserv.absences import berlin_offset
+from .mapping import configured_time
 from .subscriptions import (
     COMPONENT_ABSENCES,
     COMPONENT_MARKS,
@@ -169,10 +170,11 @@ def lesson_summary(language, lesson):
     )
 
 
-def lesson_description(language, lesson, day, parallel_count):
+def lesson_description(language, lesson, day, parallel_count, start_time=None):
     none_text = _text(language, "common.none")
     rows = [_detail_line(language, "calendar.detail.date", _german_date(day))]
-    start_time = lesson.get("start_time")
+    if start_time is None:
+        start_time = lesson.get("start_time")
     if start_time:
         opening, closing = _lesson_time_range(start_time)
         rows.append(
@@ -288,6 +290,14 @@ def dropped_slots(entries, child_id):
     return slots
 
 
+def lesson_start_of(slot):
+    for _, lesson in slot:
+        value = str(lesson.get("start_time") or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def timetable_events(language, tag, collected, day_map, blocked, config=None, dropped=()):
     settings = config or {}
     off = set(dropped)
@@ -297,14 +307,15 @@ def timetable_events(language, tag, collected, day_map, blocked, config=None, dr
         if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
             continue
         own_drop = (day, period) in off
+        start_time = configured_time(settings, period) or lesson_start_of(slot)
         for index, (_, lesson) in enumerate(slot):
             uid = f"{tag}-{day.strftime('%Y%m%d')}-p{period}-{index}@{UID_DOMAIN}"
-            if not lesson.get("start_time"):
+            if not start_time:
                 unscheduled.setdefault(day, []).append(lesson)
                 continue
             shown = dict(lesson, change_kind="cancelled") if own_drop else lesson
-            start = _lesson_start(day, lesson["start_time"])
-            description = lesson_description(language, shown, day, len(slot))
+            start = _lesson_start(day, start_time)
+            description = lesson_description(language, shown, day, len(slot), start_time)
             if own_drop:
                 notice = _translated(language, OWN_DROP_NOTICE_KEY)
                 if notice:

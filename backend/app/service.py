@@ -74,7 +74,13 @@ from .iserv.dsa_timetable import parse_current_timetable
 from .iserv.timetable import lesson_key
 from .iserv.totp import generate_code
 from .iserv.twofactor import parse_delete_token
-from .mapping import merge_discovered_codes, to_display
+from .mapping import (
+    LESSON_MINUTES as LESSON_LENGTH,
+    configured_time,
+    merge_discovered_codes,
+    shift_time,
+    to_display,
+)
 from .messenger import MessengerService
 
 LETTERS_INDEX_PATH = "/iserv/parentletter/parent/index"
@@ -1053,7 +1059,7 @@ class IServService:
             "types": enabled_absence_types(settings),
             "deregister_options": targets,
             "periods": periods,
-            "period_labels": self._period_labels(dsa, periods, config.get("language")),
+            "period_labels": self._period_labels(dsa, periods, config.get("language"), config),
             "rules": absence_rules(settings),
             "day_options": sick_day_options(),
             "leave_min_days": _min_days(settings),
@@ -1094,7 +1100,7 @@ class IServService:
         history = prune_absence_history(history)
         self.store.save_absence_history(history)
 
-    def _period_labels(self, dsa, periods, language=None):
+    def _period_labels(self, dsa, periods, language=None, config=None):
         starts = self._slot_times(dsa, "period_times")
         ends = self._slot_end_times(dsa)
         labels = []
@@ -1103,8 +1109,13 @@ class IServService:
             name = slot.get("name") or messages.text_in(
                 language, "common.period.label", {"number": number}
             )
-            start = starts.get(str(number))
-            end = ends.get(str(number))
+            chosen = configured_time(config, number)
+            if chosen:
+                start = chosen
+                end = ends.get(str(number)) if chosen == starts.get(str(number)) else shift_time(chosen, LESSON_LENGTH)
+            else:
+                start = starts.get(str(number))
+                end = ends.get(str(number))
             label = f"{name} {start} - {end}" if start and end else name
             labels.append({"number": number, "label": label})
         return labels
