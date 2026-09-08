@@ -39,10 +39,11 @@ describe("[C11] cancelled lessons get the neutral 'empty' look, substitution sta
     expect(cell.querySelector(".room").textContent).toBe("Vertr.");
   });
 
-  test("a plain lesson still shows its room unchanged", () => {
+  test("a plain lesson carries its subject alone, without the room", () => {
     const { window } = loadApp();
     const cell = renderCell(window, { subject_code: "MA", room: "R204" });
-    expect(cell.querySelector(".room").textContent).toBe("R204");
+    expect(cell.querySelector(".sub").textContent).toBe("MA");
+    expect(cell.querySelector(".room")).toBeNull();
   });
 
   test("legend shows an x symbol for Entfällt and a dot for Vertretung", () => {

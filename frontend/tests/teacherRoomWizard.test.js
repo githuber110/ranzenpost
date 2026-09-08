@@ -31,10 +31,8 @@ function seed(window, children, rooms) {
 }
 
 const ONE_CHILD = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
-const TWO_CHILDREN = [
-  { child_id: "c1", name: "Mia", class_name: "3b" },
-  { child_id: "c2", name: "Tom", class_name: "1a" },
-];
+const MIA = { id: "11111111-1111-4111-8111-111111111111", name: "Mia Muster" };
+const TOM = { id: "22222222-2222-4222-8222-222222222222", name: "Tom Muster" };
 
 function flow(window) {
   return {
@@ -56,6 +54,23 @@ function jsonReply(body) {
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function answerChildren(window, children, extra) {
+  window.fetch = (input, init) => {
+    const url = String(input);
+    if (url.includes("api/messenger/room/teacher/children")) {
+      return jsonReply({ children, allowed: true });
+    }
+    return extra ? extra(input, init) : jsonReply({});
+  };
+}
+
+async function openWizard(window, children) {
+  answerChildren(window, children === undefined ? [MIA] : children);
+  window.eval("startTeacherRoom()");
+  await settle();
+  await settle();
+}
 
 describe("[P198] the way into the teacher room wizard", () => {
   test("no entry without the IServ privilege", () => {
@@ -82,20 +97,90 @@ describe("[P198] the way into the teacher room wizard", () => {
 });
 
 describe("[P198] the wizard path", () => {
-  test("one child skips the child step and presets the id", () => {
+  test("one child skips the child step and presets the id IServ printed", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
-    window.eval("startTeacherRoom()");
+    await openWizard(window, [MIA]);
     expect(flow(window).path).toEqual(["teacher", "parents", "review"]);
-    expect(window.eval("state.teacherRoom.childIds")).toEqual(["c1"]);
+    expect(window.eval("state.teacherRoom.childIds")).toEqual([MIA.id]);
   });
 
-  test("more than one child asks, and nothing is preselected", () => {
+  test("more than one child asks, and nothing is preselected", async () => {
     const { window } = loadApp();
-    seed(window, TWO_CHILDREN);
-    window.eval("startTeacherRoom()");
+    seed(window, ONE_CHILD);
+    await openWizard(window, [MIA, TOM]);
     expect(flow(window).path).toEqual(["teacher", "children", "parents", "review"]);
     expect(window.eval("state.teacherRoom.childIds")).toEqual([]);
+  });
+
+  test("the children come from the IServ form, never from the app's own list", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    await openWizard(window, [MIA, TOM]);
+    window.eval("teacherRoomFlow.go('children')");
+    const boxes = window.eval("teacherRoomFlow.node").querySelectorAll(".sw-body input[type=checkbox]");
+    expect(boxes.length).toBe(2);
+    expect(window.eval("teacherRoomFlow.node").textContent).toContain("Mia Muster");
+    expect(window.eval("teacherRoomFlow.node").textContent).not.toContain("3b");
+    boxes[1].checked = true;
+    boxes[1].dispatchEvent(new window.Event("change"));
+    expect(window.eval("state.teacherRoom.childIds")).toEqual([TOM.id]);
+  });
+
+  test("an already chosen child shows up ticked when the step is opened again", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    await openWizard(window, [MIA, TOM]);
+    window.eval(`(function () { state.teacherRoom.childIds = ["${TOM.id}"]; })`)();
+    window.eval("teacherRoomFlow.go('children')");
+    const boxes = window.eval("teacherRoomFlow.node").querySelectorAll(".sw-body input[type=checkbox]");
+    expect([boxes[0].checked, boxes[1].checked]).toEqual([false, true]);
+  });
+
+  test("the step waits for IServ instead of showing an empty choice", () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    answerChildren(window, [MIA, TOM]);
+    window.eval("startTeacherRoom()");
+    expect(flow(window).path).toEqual(["teacher", "children", "parents", "review"]);
+    window.eval("teacherRoomFlow.go('children')");
+    expect(window.eval("teacherRoomFlow.node").querySelector(".loading")).not.toBeNull();
+  });
+
+  test("no child on offer keeps the step and never sends an empty request", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    const posts = [];
+    answerChildren(window, [], (input, init) => {
+      posts.push({ url: String(input), body: init && init.body ? JSON.parse(init.body) : null });
+      return jsonReply({});
+    });
+    window.eval("startTeacherRoom()");
+    await settle();
+    await settle();
+    expect(flow(window).path).toContain("children");
+    window.eval(`(function (hit) { chooseTeacher(hit); })`)(TEACHER_A);
+    window.eval("teacherRoomFlow.go('children')");
+    const node = window.eval("teacherRoomFlow.node");
+    expect(node.textContent).toContain(window.eval("t('messenger.create.children.empty.title')"));
+    flow(window).next.click();
+    await settle();
+    expect(window.eval("teacherRoomFlow.current()")).toBe("children");
+    expect(posts.filter((call) => call.url.includes("api/messenger/room/teacher"))).toEqual([]);
+  });
+
+  test("a refused child list offers a retry instead of a dead end", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    window.fetch = () => Promise.reject(new Error("boom"));
+    window.eval("startTeacherRoom()");
+    await settle();
+    await settle();
+    expect(window.eval("state.teacherRoom.childrenFailed")).toBe(true);
+    window.eval("teacherRoomFlow.go('children')");
+    const node = window.eval("teacherRoomFlow.node");
+    expect(node.textContent).toContain(window.eval("t('messenger.create.children.failed.title')"));
+    expect(node.querySelector(".sw-body .btn")).not.toBeNull();
   });
 
   test("the other-parents box starts switched off by default", () => {
@@ -121,10 +206,10 @@ describe("[P198] the wizard path", () => {
     );
   });
 
-  test("no step past the child step without a child", () => {
+  test("no step past the child step without a child", async () => {
     const { window } = loadApp();
-    seed(window, TWO_CHILDREN);
-    window.eval("startTeacherRoom()");
+    seed(window, ONE_CHILD);
+    await openWizard(window, [MIA, TOM]);
     window.eval(`(function (hit) { chooseTeacher(hit); })`)(TEACHER_A);
     flow(window).next.click();
     expect(window.eval("teacherRoomFlow.current()")).toBe("children");
@@ -142,8 +227,10 @@ describe("[P198] the teacher search", () => {
       const calls = [];
       const aborted = [];
       window.fetch = (input, init) => {
-        calls.push(String(input));
-        if (init && init.signal) init.signal.addEventListener("abort", () => aborted.push(String(input)));
+        const url = String(input);
+        if (url.includes("api/messenger/room/teacher/children")) return jsonReply({ children: [MIA], allowed: true });
+        calls.push(url);
+        if (init && init.signal) init.signal.addEventListener("abort", () => aborted.push(url));
         return jsonReply({ teachers: [TEACHER_A], allowed: true });
       };
       window.eval("startTeacherRoom()");
@@ -169,7 +256,9 @@ describe("[P198] the teacher search", () => {
       seed(window, ONE_CHILD);
       const calls = [];
       window.fetch = (input) => {
-        calls.push(String(input));
+        const url = String(input);
+        if (url.includes("api/messenger/room/teacher/children")) return jsonReply({ children: [MIA], allowed: true });
+        calls.push(url);
         return jsonReply({ teachers: [], allowed: true });
       };
       window.eval("startTeacherRoom()");
@@ -219,20 +308,20 @@ describe("[P198] the teacher search", () => {
 });
 
 describe("[P198] duplicate defence and the summary", () => {
-  test("a teacher who already has a room adds the duplicate step", () => {
+  test("a teacher who already has a room adds the duplicate step", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
-    window.eval("startTeacherRoom()");
+    await openWizard(window, [MIA]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_B);
     expect(flow(window).path).toEqual(["teacher", "parents", "duplicate", "review"]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_A);
     expect(flow(window).path).toEqual(["teacher", "parents", "review"]);
   });
 
-  test("the duplicate step offers the existing room instead of a second one", () => {
+  test("the duplicate step offers the existing room instead of a second one", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
-    window.eval("startTeacherRoom()");
+    await openWizard(window, [MIA]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_B);
     window.eval("teacherRoomFlow.go('duplicate')");
     const node = window.eval("teacherRoomFlow.node");
@@ -243,15 +332,15 @@ describe("[P198] duplicate defence and the summary", () => {
     expect(window.eval("state.messengerRoom.room_id")).toBe("!b:example.test");
   });
 
-  test("the summary makes the teacher the loudest thing on the screen", () => {
+  test("the summary makes the teacher the loudest thing on the screen", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
-    window.eval("startTeacherRoom()");
+    await openWizard(window, [MIA]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_A);
     window.eval("teacherRoomFlow.go('review')");
     const node = window.eval("teacherRoomFlow.node");
     expect(node.querySelector(".create-name b").textContent).toBe("Hr. Osterkamp");
-    expect(node.textContent).toContain("Mia");
+    expect(node.textContent).toContain("Mia Muster");
     expect(node.textContent).toContain(window.eval("t('messenger.create.review.parents.no')"));
     expect(node.querySelector(".sw-next").textContent).toBe(window.eval("t('messenger.create.submit')"));
     expect(node.querySelector(".sw-next").className).toContain("danger");
@@ -260,12 +349,12 @@ describe("[P198] duplicate defence and the summary", () => {
 });
 
 describe("[P198] the one POST", () => {
-  function atReview(window, children) {
-    seed(window, children || ONE_CHILD);
-    window.eval("startTeacherRoom()");
+  async function atReview(window, offered) {
+    seed(window, ONE_CHILD);
+    await openWizard(window, offered || [MIA]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_A);
-    if ((children || ONE_CHILD).length > 1) {
-      window.eval("(function () { state.teacherRoom.childIds = ['c1', 'c2']; })")();
+    if ((offered || [MIA]).length > 1) {
+      window.eval(`(function () { state.teacherRoom.childIds = ${JSON.stringify([MIA.id, TOM.id])}; })`)();
     }
     window.eval("teacherRoomFlow.go('review')");
     return window.eval("teacherRoomFlow.node");
@@ -273,7 +362,7 @@ describe("[P198] the one POST", () => {
 
   test("a double tap on the create button sends exactly one request", async () => {
     const { window } = loadApp();
-    const node = atReview(window);
+    const node = await atReview(window);
     const posts = [];
     window.fetch = (input, init) => {
       posts.push({ url: String(input), body: init && init.body ? JSON.parse(init.body) : null });
@@ -291,7 +380,7 @@ describe("[P198] the one POST", () => {
 
   test("the autocomplete value travels into the POST untouched, the flags beside it", async () => {
     const { window } = loadApp();
-    const node = atReview(window, TWO_CHILDREN);
+    const node = await atReview(window, [MIA, TOM]);
     window.eval("(function () { state.teacherRoom.addOtherParents = true; })")();
     const posts = [];
     window.fetch = (input, init) => {
@@ -305,14 +394,38 @@ describe("[P198] the one POST", () => {
     const create = posts.find((call) => call.url.includes("api/messenger/room/teacher"));
     expect(create.body).toEqual({
       teacher: TEACHER_A.value,
-      child_ids: ["c1", "c2"],
+      child_ids: [MIA.id, TOM.id],
       add_other_parents: true,
     });
   });
 
+  test("a summary reached without a child never turns into a request", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    const posts = [];
+    answerChildren(window, [MIA, TOM], (input, init) => {
+      posts.push({ url: String(input), body: init && init.body ? JSON.parse(init.body) : null });
+      return jsonReply({ ok: true, message_key: "api.messenger.room.ok", room_id: "!x:e.test" });
+    });
+    window.eval("startTeacherRoom()");
+    await settle();
+    await settle();
+    window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_A);
+    window.eval("teacherRoomFlow.go('review')");
+    const node = window.eval("teacherRoomFlow.node");
+    node.querySelector(".sw-next").click();
+    await settle();
+    await settle();
+    expect(posts.filter((call) => call.url.includes("api/messenger/room/teacher?"))).toEqual([]);
+    expect(posts.filter((call) => call.body && "child_ids" in call.body)).toEqual([]);
+    expect(node.querySelector(".sw-status").textContent).toBe(
+      window.eval("t('messenger.create.block.children')")
+    );
+  });
+
   test("a rejected answer keeps the user in the step with a readable message", async () => {
     const { window } = loadApp();
-    const node = atReview(window);
+    const node = await atReview(window);
     window.fetch = (input) => {
       if (String(input).includes("api/messenger/rooms")) return jsonReply(ROOMS);
       return jsonReply({ ok: false, message_key: "api.messenger.room.rejected" });
@@ -329,7 +442,7 @@ describe("[P198] the one POST", () => {
 
   test("a failure re-syncs and lands on the duplicate warning when a room appeared meanwhile", async () => {
     const { window } = loadApp();
-    const node = atReview(window);
+    const node = await atReview(window);
     window.fetch = (input) => {
       if (String(input).includes("api/messenger/rooms")) {
         return jsonReply({
@@ -360,7 +473,7 @@ describe("[P198] the one POST", () => {
 
   test("a created room opens right away instead of dropping back into the list", async () => {
     const { window } = loadApp();
-    const node = atReview(window);
+    const node = await atReview(window);
     window.fetch = (input) => {
       if (String(input).includes("api/messenger/rooms")) {
         return jsonReply({
@@ -396,8 +509,8 @@ describe("[P198] a late answer never overwrites a newer query", () => {
   test("an answer that belongs to an older query is dropped", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
-    window.fetch = () => jsonReply({ teachers: [TEACHER_A], allowed: true });
     window.eval("startTeacherRoom()");
+    window.fetch = () => jsonReply({ teachers: [TEACHER_A], allowed: true });
     window.eval("(function () { state.teacherRoom.query = 'Oste'; })")();
     await window.eval("runTeacherSearch('Ost')");
     expect(window.eval("state.teacherRoom.results")).toBe(null);

@@ -102,6 +102,7 @@
   --tabbar-h: 56px;
   --tap-min: 44px;
   --tt-stack-gap: 2px;
+  --tt-row: 52px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-x: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
@@ -1527,12 +1528,13 @@ button.section-head {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
+  min-height: var(--tt-row);
 }
 .tt-hour b { font-size: 0.75rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .tt-hour span { font-size: 0.625rem; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .tt-cell {
-  min-height: 46px;
+  block-size: var(--tt-row);
+  min-height: var(--tt-row);
   border-radius: var(--r-sm);
   border: 0;
   padding: var(--s-2) var(--s-1);
@@ -1599,9 +1601,10 @@ button.section-head {
   display: flex;
   flex-direction: column;
   gap: var(--tt-stack-gap);
-  min-height: calc(var(--tap-min) * 2 + var(--tt-stack-gap));
+  block-size: var(--tt-row);
+  min-block-size: var(--tt-row);
 }
-.tt-cell.compact { min-height: var(--tap-min); flex: 1 1 auto; padding: var(--s-1); }
+.tt-cell.compact { block-size: auto; min-height: 0; flex: 1 1 0; padding: 0 var(--s-1); }
 .tt-cell.compact .sub { font-size: 0.6875rem; }
 .tt-cell.compact .room { display: none; }
 .tt-cell.compact .bar { width: 2px; }
@@ -1609,7 +1612,7 @@ button.section-head {
 .tt-cell.compact.out::after { top: 0; inset-inline-end: 3px; font-size: 0.625rem; }
 
 .tt-hol {
-  min-height: 46px;
+  min-height: var(--tt-row);
   min-width: 0;
   border: 0;
   border-radius: var(--r-sm);

@@ -7,7 +7,7 @@ import { loadApp } from "./loadApp.js";
 const stylesCss = fs.readFileSync(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "styles.css"),
   "utf8"
-);
+).split("\r\n").join("\n");
 
 function rule(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -49,15 +49,15 @@ describe("[P215] two lessons in one slot are still two real tap targets", () => 
     expect(token("--tap-min")).toBe("44px");
   });
 
-  test("a stacked lesson keeps the full minimum height instead of halving it", () => {
+  test("two stacked lessons split one row instead of stretching it", () => {
     const cell = rule(".tt-cell.compact");
-    expect(cell).toMatch(/min-height:\s*var\(--tap-min\)/);
-    expect(cell).not.toMatch(/min-height:\s*0/);
+    expect(cell).toMatch(/flex:\s*1 1 0/);
+    expect(cell).toMatch(/min-height:\s*0/);
   });
 
-  test("the stack reserves room for both of them plus the gap", () => {
-    const stack = rule(".tt-stack");
-    expect(stack).toMatch(/min-height:\s*calc\(var\(--tap-min\) \* 2 \+ var\(--tt-stack-gap\)\)/);
+  test("the stack takes the shared row height", () => {
+    expect(token("--tt-row")).toMatch(/^\d+px$/);
+    expect(rule(".tt-stack")).toMatch(/block-size:\s*var\(--tt-row\)/);
   });
 
   test("a stacked lesson never carries the pill chip class of the filter bars", () => {

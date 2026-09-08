@@ -62,7 +62,8 @@ def test_the_new_fields_travel_with_the_lesson(week):
     first = by_id[91001]
     assert first.subject_name == "Deutsch"
     assert first.subject_color == "#0f3beb"
-    assert first.teacher_name == "Beispiel Katrin"
+    assert first.teacher_name == "Katrin Beispiel"
+    assert first.teacher_surname == "Beispiel"
     assert first.start_time == "08:00"
     assert first.end_time == "08:45"
 
@@ -70,7 +71,8 @@ def test_the_new_fields_travel_with_the_lesson(week):
 def test_several_teachers_are_joined_in_both_code_and_name(week):
     by_id = {lesson.lesson_id: lesson for lesson in week.combined}
     assert by_id[91003].teacher == "BEI, ZWE"
-    assert by_id[91003].teacher_name == "Beispiel Katrin, Zweit Olga"
+    assert by_id[91003].teacher_name == "Katrin Beispiel, Olga Zweit"
+    assert by_id[91003].teacher_surname == "Beispiel, Zweit"
 
 
 def test_a_lesson_without_a_teacher_keeps_an_empty_code_instead_of_failing(week):
@@ -127,3 +129,37 @@ def test_a_subject_without_an_acronym_falls_back_to_its_name():
     lesson = entry_to_lesson(entry, MONDAY)
     assert lesson.subject == "Religion"
     assert lesson.date == "08.09.2026"
+
+
+def test_a_teacher_whose_first_name_is_missing_still_gets_a_readable_name():
+    from app.iserv.dsa_timetable import entry_to_lesson
+    from datetime import date
+
+    entry = {
+        "weekday": 0,
+        "timeTableSlot": {"number": 1},
+        "courseSubject": {
+            "subject": {"acronym": "D"},
+            "teachers": [{"externalId": "BEI", "surname": "Beispiel", "displayname": "Beispiel"}],
+        },
+    }
+    lesson = entry_to_lesson(entry, date(2026, 9, 7))
+    assert lesson.teacher_name == "Beispiel"
+    assert lesson.teacher_surname == "Beispiel"
+
+
+def test_a_teacher_with_only_a_display_name_is_not_lost():
+    from app.iserv.dsa_timetable import entry_to_lesson
+    from datetime import date
+
+    entry = {
+        "weekday": 0,
+        "timeTableSlot": {"number": 1},
+        "courseSubject": {
+            "subject": {"acronym": "D"},
+            "teachers": [{"externalId": "BEI", "displayname": "Frau Beispiel"}],
+        },
+    }
+    lesson = entry_to_lesson(entry, date(2026, 9, 7))
+    assert lesson.teacher_name == "Frau Beispiel"
+    assert lesson.teacher_surname == "Frau Beispiel"

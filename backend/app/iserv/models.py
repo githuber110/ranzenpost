@@ -22,6 +22,7 @@ class Lesson:
     subject_name: str = ""
     subject_color: str = ""
     teacher_name: str = ""
+    teacher_surname: str = ""
     start_time: str = ""
     end_time: str = ""
 
