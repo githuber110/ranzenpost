@@ -5,8 +5,8 @@ import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const stylesCss = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8");
-const wizardCss = fs.readFileSync(path.resolve(dirname, "..", "wizard.css"), "utf8");
+const stylesCss = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8").split("\r\n").join("\n");
+const wizardCss = fs.readFileSync(path.resolve(dirname, "..", "wizard.css"), "utf8").split("\r\n").join("\n");
 
 function rule(css, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

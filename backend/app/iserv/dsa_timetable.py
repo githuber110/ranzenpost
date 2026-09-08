@@ -32,8 +32,25 @@ def _teacher_codes(teachers):
     return ", ".join(code for code in codes if code)
 
 
+def _full_name(teacher):
+    forename = _text(teacher.get("forename"))
+    surname = _text(teacher.get("surname"))
+    if forename and surname:
+        return f"{forename} {surname}"
+    return surname or forename or _text(teacher.get("displayname"))
+
+
 def _teacher_names(teachers):
-    names = [_text(teacher.get("displayname")) for teacher in teachers or [] if isinstance(teacher, dict)]
+    names = [_full_name(teacher) for teacher in teachers or [] if isinstance(teacher, dict)]
+    return ", ".join(name for name in names if name)
+
+
+def _teacher_surnames(teachers):
+    names = [
+        _text(teacher.get("surname")) or _full_name(teacher)
+        for teacher in teachers or []
+        if isinstance(teacher, dict)
+    ]
     return ", ".join(name for name in names if name)
 
 
@@ -56,6 +73,7 @@ def entry_to_lesson(entry, monday):
         subject_name=_text(subject.get("name")),
         subject_color=_text(subject.get("hexColor")).lower(),
         teacher_name=_teacher_names(course_subject.get("teachers")),
+        teacher_surname=_teacher_surnames(course_subject.get("teachers")),
         start_time=_text(slot.get("startTime")),
         end_time=_text(slot.get("endTime")),
     )

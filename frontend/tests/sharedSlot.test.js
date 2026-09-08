@@ -77,8 +77,8 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     const week = {
       lessons: [
         { day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D", room: "R1", change_kind: "" },
-        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "M", room: "R1", teacher_label: "Frau Bauer", change_kind: "" },
-        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "TEAM", room: "R2", teacher_label: "Herr Klein", change_kind: "cancelled" },
+        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "M", room: "R1", teacher_label: "Frau Bauer", teacher_surname: "Bauer", change_kind: "" },
+        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "TEAM", room: "R2", teacher_label: "Herr Klein", teacher_surname: "Klein", change_kind: "cancelled" },
       ],
       period_times: { 1: "08:00", 4: "10:40" },
     };
@@ -91,7 +91,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(items.length).toBe(2);
     expect([...items].map((item) => item.querySelector(".row-title").textContent)).toEqual(["M", "TEAM"]);
     expect([...items].map((item) => item.querySelector(".row-sub").textContent)).toEqual(
-      ["Raum R1 · Frau Bauer", "Raum R2 · Herr Klein"]
+      ["Bauer", "Klein"]
     );
     expect(items[1].querySelector(".row-title").style.textDecoration).toBe("line-through");
     const metas = pairRow.querySelectorAll(".row-meta");
@@ -116,8 +116,8 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     const week = {
       lessons: [
         { day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D", room: "R1", change_kind: "" },
-        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "M", room: "R1", teacher_label: "Frau Bauer", change_kind: "" },
-        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "TEAM", room: "R2", teacher_label: "Herr Klein", change_kind: "cancelled" },
+        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "M", room: "R1", teacher_label: "Frau Bauer", teacher_surname: "Bauer", change_kind: "" },
+        { day_of_week: 2, period: 4, start_time: "10:40", subject_code: "TEAM", room: "R2", teacher_label: "Herr Klein", teacher_surname: "Klein", change_kind: "cancelled" },
       ],
       period_times: { 1: "08:00", 4: "10:40" },
     };

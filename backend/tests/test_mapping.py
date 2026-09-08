@@ -207,3 +207,76 @@ def test_more_subjects_than_palette_entries_still_get_a_colour():
     subjects = {chr(65 + i): {"label": chr(65 + i), "color": ""} for i in range(14)}
     merged = merge_discovered_codes({"subjects": subjects, "teachers": {}}, [])["subjects"]
     assert all(entry["color"] for entry in merged.values())
+
+
+def test_a_name_iserv_delivered_is_corrected_when_iserv_changes_it():
+    from app.iserv.models import Lesson
+    from app.mapping import merge_discovered_codes
+
+    lesson = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Beispiel Katrin", teacher_surname="Katrin",
+    )
+    config = merge_discovered_codes({}, [lesson])
+    assert config["teachers"]["BEI"]["label"] == "Beispiel Katrin"
+    better = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Katrin Beispiel", teacher_surname="Beispiel",
+    )
+    config = merge_discovered_codes(config, [better])
+    assert config["teachers"]["BEI"]["label"] == "Katrin Beispiel"
+    assert config["teachers"]["BEI"]["surname"] == "Beispiel"
+
+
+def test_a_name_the_user_typed_is_never_overwritten():
+    from app.iserv.models import Lesson
+    from app.mapping import merge_discovered_codes
+
+    config = {"teachers": {"BEI": {"label": "Frau B.", "label_source": "", "is_class_teacher": False}}}
+    lesson = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Katrin Beispiel", teacher_surname="Beispiel",
+    )
+    merged = merge_discovered_codes(config, [lesson])
+    assert merged["teachers"]["BEI"]["label"] == "Frau B."
+    assert merged["teachers"]["BEI"]["surname"] == "Beispiel"
+
+
+def test_a_name_stored_before_the_order_was_fixed_is_still_corrected():
+    from app.iserv.models import Lesson
+    from app.mapping import merge_discovered_codes
+
+    config = {"teachers": {"BEI": {"label": "Beispiel Katrin", "is_class_teacher": False}}}
+    lesson = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Katrin Beispiel", teacher_surname="Beispiel",
+    )
+    merged = merge_discovered_codes(config, [lesson])
+    assert merged["teachers"]["BEI"]["label"] == "Katrin Beispiel"
+
+
+def test_two_teachers_stored_in_the_old_order_are_corrected_together():
+    from app.iserv.models import Lesson
+    from app.mapping import merge_discovered_codes
+
+    config = {"teachers": {"BEI": {"label": "Beispiel Katrin, Zweit Olga", "is_class_teacher": False}}}
+    lesson = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Katrin Beispiel, Olga Zweit",
+        teacher_surname="Beispiel, Zweit",
+    )
+    merged = merge_discovered_codes(config, [lesson])
+    assert merged["teachers"]["BEI"]["label"] == "Katrin Beispiel, Olga Zweit"
+
+
+def test_a_different_name_the_user_typed_survives_the_correction():
+    from app.iserv.models import Lesson
+    from app.mapping import merge_discovered_codes
+
+    config = {"teachers": {"BEI": {"label": "Klassenlehrerin", "is_class_teacher": True}}}
+    lesson = Lesson(
+        date="07.09.2026", day_of_week=1, period=1, subject="D", teacher="BEI",
+        room="", class_name="3b", teacher_name="Katrin Beispiel", teacher_surname="Beispiel",
+    )
+    merged = merge_discovered_codes(config, [lesson])
+    assert merged["teachers"]["BEI"]["label"] == "Klassenlehrerin"

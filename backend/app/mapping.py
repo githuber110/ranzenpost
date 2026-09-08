@@ -9,6 +9,9 @@ COLOR_SOURCE = "color_source"
 USER_COLOR = "user"
 AUTO_COLOR = "auto"
 
+NAME_SOURCE = "label_source"
+AUTO_NAME = "auto"
+
 PALETTE_MIGRATION = {
     "#0e6b70": "#135859",
     "#7a4b9c": "#834ac9",
@@ -123,12 +126,21 @@ def _native_teachers(lessons):
             continue
         name = str(getattr(lesson, "teacher_name", "") or "").strip()
         if name:
-            found[lesson.teacher] = name
+            found[lesson.teacher] = (name, str(getattr(lesson, "teacher_surname", "") or "").strip())
     return found
 
 
 def _unnamed(entry, code):
     return not entry.get("label") or entry.get("label") == code
+
+
+def _name_parts(value):
+    return sorted(part for part in str(value or "").replace(",", " ").split() if part)
+
+
+def _same_name_reordered(stored, name):
+    parts = _name_parts(stored)
+    return bool(parts) and parts == _name_parts(name)
 
 
 def merge_discovered_codes(config, lessons):
@@ -151,13 +163,21 @@ def merge_discovered_codes(config, lessons):
         subjects[code] = entry
     subjects = _assign_auto_colors(subjects)
     for code in distinct(lesson.teacher for lesson in lessons):
-        name = native_teachers.get(code, "")
+        name, surname = native_teachers.get(code, ("", ""))
         if code not in teachers:
-            teachers[code] = {"label": name or code, "is_class_teacher": False}
+            teachers[code] = {
+                "label": name or code,
+                "surname": surname,
+                NAME_SOURCE: AUTO_NAME if name else "",
+                "is_class_teacher": False,
+            }
             continue
         entry = dict(teachers[code])
-        if name and _unnamed(entry, code):
+        if name and (_unnamed(entry, code) or _same_name_reordered(entry.get("label"), name)):
             entry["label"] = name
+            entry[NAME_SOURCE] = AUTO_NAME
+        if surname:
+            entry["surname"] = surname
         teachers[code] = entry
     merged = dict(config)
     merged["subjects"] = subjects
@@ -202,6 +222,7 @@ def to_display(lesson, config, change=None):
         "color": subject.get("color") or "",
         "teacher_code": lesson.teacher,
         "teacher_label": teacher.get("label") or lesson.teacher,
+        "teacher_surname": teacher.get("surname") or getattr(lesson, "teacher_surname", "") or "",
         "is_class_teacher": bool(teacher.get("is_class_teacher")),
         "room": lesson.room,
         "change_kind": change.get("kind") or "",
