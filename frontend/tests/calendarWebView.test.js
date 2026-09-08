@@ -32,7 +32,7 @@ function actionsFor(agent) {
       components: ["timetable"],
       path_template: "/calendar/{token}.ics",
       port: 8100,
-      host: "10.10.2.2",
+      host: "192.168.0.42",
       host_source: "config_entry",
       supervisor: true,
       port_open: true,

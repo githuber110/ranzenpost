@@ -177,8 +177,7 @@ Two things worth knowing before you do:
 - Only your own authorized children are read. The app never probes other child IDs.
 - **Disconnect** (Settings) tries to remove the app's two-factor token from IServ, then deletes the
   school URL, children, phone numbers and secrets locally, leaving you back at the setup wizard.
-- The repository itself contains no personal data: tests run against anonymized fixtures, and a
-  guard test fails the build if a real name, address or token ever lands in a tracked file.
+- The repository itself contains no personal data.
 
 ## Development
 
@@ -187,18 +186,7 @@ No build step for the frontend — it is vanilla JS served as-is.
 ```bash
 python -m venv .venv
 .venv/bin/pip install -r backend/requirements-dev.txt
-
-cd backend && ../.venv/bin/python -m pytest -q   # backend, guards, i18n parity
-npx vitest run                                   # frontend unit tests (jsdom)
-npx playwright test                              # end-to-end against a fixture server
 ```
-
-Run pytest through the project virtualenv rather than a global interpreter — a globally installed
-Home Assistant pytest plugin can abort the whole session before the first test runs. On Windows the
-interpreter is `.venv\Scripts\python.exe`.
-
-The Playwright suite starts `backend/tests/e2e_fixture_app.py`, a stand-in for IServ that serves
-invented children, lessons and letters. Real school data never enters a test.
 
 ### Layout
 
@@ -207,18 +195,14 @@ invented children, lessons and letters. Real school data never enters a test.
 - `backend/`
   - `app/iserv/` — the IServ client: form login with TOTP, children, timetable, absences, letters.
   - `app/` — config store, encryption, mapping, poller, calendar feed, the FastAPI Ingress service.
-  - `tests/` — pytest against anonymized fixtures only.
 - `frontend/` — the Ingress web UI (vanilla JS).
   - `i18n/` — the string database, one flat `key -> text` file per language.
-  - `tests/` — Vitest against a jsdom-rendered app.
-- `e2e/` — Playwright specs, including responsive and right-to-left layout guards.
-- `docs/screenshots/` — the images used above, generated from the fixture server.
+- `docs/screenshots/` — the images used above.
 
 ### Conventions
 
 Code is English and comment-free. No user-visible text lives in the frontend code: German
-(`frontend/i18n/de.json`) is the source of truth, the API answers with a `message_key`, and a guard
-test fails the build for a hardcoded string or for a key missing from any language file. CSS uses
+(`frontend/i18n/de.json`) is the source of truth and the API answers with a `message_key`. CSS uses
 logical properties throughout so the Arabic layout mirrors correctly.
 
 ## License
