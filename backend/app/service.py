@@ -377,6 +377,9 @@ class IServService:
     def messenger_teacher_search(self, query):
         return self._messenger().search_teachers(query)
 
+    def messenger_teacher_room_children(self):
+        return self._messenger().teacher_room_children()
+
     def messenger_create_teacher_room(self, teacher, child_ids, add_other_parents):
         return self._messenger().create_teacher_room(teacher, child_ids, add_other_parents)
 
@@ -476,6 +479,7 @@ class IServService:
         if listed:
             self._remember_children(listed)
             self._migrate_stored_children(listed)
+            self._learn_children(listed)
             return listed
         try:
             native = self._session().get_children()
@@ -490,6 +494,7 @@ class IServService:
                 exc_info=True,
             )
             self._timetable_page_denied = True
+            self._learn_children(fallback)
             return fallback
         try:
             students = self._dsa().students()
@@ -507,7 +512,30 @@ class IServService:
                 "class_full": student.get("class_full", "") if student else "",
                 "class_code": student.get("class_code", "") if student else "",
             })
+        self._learn_children(result)
         return result
+
+    def _learn_children(self, children):
+        config = self.store.load_config()
+        stored = [child for child in config.get("children") or [] if isinstance(child, dict)]
+        known = {str(child.get("child_id") or "") for child in stored}
+        added = []
+        for child in children:
+            child_id = str(child.get("child_id") or "")
+            if not child_id or child_id in known:
+                continue
+            known.add(child_id)
+            entry = {"child_id": child_id}
+            if child.get("name"):
+                entry["name"] = child["name"]
+            if child.get("class_name"):
+                entry["class_name"] = child["class_name"]
+            added.append(entry)
+        if not added:
+            return
+        config["children"] = stored + added
+        self.store.save_config(config)
+        logger.info("the app learned %d child(ren) it had not stored yet", len(added))
 
     def _children_from_school_account(self):
         try:
