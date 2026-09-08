@@ -84,7 +84,7 @@ def _no_network(monkeypatch):
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("10.10.2.2:8123", "10.10.2.2"),
+        ("192.168.0.42:8123", "192.168.0.42"),
         ("http://homeassistant.local:8123/lovelace", "homeassistant.local"),
         ("https://ha.example.test/", "ha.example.test"),
         ("webcal://ha.example.test:8100/calendar/abc.ics", "ha.example.test"),
@@ -98,7 +98,7 @@ def _no_network(monkeypatch):
         ("fd00::1", "fd00::1"),
         ("//homeassistant.local:8123", "homeassistant.local"),
         ("http://user:secret@ha.example.test:8123/x", "ha.example.test"),
-        ("10.10.2.2", "10.10.2.2"),
+        ("192.168.0.42", "192.168.0.42"),
         ("ha.example.test?x=1", "ha.example.test"),
         ("ha.example.test#frag", "ha.example.test"),
         ("", ""),
@@ -118,10 +118,10 @@ def test_sanitize_host_reduces_every_input_to_a_bare_host(value, expected):
 
 
 def test_sanitize_host_fixes_the_regression_that_killed_the_calendar_link():
-    typed = "10.10.2.2:8123"
+    typed = "192.168.0.42:8123"
     host = sanitize_host(typed)
-    assert host == "10.10.2.2"
-    assert f"webcal://{host}:{FEED_PORT}/calendar/token.ics" == "webcal://10.10.2.2:8100/calendar/token.ics"
+    assert host == "192.168.0.42"
+    assert f"webcal://{host}:{FEED_PORT}/calendar/token.ics" == "webcal://192.168.0.42:8100/calendar/token.ics"
 
 
 def test_sanitize_host_never_leaves_a_scheme_or_a_port_behind():
@@ -159,9 +159,9 @@ def test_resolve_host_prefers_the_internal_url(monkeypatch):
 
 def test_resolve_host_accepts_an_internal_url_without_a_port(monkeypatch):
     monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
-    _install(monkeypatch, core={"internal_url": "http://10.10.2.2"})
+    _install(monkeypatch, core={"internal_url": "http://192.168.0.42"})
 
-    assert resolve_host() == "10.10.2.2"
+    assert resolve_host() == "192.168.0.42"
 
 
 def test_resolve_host_unwraps_a_bracketed_ipv6_internal_url(monkeypatch):
@@ -432,12 +432,12 @@ def test_calendar_access_merges_the_host_and_the_port_state(monkeypatch):
     monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
     _install(
         monkeypatch,
-        core={"internal_url": "http://10.10.2.2:8123"},
+        core={"internal_url": "http://192.168.0.42:8123"},
         info={"data": {"network": {CONTAINER_PORT_KEY: 8100}}},
     )
 
     assert calendar_access() == {
-        "host": "10.10.2.2",
+        "host": "192.168.0.42",
         "host_source": HOST_SOURCE_INTERNAL,
         "supervisor": True,
         "port_open": True,
@@ -476,14 +476,14 @@ def test_the_subscription_listing_carries_the_resolved_host_and_the_port_state(
     monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
     _install(
         monkeypatch,
-        core={"internal_url": "http://10.10.2.2:8123"},
+        core={"internal_url": "http://192.168.0.42:8123"},
         info={"data": {"network": {CONTAINER_PORT_KEY: None}}},
     )
     client, _ = _api(tmp_path)
 
     body = client.get("/api/calendar/subscriptions").json()
 
-    assert body["host"] == "10.10.2.2"
+    assert body["host"] == "192.168.0.42"
     assert body["host_source"] == HOST_SOURCE_INTERNAL
     assert body["port_open"] is False
     assert body["supervisor"] is True
