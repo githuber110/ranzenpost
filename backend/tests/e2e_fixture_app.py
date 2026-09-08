@@ -405,6 +405,14 @@ class FixtureService:
         ]
         return {"teachers": hits, "allowed": True}
 
+    def messenger_teacher_room_children(self):
+        return {
+            "allowed": True,
+            "children": [
+                {"id": child["child_id"], "name": child["name"]} for child in SCENARIO_CHILDREN
+            ],
+        }
+
     def messenger_create_teacher_room(self, teacher, child_ids, add_other_parents):
         teacher = str(teacher or "").strip()
         wanted = [str(value or "").strip() for value in (child_ids or [])]

@@ -47,6 +47,10 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
     def messenger_teachers(query: str = ""):
         return read_endpoint(_logged("teachers", lambda: service.messenger_teacher_search(query)))
 
+    @app.get("/api/messenger/room/teacher/children")
+    def messenger_teacher_room_children():
+        return read_endpoint(_logged("teacher_room_children", service.messenger_teacher_room_children))
+
     @app.post("/api/messenger/room/teacher")
     def messenger_teacher_room(body: dict = Body(...)):
         return write_endpoint(

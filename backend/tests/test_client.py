@@ -50,7 +50,7 @@ class FakeSession:
             return FakeResponse(read("timetable_page.html"), url)
         return FakeResponse(read("login_page.html"), f"{BASE}/iserv/auth/login?step1")
 
-    def post(self, url, data=None, timeout=None):
+    def post(self, url, data=None, timeout=None, allow_redirects=True):
         if "auth/login" in url:
             self.login_data = data
             if self.login_failed:
@@ -139,10 +139,11 @@ class SecuritySession:
             return FakeResponse(read(listing), url)
         return FakeResponse(read(self.page), url)
 
-    def post(self, url, data=None, timeout=None):
+    def post(self, url, data=None, timeout=None, allow_redirects=True):
         self.posted = data
         self.posted_url = url
         self.posted_once = True
+        self.followed = allow_redirects
         return FakeResponse(read(self.post_result), url)
 
     def request(self, method, url, data=None, timeout=None):

@@ -324,28 +324,49 @@ def test_the_teacher_suggestion_value_is_handed_through_untouched():
     ]
 
 
-def test_the_teacher_room_payload_repeats_the_child_field_for_every_child():
-    from app.iserv.messenger import build_teacher_room_payload
+TEACHER_ROOM_PAGE = (
+    '<html><body><form method="post" action="/iserv/messenger/form/room/teacher_new">'
+    '<input type="checkbox" id="c0" name="teacher_room[child_ids][]" value="uuid-a">'
+    '<label for="c0">Mia Muster</label>'
+    '<label><input type="checkbox" name="teacher_room[child_ids][]" value="uuid-b">Tom Muster</label>'
+    '<input type="checkbox" name="teacher_room[child_ids][]" value="uuid-a">'
+    '<button type="submit" name="teacher_room[submit]" value="go">Anlegen</button>'
+    '<input type="hidden" name="teacher_room[_token]" value="csrf-42">'
+    "</form></body></html>"
+)
 
-    assert build_teacher_room_payload("tok", "userid:1", ["a", "b"], False) == [
-        ("teacher_room[_token]", "tok"),
+
+def test_the_children_come_with_their_iserv_side_value_and_their_printed_name():
+    from app.iserv.messenger import parse_teacher_room_form
+
+    form = parse_teacher_room_form(TEACHER_ROOM_PAGE, "https://school.example/iserv/messenger/x")
+    assert form["children"] == [
+        {"id": "uuid-a", "name": "Mia Muster"},
+        {"id": "uuid-b", "name": "Tom Muster"},
+    ]
+    assert form["token"] == "csrf-42"
+    assert form["submit"] == ("teacher_room[submit]", "go")
+    assert form["action"] == "https://school.example/iserv/messenger/form/room/teacher_new"
+
+
+def test_a_page_without_the_teacher_room_form_reports_nothing_instead_of_guessing():
+    from app.iserv.messenger import parse_teacher_room_form
+
+    assert parse_teacher_room_form("<html><form><input name='other'></form></html>", "https://x/") is None
+
+
+def test_the_teacher_room_payload_repeats_the_child_field_for_every_child():
+    from app.iserv.messenger import build_teacher_room_payload, parse_teacher_room_form
+
+    form = parse_teacher_room_form(TEACHER_ROOM_PAGE, "https://school.example/iserv/messenger/x")
+    assert build_teacher_room_payload(form, "userid:1", ["uuid-a", "uuid-b"], False) == [
+        ("teacher_room[_token]", "csrf-42"),
         ("teacher_room[teacher_id]", "userid:1"),
         ("teacher_room[add_other_parents]", "0"),
-        ("teacher_room[child_ids][]", "a"),
-        ("teacher_room[child_ids][]", "b"),
+        ("teacher_room[child_ids][]", "uuid-a"),
+        ("teacher_room[child_ids][]", "uuid-b"),
+        ("teacher_room[submit]", "go"),
     ]
-
-
-def test_the_fresh_csrf_token_is_taken_from_the_form_page():
-    from app.iserv.messenger import find_teacher_room_token
-
-    html = (
-        '<html><body><form method="post">'
-        '<input name="teacher_room[_token]" value="csrf-42">'
-        "</form></body></html>"
-    )
-    assert find_teacher_room_token(html, "https://school.example/form") == "csrf-42"
-    assert find_teacher_room_token("<html></html>", "https://school.example/form") == ""
 
 
 def test_room_membership_names_the_state_the_sync_reports():

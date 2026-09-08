@@ -3,6 +3,40 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.21
+
+- Marking a lesson as an exam and subscribing to a calendar no longer answer "this child is not
+  known". A setup that finished without picking a child stored no child at all, so every action
+  tied to one was refused even though the overview listed the children. The app now remembers
+  every child the school server hands it.
+- The absence summary always names the child the report is for. With a single child it used to
+  leave the name out entirely, which is where a wrong choice would be least noticeable.
+- Teachers are named first name first. The school server delivers the name parts separately now,
+  so the app builds the name itself instead of taking the surname-first display string. A name
+  typed in the settings is never overwritten.
+- Today's plan shows the subject and the teacher's surname, without the room.
+- Every period in the week grid is the same height. A period with two subjects splits that height
+  between them instead of stretching the whole row, and the tiles carry the subject code alone.
+  The two halves stay separate buttons, but they are smaller than the minimum tap size the rest of
+  the app keeps to.
+- The last lesson's end time reads "the last lesson ends at ...".
+- The note about substitutions not being released for parents is gone.
+- A chat room with a teacher can now be created from the app. The teacher is found by
+  autocompletion from the first letter, the children are the ones the school server itself offers
+  on that form, and other parents of the same child can be invited along.
+- The children on that form come from the school server instead of from the app's own list. The
+  app used to send its own identifiers, which the form does not know, so the choice could not
+  reach the school server.
+- Whether an account may write to a teacher is now read from the messenger page alone. It used to
+  be learned on the way to the message history, so an account that cannot fetch its chat
+  credentials never got as far as the question.
+- When the message history cannot be read, the room list no longer collapses into a single error.
+  It says why the messages are missing, keeps the technical detail one tap away, and leaves the
+  way to a new teacher room open.
+- The answer to a room request is only read as success when the school server names the room or
+  sends the browser onward to it. An answer that hands the form back is reported as a refusal, and
+  an answer nobody can interpret is reported as unconfirmed instead of being claimed as done.
+
 ## 2609.01.20
 
 - Archiving a letter, putting one back, and marking letters as read now check that the school
