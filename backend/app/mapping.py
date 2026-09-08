@@ -1,4 +1,8 @@
 import re
+
+LESSON_MINUTES = 45
+CLOCK = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
 DEFAULT_COLORS = [
     "#84142a", "#f7703e", "#ec932f", "#7b791d", "#404f0e",
     "#2dae4b", "#208068", "#135859", "#31aed2", "#2486ed",
@@ -185,6 +189,33 @@ def merge_discovered_codes(config, lessons):
     return merged
 
 
+def configured_time(config, period):
+    times = (config or {}).get("period_times") or {}
+    value = str(times.get(str(period), "") or "").strip()
+    return value if CLOCK.match(value) else ""
+
+
+def shift_time(value, minutes):
+    match = CLOCK.match(str(value or "").strip())
+    if not match:
+        return ""
+    total = int(match.group(1)) * 60 + int(match.group(2)) + minutes
+    if total < 0 or total >= 24 * 60:
+        return ""
+    return "%02d:%02d" % divmod(total, 60)
+
+
+def lesson_times(lesson, config):
+    chosen = configured_time(config, lesson.period)
+    native_start = str(getattr(lesson, "start_time", "") or "").strip()
+    native_end = str(getattr(lesson, "end_time", "") or "").strip()
+    if not chosen:
+        return native_start, native_end
+    if chosen == native_start:
+        return chosen, native_end
+    return chosen, shift_time(chosen, LESSON_MINUTES)
+
+
 def subject_label(config, code):
     if not code:
         return ""
@@ -209,14 +240,14 @@ def _previous_display(config, previous):
 def to_display(lesson, config, change=None):
     subject = config.get("subjects", {}).get(lesson.subject, {})
     teacher = config.get("teachers", {}).get(lesson.teacher, {})
-    times = config.get("period_times", {})
+    start_time, end_time = lesson_times(lesson, config)
     change = change or {}
     return {
         "date": lesson.date,
         "day_of_week": lesson.day_of_week,
         "period": lesson.period,
-        "start_time": getattr(lesson, "start_time", "") or times.get(str(lesson.period), ""),
-        "end_time": getattr(lesson, "end_time", "") or "",
+        "start_time": start_time,
+        "end_time": end_time,
         "subject_code": lesson.subject,
         "subject_label": subject.get("label") or lesson.subject,
         "color": subject.get("color") or "",
