@@ -143,7 +143,9 @@ def test_a_calendar_subscription_follows_the_child_to_its_new_id(tmp_path):
 def test_a_stored_child_that_matches_no_current_child_is_left_alone(tmp_path):
     service, store, _, _ = make(tmp_path, config={"children": [{"child_id": "uuid-other", "name": "Alex Anders"}]})
     service.children()
-    assert store.load_config()["children"] == [{"child_id": "uuid-other", "name": "Alex Anders"}]
+    stored = store.load_config()["children"]
+    assert stored[0] == {"child_id": "uuid-other", "name": "Alex Anders"}
+    assert [child["child_id"] for child in stored[1:]] == ["500001"], "the listed child must become known too"
 
 
 def test_when_the_school_account_cannot_be_read_the_old_way_still_works(tmp_path):
@@ -176,7 +178,8 @@ def test_every_lesson_keeps_the_old_contract_and_gains_the_new_fields(tmp_path):
     assert lesson["subject_code"] == "D"
     assert lesson["subject_label"] == "Deutsch"
     assert lesson["color"] == "#0f3beb"
-    assert lesson["teacher_label"] == "Beispiel Katrin"
+    assert lesson["teacher_label"] == "Katrin Beispiel"
+    assert lesson["teacher_surname"] == "Beispiel"
     assert lesson["start_time"] == "08:00"
     assert lesson["end_time"] == "08:45"
     assert lesson["change_kind"] == ""

@@ -257,3 +257,36 @@ def test_moving_a_child_nowhere_changes_nothing(tmp_path):
     assert registry.move_child("", "b") == 0
     assert registry.move_child("a", "a") == 0
     assert store.load_marks()["marks"][0]["child_id"] == "a"
+
+
+class SchoolAccount:
+    def __init__(self, children):
+        self._children = children
+
+    def me_with_children(self):
+        return {"children": self._children}
+
+
+def test_a_setup_finished_without_a_chosen_child_still_knows_the_children(tmp_path):
+    from app.subscriptions import SubscriptionRegistry, known_child
+
+    service, store = make(tmp_path, Client("https://school.example"))
+    assert store.load_config().get("children") in (None, [])
+    service._children_from_school_account = lambda: [
+        {"child_id": "500001", "name": "Mia Muster", "class_name": "3b"}
+    ]
+    assert service.children()[0]["child_id"] == "500001"
+    stored = store.load_config()["children"]
+    assert [child["child_id"] for child in stored] == ["500001"]
+    assert known_child(store.load_config(), "500001") is True
+    assert SubscriptionRegistry(store).create("500001", ["timetable"], require_region=False)["child_id"] == "500001"
+
+
+def test_a_child_the_app_already_knows_is_not_stored_twice(tmp_path):
+    service, store = make(tmp_path, Client("https://school.example"))
+    store.save_config(dict(store.load_config(), children=[{"child_id": "500001", "name": "Mia"}]))
+    service._children_from_school_account = lambda: [
+        {"child_id": "500001", "name": "Mia Muster", "class_name": "3b"}
+    ]
+    service.children()
+    assert len(store.load_config()["children"]) == 1
