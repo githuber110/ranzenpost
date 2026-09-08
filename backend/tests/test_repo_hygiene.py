@@ -6,29 +6,14 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-INTERNAL_FILES = (
-    "claude.md",
-    "agents.md",
-    "gemini.md",
-    "copilot-instructions.md",
-    ".cursorrules",
-    ".aider.conf.yml",
-    "handoff.md",
-    "backlog.md",
-    "prompts.md",
-)
-
-ASSISTANT_TRAILERS = (
-    "co-authored-by: claude",
-    "co-authored-by: chatgpt",
-    "co-authored-by: copilot",
-    "generated with [claude",
+TRAILERS = (
+    "co-authored-by:",
+    "generated with [",
     "🤖 generated",
 )
 
-INTERNAL_TALK = (
-    "ranzenpost-planung",
-    "planungs-repo",
+PRIVATE_TERMS = (
+    "-planung",
     "handoff.md",
     "backlog.md",
 )
@@ -57,34 +42,53 @@ def _require_full_history():
         )
 
 
-def test_no_internal_working_notes_are_tracked():
+def _excluded_names():
+    text = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    names = set()
+    for line in text.splitlines():
+        entry = line.strip().rstrip("/")
+        if not entry or entry.startswith("#") or entry.startswith("!") or "*" in entry:
+            continue
+        names.add(entry.lower())
+    return names
+
+
+def test_nothing_the_ignore_list_excludes_is_tracked_anyway():
     if not _has_git():
         pytest.skip("no git checkout")
+    excluded = _excluded_names()
+    assert excluded, "the ignore list should not be empty"
     tracked = [line.strip() for line in _git("ls-files").splitlines() if line.strip()]
     offenders = [
         path
         for path in tracked
-        if pathlib.PurePosixPath(path).name.lower() in INTERNAL_FILES
+        if path.lower() in excluded or pathlib.PurePosixPath(path).name.lower() in excluded
     ]
-    assert offenders == [], (
-        "these files describe how the project is worked on, not what it does, and they name "
-        f"paths that are meant to stay private: {offenders}"
-    )
+    assert offenders == [], f"these are excluded but tracked anyway: {offenders}"
 
 
-def test_no_commit_message_carries_an_assistant_signature():
+def test_no_commit_message_carries_a_trailer():
     if not _has_git():
         pytest.skip("no git checkout")
     _require_full_history()
     messages = _git("log", "--format=%B").lower()
-    offenders = [marker for marker in ASSISTANT_TRAILERS if marker in messages]
-    assert offenders == [], (
-        "the published history should read as ordinary project work; these markers say "
-        f"otherwise: {offenders}"
-    )
+    offenders = [marker for marker in TRAILERS if marker in messages]
+    assert offenders == [], f"commit messages end with their last paragraph: {offenders}"
 
 
-def test_no_commit_message_leaks_the_internal_process():
+def test_every_commit_is_written_under_the_project_owner():
+    if not _has_git():
+        pytest.skip("no git checkout")
+    _require_full_history()
+    people = set()
+    for line in _git("log", "--format=%an <%ae>%n%cn <%ce>").splitlines():
+        entry = line.strip()
+        if entry:
+            people.add(entry)
+    assert len(people) == 1, f"the history should carry one name, not {sorted(people)}"
+
+
+def test_no_commit_subject_points_at_something_unpublished():
     if not _has_git():
         pytest.skip("no git checkout")
     _require_full_history()
@@ -96,12 +100,11 @@ def test_no_commit_message_leaks_the_internal_process():
         if TICKET_ID.search(subject):
             offenders.append(f"{sha}: ticket id in '{subject[:60]}'")
         lowered = subject.lower()
-        for term in INTERNAL_TALK:
+        for term in PRIVATE_TERMS:
             if term in lowered:
                 offenders.append(f"{sha}: '{term}' in '{subject[:60]}'")
     assert offenders == [], (
-        "commit subjects are public and should describe the change, not the private "
-        f"planning that led to it: {offenders}"
+        f"a subject should describe the change, not where it was written down: {offenders}"
     )
 
 

@@ -63,8 +63,7 @@ const missing = expected.filter((name) => !done.has(name));
 if (missing.length) {
   console.error(
     `\n${missing.length} of ${expected.length} test files never ran, even after ${MAX_ROUNDS} ` +
-      `attempts:\n  ${missing.join("\n  ")}\n` +
-      "A run that quietly leaves files out is worse than a failing one, so this counts as a failure."
+      `attempts:\n  ${missing.join("\n  ")}`
   );
   process.exit(1);
 }
