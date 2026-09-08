@@ -12,6 +12,7 @@ from .iserv.messenger import (
     BOOTSTRAP_MARKER,
     MAX_CONTINUATION_HOPS,
     STAGE_BOOTSTRAP,
+    STAGE_MESSAGE_KEYS,
     STAGE_NO_CREDENTIALS,
     STAGE_LOGIN,
     STAGE_MATRIX,
@@ -30,8 +31,9 @@ from .iserv.messenger import (
     build_text_message,
     continuation_target,
     discover_matrix_base_url,
-    find_teacher_room_token,
     looks_like_auth_page,
+    looks_like_teacher_room_form,
+    parse_teacher_room_form,
     new_txn_id,
     page_diagnosis,
     parse_authenticate_paths,
@@ -74,8 +76,11 @@ ROOM_OK_KEY = "api.messenger.room.ok"
 ROOM_PENDING_KEY = "api.messenger.room.pending"
 ROOM_FAILED_KEY = "api.messenger.room.failed"
 ROOM_REJECTED_KEY = "api.messenger.room.rejected"
+ROOM_UNCONFIRMED_KEY = "api.messenger.room.unconfirmed"
 ROOM_INCOMPLETE_KEY = "api.messenger.room.incomplete"
 ROOM_FORBIDDEN_KEY = "api.messenger.room.forbidden"
+ROOM_REDIRECT_STATUSES = (302, 303)
+ROOM_CREATED_STATUSES = (200, 201, 204) + ROOM_REDIRECT_STATUSES
 
 
 def _require(pattern, value, message):
@@ -194,6 +199,7 @@ class MessengerService:
         if status != 200:
             logger.warning("messenger module answered %s: %s", status, diagnosis)
             raise MessengerStageError(STAGE_MODULE, diagnosis)
+        self._remember_privileges(response.text)
         auth = None
         try:
             auth = parse_bootstrap(response.text)
@@ -210,14 +216,34 @@ class MessengerService:
         if auth is None:
             logger.warning("messenger bootstrap exhausted every path: %s", diagnosis)
             raise MessengerStageError(STAGE_BOOTSTRAP, diagnosis)
-        privileges = parse_privileges(response.text) or {}
         secrets = self.store.load_secrets()
         secrets.update({f"messenger_{field}": auth.get(field, "") for field in AUTH_FIELDS})
-        secrets[PRIVILEGES_KNOWN_KEY] = "1"
-        secrets[TEACHER_PRIVILEGE_KEY] = "1" if privileges.get("can_write_to_teacher") else ""
         secrets[MATRIX_BASE_URL_KEY] = self._matrix_base_url(client)
         self.store.save_secrets(secrets)
         return auth
+
+    def _remember_privileges(self, html):
+        privileges = parse_privileges(html)
+        if privileges is None:
+            logger.warning("the messenger page named no privileges, keeping what is stored")
+            return
+        secrets = self.store.load_secrets()
+        secrets[PRIVILEGES_KNOWN_KEY] = "1"
+        secrets[TEACHER_PRIVILEGE_KEY] = "1" if privileges.get("can_write_to_teacher") else ""
+        self.store.save_secrets(secrets)
+
+    def _load_privileges(self):
+        client = self.iserv.iserv_session()
+        response, continuation_hops = self._fetch_messenger_page(client)
+        diagnosis = page_diagnosis(response)
+        diagnosis["continuation_hops"] = continuation_hops
+        if looks_like_auth_page(getattr(response, "url", "")):
+            logger.warning("the privilege lookup landed on the login flow: %s", diagnosis)
+            raise MessengerStageError(STAGE_LOGIN, diagnosis)
+        if diagnosis["status"] != 200:
+            logger.warning("the privilege lookup answered %s: %s", diagnosis["status"], diagnosis)
+            raise MessengerStageError(STAGE_MODULE, diagnosis)
+        self._remember_privileges(response.text)
 
     def _matrix_base_url(self, client):
         fallback = client.base_url
@@ -234,7 +260,7 @@ class MessengerService:
     def _can_write_to_teacher(self):
         secrets = self.store.load_secrets()
         if not secrets.get(PRIVILEGES_KNOWN_KEY):
-            self._bootstrap()
+            self._load_privileges()
             secrets = self.store.load_secrets()
         return bool(secrets.get(TEACHER_PRIVILEGE_KEY))
 
@@ -284,8 +310,6 @@ class MessengerService:
         return self.store.load_secrets().get("messenger_user_id", "")
 
     def rooms(self):
-        can_write_to_teacher = self._can_write_to_teacher()
-
         def call(client):
             response = client.sync(timeout_ms=0)
             self._require_matrix_ok("sync", response)
@@ -295,8 +319,26 @@ class MessengerService:
                 "self_user_id": own_user_id,
             }
 
-        payload = self._with_matrix(call)
-        payload["can_write_to_teacher"] = can_write_to_teacher
+        try:
+            payload = self._with_matrix(call)
+        except (MessengerStageError, LoginError) as error:
+            try:
+                open_to_teachers = self._can_write_to_teacher()
+            except Exception:
+                logger.warning("the privilege lookup failed while reporting an earlier one", exc_info=True)
+                raise error from None
+            if not open_to_teachers:
+                raise
+            logger.warning("the message list stays unreadable, the teacher room path stays open", exc_info=True)
+            payload = {
+                "rooms": [],
+                "self_user_id": "",
+                "messages_unavailable": {
+                    "message_key": getattr(error, "message_key", "") or STAGE_MESSAGE_KEYS[STAGE_LOGIN],
+                    "diagnosis": dict(getattr(error, "detail", None) or {}),
+                },
+            }
+        payload["can_write_to_teacher"] = self._can_write_to_teacher()
         return payload
 
     def _sync_body(self):
@@ -342,50 +384,84 @@ class MessengerService:
             raise MessengerStageError(STAGE_BOOTSTRAP, {"where": "teacher_search"}) from error
         return {"teachers": parse_teacher_suggestions(payload), "allowed": True}
 
+    def _teacher_room_form(self):
+        client = self.iserv.iserv_session()
+        response = client.fetch(TEACHER_ROOM_FORM_PATH)
+        status = getattr(response, "status_code", 0)
+        if status != 200:
+            logger.warning("teacher room form answered %s", status)
+            raise MessengerStageError(STAGE_MODULE, {"where": "teacher_room_form", "status": status})
+        form = parse_teacher_room_form(response.text, response.url)
+        if form is None:
+            logger.warning("teacher room form carried no form: %s", page_diagnosis(response, ""))
+            raise MessengerStageError(STAGE_MODULE, {"where": "teacher_room_form", "status": status})
+        return client, form
+
+    def teacher_room_children(self):
+        if not self._can_write_to_teacher():
+            return {"children": [], "allowed": False}
+        _, form = self._teacher_room_form()
+        return {"children": list(form["children"]), "allowed": True}
+
     def create_teacher_room(self, teacher, child_ids, add_other_parents):
         teacher = str(teacher or "").strip()
-        wanted = [str(value or "").strip() for value in (child_ids or [])]
-        wanted = [value for value in wanted if value]
+        wanted = []
+        for value in child_ids or []:
+            cleaned = str(value or "").strip()
+            if cleaned and cleaned not in wanted:
+                wanted.append(cleaned)
         if not teacher or not wanted:
             return messages.result(False, ROOM_INCOMPLETE_KEY)
         if not self._can_write_to_teacher():
             return messages.result(False, ROOM_FORBIDDEN_KEY)
-        client = self.iserv.iserv_session()
-        form = client.fetch(TEACHER_ROOM_FORM_PATH)
-        if getattr(form, "status_code", 0) != 200:
-            logger.warning("teacher room form answered %s", getattr(form, "status_code", 0))
-            raise MessengerStageError(
-                STAGE_MODULE, {"where": "teacher_room_form", "status": getattr(form, "status_code", 0)}
-            )
-        token = find_teacher_room_token(form.text, form.url)
-        if not token:
-            logger.warning("teacher room form carried no token: %s", page_diagnosis(form, ""))
+        client, form = self._teacher_room_form()
+        if not form["token"]:
+            logger.warning("teacher room form carried no token")
             return messages.result(False, ROOM_FAILED_KEY)
+        offered = [child["id"] for child in form["children"]]
+        chosen = [value for value in wanted if value in offered]
+        if len(chosen) != len(wanted):
+            logger.warning("the teacher room form no longer offers every chosen child")
+            return messages.result(False, ROOM_INCOMPLETE_KEY)
         created = client.post_absolute(
-            form.url, data=build_teacher_room_payload(token, teacher, wanted, add_other_parents)
+            form["action"],
+            data=build_teacher_room_payload(form, teacher, chosen, add_other_parents),
+            follow_redirects=False,
         )
         return self._teacher_room_outcome(created)
 
     def _teacher_room_outcome(self, created):
-        if getattr(created, "status_code", 0) not in (200, 201):
-            logger.warning("teacher room creation answered %s", getattr(created, "status_code", 0))
+        status = getattr(created, "status_code", 0)
+        if status not in ROOM_CREATED_STATUSES:
+            logger.warning("teacher room creation answered %s", status)
             return messages.result(False, ROOM_FAILED_KEY)
-        if "json" not in str(created.headers.get("content-type") or "").lower():
-            logger.warning("teacher room creation answered without json: %s", page_diagnosis(created, ""))
+        body = None
+        if "json" in str(created.headers.get("content-type") or "").lower():
+            try:
+                body = created.json()
+            except ValueError:
+                logger.warning("teacher room creation answered with broken json", exc_info=True)
+                return messages.result(False, ROOM_REJECTED_KEY)
+        if isinstance(body, dict):
+            room_id = str(body.get("room_id") or "")
+            if not room_id:
+                logger.warning("teacher room creation answered without a room id")
+                return messages.result(False, ROOM_REJECTED_KEY)
+            joined = self._await_join(room_id)
+            return messages.result(
+                True, ROOM_OK_KEY if joined else ROOM_PENDING_KEY, room_id=room_id, joined=joined
+            )
+        if status in ROOM_REDIRECT_STATUSES:
+            target = str((created.headers or {}).get("location") or "")
+            if TEACHER_ROOM_FORM_PATH in target:
+                logger.warning("teacher room creation sent us back to the form")
+                return messages.result(False, ROOM_REJECTED_KEY)
+            return messages.result(True, ROOM_PENDING_KEY, room_id="", joined=False)
+        if looks_like_teacher_room_form(getattr(created, "text", "")):
+            logger.warning("teacher room creation answered with the form again: %s", page_diagnosis(created, ""))
             return messages.result(False, ROOM_REJECTED_KEY)
-        try:
-            body = created.json()
-        except ValueError:
-            logger.warning("teacher room creation answered with broken json", exc_info=True)
-            return messages.result(False, ROOM_REJECTED_KEY)
-        room_id = str((body or {}).get("room_id") or "")
-        if not room_id:
-            logger.warning("teacher room creation answered without a room id")
-            return messages.result(False, ROOM_REJECTED_KEY)
-        joined = self._await_join(room_id)
-        return messages.result(
-            True, ROOM_OK_KEY if joined else ROOM_PENDING_KEY, room_id=room_id, joined=joined
-        )
+        logger.warning("teacher room creation answered unrecognisably: %s", page_diagnosis(created, ""))
+        return messages.result(False, ROOM_UNCONFIRMED_KEY)
 
     def _await_join(self, room_id):
         deadline = self.clock() + JOIN_TIMEOUT_SECONDS
@@ -394,7 +470,7 @@ class MessengerService:
                 body = self._sync_body()
             except (requests.RequestException, LoginError):
                 logger.warning("waiting for the new room, a sync failed", exc_info=True)
-                body = {}
+                return False
             if room_membership(body, room_id) == "join":
                 return True
             if self.clock() >= deadline:

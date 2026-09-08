@@ -36,6 +36,7 @@ READ_ENDPOINTS = (
     ("/api/messenger/rooms", "GET", None),
     ("/api/messenger/room", "GET", None),
     ("/api/messenger/teachers", "GET", None),
+    ("/api/messenger/room/teacher/children", "GET", None),
 )
 
 WRITE_ENDPOINTS = (
@@ -99,6 +100,7 @@ COVERED_ROUTES = {
     "/api/messenger/read",
     "/api/messenger/teachers",
     "/api/messenger/room/teacher",
+    "/api/messenger/room/teacher/children",
 }
 
 ROUTES_WITHOUT_UPSTREAM_CALLS = {
