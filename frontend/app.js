@@ -3131,7 +3131,7 @@ function compactLesson(entry, isPast) {
   const kind = displayChangeKind(lesson, entry.childId);
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectColor(lesson);
-  const sub = [lesson.room ? t("timetable.room", { room: lesson.room }) : "", lesson.teacher_label || ""].filter(Boolean).join(" · ");
+  const sub = lesson.teacher_surname || lesson.teacher_label || "";
   const row = el("button", {
     class: rowClassNames(isPast),
     type: "button",
@@ -3154,7 +3154,7 @@ function compactLessonPairItem(entry) {
   const kind = displayChangeKind(lesson, entry.childId);
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectColor(lesson);
-  const sub = [lesson.room ? t("timetable.room", { room: lesson.room }) : "", lesson.teacher_label || ""].filter(Boolean).join(" · ");
+  const sub = lesson.teacher_surname || lesson.teacher_label || "";
   const item = el("button", {
     class: "row-pair-item",
     type: "button",
@@ -3494,7 +3494,6 @@ function timetableView() {
   }
   const monday = weekMonday();
   const fullWeek = holidayFullWeek(monday, data);
-  if (data.substitutions_released === false) view.append(noteBlock(t("timetable.substitutions.notReleased")));
   view.append(el("div", { class: "tt-frame" }, [
     weekSwipeHint(-1, "tt-edge-prev"),
     timetableGrid(data),
@@ -4567,7 +4566,7 @@ function lessonCell(lesson, time, compact) {
   const kind = displayChangeKind(lesson, state.childId);
   const mark = markOfLesson(lesson, state.childId);
   const base = kind === "cancelled" ? "tt-cell out" : kind ? "tt-cell subbed" : "tt-cell";
-  const roomLabel = kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : lesson.room;
+  const roomLabel = kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : "";
   const subject = lessonSubjectKey(lesson);
   const cell = el("button", {
     class: compact ? `${base} compact` : base,
@@ -6529,6 +6528,22 @@ async function retryMessengerRooms() {
   rerender();
 }
 
+function messengerUnavailableBlock(data) {
+  const failure = data && data.messages_unavailable;
+  if (!failure) return null;
+  const block = emptyBlock(
+    "alert",
+    t("messenger.unavailable.title"),
+    t("messenger.unavailable.text", { reason: t(failure.message_key || "messenger.error.text") }),
+    retryButton(retryMessengerRooms)
+  );
+  const entry = teacherRoomEntry("btn");
+  if (entry) block.append(entry);
+  const entries = diagnosisEntries(failure.diagnosis);
+  if (entries.length) block.append(techDetailsButton(entries));
+  return block;
+}
+
 function messengerErrorBlock() {
   const failure = state.messengerRooms || {};
   const block = emptyBlock(
@@ -6617,6 +6632,11 @@ function messengerView() {
   if (note) head.append(note);
   const rooms = data.rooms || [];
   if (!rooms.length) {
+    const unavailable = messengerUnavailableBlock(data);
+    if (unavailable) {
+      view.append(unavailable);
+      return view;
+    }
     view.append(
       emptyBlock("messages", t("messenger.empty.title"), t("messenger.empty.text"), teacherRoomEntry("btn"))
     );
@@ -7005,13 +7025,36 @@ function startTeacherRoom() {
     searching: false,
     failed: false,
     allowed: true,
-    childIds: state.children.length === 1 ? [state.children[0].child_id] : [],
+    childOptions: null,
+    childrenFailed: false,
+    childIds: [],
     addOtherParents: false,
     duplicate: null,
   };
   state.sheet = null;
   teacherRoomFlowStart();
   render();
+  loadTeacherRoomChildren();
+}
+
+async function loadTeacherRoomChildren() {
+  const form = state.teacherRoom;
+  if (!form) return;
+  form.childrenFailed = false;
+  let data = null;
+  try {
+    data = await getJson("api/messenger/room/teacher/children");
+  } catch (error) {
+    if (state.teacherRoom !== form) return;
+    form.childrenFailed = true;
+    teacherRoomRefresh();
+    return;
+  }
+  if (state.teacherRoom !== form) return;
+  form.childOptions = (data && data.children) || [];
+  form.allowed = !data || data.allowed !== false;
+  form.childIds = form.childOptions.length === 1 ? [form.childOptions[0].id] : [];
+  teacherRoomRefresh();
 }
 
 function closeTeacherRoom() {
@@ -7060,7 +7103,7 @@ function teacherRoomPath() {
   const form = state.teacherRoom;
   if (!form) return ["teacher"];
   const path = ["teacher"];
-  if (state.children.length > 1) path.push("children");
+  if (!form.childOptions || form.childOptions.length !== 1) path.push("children");
   path.push("parents");
   if (form.duplicate) path.push("duplicate");
   path.push("review");
@@ -7200,12 +7243,37 @@ function toggleTeacherRoomChild(childId, on) {
 function teacherRoomChildRow(child) {
   const form = state.teacherRoom;
   const box = el("input", { type: "checkbox" });
-  box.checked = form.childIds.includes(child.child_id);
+  box.checked = form.childIds.includes(child.id);
   box.addEventListener("change", () => {
-    toggleTeacherRoomChild(child.child_id, box.checked);
+    toggleTeacherRoomChild(child.id, box.checked);
     if (teacherRoomFlow) teacherRoomFlow.sync();
   });
-  return el("label", { class: "cell check" }, [box, iservText("span", {}, overviewChildLabel(child))]);
+  return el("label", { class: "cell check" }, [box, iservText("span", {}, child.name || child.id)]);
+}
+
+function teacherRoomChildNodes() {
+  const form = state.teacherRoom;
+  if (form.childrenFailed) {
+    return [
+      emptyBlock(
+        "alert",
+        t("messenger.create.children.failed.title"),
+        t("messenger.create.children.failed.text"),
+        retryButton(loadTeacherRoomChildren)
+      ),
+    ];
+  }
+  if (!form.childOptions) return [loadingBlock()];
+  if (!form.childOptions.length) {
+    return [
+      emptyBlock(
+        "conferences",
+        t("messenger.create.children.empty.title"),
+        t("messenger.create.children.empty.text")
+      ),
+    ];
+  }
+  return [el("div", { class: "field-group" }, form.childOptions.map(teacherRoomChildRow))];
 }
 
 function teacherRoomParentsField() {
@@ -7223,9 +7291,9 @@ function teacherRoomParentsField() {
 
 function teacherRoomChildNames() {
   const form = state.teacherRoom;
-  return state.children
-    .filter((child) => form.childIds.includes(child.child_id))
-    .map((child) => child.name || "")
+  return (form.childOptions || [])
+    .filter((child) => form.childIds.includes(child.id))
+    .map((child) => child.name || child.id)
     .filter(Boolean)
     .join(", ");
 }
@@ -7269,7 +7337,7 @@ const TEACHER_ROOM_STEPS = {
     return {
       list: true,
       question: t("messenger.create.step.children"),
-      body: [el("div", { class: "field-group" }, state.children.map(teacherRoomChildRow))],
+      body: teacherRoomChildNodes(),
       block: form.childIds.length ? "" : t("messenger.create.block.children"),
     };
   },
@@ -7319,6 +7387,7 @@ function teacherRoomStep(id) {
 async function submitTeacherRoom() {
   const form = state.teacherRoom;
   if (!form || !form.teacher) return t("messenger.create.block.teacher");
+  if (!form.childIds.length) return t("messenger.create.block.children");
   let result = null;
   try {
     result = await postJson("api/messenger/room/teacher", {
@@ -8475,7 +8544,11 @@ function absenceReviewFacts(form, data) {
   const rules = data.rules || {};
   const children = data.children || [];
   const facts = [];
-  if (children.length > 1) facts.push({ label: t("absence.fact.child"), value: childNameForForm(), step: "child" });
+  facts.push({
+    label: t("absence.fact.child"),
+    value: childNameForForm(),
+    step: children.length > 1 ? "child" : "",
+  });
   facts.push({ label: t("absence.fact.kind"), value: absenceTypeLabel(form.type), step: "" });
   if (form.type === "sick") {
     facts.push({
@@ -9153,7 +9226,7 @@ function openColorDialog(subject, onChange) {
 
 function teacherRow(code, teacher) {
   const input = iservText("input", { class: "inp", type: "text", value: teacher.label || "", placeholder: code, "aria-label": t("settings.teachers.name", { code }) });
-  input.addEventListener("input", () => { teacher.label = input.value; });
+  input.addEventListener("input", () => { teacher.label = input.value; teacher.label_source = ""; });
   return el("div", { class: "cell" }, [el("div", { class: "cell-head" }, [iservText("span", { class: "field-label" }, code)]), input]);
 }
 

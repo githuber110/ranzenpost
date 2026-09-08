@@ -81,6 +81,35 @@ describe("[C08] exactly 1 child: the child step is skipped entirely", () => {
     expect(wz.form.student_id).toBe("1");
     expect(wz.node.querySelector(".sw-lead-btn")).toBeNull();
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts.map((fact) => fact.label)).not.toContain("Kind");
+    expect(facts[0].label).toBe("Kind");
+    expect(facts[0].value).toBe("Alice");
+    expect(facts[0].step).toBe("");
+  });
+});
+
+describe("[P245] the summary always names the child", () => {
+  test("one child is named too, and offers no pointless jump", () => {
+    const { window } = loadApp();
+    window.eval(`
+      state.config = {};
+      state.absence = { data: { children: [{ id: "s1", name: "Mia Muster" }], rules: {} } };
+      state.absenceForm = { type: "sick", student_id: "s1", day_from: "2026-09-08", day_till: "2026-09-08" };
+    `);
+    const facts = window.eval(`absenceReviewFacts(state.absenceForm, state.absence.data)`);
+    expect(facts[0].label).toBe(window.eval(`t("absence.fact.child")`));
+    expect(facts[0].value).toBe("Mia Muster");
+    expect(facts[0].step).toBe("");
+  });
+
+  test("more than one child keeps the way back into the choice", () => {
+    const { window } = loadApp();
+    window.eval(`
+      state.config = {};
+      state.absence = { data: { children: [{ id: "s1", name: "Mia" }, { id: "s2", name: "Tom" }], rules: {} } };
+      state.absenceForm = { type: "sick", student_id: "s2", day_from: "2026-09-08", day_till: "2026-09-08" };
+    `);
+    const facts = window.eval(`absenceReviewFacts(state.absenceForm, state.absence.data)`);
+    expect(facts[0].value).toBe("Tom");
+    expect(facts[0].step).toBe("child");
   });
 });

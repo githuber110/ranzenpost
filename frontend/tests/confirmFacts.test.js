@@ -21,13 +21,13 @@ describe("[C07] review page: structured, tappable facts instead of prose", () =>
     const rows = facts(window, "sick", Object.assign({}, SICK, {
       period_labels: [{ number: 1 }, { number: 2 }, { number: 3 }],
     }));
-    expect(rows.map((row) => row.label)).toEqual(["Art", "Zeitraum"]);
-    expect(rows[0].step).toBe("");
-    expect(rows[1].step).toBe("sickWhen");
-    expect(rows[1].value).toBe("02.09.2126, 1. bis 3. Stunde");
+    expect(rows.map((row) => row.label)).toEqual(["Kind", "Art", "Zeitraum"]);
+    expect(rows[1].step).toBe("");
+    expect(rows[2].step).toBe("sickWhen");
+    expect(rows[2].value).toBe("02.09.2126, 1. bis 3. Stunde");
   });
 
-  test("sick: the child row only exists with more than one child and points at the child step", () => {
+  test("sick: the child row leads back into the choice when there is one to make", () => {
     const { window } = loadApp();
     const rows = facts(window, "sick", Object.assign({}, SICK, {
       children: [{ id: 1, name: "Mia" }, { id: 2, name: "Ben" }],
