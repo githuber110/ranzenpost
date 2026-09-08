@@ -2243,8 +2243,7 @@ function lessonSlotStatus(start, minutesNow) {
 }
 
 function todayTimeline(groups, times, childId, minutesNow) {
-  const starts = groups.map((group) =>
-    timeMinutes(group.lessons[0].start_time || times[String(group.period)] || ""));
+  const starts = groups.map((group) => timeMinutes(lessonTime(group.lessons[0], times)));
   const teaching = groups.map((group) =>
     group.lessons.some((lesson) => !lessonDropped(lesson, childId)));
   const statuses = starts.map((start) => lessonSlotStatus(start, minutesNow));
@@ -2324,7 +2323,7 @@ function todayChapter() {
     const isPast = timeline.statuses[position] === "past";
     const entries = group.lessons.map((lesson) => ({
       lesson,
-      time: lesson.start_time || times[String(lesson.period)] || "",
+      time: lessonTime(lesson, times),
       childId: child.child_id,
       mark: markAt(child.child_id, lessonIso(lesson), lesson.period),
     }));
@@ -3073,6 +3072,13 @@ function todayLessons(week, index) {
 
 function periodTimes(week) {
   return (week && week.period_times) || (state.config && state.config.period_times) || {};
+}
+
+function lessonTime(lesson, times) {
+  if (!lesson) return "";
+  const table = times || periodTimes(state.timetable);
+  const chosen = String(table[String(lesson.period)] || "").trim();
+  return chosen || String(lesson.start_time || "").trim();
 }
 
 function groupTodayLessons(lessons) {
@@ -4981,7 +4987,7 @@ function markMoveSheet(mark, childId) {
     return el("button", { class: "row mark-target", type: "button", onclick: () => moveMark(mark, lesson) }, [
       el("span", { class: "row-dot" }, [el("i", {})]),
       el("div", { class: "row-main" }, [iservText("div", { class: "row-title" }, label)]),
-      el("div", { class: "row-side" }, [el("span", { class: "row-meta" }, lesson.start_time || periodShort(lesson.period))]),
+      el("div", { class: "row-side" }, [el("span", { class: "row-meta" }, lessonTime(lesson) || periodShort(lesson.period))]),
     ]);
   });
   return sheet(t("marks.move.title"), [el("div", { class: "rows" }, rows)]);
@@ -9259,7 +9265,7 @@ function periodSheet() {
     el("p", { class: "dlg-text" }, t("settings.periods.text")),
   ];
   if (differing.length) {
-    body.push(noteBlock(tCount("settings.periods.differ", differing.length)));
+    body.push(el("p", { class: "hint" }, tCount("settings.periods.differ", differing.length)));
     body.push(
       el("button", {
         class: "btn ghost",
