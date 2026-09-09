@@ -3,6 +3,15 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.23
+
+- A calendar subscription is filled the moment it is created. The lessons behind a subscription
+  used to arrive only with the next background poll, up to half an hour later, so the first fetch
+  by a calendar app carried holidays and the note "no data yet" but no lessons, and an app that
+  refreshes a subscribed calendar rarely kept showing that first empty version. Creating a
+  subscription, or ticking the timetable or exams on an existing one, now fetches the child's weeks
+  right away.
+
 ## 2609.01.22
 
 - The lesson times entered in the settings apply everywhere. Since the school server started

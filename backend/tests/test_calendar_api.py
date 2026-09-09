@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -210,3 +211,103 @@ def test_the_poller_drops_weeks_that_left_the_window(tmp_path):
     kept = poller._prune_weeks({stale: {}, fresh: {}})
 
     assert sorted(kept) == [fresh]
+
+
+def test_a_single_child_can_be_refreshed_without_a_full_poll(tmp_path):
+    store = _store(tmp_path)
+    service = FakeService(store)
+    holiday_calendar = CountingHolidays()
+
+    done = Poller(service, store=store, holiday_calendar=holiday_calendar, clock=lambda: NOW_EPOCH).refresh_child(CHILD_ID)
+
+    assert done is True
+    assert sorted(offset for _, offset in service.calls) == [0, 1, 2, 3]
+    child = store.load_calendar_snapshot()["children"][CHILD_ID]
+    assert sorted(child["weeks"]) == ["07.09.2026", "14.09.2026", "21.09.2026", "31.08.2026"]
+    assert child["last_success"] == NOW_EPOCH
+    assert holiday_calendar.calls == 1
+
+
+def test_a_refresh_that_fails_leaves_the_snapshot_untouched_and_says_so(tmp_path):
+    store = _store(tmp_path)
+    service = FakeService(store)
+    service.timetable = lambda child_id, week_offset=0: (_ for _ in ()).throw(RuntimeError("down"))
+
+    done = Poller(service, store=store, clock=lambda: NOW_EPOCH).refresh_child(CHILD_ID)
+
+    assert done is False
+    assert store.load_calendar_snapshot() == {}
+
+
+def _api_with_warmer(tmp_path, warmer):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store)
+    service = FakeService(store)
+    client = TestClient(
+        create_app(service, registry=registry, calendar_warmer=warmer), raise_server_exceptions=False
+    )
+    return client, store, registry, service
+
+
+def test_creating_a_subscription_asks_for_the_child_to_be_fetched_right_away(tmp_path):
+    warmed = []
+    client, _, _, _ = _api_with_warmer(tmp_path, warmed.append)
+
+    response = client.post(
+        "/api/calendar/subscriptions",
+        json={"child_id": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "5A"},
+    )
+
+    assert response.status_code == 200
+    assert warmed == [CHILD_ID]
+
+
+def test_ticking_the_timetable_on_an_existing_subscription_fetches_the_child_too(tmp_path):
+    warmed = []
+    client, _, registry, _ = _api_with_warmer(tmp_path, warmed.append)
+    created = registry.create(CHILD_ID, ["school_holidays"], "5A")
+
+    client.post(
+        f"/api/calendar/subscriptions/{created['id']}",
+        json={"components": ["school_holidays", "timetable"]},
+    )
+
+    assert warmed == [CHILD_ID]
+
+
+def test_a_subscription_without_lessons_or_marks_fetches_nothing(tmp_path):
+    warmed = []
+    client, _, _, _ = _api_with_warmer(tmp_path, warmed.append)
+
+    client.post(
+        "/api/calendar/subscriptions",
+        json={"child_id": CHILD_ID, "components": ["school_holidays", "public_holidays"], "label": "5A"},
+    )
+
+    assert warmed == []
+
+
+def test_the_first_feed_request_after_subscribing_already_carries_the_lessons(tmp_path):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store)
+    service = FakeService(store)
+    client = TestClient(create_app(service, registry=registry), raise_server_exceptions=False)
+
+    created = client.post(
+        "/api/calendar/subscriptions",
+        json={"child_id": CHILD_ID, "components": ["timetable"], "label": "5A"},
+    ).json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not store.load_calendar_snapshot():
+        time.sleep(0.05)
+
+    ics = feed.build_feed(
+        registry.find_by_token(created["token"]),
+        store,
+        CountingHolidays(),
+        now=datetime(2026, 9, 2, 6, 0),
+    )
+
+    assert "DTSTART;TZID=Europe/Berlin:20260902T080000" in ics
+    assert "calendar.notice.noData" not in ics
+    assert "noch keine Daten" not in ics
