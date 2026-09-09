@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import threading
 import unicodedata
 from pathlib import Path
 from urllib.parse import quote
@@ -13,8 +15,11 @@ from . import cancellations, holidays, marks, messages, schoolregion, subscripti
 from .calendar_listener import DEFAULT_PORT as CALENDAR_PORT
 from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
 from .iserv.sick_note_pdf import UnsupportedTextError
+from .poller import Poller
 from .service import NotConfiguredError, SickNoteNotFoundError
 from .store import DEFAULT_CONFIG
+
+logger = logging.getLogger(__name__)
 
 CONFIG_ALLOWED_KEYS = set(DEFAULT_CONFIG) | {"poll_state"}
 
@@ -172,6 +177,7 @@ def create_app(
     registry=None,
     region_suggester=None,
     mark_registry=None,
+    calendar_warmer=None,
 ):
     app = FastAPI(title="Ranzenpost")
     from .supervisor import clear_restart_pending
@@ -182,6 +188,25 @@ def create_app(
     subscription_registry = registry or subscriptions.SubscriptionRegistry(service.store)
     marks_registry = mark_registry or marks.MarkRegistry(service.store)
     cancellation_registry = cancellations.CancellationRegistry(service.store)
+
+    def warm_calendar(child_id):
+        def run():
+            try:
+                Poller(
+                    service, registry=subscription_registry, holiday_calendar=holiday_source
+                ).refresh_child(child_id)
+            except Exception:
+                logger.warning("calendar warm-up for a child failed", exc_info=True)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    warm = calendar_warmer or warm_calendar
+
+    def _warm_after(entry):
+        wanted = (subscriptions.COMPONENT_TIMETABLE, subscriptions.COMPONENT_MARKS)
+        if any(name in (entry.get("components") or []) for name in wanted):
+            warm(entry.get("child_id", ""))
+        return entry
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -559,11 +584,13 @@ def create_app(
     @app.post("/api/calendar/subscriptions")
     def create_calendar_subscription(body: dict = Body(...)):
         try:
-            return subscription_registry.create(
-                body.get("child_id", ""),
-                body.get("components"),
-                body.get("label", ""),
-                body.get("color", ""),
+            return _warm_after(
+                subscription_registry.create(
+                    body.get("child_id", ""),
+                    body.get("components"),
+                    body.get("label", ""),
+                    body.get("color", ""),
+                )
             )
         except subscriptions.SubscriptionError as error:
             return _subscription_error(error)
@@ -571,7 +598,7 @@ def create_app(
     @app.post("/api/calendar/subscriptions/{subscription_id}")
     def update_calendar_subscription(subscription_id: str, body: dict = Body(...)):
         try:
-            return subscription_registry.update(
+            updated = subscription_registry.update(
                 subscription_id,
                 components=body.get("components"),
                 label=body.get("label"),
@@ -579,6 +606,7 @@ def create_app(
             )
         except subscriptions.SubscriptionError as error:
             return _subscription_error(error)
+        return _warm_after(updated) if body.get("components") is not None else updated
 
     @app.post("/api/calendar/subscriptions/{subscription_id}/rotate")
     def rotate_calendar_subscription(subscription_id: str):
