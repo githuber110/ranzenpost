@@ -18,6 +18,15 @@ Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release numb
 - A cancelled lesson is titled "Dropped: ..." instead of "Cancelled · ...", whether the school
   cancelled it or the lesson was marked as dropped in the app. A dropped exam keeps the exam in the
   details.
+- A tap on an attachment asks what to do with it: open, save or print. Saving goes through the
+  system's own save dialog where the browser offers one, through the share sheet on a phone, and
+  otherwise through a plain download under the file's name. Printing opens the system print dialog
+  for PDFs and pictures; a file the browser cannot print is saved instead, and the app says so.
+- The viewer carries save and print beside its close button, and a right click on the picture or
+  document opens the app's own menu with those two actions instead of the browser's "save image".
+  Tab cycles through the viewer's controls.
+- When the school server withholds the chat credentials, the chat shows a calm empty state with
+  the way to a teacher room, instead of a warning with a retry button that could never help.
 
 ## 2609.01.22
 
