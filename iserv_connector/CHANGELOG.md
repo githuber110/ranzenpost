@@ -11,6 +11,13 @@ Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release numb
   refreshes a subscribed calendar rarely kept showing that first empty version. Creating a
   subscription, or ticking the timetable or exams on an existing one, now fetches the child's weeks
   right away.
+- An exam no longer appears in the calendar as a second event beside the lesson. The lesson itself
+  is titled "Exam: 1st period Maths (teacher)", or "Exam Dictation: ..." when the exam has a name,
+  and the details say so. An exam entered for a period that has no lesson of that subject stays an
+  event of its own.
+- A cancelled lesson is titled "Dropped: ..." instead of "Cancelled · ...", whether the school
+  cancelled it or the lesson was marked as dropped in the app. A dropped exam keeps the exam in the
+  details.
 
 ## 2609.01.22
 

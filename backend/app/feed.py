@@ -56,6 +56,11 @@ MARK_SUMMARY_NAMED_KEY = "calendar.mark.summary.named"
 MARK_NOTICE_KEY = "calendar.mark.notice"
 OWN_DROP_NOTICE_KEY = "calendar.cancellation.notice"
 MARK_FALLBACK_PREFIX = "!"
+DROPPED_SUMMARY_KEY = "calendar.event.summary.cancelled"
+EXAM_SUMMARY_KEY = "calendar.event.summary.exam"
+EXAM_SUMMARY_NAMED_KEY = "calendar.event.summary.exam.named"
+EXAM_DETAIL_KEY = "calendar.detail.exam"
+EXAM_DETAIL_PLAIN_KEY = "calendar.detail.exam.plain"
 ABSENCE_STATUS_KEYS = {
     "accepted": "absence.status.accepted",
     "open": "absence.status.open",
@@ -151,7 +156,7 @@ def _subject_of(language, lesson):
     )
 
 
-def lesson_summary(language, lesson):
+def lesson_summary(language, lesson, exam=None):
     subject = _subject_of(language, lesson)
     teacher = lesson.get("teacher_label") or lesson.get("teacher_code") or ""
     key = "calendar.event.summary" if teacher else "calendar.event.summary.noTeacher"
@@ -160,6 +165,12 @@ def lesson_summary(language, lesson):
         key,
         {"period": lesson.get("period", ""), "subject": subject, "teacher": teacher},
     )
+    if lesson.get("change_kind") == "cancelled":
+        return _text(language, DROPPED_SUMMARY_KEY, {"title": title})
+    if exam is not None:
+        name = str(exam.get("name") or "")
+        key = EXAM_SUMMARY_NAMED_KEY if name else EXAM_SUMMARY_KEY
+        return _text(language, key, {"title": title, "name": name})
     prefix_key = CHANGE_PREFIX_KEYS.get(lesson.get("change_kind") or "")
     if not prefix_key:
         return title
@@ -170,7 +181,7 @@ def lesson_summary(language, lesson):
     )
 
 
-def lesson_description(language, lesson, day, parallel_count, start_time=None):
+def lesson_description(language, lesson, day, parallel_count, start_time=None, exam=None):
     none_text = _text(language, "common.none")
     rows = [_detail_line(language, "calendar.detail.date", _german_date(day))]
     if start_time is None:
@@ -204,6 +215,16 @@ def lesson_description(language, lesson, day, parallel_count, start_time=None):
     if status_key:
         rows.append(_detail_line(language, "calendar.detail.status", _text(language, status_key)))
     rows.extend(_change_rows(language, lesson, none_text))
+    if exam is not None:
+        name = str(exam.get("name") or "")
+        rows.append(
+            _text(language, EXAM_DETAIL_KEY, {"name": name})
+            if name
+            else _text(language, EXAM_DETAIL_PLAIN_KEY)
+        )
+        notice = _translated(language, MARK_NOTICE_KEY)
+        if notice:
+            rows.append(notice)
     if parallel_count > 1:
         rows.append(
             _text(language, "calendar.detail.parallel", {"count": parallel_count})
@@ -290,6 +311,25 @@ def dropped_slots(entries, child_id):
     return slots
 
 
+def exams_on_lessons(collected, entries, child_id):
+    by_slot = {}
+    for entry in entries or ():
+        if entry.get("child_id") != child_id:
+            continue
+        day = holidays.parse_day(entry.get("date"))
+        if day is None:
+            continue
+        by_slot[(day, int(entry.get("period") or 0), str(entry.get("subject_code") or ""))] = entry
+    attached = {}
+    for identity, (day, lesson) in collected.items():
+        entry = by_slot.get(
+            (day, int(lesson.get("period") or 0), str(lesson.get("subject_code") or ""))
+        )
+        if entry is not None:
+            attached[identity] = entry
+    return attached
+
+
 def lesson_start_of(slot):
     for _, lesson in slot:
         value = str(lesson.get("start_time") or "").strip()
@@ -298,8 +338,12 @@ def lesson_start_of(slot):
     return ""
 
 
-def timetable_events(language, tag, collected, day_map, blocked, config=None, dropped=()):
+def timetable_events(
+    language, tag, collected, day_map, blocked, config=None, dropped=(), exams=None, shown=None
+):
     settings = config or {}
+    attached = exams or {}
+    rendered = shown if shown is not None else set()
     off = set(dropped)
     events = []
     unscheduled = {}
@@ -308,14 +352,17 @@ def timetable_events(language, tag, collected, day_map, blocked, config=None, dr
             continue
         own_drop = (day, period) in off
         start_time = configured_time(settings, period) or lesson_start_of(slot)
-        for index, (_, lesson) in enumerate(slot):
+        for index, (identity, lesson) in enumerate(slot):
             uid = f"{tag}-{day.strftime('%Y%m%d')}-p{period}-{index}@{UID_DOMAIN}"
             if not start_time:
                 unscheduled.setdefault(day, []).append(lesson)
                 continue
             shown = dict(lesson, change_kind="cancelled") if own_drop else lesson
+            exam = attached.get(identity)
+            if exam is not None:
+                rendered.add(exam.get("id"))
             start = _lesson_start(day, start_time)
-            description = lesson_description(language, shown, day, len(slot), start_time)
+            description = lesson_description(language, shown, day, len(slot), start_time, exam)
             if own_drop:
                 notice = _translated(language, OWN_DROP_NOTICE_KEY)
                 if notice:
@@ -323,7 +370,7 @@ def timetable_events(language, tag, collected, day_map, blocked, config=None, dr
             events.append(
                 FeedEvent(
                     uid=uid,
-                    summary=lesson_summary(language, shown),
+                    summary=lesson_summary(language, shown, exam),
                     description=description,
                     location=lesson.get("room") or "",
                     start=start,
@@ -440,12 +487,15 @@ def mark_description(language, config, entry, day, start_time, lesson):
     return "\n".join(rows)
 
 
-def mark_events(language, config, snapshot, entries, child_id, today, now_epoch):
+def mark_events(language, config, snapshot, entries, child_id, today, now_epoch, skip=()):
     start, end = mark_window(today)
     times = config.get("period_times") or {}
     events = []
+    taken = set(skip)
     for entry in entries:
         if entry.get("child_id") != child_id:
+            continue
+        if entry.get("id") in taken:
             continue
         if not marks.in_range(entry, start, end):
             continue
@@ -760,14 +810,16 @@ def build_events(
     components = subscription.get("components") or []
     window = lesson_window(today)
     events = []
-    if COMPONENT_MARKS in components:
-        events.extend(
-            mark_events(language, config, snapshot, mark_entries, child_id, today, now_epoch)
-        )
-    if COMPONENT_ABSENCES in components:
-        events.extend(absence_events(language, tag, config, snapshot, child_id, today))
+    collected = (
+        lessons_in_window(snapshot, child_id, window[0], window[1])
+        if COMPONENT_TIMETABLE in components
+        else {}
+    )
+    attached = (
+        exams_on_lessons(collected, mark_entries, child_id) if COMPONENT_MARKS in components else {}
+    )
+    shown_exams = set()
     if COMPONENT_TIMETABLE in components:
-        collected = lessons_in_window(snapshot, child_id, window[0], window[1])
         events.extend(
             timetable_events(
                 language,
@@ -777,6 +829,8 @@ def build_events(
                 blocked,
                 config,
                 dropped_slots(cancellation_entries, child_id),
+                attached,
+                shown_exams,
             )
         )
         events.extend(
@@ -790,6 +844,21 @@ def build_events(
                 now_epoch,
             )
         )
+    if COMPONENT_MARKS in components:
+        events.extend(
+            mark_events(
+                language,
+                config,
+                snapshot,
+                mark_entries,
+                child_id,
+                today,
+                now_epoch,
+                skip=shown_exams,
+            )
+        )
+    if COMPONENT_ABSENCES in components:
+        events.extend(absence_events(language, tag, config, snapshot, child_id, today))
     holiday_end = today + timedelta(days=HOLIDAY_DAYS_AHEAD)
     if COMPONENT_SCHOOL_HOLIDAYS in components:
         events.extend(

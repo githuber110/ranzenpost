@@ -5,6 +5,7 @@ import pytest
 
 from app import feed, feed_ics, holidays, marks, messages, subscriptions
 from app.iserv.absences import berlin_offset
+from app.cancellations import CancellationRegistry
 from app.marks import MarkRegistry
 from app.store import Store
 from app.subscriptions import SubscriptionRegistry, SubscriptionError
@@ -321,7 +322,7 @@ def test_a_cancelled_lesson_stays_visible_and_is_marked(tmp_path):
 
     ics = _build(store, _subscription(store))
 
-    assert "SUMMARY:Entfällt · 1. Stunde Deutsch (Behrens)" in ics
+    assert "SUMMARY:Fällt aus: 1. Stunde Deutsch (Behrens)" in ics
     assert "TRANSP:TRANSPARENT" in ics
     assert "Diese Stunde entfällt." in ics
 
@@ -778,3 +779,96 @@ def test_a_period_without_an_entered_time_still_uses_the_school_time(tmp_path):
     ics = _build(store, _subscription(store))
 
     assert "DTSTART;TZID=Europe/Berlin:20260902T080000" in ics
+
+
+def _mark(store, period=1, subject_code="D", name=""):
+    return MarkRegistry(store, clock=lambda: NOW_EPOCH).create(CHILD_ID, "2026-09-02", period, subject_code, name)
+
+
+def _own_cancellation(store, period=1):
+    return CancellationRegistry(store, clock=lambda: NOW_EPOCH).create(CHILD_ID, "2026-09-02", period)
+
+
+def test_an_exam_turns_the_lesson_itself_into_the_exam_instead_of_adding_a_second_event(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store)
+
+    ics = _build(store, _subscription(store, ("timetable", "marks")))
+
+    assert ics.count("BEGIN:VEVENT") == 1
+    assert "SUMMARY:Prüfung: 1. Stunde Deutsch (Behrens)" in ics
+    assert "UID:mark-" not in ics
+    assert "DTSTART;TZID=Europe/Berlin:20260902T080000" in ics
+    assert "Nur in dieser App eingetragen" in ics
+
+
+def test_a_named_exam_carries_its_name_in_the_lesson_title(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store, name="Diktat")
+
+    ics = _build(store, _subscription(store, ("timetable", "marks")))
+
+    assert "SUMMARY:Prüfung Diktat: 1. Stunde Deutsch (Behrens)" in ics
+
+
+def test_an_exam_without_a_lesson_in_that_slot_stays_an_event_of_its_own(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store, period=3)
+
+    ics = _build(store, _subscription(store, ("timetable", "marks")))
+
+    assert ics.count("BEGIN:VEVENT") == 2
+    assert "UID:mark-" in ics
+    assert "SUMMARY:Prüfung: Deutsch" in ics
+
+
+def test_an_exam_on_a_lesson_of_another_subject_in_the_slot_stays_separate(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store, subject_code="E")
+
+    ics = _build(store, _subscription(store, ("timetable", "marks")))
+
+    assert ics.count("BEGIN:VEVENT") == 2
+    assert "SUMMARY:1. Stunde Deutsch (Behrens)" in ics
+
+
+def test_the_exam_stays_on_the_lesson_even_when_marks_alone_are_not_subscribed(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store)
+
+    ics = _build(store, _subscription(store, ("timetable",)))
+
+    assert ics.count("BEGIN:VEVENT") == 1
+    assert "SUMMARY:1. Stunde Deutsch (Behrens)" in ics
+    assert "Prüfung" not in ics
+
+
+def test_an_own_cancellation_reads_as_dropped_and_stays_a_single_event(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _own_cancellation(store)
+
+    ics = _build(store, _subscription(store))
+
+    assert ics.count("BEGIN:VEVENT") == 1
+    assert "SUMMARY:Fällt aus: 1. Stunde Deutsch (Behrens)" in ics
+    assert "TRANSP:TRANSPARENT" in ics
+    assert "Selbst als Ausfall markiert" in ics
+
+
+def test_a_cancelled_exam_is_titled_as_dropped_and_keeps_the_exam_in_the_details(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    _mark(store, name="Diktat")
+    _own_cancellation(store)
+
+    ics = _build(store, _subscription(store, ("timetable", "marks")))
+
+    assert ics.count("BEGIN:VEVENT") == 1
+    assert "SUMMARY:Fällt aus: 1. Stunde Deutsch (Behrens)" in ics
+    assert "Prüfung Diktat" in ics
