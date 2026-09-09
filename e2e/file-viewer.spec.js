@@ -53,6 +53,7 @@ async function openImageOverlay(page) {
     document.body.append(rows);
   });
   await page.locator("#e2e-attachment-rows .row").click();
+  await page.locator(".sheet .attach-open").click();
   await page.waitForSelector(".viewer-overlay");
 }
 
@@ -70,6 +71,7 @@ async function openPdfOverlay(page) {
     document.body.append(rows);
   });
   await page.locator("#e2e-attachment-rows .row").click();
+  await page.locator(".sheet .attach-open").click();
   await page.waitForSelector(".viewer-overlay .viewer-pdf-wrap", { timeout: 4000 });
 }
 

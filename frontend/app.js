@@ -414,6 +414,9 @@ const el = (tag, attrs = {}, children = []) => {
 const iservText = (tag, attrs, children) => el(tag, Object.assign({ dir: "auto" }, attrs || {}), children);
 
 const ICON_SHAPES = {
+  download: '<path d="M12 4.4v10.4"/><path d="m7.6 10.6 4.4 4.4 4.4-4.4"/><path d="M4.6 16.2v1.8a1.8 1.8 0 0 0 1.8 1.8h11.2a1.8 1.8 0 0 0 1.8-1.8v-1.8"/>',
+  print: '<path d="M7 8.4V4.6h10v3.8"/><rect x="4.2" y="8.4" width="15.6" height="7.4" rx="1.6"/><path d="M7 13.4h10v6H7z"/>',
+  open: '<path d="M4.4 12s2.8-5.2 7.6-5.2 7.6 5.2 7.6 5.2-2.8 5.2-7.6 5.2S4.4 12 4.4 12z"/><circle cx="12" cy="12" r="2.3"/>',
   timetable: '<rect x="3.2" y="5.2" width="17.6" height="15.6" rx="3.6"/><path d="M8 2.9v4.4M16 2.9v4.4M3.2 10.4h17.6"/>',
   absence: '<path d="M14 14.3V5.4a2 2 0 0 0-4 0v8.9a3.9 3.9 0 1 0 4 0z"/><path d="M14 8.6h-2.3M14 11.4h-2.3"/>',
   overview: '<path d="M3.9 10.5 12 3.6l8.1 6.9v9.2a1.4 1.4 0 0 1-1.4 1.4H5.3a1.4 1.4 0 0 1-1.4-1.4z"/><path d="M9.4 21.1v-6.2h5.2v6.2"/>',
@@ -1293,7 +1296,7 @@ function pdfViewerLoaded(viewer) {
   viewer.pdfSettled = true;
 }
 
-async function openAppFile(path, fallbackFilename, triggerEl) {
+async function fetchAppFile(path, fallbackFilename) {
   const response = await fetch(apiUrl(path));
   if (!response.ok) {
     const failure = new Error("http " + response.status);
@@ -1302,6 +1305,11 @@ async function openAppFile(path, fallbackFilename, triggerEl) {
   }
   const filename = filenameFromDisposition(response.headers.get("content-disposition")) || fallbackFilename;
   const blob = await response.blob();
+  return { blob, filename };
+}
+
+async function openAppFile(path, fallbackFilename, triggerEl) {
+  const { blob, filename } = await fetchAppFile(path, fallbackFilename);
   const objectUrl = URL.createObjectURL(blob);
   const kind = fileKind(filename, blob.type);
   if (kind === "image" || kind === "pdf") {
@@ -1309,6 +1317,117 @@ async function openAppFile(path, fallbackFilename, triggerEl) {
     return;
   }
   downloadBlob(objectUrl, filename);
+}
+
+const PRINT_FRAME_RELEASE_MS = 60000;
+
+function coarsePointer() {
+  return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+}
+
+function shareableFile(blob, filename) {
+  if (typeof File !== "function" || !navigator.share || !navigator.canShare) return null;
+  const file = new File([blob], filename || t("common.attachment"), { type: blob.type || "" });
+  return navigator.canShare({ files: [file] }) ? file : null;
+}
+
+async function shareFile(file, filename) {
+  try {
+    await navigator.share({ files: [file], title: filename });
+    return true;
+  } catch (error) {
+    return !!(error && error.name === "AbortError");
+  }
+}
+
+async function saveFile(blob, filename) {
+  const file = coarsePointer() ? shareableFile(blob, filename) : null;
+  if (file && (await shareFile(file, filename))) return;
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName: filename });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      toast(t("common.saved"));
+      return;
+    } catch (error) {
+      if (error && error.name === "AbortError") return;
+    }
+  }
+  downloadBlob(URL.createObjectURL(blob), filename);
+}
+
+function printDocumentFor(blob, filename) {
+  const kind = fileKind(filename, blob.type);
+  if (kind === "pdf") return blob;
+  if (kind !== "image") return null;
+  const picture = URL.createObjectURL(blob);
+  const page = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>` +
+    `<style>html,body{margin:0}img{max-width:100%;max-height:100vh}</style></head>` +
+    `<body><img src="${picture}" alt=""></body></html>`;
+  return new Blob([page], { type: "text/html" });
+}
+
+function printInFrame(source) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(source);
+    const frame = el("iframe", { class: "print-frame", src: url, "aria-hidden": "true", tabindex: "-1" });
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      window.setTimeout(() => {
+        frame.remove();
+        URL.revokeObjectURL(url);
+      }, PRINT_FRAME_RELEASE_MS);
+      resolve(ok);
+    };
+    frame.addEventListener("load", () => {
+      const run = () => {
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          finish(true);
+        } catch (error) {
+          finish(false);
+        }
+      };
+      const picture = frame.contentDocument && frame.contentDocument.querySelector("img");
+      if (picture && !picture.complete) {
+        picture.addEventListener("load", run, { once: true });
+        picture.addEventListener("error", () => finish(false), { once: true });
+        return;
+      }
+      run();
+    });
+    frame.addEventListener("error", () => finish(false));
+    document.body.append(frame);
+  });
+}
+
+async function printFile(blob, filename) {
+  const document_ = printDocumentFor(blob, filename);
+  if (!document_) {
+    toast(t("attachment.print.unsupported"), "bad");
+    downloadBlob(URL.createObjectURL(blob), filename);
+    return;
+  }
+  if (coarsePointer()) {
+    const file = shareableFile(blob, filename);
+    if (file && (await shareFile(file, filename))) return;
+  }
+  if (!(await printInFrame(document_))) toast(t("attachment.print.failed"), "bad");
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
 }
 
 function pointDistance(a, b) {
@@ -1464,24 +1583,76 @@ function trapViewerFocus(event, overlay) {
   const focusable = [...overlay.querySelectorAll("button, [tabindex]")].filter((node) => !node.disabled);
   if (!focusable.length) return;
   event.preventDefault();
-  focusable[0].focus();
+  const current = focusable.indexOf(document.activeElement);
+  const step = event.shiftKey ? -1 : 1;
+  const next = current < 0 ? 0 : (current + step + focusable.length) % focusable.length;
+  focusable[next].focus();
+}
+
+function viewerSave(viewer) {
+  if (!viewer || !viewer.blob) return Promise.resolve();
+  return saveFile(viewer.blob, viewer.filename);
+}
+
+function viewerPrint(viewer) {
+  if (!viewer || !viewer.blob) return Promise.resolve();
+  return printFile(viewer.blob, viewer.filename);
+}
+
+function viewerButton(className, iconName, label, onclick) {
+  return el("button", { class: className, type: "button", "aria-label": label, title: label, onclick }, [icon(iconName, 20)]);
+}
+
+function closeViewerMenu(overlay) {
+  const menu = overlay.querySelector(".viewer-menu");
+  if (menu) menu.remove();
+}
+
+function openViewerMenu(overlay, viewer, x, y) {
+  closeViewerMenu(overlay);
+  const menu = el("div", { class: "viewer-menu", role: "menu" }, [
+    el("button", { class: "viewer-menu-item viewer-menu-save", type: "button", role: "menuitem", onclick: () => { closeViewerMenu(overlay); viewerSave(viewer); } }, [icon("download", 16), el("span", {}, t("attachment.action.save"))]),
+    el("button", { class: "viewer-menu-item viewer-menu-print", type: "button", role: "menuitem", onclick: () => { closeViewerMenu(overlay); viewerPrint(viewer); } }, [icon("print", 16), el("span", {}, t("attachment.action.print"))]),
+  ]);
+  menu.style.insetInlineStart = `${Math.max(0, x)}px`;
+  menu.style.insetBlockStart = `${Math.max(0, y)}px`;
+  overlay.append(menu);
+  const first = menu.querySelector("button");
+  if (first) first.focus();
 }
 
 function fileViewerNode() {
   const viewer = state.fileViewer;
   if (!viewer) return null;
   const body = viewer.kind === "image" ? fileViewerImage(viewer) : fileViewerPdf(viewer);
+  const stage = el("div", { class: "viewer-stage" }, [body]);
   const overlay = el(
     "div",
     { class: "viewer-overlay", role: "dialog", "aria-modal": "true", "aria-label": viewer.filename || t("common.attachment") },
     [
-      el("div", { class: "viewer-stage" }, [body]),
-      el("button", { class: "viewer-close", type: "button", "aria-label": t("common.close"), onclick: closeFileViewer }, [icon("close", 20)]),
+      stage,
+      el("div", { class: "viewer-actions" }, [
+        viewerButton("viewer-btn viewer-save", "download", t("attachment.action.save"), () => viewerSave(viewer)),
+        viewerButton("viewer-btn viewer-print", "print", t("attachment.action.print"), () => viewerPrint(viewer)),
+        viewerButton("viewer-btn viewer-close", "close", t("common.close"), closeFileViewer),
+      ]),
     ]
   );
+  stage.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const box = overlay.getBoundingClientRect();
+    openViewerMenu(overlay, viewer, event.clientX - box.left, event.clientY - box.top);
+  });
+  overlay.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".viewer-menu")) closeViewerMenu(overlay);
+  });
   overlay.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.stopPropagation();
+      if (overlay.querySelector(".viewer-menu")) {
+        closeViewerMenu(overlay);
+        return;
+      }
       closeFileViewer();
     } else if (event.key === "Tab") {
       trapViewerFocus(event, overlay);
@@ -1507,6 +1678,42 @@ function attachmentRowContent(filename) {
   ];
 }
 
+function attachmentActionRow(className, iconName, label, onclick) {
+  return el("button", { type: "button", class: `row ${className}`, onclick }, [
+    el("span", { class: "row-dot" }, [icon(iconName, 14)]),
+    el("div", { class: "row-main" }, [el("div", { class: "row-title full" }, label)]),
+  ]);
+}
+
+async function runAttachmentAction(action, file, filename, trigger) {
+  try {
+    if (action === "open") {
+      await openAppFile(file.url, filename, trigger);
+      return;
+    }
+    const loaded = await fetchAppFile(file.url, filename);
+    if (action === "save") await saveFile(loaded.blob, loaded.filename);
+    else await printFile(loaded.blob, loaded.filename);
+  } catch (error) {
+    toast(error.userMessage || t("common.attachmentOpenFailed"), "bad");
+  }
+}
+
+function attachmentActionsSheet(file, trigger) {
+  const filename = file.filename || t("common.attachment");
+  const choose = (action) => () => {
+    discardSheet();
+    runAttachmentAction(action, file, filename, trigger);
+  };
+  return sheet(filename, [
+    el("div", { class: "rows" }, [
+      attachmentActionRow("attach-open", "open", t("attachment.action.open"), choose("open")),
+      attachmentActionRow("attach-save", "download", t("attachment.action.save"), choose("save")),
+      attachmentActionRow("attach-print", "print", t("attachment.action.print"), choose("print")),
+    ]),
+  ]);
+}
+
 function attachmentButton(file) {
   const filename = file.filename || t("common.attachment");
   const button = el(
@@ -1514,18 +1721,8 @@ function attachmentButton(file) {
     { type: "button", class: "row read" },
     attachmentRowContent(filename)
   );
-  button.addEventListener("click", async () => {
-    if (button.disabled) return;
-    button.disabled = true;
-    button.classList.add("disabled");
-    try {
-      await openAppFile(file.url, filename, button);
-    } catch (error) {
-      toast(error.userMessage || t("common.attachmentOpenFailed"), "bad");
-    } finally {
-      button.disabled = false;
-      button.classList.remove("disabled");
-    }
+  button.addEventListener("click", () => {
+    openNestedSheet(() => attachmentActionsSheet(file, button));
   });
   return button;
 }
@@ -6538,6 +6735,12 @@ function messengerUnavailableBlock(data) {
   const failure = data && data.messages_unavailable;
   if (!failure) return null;
   const entry = teacherRoomEntry("btn");
+  if (failure.diagnosis && failure.diagnosis.stage === "no_credentials") {
+    const calm = emptyBlock("messages", t("messenger.empty.title"), t("messenger.empty.withheld"), entry);
+    const details = diagnosisEntries(failure.diagnosis);
+    if (details.length) calm.append(techDetailsButton(details));
+    return calm;
+  }
   const retry = retryButton(retryMessengerRooms);
   if (entry) retry.classList.add("ghost");
   const block = emptyBlock(
