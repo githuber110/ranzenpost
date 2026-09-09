@@ -26,6 +26,8 @@ function tapAttachment(window, file) {
   const rows = window.eval(`attachmentRows([${JSON.stringify(file)}])`);
   window.document.body.append(rows);
   rows.querySelector(".row").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const choice = window.eval("state.sheet");
+  if (choice) choice().querySelector(".attach-open").click();
   return rows.querySelector(".row");
 }
 
@@ -153,7 +155,7 @@ describe("[P197] an in-app overlay opens for images and PDFs, everything else do
     const { window } = loadApp();
     const source = window.eval("String(sickNotePdfBlock)");
     expect(source).toContain("openAppFile");
-    expect(window.eval("String(attachmentButton)")).toContain("openAppFile");
+    expect(window.eval("String(runAttachmentAction)")).toContain("openAppFile");
   });
 });
 
@@ -253,15 +255,21 @@ describe("[P197] the overlay closes cleanly and gives focus back", () => {
     expect(overlay.getAttribute("aria-label")).toBe("Klassenfoto.png");
   });
 
-  test("Tab inside the overlay keeps focus trapped on the only focusable control", async () => {
+  test("Tab inside the overlay cycles through its own controls and never leaves them", async () => {
     const { window } = loadApp();
     mockBlobResponse(window, { type: "image/png" });
     tapAttachment(window, { filename: "Klassenfoto.png", url: "api/pinboard/attachment/x" });
     await settle(window);
     const overlay = window.document.querySelector(".viewer-overlay");
+    const save = window.document.querySelector(".viewer-save");
     const close = window.document.querySelector(".viewer-close");
     close.blur();
     overlay.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    expect(window.document.activeElement).toBe(save);
+    close.focus();
+    overlay.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    expect(window.document.activeElement).toBe(save);
+    overlay.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
     expect(window.document.activeElement).toBe(close);
   });
 });

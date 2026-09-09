@@ -1211,10 +1211,51 @@ button.section-head {
   -webkit-overflow-scrolling: touch;
   background: var(--surface);
 }
-.viewer-close {
+.viewer-actions {
   position: absolute;
   inset-block-start: max(var(--s-6), var(--safe-t));
   inset-inline-end: max(var(--s-6), var(--safe-x));
+  display: flex;
+  gap: var(--s-3);
+  z-index: 1;
+}
+.viewer-menu {
+  position: absolute;
+  z-index: 2;
+  min-inline-size: 180px;
+  padding: var(--s-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: grid;
+}
+.viewer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-block-size: 44px;
+  padding: 0 var(--s-4);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.viewer-menu-item:hover,
+.viewer-menu-item:focus-visible { background: var(--surface-2); }
+.print-frame {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: -9999px;
+  inline-size: 1px;
+  block-size: 1px;
+  border: 0;
+  opacity: 0;
+}
+.viewer-btn {
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -1224,7 +1265,6 @@ button.section-head {
   display: grid;
   place-items: center;
   cursor: pointer;
-  z-index: 1;
 }
 
 .dlg-text { font-size: 0.875rem; line-height: 1.45; color: var(--ink-2); margin: 0 0 var(--s-7); }
