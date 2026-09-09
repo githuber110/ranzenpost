@@ -16,7 +16,6 @@ LOGGING_DEBT = {
     "dsa.py": "part of the auth core, same review gate as client.py",
     "iserv_prober.py": "part of the auth core, same review gate as client.py",
     "schoolregion.py": "reaches the school domain, silent today - next wave",
-    "server.py": "route shell, the modules behind it carry the logging",
 }
 
 

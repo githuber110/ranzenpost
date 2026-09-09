@@ -133,6 +133,21 @@ class Poller:
         entry["last_success"] = now
         return snapshot
 
+    def refresh_child(self, child_id):
+        if self.store is None or not child_id:
+            return False
+        try:
+            current = self.service.timetable(child_id)
+        except Exception:
+            return False
+        snapshot = self.store.load_calendar_snapshot()
+        self._store_feed_weeks(
+            snapshot, child_id, self._collect_feed_weeks(child_id, current), int(self.clock())
+        )
+        self.store.save_calendar_snapshot(snapshot)
+        self._warm_holidays()
+        return True
+
     def _today(self):
         return holidays.berlin_today(
             datetime.fromtimestamp(self.clock(), timezone.utc).replace(tzinfo=None)
