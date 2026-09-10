@@ -18,6 +18,7 @@ COMPONENTS = (
 )
 
 LAST_FETCH_FIELD = "last_fetched_at"
+WATCH_FIELD = "watched_since"
 TOKEN_BYTES = 32
 IDENTIFIER_BYTES = 8
 MAX_LABEL_LENGTH = 60
@@ -124,6 +125,7 @@ def public_view(entry):
         "created_at": entry.get("created_at", 0),
         "rotated_at": entry.get("rotated_at", 0),
         "last_fetched_at": _as_epoch(entry.get(LAST_FETCH_FIELD)),
+        "watched_since": _as_epoch(entry.get(WATCH_FIELD)) or _as_epoch(entry.get("created_at")),
         "token": entry.get("token", ""),
         "path": feed_path(entry.get("token", "")),
     }
@@ -148,7 +150,15 @@ class SubscriptionRegistry:
         self.store.save_calendar_subscriptions({"subscriptions": entries})
 
     def list(self):
-        return [public_view(entry) for entry in self._read()]
+        with self._lock:
+            entries = self._read()
+            stamp = int(self.clock())
+            unwatched = [entry for entry in entries if not _as_epoch(entry.get(WATCH_FIELD))]
+            for entry in unwatched:
+                entry[WATCH_FIELD] = stamp
+            if unwatched:
+                self._write(entries)
+        return [public_view(entry) for entry in entries]
 
     def move_child(self, old_id, new_id):
         if not old_id or not new_id or old_id == new_id:
@@ -182,6 +192,7 @@ class SubscriptionRegistry:
             "created_at": int(self.clock()),
             "rotated_at": 0,
         }
+        entry[WATCH_FIELD] = entry["created_at"]
         with self._lock:
             entries = self._read()
             entries.append(entry)
@@ -221,6 +232,8 @@ class SubscriptionRegistry:
         def change(entry):
             entry["token"] = secrets.token_urlsafe(TOKEN_BYTES)
             entry["rotated_at"] = int(self.clock())
+            entry.pop(LAST_FETCH_FIELD, None)
+            entry[WATCH_FIELD] = entry["rotated_at"]
             return entry
 
         return self._mutate(subscription_id, change)
@@ -253,6 +266,8 @@ class SubscriptionRegistry:
                 if _as_epoch(entry.get(LAST_FETCH_FIELD)) == stamp:
                     return stamp
                 entry[LAST_FETCH_FIELD] = stamp
+                if not _as_epoch(entry.get(WATCH_FIELD)):
+                    entry[WATCH_FIELD] = stamp
                 self._write(entries)
                 return stamp
         return 0

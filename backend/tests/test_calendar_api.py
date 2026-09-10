@@ -382,3 +382,68 @@ def test_noting_a_fetch_for_an_unknown_subscription_changes_nothing(tmp_path):
     registry.note_fetch("does-not-exist")
 
     assert registry.list()[0]["last_fetched_at"] == 0
+
+
+def test_a_new_subscription_is_watched_from_the_moment_it_exists(tmp_path):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+
+    assert created["watched_since"] == NOW_EPOCH
+
+
+def _legacy_registry(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_subscriptions(
+        {
+            "subscriptions": [
+                {
+                    "id": "legacy",
+                    "child_id": CHILD_ID,
+                    "label": "5A",
+                    "components": ["timetable"],
+                    "color": "",
+                    "token": "x" * 43,
+                    "created_at": NOW_EPOCH - 86400,
+                    "rotated_at": 0,
+                }
+            ]
+        }
+    )
+    return SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+
+
+def test_a_subscription_older_than_the_record_is_watched_from_its_first_listing_on(tmp_path):
+    registry = _legacy_registry(tmp_path)
+
+    first = registry.list()[0]
+    registry.clock = lambda: NOW_EPOCH + 600
+    again = registry.list()[0]
+
+    assert first["watched_since"] == NOW_EPOCH
+    assert again["watched_since"] == NOW_EPOCH
+    assert again["last_fetched_at"] == 0
+
+
+def test_a_fetch_before_the_first_listing_starts_the_record_too(tmp_path):
+    registry = _legacy_registry(tmp_path)
+
+    registry.note_fetch("legacy")
+
+    view = registry.list()[0]
+    assert view["last_fetched_at"] == NOW_EPOCH
+    assert view["watched_since"] == NOW_EPOCH
+
+
+def test_renewing_the_link_starts_the_record_again(tmp_path):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    registry.note_fetch(created["id"])
+
+    registry.clock = lambda: NOW_EPOCH + 100
+    renewed = registry.rotate(created["id"])
+
+    assert renewed["last_fetched_at"] == 0
+    assert renewed["watched_since"] == NOW_EPOCH + 100

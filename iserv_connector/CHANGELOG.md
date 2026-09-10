@@ -3,6 +3,20 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.25
+
+- In the Home Assistant app the subscription card no longer offers "Add to calendar". The app
+  swallows that hand-off on the iPhone, which a tap in 2609.01.24 proved once more; copying the
+  address and the two manual steps lead instead.
+- A subscription shows one button in the primary style at most. Two equally loud buttons had been
+  stacked without a gap; a guard now keeps it from happening again.
+- The fetch line always carries a date: when a calendar app last fetched the address and how long
+  ago that was, or since when none has. For a subscription older than this record, "since" starts at
+  its first listing, because nothing earlier can be proven. Renewing the link starts the record anew.
+- Instead of only saying that the calendar app decides, the card names the one-time setting that
+  makes changes arrive on their own; on an iPhone that is fetching new data every 15 minutes. The
+  feed now asks to be reloaded every 15 minutes instead of every hour.
+
 ## 2609.01.24
 
 - Each calendar subscription says when a calendar app last fetched it, or that none ever has. A

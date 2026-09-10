@@ -2099,7 +2099,7 @@ button.section-head {
 .cal-action-row { display: flex; flex-wrap: wrap; gap: var(--s-4); margin-bottom: var(--s-4); }
 .cal-action-row .btn { flex: 1 1 132px; width: auto; }
 a.cal-add { text-decoration: none; margin-bottom: var(--s-4); }
-button.cal-copy-primary { margin-bottom: var(--s-4); }
+button.cal-add { margin-bottom: var(--s-4); }
 .cal-webview { margin-block: var(--s-4) var(--s-5); }
 .cal-step-list {
   margin: var(--s-3) 0 var(--s-3);
