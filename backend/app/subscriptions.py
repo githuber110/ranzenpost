@@ -17,6 +17,7 @@ COMPONENTS = (
     COMPONENT_ABSENCES,
 )
 
+LAST_FETCH_FIELD = "last_fetched_at"
 TOKEN_BYTES = 32
 IDENTIFIER_BYTES = 8
 MAX_LABEL_LENGTH = 60
@@ -107,6 +108,12 @@ def token_log_prefix(token):
     return str(token or "")[:TOKEN_LOG_PREFIX_LENGTH]
 
 
+def _as_epoch(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return int(value) if value > 0 else 0
+
+
 def public_view(entry):
     return {
         "id": entry.get("id", ""),
@@ -116,6 +123,7 @@ def public_view(entry):
         "color": entry.get("color", ""),
         "created_at": entry.get("created_at", 0),
         "rotated_at": entry.get("rotated_at", 0),
+        "last_fetched_at": _as_epoch(entry.get(LAST_FETCH_FIELD)),
         "token": entry.get("token", ""),
         "path": feed_path(entry.get("token", "")),
     }
@@ -234,6 +242,20 @@ class SubscriptionRegistry:
             if len(stored) == len(candidate) and hmac.compare_digest(stored, candidate):
                 found = entry
         return found
+
+    def note_fetch(self, subscription_id):
+        stamp = int(self.clock())
+        with self._lock:
+            entries = self._read()
+            for entry in entries:
+                if entry.get("id") != subscription_id:
+                    continue
+                if _as_epoch(entry.get(LAST_FETCH_FIELD)) == stamp:
+                    return stamp
+                entry[LAST_FETCH_FIELD] = stamp
+                self._write(entries)
+                return stamp
+        return 0
 
     def children_with_component(self, component):
         return {

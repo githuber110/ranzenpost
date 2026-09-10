@@ -243,6 +243,7 @@ function apiMessage(result, fallbackKey) {
 }
 
 const state = {
+  calendarHandOffStalled: null,
   config: null,
   me: null,
   notifyServices: [],
@@ -3853,6 +3854,37 @@ function calendarHost() {
   return resolved || calendarDetectedHost() || stored;
 }
 
+const RELATIVE_STEPS = [
+  { limit: 60, unit: "second", per: 1 },
+  { limit: 3600, unit: "minute", per: 60 },
+  { limit: 86400, unit: "hour", per: 3600 },
+  { limit: Infinity, unit: "day", per: 86400 },
+];
+
+function relativeFormatter() {
+  try {
+    return new Intl.RelativeTimeFormat(i18n.language, { numeric: "auto" });
+  } catch (error) {
+    return new Intl.RelativeTimeFormat(BASE_LANGUAGE, { numeric: "auto" });
+  }
+}
+
+function relativeSince(epochSeconds) {
+  const stamp = Number(epochSeconds) || 0;
+  if (stamp <= 0) return "";
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - stamp));
+  const step = RELATIVE_STEPS.find((entry) => seconds < entry.limit) || RELATIVE_STEPS[RELATIVE_STEPS.length - 1];
+  return relativeFormatter().format(-Math.round(seconds / step.per), step.unit);
+}
+
+function calendarFetchLine(subscription) {
+  const stamp = Number(subscription && subscription.last_fetched_at) || 0;
+  const text = stamp > 0
+    ? t("calendar.subscribe.fetched", { when: relativeSince(stamp) })
+    : t("calendar.subscribe.fetched.never");
+  return el("p", { class: "cal-hint cal-fetched" }, text);
+}
+
 function calendarHostForUrl(host) {
   return String(host || "").includes(":") ? `[${host}]` : host;
 }
@@ -4277,16 +4309,55 @@ function calendarSubscriptionBlock(subscription, child) {
   const host = calendarHost();
   if (!host) nodes.push(el("p", { class: "cal-hint" }, t("calendar.subscribe.host.missing")));
   else nodes.push(el("code", { class: "cal-url", dir: "ltr" }, calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN)));
+  nodes.push(calendarFetchLine(subscription));
+  nodes.push(el("p", { class: "cal-hint cal-refresh" }, t("calendar.subscribe.refresh")));
   for (const node of calendarActions(subscription, child)) nodes.push(node);
   return nodes;
 }
 
+const CALENDAR_HANDOFF_VERDICT_MS = 2000;
+
 function handOffCalendarUrl(feedUrl) {
   try {
-    window.location.href = feedUrl;
+    const link = el("a", { href: feedUrl, rel: "noopener" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    return true;
   } catch (error) {
     toast(t("calendar.subscribe.add.failed"), "bad");
+    return false;
   }
+}
+
+function pageStillHasTheUser() {
+  if (document.hidden) return false;
+  return typeof document.hasFocus !== "function" || document.hasFocus();
+}
+
+function subscribeToCalendar(subscription, feedUrl) {
+  state.calendarHandOffStalled = null;
+  if (!handOffCalendarUrl(feedUrl)) return;
+  window.setTimeout(() => {
+    if (!pageStillHasTheUser()) return;
+    state.calendarHandOffStalled = subscription.id;
+    rerender();
+  }, CALENDAR_HANDOFF_VERDICT_MS);
+}
+
+function calendarHandOffStalledBlock() {
+  return el("div", { class: "cal-webview cal-stalled" }, [
+    el("span", { class: "overline" }, t("calendar.subscribe.add.stalled.title")),
+    el("p", { class: "cal-hint" }, t("calendar.subscribe.add.stalled.text")),
+  ]);
+}
+
+function calendarAddButton(subscription, feedUrl) {
+  return el("button", {
+    class: "btn cal-add",
+    type: "button",
+    onclick: () => subscribeToCalendar(subscription, feedUrl),
+  }, [icon("calendarAdd", 18), t("calendar.subscribe.add")]);
 }
 
 const WEBVIEW_UA_MARKERS = ["homeassistant", "home assistant", "; wv)"];
@@ -4342,20 +4413,15 @@ function calendarActions(subscription, child) {
   const busy = !!state.calendarBusy;
   const embedded = isEmbeddedWebView();
   if (embedded && plainUrl) {
+    if (feedUrl) nodes.push(calendarAddButton(subscription, feedUrl));
     nodes.push(calendarCopyPrimaryButton(plainUrl));
     nodes.push(calendarWebViewSteps());
   } else if (embedded) {
     nodes.push(noteBlock(t("calendar.subscribe.host.missing")));
   } else if (feedUrl) {
-    nodes.push(el("button", {
-      class: "btn cal-add",
-      type: "button",
-      onclick: () => handOffCalendarUrl(feedUrl),
-    }, [
-      icon("calendarAdd", 18),
-      t("calendar.subscribe.add"),
-    ]));
+    nodes.push(calendarAddButton(subscription, feedUrl));
   }
+  if (state.calendarHandOffStalled === subscription.id) nodes.push(calendarHandOffStalledBlock());
   const row = el("div", { class: "cal-action-row" });
   if (!embedded) row.append(calendarCopyButton(plainUrl));
   if (typeof qrMatrix === "function" && feedUrl) row.append(calendarQrButton(subscription));
