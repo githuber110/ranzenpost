@@ -59,20 +59,16 @@ function trackNavigation(window) {
   return opened;
 }
 
-describe("[P254] the companion app offers subscribing, not only copying", () => {
-  test("the first button subscribes and hands the address to the system", () => {
+describe("[P255] the companion app never offers the hand-off it swallows", () => {
+  test("no subscribe button, copying leads", () => {
     const { window } = loadApp();
     asWebView(window);
-    const opened = trackNavigation(window);
-    const nodes = actions(window);
-    const labels = buttonTexts(nodes);
-    expect(labels[0]).toContain(window.eval("t('calendar.subscribe.add')"));
-    const add = nodes.find((node) => node.classList && node.classList.contains("cal-add"));
-    add.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    expect(opened).toEqual(["webcal://homeassistant.local:8100/calendar/t.ics"]);
+    const labels = buttonTexts(actions(window));
+    expect(labels).not.toContain(window.eval("t('calendar.subscribe.add')"));
+    expect(labels[0]).toContain(window.eval("t('calendar.subscribe.copy')"));
   });
 
-  test("copying and the manual steps stay available underneath", () => {
+  test("copying and the manual steps stay available", () => {
     const { window } = loadApp();
     asWebView(window);
     const nodes = actions(window);

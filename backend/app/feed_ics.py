@@ -3,7 +3,7 @@ import re
 PRODID = "-//Ranzenpost//IServ Calendar//EN"
 TIMEZONE_ID = "Europe/Berlin"
 MAX_LINE_OCTETS = 75
-REFRESH_INTERVAL = "PT1H"
+REFRESH_INTERVAL = "PT15M"
 LINE_BREAK = "\r\n"
 
 VTIMEZONE_LINES = (

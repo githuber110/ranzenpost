@@ -626,8 +626,8 @@ def test_the_calendar_skeleton_is_complete(tmp_path):
     assert ics.rstrip("\r\n").endswith("END:VCALENDAR")
     assert "METHOD:PUBLISH" in ics
     assert "PRODID:" in ics
-    assert "REFRESH-INTERVAL;VALUE=DURATION:PT1H" in ics
-    assert "X-PUBLISHED-TTL:PT1H" in ics
+    assert "REFRESH-INTERVAL;VALUE=DURATION:PT15M" in ics
+    assert "X-PUBLISHED-TTL:PT15M" in ics
     assert "X-WR-TIMEZONE:Europe/Berlin" in ics
     assert ics.count("\n") == ics.count("\r\n")
 
