@@ -55,6 +55,16 @@ def _client_key(request):
     return client.host if client and client.host else "unknown"
 
 
+def _note_fetch(registry, subscription):
+    recorder = getattr(registry, "note_fetch", None)
+    if not callable(recorder):
+        return
+    try:
+        recorder(subscription.get("id", ""))
+    except Exception:
+        logger.warning("the fetch time of a calendar feed could not be stored", exc_info=True)
+
+
 def create_calendar_app(store, registry, holiday_calendar=None, builder=None, limiter=None):
     app = FastAPI(title="Ranzenpost Calendar", docs_url=None, redoc_url=None, openapi_url=None)
     holiday_source = holiday_calendar or holidays.HolidayCalendar(store)
@@ -77,6 +87,7 @@ def create_calendar_app(store, registry, holiday_calendar=None, builder=None, li
             return PlainTextResponse(
                 NOT_FOUND_BODY, status_code=404, headers=dict(SECURITY_HEADERS)
             )
+        _note_fetch(registry, subscription)
         body = build(subscription, store, holiday_source)
         tag = _etag(body)
         headers = dict(SECURITY_HEADERS)

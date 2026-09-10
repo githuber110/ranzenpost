@@ -311,3 +311,74 @@ def test_the_first_feed_request_after_subscribing_already_carries_the_lessons(tm
     assert "DTSTART;TZID=Europe/Berlin:20260902T080000" in ics
     assert "calendar.notice.noData" not in ics
     assert "noch keine Daten" not in ics
+
+
+def _feed_client(tmp_path):
+    from app.calendar_server import create_calendar_app
+
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+    subscription = registry.create(CHILD_ID, ["school_holidays"], "5A")
+    app = create_calendar_app(store, registry, holiday_calendar=CountingHolidays(), builder=lambda *_: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n")
+    return TestClient(app, raise_server_exceptions=False), registry, subscription
+
+
+def test_a_fresh_subscription_reports_that_nobody_fetched_it_yet(tmp_path):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+
+    assert created["last_fetched_at"] == 0
+    assert registry.list()[0]["last_fetched_at"] == 0
+
+
+def test_a_calendar_app_fetching_the_feed_is_written_down(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+
+    response = client.get(f"/calendar/{subscription['token']}.ics")
+
+    assert response.status_code == 200
+    assert registry.list()[0]["last_fetched_at"] == NOW_EPOCH
+
+
+def test_an_unchanged_feed_still_counts_as_a_fetch(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+    first = client.get(f"/calendar/{subscription['token']}.ics")
+
+    registry.clock = lambda: NOW_EPOCH + 3600
+    again = client.get(
+        f"/calendar/{subscription['token']}.ics",
+        headers={"if-none-match": first.headers["etag"]},
+    )
+
+    assert again.status_code == 304
+    assert registry.list()[0]["last_fetched_at"] == NOW_EPOCH + 3600
+
+
+def test_a_rejected_token_writes_nothing_down(tmp_path):
+    client, registry, _ = _feed_client(tmp_path)
+
+    assert client.get("/calendar/nonsense.ics").status_code == 404
+    assert registry.list()[0]["last_fetched_at"] == 0
+
+
+def test_the_feed_still_answers_when_the_fetch_note_cannot_be_stored(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+
+    def refuse(_subscription_id):
+        raise OSError("read-only")
+
+    registry.note_fetch = refuse
+
+    assert client.get(f"/calendar/{subscription['token']}.ics").status_code == 200
+
+
+def test_noting_a_fetch_for_an_unknown_subscription_changes_nothing(tmp_path):
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+    registry.create(CHILD_ID, ["timetable"], "5A")
+
+    registry.note_fetch("does-not-exist")
+
+    assert registry.list()[0]["last_fetched_at"] == 0

@@ -56,7 +56,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(host.querySelector(".cal-copy")).not.toBeNull();
   });
 
-  test("the companion web view leads with copying and a two step instruction", () => {
+  test("the companion web view keeps copying and a two step instruction", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const copy = host.querySelector(".cal-copy-primary");
     expect(copy).not.toBeNull();
@@ -70,10 +70,16 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.webview.hint")'));
   });
 
-  test("the web view never offers the dead webcal handoff", () => {
+  test("[P254] the web view may try the handoff, but never strands the reader with it", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const buttons = [...host.querySelectorAll("button")].map((node) => node.textContent);
-    expect(buttons).not.toContain(window.eval('t("calendar.subscribe.add")'));
+    const offersHandOff = buttons.some((label) => label.includes(window.eval('t("calendar.subscribe.add")')));
+    if (offersHandOff) {
+      expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
+      expect(host.querySelector(".cal-webview")).not.toBeNull();
+      expect(window.eval("String(subscribeToCalendar)")).toContain("calendarHandOffStalled");
+    }
+    expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
   });
 
   test("an android web view is recognised as one as well", () => {

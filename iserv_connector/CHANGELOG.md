@@ -3,6 +3,19 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.24
+
+- Each calendar subscription says when a calendar app last fetched it, or that none ever has. A
+  subscribed calendar that silently stops updating was impossible to tell apart from one that had
+  nothing new; now the answer is on the screen.
+- The subscription card says plainly that the calendar app decides when changes arrive. The feed
+  asks to be reloaded every hour, but no calendar app is obliged to follow that.
+- "Add to calendar" hands the address over through a link rather than a page navigation, which more
+  devices pass on to their calendar app. If nothing opens and the page keeps the focus, the app says
+  what to do instead of leaving the tap unanswered.
+- In the Home Assistant app, subscribing is offered first. Copying the address and the two manual
+  steps stay underneath for the cases where the system does not take the hand-off.
+
 ## 2609.01.23
 
 - A calendar subscription is filled the moment it is created. The lessons behind a subscription
