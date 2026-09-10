@@ -3877,12 +3877,16 @@ function relativeSince(epochSeconds) {
   return relativeFormatter().format(-Math.round(seconds / step.per), step.unit);
 }
 
-function calendarFetchLine(subscription) {
+function calendarFetchText(subscription) {
   const stamp = Number(subscription && subscription.last_fetched_at) || 0;
-  const text = stamp > 0
-    ? t("calendar.subscribe.fetched", { when: relativeSince(stamp) })
-    : t("calendar.subscribe.fetched.never");
-  return el("p", { class: "cal-hint cal-fetched" }, text);
+  if (stamp > 0) return t("calendar.subscribe.fetched", { date: formatEpoch(stamp), when: relativeSince(stamp) });
+  const since = Number(subscription && (subscription.watched_since || subscription.created_at)) || 0;
+  if (since > 0) return t("calendar.subscribe.fetched.since", { date: formatEpoch(since) });
+  return t("calendar.subscribe.fetched.never");
+}
+
+function calendarFetchLine(subscription) {
+  return el("p", { class: "cal-hint cal-fetched" }, calendarFetchText(subscription));
 }
 
 function calendarHostForUrl(host) {
@@ -4310,7 +4314,7 @@ function calendarSubscriptionBlock(subscription, child) {
   if (!host) nodes.push(el("p", { class: "cal-hint" }, t("calendar.subscribe.host.missing")));
   else nodes.push(el("code", { class: "cal-url", dir: "ltr" }, calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN)));
   nodes.push(calendarFetchLine(subscription));
-  nodes.push(el("p", { class: "cal-hint cal-refresh" }, t("calendar.subscribe.refresh")));
+  nodes.push(el("p", { class: "cal-hint cal-refresh" }, t(isApplePlatform() ? "calendar.subscribe.refresh.apple" : "calendar.subscribe.refresh")));
   for (const node of calendarActions(subscription, child)) nodes.push(node);
   return nodes;
 }
@@ -4413,7 +4417,6 @@ function calendarActions(subscription, child) {
   const busy = !!state.calendarBusy;
   const embedded = isEmbeddedWebView();
   if (embedded && plainUrl) {
-    if (feedUrl) nodes.push(calendarAddButton(subscription, feedUrl));
     nodes.push(calendarCopyPrimaryButton(plainUrl));
     nodes.push(calendarWebViewSteps());
   } else if (embedded) {

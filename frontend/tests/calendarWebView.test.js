@@ -56,10 +56,11 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(host.querySelector(".cal-copy")).not.toBeNull();
   });
 
-  test("the companion web view keeps copying and a two step instruction", () => {
+  test("the companion web view leads with copying and a two step instruction", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const copy = host.querySelector(".cal-copy-primary");
     expect(copy).not.toBeNull();
+    expect(host.querySelector("button")).toBe(copy);
     expect(copy.textContent).toContain(window.eval('t("calendar.subscribe.copy")'));
     const steps = host.querySelector(".cal-webview");
     expect(steps).not.toBeNull();
@@ -70,16 +71,11 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.webview.hint")'));
   });
 
-  test("[P254] the web view may try the handoff, but never strands the reader with it", () => {
+  test("the web view never offers the dead webcal handoff", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const buttons = [...host.querySelectorAll("button")].map((node) => node.textContent);
-    const offersHandOff = buttons.some((label) => label.includes(window.eval('t("calendar.subscribe.add")')));
-    if (offersHandOff) {
-      expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
-      expect(host.querySelector(".cal-webview")).not.toBeNull();
-      expect(window.eval("String(subscribeToCalendar)")).toContain("calendarHandOffStalled");
-    }
-    expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
+    expect(buttons).not.toContain(window.eval('t("calendar.subscribe.add")'));
+    expect(host.querySelector(".cal-add:not(.cal-copy-primary)")).toBeNull();
   });
 
   test("an android web view is recognised as one as well", () => {
@@ -138,4 +134,20 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(host.querySelector(".cal-copy-primary")).toBeNull();
     expect(host.querySelector(".cal-add")).not.toBeNull();
   });
+});
+
+describe("[P255] one loud button per subscription", () => {
+  for (const [name, agent] of [
+    ["browser", SAFARI_UA],
+    ["companion app", COMPANION_UA],
+    ["android web view", ANDROID_WEBVIEW_UA],
+  ]) {
+    test(`${name}: at most one button in the primary style`, () => {
+      const { host } = actionsFor(agent);
+      const loud = [...host.querySelectorAll(".btn")].filter(
+        (node) => !node.classList.contains("ghost") && !node.classList.contains("destructive")
+      );
+      expect(loud.length).toBeLessThanOrEqual(1);
+    });
+  }
 });
