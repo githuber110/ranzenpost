@@ -429,7 +429,7 @@
   "calendar.subscribe.webview.hint": "Home Assistant uygulamasında düğme takvimi tarayıcı üzerinden açar. Orada bir şey açılmazsa aşağıdaki iki adım yardımcı olur.",
   "calendar.subscribe.webview.step1": "Adresi kopyalayın ve Safari'de açın.",
   "calendar.subscribe.webview.step1Other": "Adresi kopyalayın ve telefonun tarayıcısında açın.",
-  "calendar.subscribe.webview.step2": "Takvimde aboneliği onaylayın.",
+  "calendar.subscribe.webview.step2": "Takvimde aboneliği onaylayın. iOS adresi içeren bir sayfa gösterirse orada Ara'ya dokunun – adres olduğu gibi doğrudur.",
   "calendar.subscribe.webview.title": "Telefonda iki adım",
   "child.class": "{name} sınıfı",
   "child.nameWithClass": "{name} · {class}",

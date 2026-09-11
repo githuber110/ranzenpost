@@ -433,7 +433,7 @@
   "calendar.subscribe.webview.hint": "في تطبيق Home Assistant يفتح الزر التقويم عبر المتصفح. إذا لم يُفتح شيء، فاتبع الخطوتين التاليتين.",
   "calendar.subscribe.webview.step1": "انسخ العنوان وافتحه في Safari.",
   "calendar.subscribe.webview.step1Other": "انسخ العنوان وافتحه في متصفح الهاتف.",
-  "calendar.subscribe.webview.step2": "أكّد الاشتراك في التقويم.",
+  "calendar.subscribe.webview.step2": "أكّد الاشتراك في التقويم. إذا أظهر iOS لوحة فيها العنوان، فاضغط فيها على بحث – العنوان صحيح كما هو.",
   "calendar.subscribe.webview.title": "خطوتان على الهاتف",
   "child.class": "الصف {name}",
   "child.nameWithClass": "{name} · {class}",

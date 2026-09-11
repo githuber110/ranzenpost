@@ -429,7 +429,7 @@
   "calendar.subscribe.webview.hint": "In the Home Assistant app the button opens the calendar through the browser. If nothing opens there, the two steps below help.",
   "calendar.subscribe.webview.step1": "Copy the address and open it in Safari.",
   "calendar.subscribe.webview.step1Other": "Copy the address and open it in the phone's browser.",
-  "calendar.subscribe.webview.step2": "Confirm the subscription in the calendar.",
+  "calendar.subscribe.webview.step2": "Confirm the subscription in the calendar. If iOS shows a sheet with the address, tap Search there – the address is right as it is.",
   "calendar.subscribe.webview.title": "Two steps on the phone",
   "child.class": "Class {name}",
   "child.nameWithClass": "{name} · {class}",

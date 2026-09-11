@@ -449,14 +449,89 @@ def test_renewing_the_link_starts_the_record_again(tmp_path):
     assert renewed["watched_since"] == NOW_EPOCH + 100
 
 
+BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+CALENDAR_APP_ACCEPT = "*/*"
+
+
 def test_the_subscribe_link_sends_the_browser_on_to_the_calendar_app(tmp_path):
     client, registry, subscription = _feed_client(tmp_path)
 
-    response = client.get(f"/calendar/{subscription['token']}.ics?subscribe=1", follow_redirects=False)
+    response = client.get(
+        f"/calendar/{subscription['token']}.ics?subscribe=1",
+        headers={"Accept": BROWSER_ACCEPT},
+        follow_redirects=False,
+    )
 
     assert response.status_code == 302
     assert response.headers["location"] == f"webcal://testserver/calendar/{subscription['token']}.ics"
     assert registry.list()[0]["last_fetched_at"] == 0
+
+
+def test_the_subscribe_link_serves_the_calendar_itself_to_a_calendar_app(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+
+    response = client.get(
+        f"/calendar/{subscription['token']}.ics?subscribe=1",
+        headers={"Accept": CALENDAR_APP_ACCEPT},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")
+    assert "location" not in response.headers
+    assert response.text.startswith("BEGIN:VCALENDAR")
+    assert registry.list()[0]["last_fetched_at"] == NOW_EPOCH
+
+
+def test_a_calendar_app_refreshing_the_subscribe_link_gets_a_not_modified_like_any_feed(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+    path = f"/calendar/{subscription['token']}.ics?subscribe=1"
+    first = client.get(path, headers={"Accept": CALENDAR_APP_ACCEPT}, follow_redirects=False)
+    registry.clock = lambda: NOW_EPOCH + 900
+
+    again = client.get(
+        path,
+        headers={"Accept": CALENDAR_APP_ACCEPT, "If-None-Match": first.headers["etag"]},
+        follow_redirects=False,
+    )
+
+    assert again.status_code == 304
+    assert registry.list()[0]["last_fetched_at"] == NOW_EPOCH + 900
+
+
+def _subscribe_status(tmp_path, accept):
+    client, registry, subscription = _feed_client(tmp_path)
+    headers = {"Accept": accept} if accept is not None else {}
+    response = client.get(
+        f"/calendar/{subscription['token']}.ics?subscribe=1", headers=headers, follow_redirects=False
+    )
+    own = next(entry for entry in registry.list() if entry["id"] == subscription["id"])
+    return response.status_code, own["last_fetched_at"]
+
+
+def test_the_subscribe_link_sends_on_only_a_caller_that_prefers_a_page_over_a_calendar(tmp_path):
+    handed_on = 302
+    served = 200
+    cases = {
+        "text/html": handed_on,
+        "*/*, text/html": handed_on,
+        "text/html, */*;q=0.8": handed_on,
+        "text/html;q=0.9, text/calendar;q=0.5": handed_on,
+        "*/*": served,
+        "": served,
+        None: served,
+        "text/*": served,
+        "text/calendar": served,
+        "text/calendar, text/html;q=0.9": served,
+        "text/html;q=0.9, text/calendar": served,
+        "text/html, text/calendar": served,
+        "text/calendar;q=abc, text/html;q=0.1": served,
+    }
+
+    for accept, expected in cases.items():
+        status, fetched = _subscribe_status(tmp_path, accept)
+        assert status == expected, accept
+        assert fetched == (0 if expected == handed_on else NOW_EPOCH), accept
 
 
 def test_the_subscribe_link_refuses_an_unknown_token(tmp_path):

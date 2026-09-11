@@ -13,7 +13,8 @@ from .subscriptions import token_log_prefix
 logger = logging.getLogger(__name__)
 
 CACHE_CONTROL = "private, max-age=600, must-revalidate"
-MEDIA_TYPE = "text/calendar; charset=utf-8"
+CALENDAR_MEDIA_TYPE = "text/calendar"
+MEDIA_TYPE = f"{CALENDAR_MEDIA_TYPE}; charset=utf-8"
 NOT_FOUND_BODY = "not found"
 RATE_LIMIT_BODY = "too many requests"
 RATE_LIMIT_REQUESTS = 60
@@ -21,6 +22,7 @@ RATE_LIMIT_WINDOW_SECONDS = 300
 ETAG_LENGTH = 32
 SUBSCRIBE_QUERY = "subscribe"
 WEBCAL_SCHEME = "webcal"
+BROWSER_MEDIA_TYPE = "text/html"
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -57,6 +59,38 @@ def _client_key(request):
     return client.host if client and client.host else "unknown"
 
 
+def _accept_weight(accept, media_type):
+    best = (0.0, -1)
+    for offer in accept.split(","):
+        parts = [part.strip() for part in offer.split(";")]
+        offered = parts[0].lower()
+        quality = 1.0
+        for parameter in parts[1:]:
+            name, _, value = parameter.partition("=")
+            if name.strip().lower() == "q":
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 1.0
+        if offered == media_type:
+            rank = 2
+        elif offered == media_type.split("/")[0] + "/*":
+            rank = 1
+        elif offered == "*/*":
+            rank = 0
+        else:
+            continue
+        best = max(best, (quality, rank))
+    return best
+
+
+def _wants_hand_off(request):
+    if not request.query_params.get(SUBSCRIBE_QUERY):
+        return False
+    accept = request.headers.get("accept", "")
+    return _accept_weight(accept, BROWSER_MEDIA_TYPE) > _accept_weight(accept, CALENDAR_MEDIA_TYPE)
+
+
 def _note_fetch(registry, subscription):
     recorder = getattr(registry, "note_fetch", None)
     if not callable(recorder):
@@ -89,7 +123,7 @@ def create_calendar_app(store, registry, holiday_calendar=None, builder=None, li
             return PlainTextResponse(
                 NOT_FOUND_BODY, status_code=404, headers=dict(SECURITY_HEADERS)
             )
-        if request.query_params.get(SUBSCRIBE_QUERY):
+        if _wants_hand_off(request):
             headers = dict(SECURITY_HEADERS)
             headers["Location"] = str(request.url.replace(scheme=WEBCAL_SCHEME, query=""))
             headers["Cache-Control"] = "no-store"
