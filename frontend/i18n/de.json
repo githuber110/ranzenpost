@@ -429,7 +429,7 @@
   "calendar.subscribe.webview.hint": "In der Home-Assistant-App öffnet der Knopf den Kalender über den Browser. Geht dort nichts auf, hilft der Weg in zwei Schritten.",
   "calendar.subscribe.webview.step1": "Adresse kopieren und in Safari öffnen.",
   "calendar.subscribe.webview.step1Other": "Adresse kopieren und im Browser des Handys öffnen.",
-  "calendar.subscribe.webview.step2": "Im Kalender das Abonnieren bestätigen.",
+  "calendar.subscribe.webview.step2": "Im Kalender das Abonnieren bestätigen. Zeigt iOS ein Blatt mit der Adresse, tippe dort auf Suchen – die Adresse stimmt so.",
   "calendar.subscribe.webview.title": "Am Handy in zwei Schritten",
   "child.class": "Klasse {name}",
   "child.nameWithClass": "{name} · {class}",

@@ -3,6 +3,15 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.29
+
+- Subscribing from the Home Assistant app no longer ends in "verification failed". iOS puts the
+  address the app opened, with its subscribe marker, into its own subscription sheet, and the feed
+  server answered that address with a hand-off to the calendar app instead of the calendar itself.
+  The hand-off now goes only to a caller that prefers a web page over a calendar, the way a
+  browser asks; a calendar app asking for that same address gets the calendar, and its fetch
+  counts as a fetch. The two-step hint says what to do with the sheet.
+
 ## 2609.01.28
 
 - A read confirmation for a letter that also offers a message to the school now goes through. Such
