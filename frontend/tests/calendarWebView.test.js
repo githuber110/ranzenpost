@@ -51,17 +51,18 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     const add = host.querySelector(".cal-add");
     expect(add).not.toBeNull();
     expect(add.textContent).toContain(window.eval('t("calendar.subscribe.add")'));
-    expect(host.querySelector(".cal-copy-primary")).toBeNull();
+    expect(host.querySelector(".cal-open-browser")).toBeNull();
     expect(host.querySelector(".cal-webview")).toBeNull();
     expect(host.querySelector(".cal-copy")).not.toBeNull();
   });
 
-  test("the companion web view leads with copying and a two step instruction", () => {
+  test("[P259] the companion web view leads with opening the calendar in the browser", () => {
     const { window, host } = actionsFor(COMPANION_UA);
-    const copy = host.querySelector(".cal-copy-primary");
-    expect(copy).not.toBeNull();
-    expect(host.querySelector("button")).toBe(copy);
-    expect(copy.textContent).toContain(window.eval('t("calendar.subscribe.copy")'));
+    const open = host.querySelector(".cal-open-browser");
+    expect(open).not.toBeNull();
+    expect(host.querySelector("button")).toBe(open);
+    expect(open.textContent).toContain(window.eval('t("calendar.subscribe.add")'));
+    expect(host.querySelector(".cal-copy")).not.toBeNull();
     const steps = host.querySelector(".cal-webview");
     expect(steps).not.toBeNull();
     expect([...steps.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
@@ -69,18 +70,36 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
       window.eval('t("calendar.subscribe.webview.step2")'),
     ]);
     expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.webview.hint")'));
+    expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.importHint")'));
   });
 
-  test("the web view never offers the dead webcal handoff", () => {
+  test("[P259] the web view hands the calendar to the browser, never to webcal inside itself", () => {
     const { window, host } = actionsFor(COMPANION_UA);
-    const buttons = [...host.querySelectorAll("button")].map((node) => node.textContent);
-    expect(buttons).not.toContain(window.eval('t("calendar.subscribe.add")'));
-    expect(host.querySelector(".cal-add:not(.cal-copy-primary)")).toBeNull();
+    const opened = [];
+    window.HTMLAnchorElement.prototype.click = function click() {
+      opened.push({ href: this.getAttribute("href"), target: this.getAttribute("target") });
+    };
+    host.querySelector(".cal-open-browser").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(opened).toEqual([
+      { href: "http://192.168.0.42:8100/calendar/token-1.ics?subscribe=1", target: "_blank" },
+    ]);
+  });
+
+  test("[P259] copying in the web view hands over the link that subscribes, not the one that imports", async () => {
+    const { window, host } = actionsFor(COMPANION_UA);
+    const copied = [];
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: (text) => { copied.push(text); return Promise.resolve(); } },
+      configurable: true,
+    });
+    host.querySelector(".cal-copy").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(copied).toEqual(["http://192.168.0.42:8100/calendar/token-1.ics?subscribe=1"]);
   });
 
   test("an android web view is recognised as one as well", () => {
     const { host } = actionsFor(ANDROID_WEBVIEW_UA);
-    expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
+    expect(host.querySelector(".cal-open-browser")).not.toBeNull();
   });
 
   test("an android web view is never told to open the address in safari", () => {
@@ -113,7 +132,8 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     const host = window.document.createElement("div");
     const run = window.eval("(function (sub) { return calendarActions(sub, null); })");
     for (const node of run(SUBSCRIPTION)) host.append(node);
-    expect(host.querySelector(".cal-copy-primary")).toBeNull();
+    expect(host.querySelector(".cal-open-browser")).toBeNull();
+    expect(host.querySelector(".cal-copy")).toBeNull();
     expect(host.querySelector(".cal-webview")).toBeNull();
     expect(host.textContent).toContain(window.eval('t("calendar.subscribe.host.missing")'));
   });
@@ -123,7 +143,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
       + "(KHTML, like Gecko) Mobile/15E148";
     const { host } = actionsFor(bare);
-    expect(host.querySelector(".cal-copy-primary")).not.toBeNull();
+    expect(host.querySelector(".cal-open-browser")).not.toBeNull();
   });
 
   test("a desktop browser is never mistaken for a web view", () => {
@@ -131,7 +151,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
     const { host } = actionsFor(desktop);
-    expect(host.querySelector(".cal-copy-primary")).toBeNull();
+    expect(host.querySelector(".cal-open-browser")).toBeNull();
     expect(host.querySelector(".cal-add")).not.toBeNull();
   });
 });

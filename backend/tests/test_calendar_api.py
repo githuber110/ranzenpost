@@ -447,3 +447,31 @@ def test_renewing_the_link_starts_the_record_again(tmp_path):
 
     assert renewed["last_fetched_at"] == 0
     assert renewed["watched_since"] == NOW_EPOCH + 100
+
+
+def test_the_subscribe_link_sends_the_browser_on_to_the_calendar_app(tmp_path):
+    client, registry, subscription = _feed_client(tmp_path)
+
+    response = client.get(f"/calendar/{subscription['token']}.ics?subscribe=1", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == f"webcal://testserver/calendar/{subscription['token']}.ics"
+    assert registry.list()[0]["last_fetched_at"] == 0
+
+
+def test_the_subscribe_link_refuses_an_unknown_token(tmp_path):
+    client, _, _ = _feed_client(tmp_path)
+
+    response = client.get("/calendar/nonsense.ics?subscribe=1", follow_redirects=False)
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
+
+def test_a_plain_feed_request_is_never_redirected(tmp_path):
+    client, _, subscription = _feed_client(tmp_path)
+
+    response = client.get(f"/calendar/{subscription['token']}.ics", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")

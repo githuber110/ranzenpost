@@ -19,6 +19,8 @@ RATE_LIMIT_BODY = "too many requests"
 RATE_LIMIT_REQUESTS = 60
 RATE_LIMIT_WINDOW_SECONDS = 300
 ETAG_LENGTH = 32
+SUBSCRIBE_QUERY = "subscribe"
+WEBCAL_SCHEME = "webcal"
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -87,6 +89,11 @@ def create_calendar_app(store, registry, holiday_calendar=None, builder=None, li
             return PlainTextResponse(
                 NOT_FOUND_BODY, status_code=404, headers=dict(SECURITY_HEADERS)
             )
+        if request.query_params.get(SUBSCRIBE_QUERY):
+            headers = dict(SECURITY_HEADERS)
+            headers["Location"] = str(request.url.replace(scheme=WEBCAL_SCHEME, query=""))
+            headers["Cache-Control"] = "no-store"
+            return Response(status_code=302, headers=headers)
         _note_fetch(registry, subscription)
         body = build(subscription, store, holiday_source)
         tag = _etag(body)

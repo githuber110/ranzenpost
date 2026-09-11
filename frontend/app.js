@@ -4390,14 +4390,46 @@ function pageStillHasTheUser() {
   return typeof document.hasFocus !== "function" || document.hasFocus();
 }
 
-function subscribeToCalendar(subscription, feedUrl) {
-  state.calendarHandOffStalled = null;
-  if (!handOffCalendarUrl(feedUrl)) return;
+function watchCalendarHandOff(subscription) {
   window.setTimeout(() => {
     if (!pageStillHasTheUser()) return;
     state.calendarHandOffStalled = subscription.id;
     rerender();
   }, CALENDAR_HANDOFF_VERDICT_MS);
+}
+
+function subscribeToCalendar(subscription, feedUrl) {
+  state.calendarHandOffStalled = null;
+  if (!handOffCalendarUrl(feedUrl)) return;
+  watchCalendarHandOff(subscription);
+}
+
+const CALENDAR_SUBSCRIBE_QUERY = "subscribe=1";
+
+function calendarSubscribeUrl(plainUrl) {
+  return plainUrl ? `${plainUrl}?${CALENDAR_SUBSCRIBE_QUERY}` : "";
+}
+
+function openCalendarInBrowser(subscription, url) {
+  state.calendarHandOffStalled = null;
+  try {
+    const link = el("a", { href: url, target: "_blank", rel: "noopener" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    toast(t("calendar.subscribe.add.failed"), "bad");
+    return;
+  }
+  watchCalendarHandOff(subscription);
+}
+
+function calendarBrowserButton(subscription, url) {
+  return el("button", {
+    class: "btn cal-add cal-open-browser",
+    type: "button",
+    onclick: () => openCalendarInBrowser(subscription, url),
+  }, [icon("calendarAdd", 18), t("calendar.subscribe.add")]);
 }
 
 function calendarHandOffStalledBlock() {
@@ -4445,20 +4477,8 @@ function calendarWebViewSteps() {
       el("li", {}, t("calendar.subscribe.webview.step2")),
     ]),
     el("p", { class: "cal-hint" }, t("calendar.subscribe.webview.hint")),
+    el("p", { class: "cal-hint cal-import-hint" }, t("calendar.subscribe.importHint")),
   ]);
-}
-
-function calendarCopyPrimaryButton(url) {
-  const button = el("button", {
-    class: "btn cal-add cal-copy-primary",
-    type: "button",
-    disabled: url ? null : "disabled",
-  }, [icon("clip", 18), t("calendar.subscribe.copy")]);
-  button.addEventListener("click", async () => {
-    const copied = await copyToClipboard(url);
-    toast(t(copied ? "calendar.subscribe.copied" : "calendar.subscribe.copyFailed"), copied ? "good" : "bad");
-  });
-  return button;
 }
 
 function calendarActions(subscription, child) {
@@ -4468,7 +4488,7 @@ function calendarActions(subscription, child) {
   const busy = !!state.calendarBusy;
   const embedded = isEmbeddedWebView();
   if (embedded && plainUrl) {
-    nodes.push(calendarCopyPrimaryButton(plainUrl));
+    nodes.push(calendarBrowserButton(subscription, calendarSubscribeUrl(plainUrl)));
     nodes.push(calendarWebViewSteps());
   } else if (embedded) {
     nodes.push(noteBlock(t("calendar.subscribe.host.missing")));
@@ -4478,6 +4498,7 @@ function calendarActions(subscription, child) {
   if (state.calendarHandOffStalled === subscription.id) nodes.push(calendarHandOffStalledBlock());
   const row = el("div", { class: "cal-action-row" });
   if (!embedded) row.append(calendarCopyButton(plainUrl));
+  else if (plainUrl) row.append(calendarCopyButton(calendarSubscribeUrl(plainUrl)));
   if (typeof qrMatrix === "function" && feedUrl) row.append(calendarQrButton(subscription));
   if (row.childNodes.length) nodes.push(row);
   if (state.calendarQr === subscription.id && feedUrl) {
