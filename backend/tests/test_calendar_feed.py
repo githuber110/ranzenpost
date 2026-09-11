@@ -56,6 +56,7 @@ def _lesson(
     subject_label="Deutsch",
     teacher_code="BEH",
     teacher_label="Behrens",
+    teacher_surname="",
     room="R1",
     start_time="08:00",
     change_kind="",
@@ -74,6 +75,7 @@ def _lesson(
         "color": color,
         "teacher_code": teacher_code,
         "teacher_label": teacher_label,
+        "teacher_surname": teacher_surname,
         "is_class_teacher": is_class_teacher,
         "room": room,
         "change_kind": change_kind,
@@ -150,43 +152,65 @@ def test_the_child_name_never_reaches_the_feed_or_its_address(tmp_path):
     ]
     store.save_calendar_snapshot(snapshot)
     MarkRegistry(store, clock=lambda: NOW_EPOCH).create(CHILD_ID, "2026-09-02", 3, "D", "Diktat")
-    subscription = _subscription(store, subscriptions.COMPONENTS)
+    subscription = _subscription(store, subscriptions.COMPONENTS, label="Klasse")
 
     ics = _build(store, subscription)
 
     assert "BEGIN:VEVENT" in ics
-    haystack = (ics + subscription["token"] + subscription["path"] + subscription["label"]).casefold()
+    events = ics[ics.index("BEGIN:VEVENT"):]
+    haystack = (events + subscription["token"] + subscription["path"]).casefold()
     for part in CHILD_NAME.split():
         assert part.casefold() not in haystack
     assert CHILD_ID not in ics
 
 
-def test_a_label_carrying_the_child_name_is_refused(tmp_path):
+def test_a_label_may_carry_the_child_name_since_the_family_decided_so(tmp_path):
     store = _store(tmp_path)
     registry = SubscriptionRegistry(store)
 
-    with pytest.raises(SubscriptionError) as error:
-        registry.create(CHILD_ID, ["timetable"], "Kalender Zwiebelfisch")
+    created = registry.create(CHILD_ID, ["timetable"], "Kalender Zwiebelfisch")
+    renamed = registry.update(created["id"], label="quastenflosser")
 
-    assert error.value.message_key == subscriptions.ERROR_LABEL_NAME
-    assert registry.list() == []
+    assert created["label"] == "Kalender Zwiebelfisch"
+    assert renamed["label"] == "quastenflosser"
 
 
-def test_a_label_carrying_the_child_name_is_refused_on_update(tmp_path):
+def test_an_empty_label_stays_empty_and_the_class_name_counts_as_no_label(tmp_path):
     store = _store(tmp_path)
     registry = SubscriptionRegistry(store)
-    created = registry.create(CHILD_ID, ["timetable"], "5A")
 
-    with pytest.raises(SubscriptionError):
-        registry.update(created["id"], label="quastenflosser")
+    empty = registry.create(CHILD_ID, ["timetable"], "")
+    class_only = registry.create(CHILD_ID, ["timetable"], " 5A ")
+    own = registry.create(CHILD_ID, ["timetable"], "Klasse 5A")
+
+    assert empty["label"] == ""
+    assert class_only["label"] == ""
+    assert own["label"] == "Klasse 5A"
 
 
-def test_the_label_defaults_to_the_class_name(tmp_path):
+def test_a_stored_label_that_only_repeats_the_class_is_read_as_no_label(tmp_path):
     store = _store(tmp_path)
+    store.save_calendar_subscriptions(
+        {
+            "subscriptions": [
+                {
+                    "id": "legacy",
+                    "child_id": CHILD_ID,
+                    "label": "5A",
+                    "components": ["timetable"],
+                    "color": "",
+                    "token": "y" * 43,
+                    "created_at": 1,
+                    "rotated_at": 0,
+                }
+            ]
+        }
+    )
+    registry = SubscriptionRegistry(store)
 
-    created = SubscriptionRegistry(store).create(CHILD_ID, ["timetable"], "")
-
-    assert created["label"] == "5A"
+    assert registry.list()[0]["label"] == ""
+    assert registry.find_by_token("y" * 43)["label"] == ""
+    assert "X-WR-CALNAME:Ranzenpost – Zwiebelfisch" in _build(store, registry.list()[0])
 
 
 def test_at_least_one_component_is_required(tmp_path):
@@ -235,6 +259,42 @@ def test_the_summary_names_period_subject_and_teacher(tmp_path):
     ics = _build(store, _subscription(store))
 
     assert "SUMMARY:1. Stunde Deutsch (Behrens)" in ics
+
+
+def test_the_calendar_names_the_teacher_by_surname_wherever_it_knows_one(tmp_path):
+    store = _store(tmp_path)
+    lesson = _lesson(
+        teacher_label="Frau Anna Behrens",
+        teacher_surname="Behrens",
+        change_kind="changed",
+        changed_fields=["teacher"],
+        previous={"subject": "Deutsch", "teacher": "Herr Ernst", "teacher_surname": "Ernst", "room": "R1"},
+    )
+    store.save_calendar_snapshot(_snapshot([lesson]))
+
+    ics = _unfold(_build(store, _subscription(store)))
+
+    assert "SUMMARY:Vertretung · 1. Stunde Deutsch (Behrens)" in ics
+    assert "Lehrkraft: Behrens" in ics
+    assert "Lehrkraft: Ernst → Behrens" in ics
+    assert "Anna" not in ics
+    assert "Herr Ernst" not in ics
+
+
+def test_without_a_surname_the_calendar_falls_back_to_the_teacher_label(tmp_path):
+    store = _store(tmp_path)
+    lesson = _lesson(
+        teacher_label="Frau Behrens",
+        change_kind="changed",
+        changed_fields=["teacher"],
+        previous={"subject": "Deutsch", "teacher": "Herr Ernst", "room": "R1"},
+    )
+    store.save_calendar_snapshot(_snapshot([lesson]))
+
+    ics = _unfold(_build(store, _subscription(store)))
+
+    assert "SUMMARY:Vertretung · 1. Stunde Deutsch (Frau Behrens)" in ics
+    assert "Lehrkraft: Herr Ernst → Frau Behrens" in ics
 
 
 def test_a_lesson_without_a_teacher_keeps_the_summary_clean(tmp_path):
@@ -597,18 +657,47 @@ def test_all_day_events_never_carry_a_timezone(tmp_path):
     assert "TZID=Europe/Berlin:2026100" not in ics
 
 
-def test_the_calendar_carries_the_subscription_label_and_no_name(tmp_path):
+def test_an_own_label_names_the_calendar(tmp_path):
     store = _store(tmp_path)
     store.save_calendar_snapshot(_snapshot([_lesson()]))
 
-    ics = _build(store, _subscription(store, label="5A"))
+    ics = _build(store, _subscription(store, label="Schule Zwiebelfisch"))
 
-    assert "X-WR-CALNAME:5A" in ics
-    assert "NAME:5A" in ics
+    assert "X-WR-CALNAME:Schule Zwiebelfisch" in ics
+    assert "NAME:Schule Zwiebelfisch" in ics
 
 
-def test_an_empty_label_falls_back_to_a_translated_name(tmp_path):
-    store = _store(tmp_path, children=[{"child_id": CHILD_ID, "name": CHILD_NAME}])
+def test_without_a_label_the_calendar_carries_ranzenpost_and_the_first_name(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+
+    ics = _build(store, _subscription(store, label=""))
+
+    assert "X-WR-CALNAME:Ranzenpost – Zwiebelfisch" in ics
+    assert "NAME:Ranzenpost – Zwiebelfisch" in ics
+    assert "Quastenflosser" not in ics
+
+
+def test_the_first_name_follows_the_comma_form_too(tmp_path):
+    store = _store(tmp_path, children=[{"child_id": CHILD_ID, "name": "Quastenflosser, Zwiebelfisch Otto", "class_name": "5A"}])
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+
+    ics = _build(store, _subscription(store, label=""))
+
+    assert "X-WR-CALNAME:Ranzenpost – Zwiebelfisch" in ics
+
+
+def test_the_second_child_gets_its_own_first_name(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+
+    ics = _build(store, _subscription(store, label="", child_id=SECOND_CHILD_ID))
+
+    assert f"X-WR-CALNAME:Ranzenpost – {SECOND_CHILD_NAME.split()[0]}" in ics
+
+
+def test_a_child_without_a_name_falls_back_to_a_translated_name(tmp_path):
+    store = _store(tmp_path, children=[{"child_id": CHILD_ID, "name": "", "class_name": "5A"}])
     store.save_calendar_snapshot(_snapshot([_lesson()]))
 
     ics = _build(store, _subscription(store, label=""))

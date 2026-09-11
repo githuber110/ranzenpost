@@ -669,7 +669,7 @@ def test_timetable_regular_lesson_stays_unmarked(tmp_path):
     regular = next(item for item in result["lessons"] if item["period"] == 1)
     assert regular["change_kind"] == ""
     assert regular["changed_fields"] == []
-    assert regular["previous"] == {"subject": "", "teacher": "", "room": ""}
+    assert regular["previous"] == {"subject": "", "teacher": "", "teacher_surname": "", "room": ""}
 
 
 def test_timetable_reports_change_count(tmp_path):
