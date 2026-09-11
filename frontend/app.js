@@ -6200,7 +6200,7 @@ function letterConfirmationBlock(letter, detail) {
   }
   if (!info.open) return null;
   const sendable = !!info.sendable;
-  return el("div", { class: "card confirm-card" }, [
+  const card = el("div", { class: "card confirm-card" }, [
     el("div", { class: "confirm-head" }, [
       el("span", { class: "confirm-mark" }, [icon("check", 16)]),
       el(
@@ -6221,6 +6221,14 @@ function letterConfirmationBlock(letter, detail) {
         ])
       : null,
   ]);
+  const failure = letter && letter.confirmationFailure;
+  if (failure && failure.message) card.append(noteBlock(failure.message));
+  const facts = [
+    ...diagnosisEntries(failure && failure.diagnosis),
+    ...diagnosisEntries(detail && detail.confirmation_evidence),
+  ];
+  if (facts.length) card.append(techDetailsButton(facts));
+  return card;
 }
 
 function applyLetterConfirmed(letter, stamp) {
@@ -6250,10 +6258,13 @@ async function confirmLetterRead(letter) {
       recipient_id: letter.recipient_id,
     });
     if (result && result.ok) {
+      letter.confirmationFailure = null;
       applyLetterConfirmed(letter, result.confirmed_at || "");
       toast(t("letters.confirm.sent"), "good");
     } else {
-      toast(apiMessage(result, "letters.confirm.failed"), "bad");
+      const message = apiMessage(result, "letters.confirm.failed");
+      letter.confirmationFailure = { message, diagnosis: (result && result.diagnosis) || null };
+      toast(message, "bad");
     }
   } catch (error) {
     if (handleApiFailure(error)) return;

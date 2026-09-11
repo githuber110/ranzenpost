@@ -309,6 +309,81 @@ def build_confirmation_payload(confirmation, text=None):
     return payload
 
 
+NOTICE_SELECTORS = (".alert", ".form-error-message", ".invalid-feedback", ".help-block", ".error")
+NOTICE_LIMIT = 3
+NOTICE_LENGTH = 80
+BUTTON_TEXT_LENGTH = 40
+LETTER_BODY_CLASS = "parent-letter-body"
+
+
+def _short(text, limit):
+    return " ".join(str(text or "").split())[:limit]
+
+
+def page_notices(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    found = []
+    for selector in NOTICE_SELECTORS:
+        for node in soup.select(selector):
+            if node.find_parent(class_=LETTER_BODY_CLASS) is not None:
+                continue
+            text = _short(node.get_text(" "), NOTICE_LENGTH)
+            if text and text not in found:
+                found.append(text)
+            if len(found) >= NOTICE_LIMIT:
+                return found
+    return found
+
+
+def _field_label(control):
+    marks = []
+    if control.name in ("textarea", "select"):
+        marks.append(control.name)
+    else:
+        kind = (control.get("type") or "text").lower()
+        if kind not in ("hidden", "text"):
+            marks.append(kind)
+    for flag in ("required", "disabled"):
+        if control.has_attr(flag):
+            marks.append(flag)
+    name = control.get("name") or ""
+    return f"{name} ({', '.join(marks)})" if marks else name
+
+
+def _is_named_submit(control):
+    if not control.get("name"):
+        return False
+    if control.name == "button":
+        return (control.get("type") or "submit").lower() == "submit"
+    return control.name == "input" and (control.get("type") or "text").lower() == "submit"
+
+
+def confirmation_evidence(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    marked = soup.find_all(attrs={CONFIRMATION_ATTR: True})
+    if not marked:
+        return None
+    first = marked[0]
+    form = first.find_parent("form")
+    fields = []
+    submits = 0
+    controls = form.find_all(["input", "textarea", "select", "button"]) if form is not None else []
+    for control in controls:
+        if _is_named_submit(control):
+            submits += 1
+        elif control.name != "button" and control.get("name"):
+            fields.append(_field_label(control))
+    classes = first.get("class") or []
+    return {
+        "confirmation_marks": [str(node.get(CONFIRMATION_ATTR) or "").strip() for node in marked],
+        "confirmation_disabled": first.has_attr("disabled") or "disabled" in classes,
+        "confirmation_button": _short(first.get_text(" "), BUTTON_TEXT_LENGTH),
+        "confirmation_fields": fields,
+        "confirmation_submits": submits,
+        "page_notices": page_notices(html),
+    }
+
+
 CONFIRM_FIELD = "iserv_crud_multi_select[confirm]"
 
 

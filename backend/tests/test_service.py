@@ -1651,10 +1651,11 @@ def _fixture_text(name):
 
 
 class ConfirmClient(FakeClient):
-    def __init__(self, url, pages, post_status=200):
+    def __init__(self, url, pages, post_status=200, post_text=""):
         super().__init__(url)
         self.pages = list(pages)
         self.post_status = post_status
+        self.post_text = post_text
         self.posts = []
         self.stage = 0
         self.list_html = _fixture_text("letters_index.html")
@@ -1681,13 +1682,13 @@ class ConfirmClient(FakeClient):
         response = R()
         response.status_code = self.post_status
         response.url = url
-        response.text = ""
+        response.text = self.post_text
         return response
 
 
-def _confirm_service(tmp_path, pages, post_status=200):
+def _confirm_service(tmp_path, pages, post_status=200, post_text=""):
     service, store = make(tmp_path)
-    client = ConfirmClient("https://school.example", pages, post_status)
+    client = ConfirmClient("https://school.example", pages, post_status, post_text)
     service.client_factory = lambda url: client
     return service, store, client
 
@@ -1917,3 +1918,67 @@ def test_the_period_choice_ignores_a_nonsense_entry(tmp_path):
         "number": 1,
         "label": "1. Stunde 08:00 - 08:45",
     }
+
+
+def test_letter_detail_describes_the_confirmation_form_without_its_values(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen.html")])
+    evidence = service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation_evidence"]
+    assert evidence["confirmation_marks"] == ["SEEN"]
+    assert evidence["confirmation_disabled"] is False
+    assert evidence["confirmation_button"] == "Gelesen"
+    assert evidence["confirmation_fields"] == ["form[_token]"]
+    assert evidence["confirmation_submits"] == 1
+    assert evidence["page_notices"] == []
+    assert "fixture-token-0001" not in str(evidence)
+
+
+def test_letter_detail_has_no_evidence_without_a_confirmation(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_detail.html")])
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation_evidence"] is None
+
+
+def test_the_evidence_marks_a_required_text_field_and_names_the_form_error_but_not_the_letter(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen_required.html")])
+    evidence = service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation_evidence"]
+    assert "form[message] (textarea, required)" in evidence["confirmation_fields"]
+    assert evidence["page_notices"] == ["Dieser Wert sollte nicht leer sein."]
+    assert "Freitag" not in str(evidence)
+
+
+def test_a_rejected_confirmation_says_what_the_school_answered_and_how_the_form_looks_after(tmp_path):
+    seen = _fixture_text("letter_confirm_seen.html")
+    after = _fixture_text("letter_confirm_seen_disabled.html")
+    service, store, _ = _confirm_service(
+        tmp_path, [seen, after], post_text=_fixture_text("letter_confirm_seen_required.html")
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["message_key"] == "api.letters.confirm.rejected"
+    diagnosis = result["diagnosis"]
+    assert diagnosis["post_status"] == 200
+    assert diagnosis["post_path"].startswith("/")
+    assert diagnosis["post_path"].endswith(f"/parent/show/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}")
+    assert diagnosis["post_redirects"] == 0
+    assert diagnosis["response_notices"] == ["Dieser Wert sollte nicht leer sein."]
+    assert diagnosis["after_marks"] == ["SEEN"]
+    assert diagnosis["after_disabled"] is True
+    assert diagnosis["after_button"] == "Gelesen am 11.09.2026"
+    assert store.load_letters_confirmations() == {}
+
+
+def test_an_upstream_refusal_carries_the_answer_too(tmp_path):
+    seen = _fixture_text("letter_confirm_seen.html")
+    service, _, _ = _confirm_service(tmp_path, [seen, seen], post_status=500)
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["message_vars"] == {"status": 500}
+    assert result["diagnosis"]["post_status"] == 500
+    assert "after_marks" not in result["diagnosis"]
+
+
+def test_a_confirmation_that_went_through_carries_no_diagnosis(tmp_path):
+    service, _, _ = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is True
+    assert "diagnosis" not in result
