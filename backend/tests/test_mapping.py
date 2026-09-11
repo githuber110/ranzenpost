@@ -54,13 +54,13 @@ def test_to_display_defaults_to_no_change():
     display = to_display(lesson("D", "BEH", 1), {})
     assert display["change_kind"] == ""
     assert display["changed_fields"] == []
-    assert display["previous"] == {"subject": "", "teacher": "", "room": ""}
+    assert display["previous"] == {"subject": "", "teacher": "", "teacher_surname": "", "room": ""}
 
 
 def test_to_display_maps_previous_values_to_labels():
     config = {
         "subjects": {"D": {"label": "Deutsch", "color": "#111111"}},
-        "teachers": {"BEH": {"label": "Fr. Behrend", "is_class_teacher": True}},
+        "teachers": {"BEH": {"label": "Fr. Behrend", "surname": "Behrend", "is_class_teacher": True}},
     }
     change = {
         "kind": "changed",
@@ -70,13 +70,15 @@ def test_to_display_maps_previous_values_to_labels():
     display = to_display(lesson("D", "ERN", 1), config, change)
     assert display["change_kind"] == "changed"
     assert display["changed_fields"] == ["teacher", "room"]
-    assert display["previous"] == {"subject": "Deutsch", "teacher": "Fr. Behrend", "room": "R1"}
+    assert display["previous"] == {
+        "subject": "Deutsch", "teacher": "Fr. Behrend", "teacher_surname": "Behrend", "room": "R1"
+    }
 
 
 def test_to_display_previous_falls_back_to_raw_codes():
     change = {"kind": "changed", "fields": ["subject"], "previous": {"subject": "XY", "teacher": "ZZ", "room": "R9"}}
     display = to_display(lesson("D", "BEH", 1), {}, change)
-    assert display["previous"] == {"subject": "XY", "teacher": "ZZ", "room": "R9"}
+    assert display["previous"] == {"subject": "XY", "teacher": "ZZ", "teacher_surname": "", "room": "R9"}
 
 
 def test_to_display_cancelled_lesson_keeps_its_own_data():
@@ -84,14 +86,14 @@ def test_to_display_cancelled_lesson_keeps_its_own_data():
     assert display["change_kind"] == "cancelled"
     assert display["subject_label"] == "SP"
     assert display["changed_fields"] == []
-    assert display["previous"] == {"subject": "", "teacher": "", "room": ""}
+    assert display["previous"] == {"subject": "", "teacher": "", "teacher_surname": "", "room": ""}
 
 
 def test_to_display_survives_partial_change_dicts():
     display = to_display(lesson("D", "BEH", 1), {}, {"kind": "added"})
     assert display["change_kind"] == "added"
     assert display["changed_fields"] == []
-    assert display["previous"] == {"subject": "", "teacher": "", "room": ""}
+    assert display["previous"] == {"subject": "", "teacher": "", "teacher_surname": "", "room": ""}
 
 
 def test_subject_and_teacher_label_helpers():
