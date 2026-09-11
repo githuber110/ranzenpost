@@ -168,24 +168,65 @@ describe("[P164] the at-least-one rule is explained before anything is sent", ()
   });
 });
 
-describe("[P164] a rejected label shows the reason the backend gives", () => {
-  test("the child-name rejection is rendered as the translated backend message", async () => {
-    const { window } = setup({
-      responses: {
-        "api/calendar/subscriptions": () => ({
-          ok: false,
-          status: 400,
-          json: () => Promise.resolve({ ok: false, message_key: "api.calendar.error.labelName" }),
-        }),
-      },
-    });
-    window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");
-    window.eval('state.calendarDraft.label = "Mia";');
-    await window.eval("submitCalendarDraft(state.calendarDraft)");
+describe("[P263] the calendar is named after Ranzenpost and the child's first name", () => {
+  const defaultName = base["calendar.name"].replace("{name}", "Mia");
 
-    expect(window.eval("state.calendarDraft.error")).toBe(base["api.calendar.error.labelName"]);
+  function block(window, label) {
+    const nodes = window.eval(`(function (s, c) { return calendarSubscriptionBlock(s, c); })`)(
+      { id: "s1", child_id: "c1", label, components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" },
+      window.eval("state.children[0]")
+    );
+    const holder = window.document.createElement("div");
+    nodes.forEach((node) => holder.append(node));
+    return holder;
+  }
+
+  test("a subscription without a label is shown under the default name", () => {
+    const { window } = setup();
+
+    expect(block(window, "").querySelector(".cal-name").textContent).toBe(defaultName);
+  });
+
+  test("an own label still wins", () => {
+    const { window } = setup();
+
+    expect(block(window, "Schule Mia").querySelector(".cal-name").textContent).toBe("Schule Mia");
+  });
+
+  test("the first name follows the comma form", () => {
+    const { window } = setup();
+    window.eval('state.children[0].name = "Muster, Mia Sophie";');
+
+    expect(block(window, "").querySelector(".cal-name").textContent).toBe(defaultName);
+  });
+
+  test("a child without a name falls back to the translated name", () => {
+    const { window } = setup();
+    window.eval('state.children[0].name = "";');
+
+    expect(block(window, "").querySelector(".cal-name").textContent).toBe(base["calendar.name.fallback"]);
+  });
+
+  test("the label field offers the default name as placeholder and explains it", () => {
+    const { window } = setup();
+    window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");
+
     const form = window.eval("calendarForm(state.calendarDraft)");
-    expect(form.textContent).toContain(base["api.calendar.error.labelName"]);
+    const input = form.querySelector("input.inp");
+
+    expect(input.getAttribute("placeholder")).toBe(defaultName);
+    expect(form.textContent).toContain(base["calendar.subscribe.label.hint"].replace("{name}", defaultName));
+    expect(form.textContent).not.toContain("3b");
+  });
+
+  test("editing keeps the default name as placeholder", () => {
+    const { window, calls } = setup({ subscriptions: [{ id: "s1", child_id: "c1", label: "", components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" }] });
+    window.eval("state.calendarDraft = calendarEditDraft(state.calendar.data.subscriptions[0], state.children[0]);");
+
+    const form = window.eval("calendarForm(state.calendarDraft)");
+
+    expect(form.querySelector("input.inp").getAttribute("placeholder")).toBe(defaultName);
+    expect(writeCalls(calls)).toHaveLength(0);
   });
 });
 
