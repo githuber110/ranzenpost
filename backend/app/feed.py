@@ -12,6 +12,8 @@ from .subscriptions import (
     COMPONENT_PUBLIC_HOLIDAYS,
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_TIMETABLE,
+    child_first_name,
+    child_name,
     label_carries_child_name,
 )
 
@@ -44,8 +46,13 @@ FIELD_LABEL_KEYS = {
 }
 FIELD_VALUE_SOURCES = {
     "subject": ("subject_label", "subject_code"),
-    "teacher": ("teacher_label", "teacher_code"),
-    "room": ("room", ""),
+    "teacher": ("teacher_surname", "teacher_label", "teacher_code"),
+    "room": ("room",),
+}
+PREVIOUS_VALUE_SOURCES = {
+    "subject": ("subject",),
+    "teacher": ("teacher_surname", "teacher"),
+    "room": ("room",),
 }
 HOLIDAY_FALLBACK_KEYS = {
     holidays.KIND_SCHOOL: "holidays.day.free",
@@ -58,6 +65,7 @@ OWN_DROP_NOTICE_KEY = "calendar.cancellation.notice"
 MARK_FALLBACK_PREFIX = "!"
 DROPPED_SUMMARY_KEY = "calendar.event.summary.cancelled"
 EXAM_SUMMARY_KEY = "calendar.event.summary.exam"
+CALENDAR_NAME_KEY = "calendar.name"
 EXAM_SUMMARY_NAMED_KEY = "calendar.event.summary.exam.named"
 EXAM_DETAIL_KEY = "calendar.detail.exam"
 EXAM_DETAIL_PLAIN_KEY = "calendar.detail.exam.plain"
@@ -143,9 +151,20 @@ def _lesson_start(day, start_time):
     return datetime(day.year, day.month, day.day, hour, minute)
 
 
+def _first_value(source, keys):
+    for key in keys:
+        value = source.get(key)
+        if value:
+            return value
+    return ""
+
+
 def _field_value(lesson, name):
-    primary, secondary = FIELD_VALUE_SOURCES[name]
-    return lesson.get(primary) or (lesson.get(secondary) if secondary else "") or ""
+    return _first_value(lesson, FIELD_VALUE_SOURCES[name])
+
+
+def _previous_value(previous, name):
+    return _first_value(previous, PREVIOUS_VALUE_SOURCES[name])
 
 
 def _subject_of(language, lesson):
@@ -158,7 +177,7 @@ def _subject_of(language, lesson):
 
 def lesson_summary(language, lesson, exam=None):
     subject = _subject_of(language, lesson)
-    teacher = lesson.get("teacher_label") or lesson.get("teacher_code") or ""
+    teacher = _field_value(lesson, "teacher")
     key = "calendar.event.summary" if teacher else "calendar.event.summary.noTeacher"
     title = _text(
         language,
@@ -245,7 +264,7 @@ def _change_rows(language, lesson, none_text):
                 "calendar.detail.changeLine",
                 {
                     "field": _text(language, FIELD_LABEL_KEYS[name]),
-                    "before": previous.get(name) or none_text,
+                    "before": _previous_value(previous, name) or none_text,
                     "after": _field_value(lesson, name) or none_text,
                 },
             )
@@ -796,8 +815,14 @@ def notice_events(language, tag, today, blocked, window, last_success, now_epoch
     return events
 
 
-def calendar_name(language, subscription):
-    return subscription.get("label") or _text(language, "calendar.name.fallback")
+def calendar_name(language, subscription, config):
+    label = subscription.get("label") or ""
+    if label:
+        return label
+    first = child_first_name(child_name(config, subscription.get("child_id", "")))
+    if first:
+        return _text(language, CALENDAR_NAME_KEY, {"name": first})
+    return _text(language, "calendar.name.fallback")
 
 
 def build_events(
@@ -966,7 +991,7 @@ def build_feed(subscription, store, holiday_calendar, now=None):
     )
     return render(
         store,
-        calendar_name(language, subscription),
+        calendar_name(language, subscription, config),
         events,
         moment,
         calendar_color(subscription),

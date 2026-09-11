@@ -228,11 +228,18 @@ def teacher_label(config, code):
     return config.get("teachers", {}).get(code, {}).get("label") or code
 
 
+def teacher_surname(config, code):
+    if not code:
+        return ""
+    return str(config.get("teachers", {}).get(code, {}).get("surname") or "").strip()
+
+
 def _previous_display(config, previous):
     previous = previous or {}
     return {
         "subject": subject_label(config, previous.get("subject", "")),
         "teacher": teacher_label(config, previous.get("teacher", "")),
+        "teacher_surname": teacher_surname(config, previous.get("teacher", "")),
         "room": previous.get("room", "") or "",
     }
 
