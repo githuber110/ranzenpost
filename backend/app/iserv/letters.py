@@ -1,3 +1,5 @@
+from html import escape as escape_html
+import json
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -255,6 +257,57 @@ CONFIRMATION_CHOICE = "confirmation"
 SENDABLE_CONFIRMATIONS = (CONFIRMATION_SEEN,)
 
 
+EDITOR_TAG = "iserv-editor"
+EDITOR_MODES = ("rich", "plain")
+EMPTY_EDITOR_HTML = "<p></p>"
+
+
+def _form_custom_fields(form):
+    prefix = f"{form.get('name') or 'form'}["
+    found = []
+    for control in form.find_all(True):
+        if "-" not in control.name:
+            continue
+        name = control.get("name") or ""
+        if name.startswith(prefix):
+            found.append((control, name))
+    return found
+
+
+def _editor_mode(control):
+    chosen = (control.get("initial-mode") or "").strip()
+    if chosen:
+        return chosen
+    raw = control.get("config") or ""
+    try:
+        config = json.loads(raw) if raw else {}
+    except ValueError:
+        config = {}
+    if isinstance(config, dict):
+        for mode in EDITOR_MODES:
+            if config.get(mode):
+                return mode
+    return EDITOR_MODES[0]
+
+
+def _plain_to_html(text):
+    lines = str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    body = "".join(f"<p>{escape_html(line)}</p>" for line in lines if line != "")
+    return body or EMPTY_EDITOR_HTML
+
+
+def _editor_fields(control, name):
+    mode = _editor_mode(control)
+    initial = control.get("initial-content") or ""
+    if mode == "rich" and initial.strip():
+        html_value = initial
+        plain_value = BeautifulSoup(initial, "html.parser").get_text("\n").strip()
+    else:
+        plain_value = initial if mode == "plain" else ""
+        html_value = _plain_to_html(plain_value)
+    return {f"{name}[html]": html_value, f"{name}[plain]": plain_value, f"{name}[mode]": mode}
+
+
 def parse_confirmation(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
     button = soup.find(attrs={CONFIRMATION_ATTR: True})
@@ -286,7 +339,13 @@ def parse_confirmation(html, base_url):
         if not name or (control.get("type") or "submit").lower() != "submit":
             continue
         submits[name] = control.get("value") or ""
+    editor = ""
+    for control, name in _form_custom_fields(form):
+        if control.name == EDITOR_TAG:
+            editor = editor or name
+            fields.update(_editor_fields(control, name))
     return {
+        "editor": editor,
         "type": kind,
         "action": urljoin(base_url, button.get("formaction") or form.get("action") or base_url),
         "fields": fields,
@@ -302,6 +361,10 @@ def build_confirmation_payload(confirmation, text=None):
     field = confirmation.get("text_field") or ""
     if field and text is not None:
         payload[field] = text
+    editor = confirmation.get("editor") or ""
+    if editor and not field and text is not None:
+        payload[f"{editor}[plain]"] = text
+        payload[f"{editor}[html]"] = _plain_to_html(text)
     submits = dict(confirmation.get("submits") or {})
     name = next(iter(submits), "")
     if name:
@@ -437,6 +500,9 @@ def confirmation_evidence(html):
             submits += 1
         elif control.name != "button" and control.get("name"):
             fields.append(_field_label(control))
+    if form is not None:
+        for control, name in _form_custom_fields(form):
+            fields.append(f"{name} ({control.name})")
     classes = first.get("class") or []
     return {
         "confirmation_marks": [str(node.get(CONFIRMATION_ATTR) or "").strip() for node in marked],

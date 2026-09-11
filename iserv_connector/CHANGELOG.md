@@ -3,6 +3,15 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.28
+
+- A read confirmation for a letter that also offers a message to the school now goes through. Such
+  a letter carries IServ's own text editor in its form. In a browser that editor adds three hidden
+  fields when it appears, for its formatted text, its plain text and its mode, and sends them even
+  when nothing was typed. The app did not know the editor and left all three out, so the school
+  server showed the letter again without taking the confirmation. The app now sends them the way
+  the editor does.
+
 ## 2609.01.27
 
 - In the Home Assistant app, "Add to calendar" is back. It opens the calendar through the phone's
