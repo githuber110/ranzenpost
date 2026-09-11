@@ -87,9 +87,9 @@ def test_the_api_creates_lists_updates_rotates_and_revokes(tmp_path):
 
     created = client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "5A"},
+        json={"child_id": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "Schule"},
     ).json()
-    assert created["label"] == "5A"
+    assert created["label"] == "Schule"
     assert created["path"] == f"/calendar/{created['token']}.ics"
 
     listing = client.get("/api/calendar/subscriptions").json()
@@ -129,7 +129,7 @@ def test_the_api_refuses_an_empty_selection_with_a_message_key(tmp_path):
     assert response.json()["ok"] is False
 
 
-def test_the_api_refuses_a_label_that_carries_the_child_name(tmp_path):
+def test_the_api_accepts_a_label_that_carries_the_child_name(tmp_path):
     client, _, _ = _api(tmp_path)
 
     response = client.post(
@@ -137,8 +137,8 @@ def test_the_api_refuses_a_label_that_carries_the_child_name(tmp_path):
         json={"child_id": CHILD_ID, "components": ["timetable"], "label": "Quastenflosser"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["message_key"] == "api.calendar.error.labelName"
+    assert response.status_code == 200
+    assert response.json()["label"] == "Quastenflosser"
 
 
 def test_the_api_refuses_an_unknown_child(tmp_path):

@@ -4172,13 +4172,18 @@ function calendarChildCard(child, subscription) {
   return card;
 }
 
+function calendarDefaultName(child) {
+  const first = childFirstName(child && child.name);
+  return first ? t("calendar.name", { name: first }) : t("calendar.name.fallback");
+}
+
 function calendarNewDraft(child) {
   return {
     id: "",
     childId: child.child_id,
     components: [calendarRegionSet() ? CALENDAR_COMPONENT_TIMETABLE : CALENDAR_COMPONENT_SCHOOL_HOLIDAYS],
     label: "",
-    placeholder: child.class_name || "",
+    placeholder: calendarDefaultName(child),
     color: CALENDAR_DEFAULT_COLOR,
     error: "",
     busy: false,
@@ -4191,7 +4196,7 @@ function calendarEditDraft(subscription, child) {
     childId: subscription.child_id,
     components: (subscription.components || []).slice(),
     label: subscription.label || "",
-    placeholder: (child && child.class_name) || "",
+    placeholder: calendarDefaultName(child),
     color: subscription.color || CALENDAR_DEFAULT_COLOR,
     error: "",
     busy: false,
@@ -4233,7 +4238,7 @@ function calendarLabelField(draft) {
   return el("label", { class: "field" }, [
     el("span", { class: "lbl" }, t("calendar.subscribe.label")),
     input,
-    el("span", { class: "hint" }, t("calendar.subscribe.label.hint")),
+    el("span", { class: "hint" }, t("calendar.subscribe.label.hint", { name: draft.placeholder })),
   ]);
 }
 
@@ -4355,7 +4360,7 @@ function calendarSubscriptionBlock(subscription, child) {
   dot.style.background = subscription.color || CALENDAR_DEFAULT_COLOR;
   nodes.push(el("div", { class: "cal-name-row" }, [
     dot,
-    el("b", { class: "cal-name" }, subscription.label || t("calendar.name.fallback")),
+    el("b", { class: "cal-name" }, subscription.label || calendarDefaultName(child)),
   ]));
   const parts = (subscription.components || []).map((component) =>
     el("span", { class: "tag" }, t(`calendar.subscribe.component.${component}`))

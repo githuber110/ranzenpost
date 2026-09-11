@@ -3,6 +3,17 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.30
+
+- A subscribed calendar is now called "Ranzenpost – <first name of the child>" unless it has a
+  label of its own. The class used to be the suggestion, and a class name is wrong a year later.
+  A label that only repeats the class counts as no label, so an existing subscription takes the
+  new name without being set up again. The label may carry the child's name; the earlier refusal
+  is gone on the family's decision - the link stays protected by its token inside the home network.
+- Calendar events name the teacher by surname wherever one is known, the way the timetable rows
+  do: in the title, in the details and in the before/after line of a substitution. Without a
+  surname the full label is used as before.
+
 ## 2609.01.29
 
 - Subscribing from the Home Assistant app no longer ends in "verification failed". iOS puts the

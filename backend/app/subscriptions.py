@@ -27,7 +27,6 @@ TOKEN_LOG_PREFIX_LENGTH = 6
 
 ERROR_COMPONENTS = "api.calendar.error.components"
 ERROR_CHILD = "api.calendar.error.child"
-ERROR_LABEL_NAME = "api.calendar.error.labelName"
 ERROR_LABEL_LENGTH = "api.calendar.error.labelLength"
 ERROR_REGION = "api.calendar.error.region"
 ERROR_NOT_FOUND = "api.calendar.error.notFound"
@@ -80,20 +79,38 @@ def label_carries_child_name(label, config):
 
 def normalize_label(label, config, child_id):
     text = " ".join(str(label or "").split())
-    if not text:
-        text = _class_name(config, child_id)
     if len(text) > MAX_LABEL_LENGTH:
         raise SubscriptionError(ERROR_LABEL_LENGTH)
-    if text and label_carries_child_name(text, config):
-        raise SubscriptionError(ERROR_LABEL_NAME)
+    return settled_label(text, config, child_id)
+
+
+def settled_label(label, config, child_id):
+    text = " ".join(str(label or "").split())
+    if text and text.casefold() == _class_name(config, child_id).casefold():
+        return ""
     return text
 
 
-def _class_name(config, child_id):
+def _child(config, child_id):
     for child in config.get("children") or []:
         if isinstance(child, dict) and child.get("child_id") == child_id:
-            return " ".join(str(child.get("class_name") or "").split())
-    return ""
+            return child
+    return {}
+
+
+def _class_name(config, child_id):
+    return " ".join(str(_child(config, child_id).get("class_name") or "").split())
+
+
+def child_name(config, child_id):
+    return " ".join(str(_child(config, child_id).get("name") or "").split())
+
+
+def child_first_name(name):
+    text = " ".join(str(name or "").split())
+    given = text.rsplit(",", 1)[-1] if "," in text else text
+    parts = given.split()
+    return parts[0] if parts else ""
 
 
 def known_child(config, child_id):
@@ -144,7 +161,11 @@ class SubscriptionRegistry:
     def _read(self):
         data = self.store.load_calendar_subscriptions()
         entries = data.get("subscriptions")
-        return [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
+        entries = [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
+        config = self.store.load_config()
+        for entry in entries:
+            entry["label"] = settled_label(entry.get("label"), config, entry.get("child_id", ""))
+        return entries
 
     def _write(self, entries):
         self.store.save_calendar_subscriptions({"subscriptions": entries})
