@@ -2,7 +2,7 @@ import logging
 import re
 import time
 from datetime import date, datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -62,9 +62,11 @@ from .iserv.letters import (
     build_archive_payload,
     build_batch_confirm_payload,
     build_confirmation_payload,
+    confirmation_evidence,
     build_hide_payload,
     parse_archive_form,
     parse_batch_confirm,
+    page_notices,
     parse_confirmation,
     parse_hide_confirm,
     parse_letter_detail,
@@ -904,6 +906,7 @@ class IServService:
             "attachments": attachments,
             "archive_url_present": bool(detail.get("archive_url")),
             "confirmation": self._confirmation_state(self._cached_confirmation(parsed), record),
+            "confirmation_evidence": confirmation_evidence(response.text) if parsed is not None else None,
         }
 
     def confirm_letter(self, letter_id, recipient_id, text=None):
@@ -924,15 +927,37 @@ class IServService:
         sent = client.post_absolute(parsed["action"], data=payload)
         status = getattr(sent, "status_code", 0)
         if status not in (200, 201, 204, 302):
-            return messages.result(False, LETTER_CONFIRM_UPSTREAM_KEY, {"status": status})
+            return messages.result(
+                False,
+                LETTER_CONFIRM_UPSTREAM_KEY,
+                {"status": status},
+                diagnosis=self._confirm_diagnosis(sent, None),
+            )
         _, verify = self._fetch_letter_page(letter_id, recipient_id)
         if parse_confirmation(verify.text, verify.url) is not None:
-            return messages.result(False, LETTER_CONFIRM_REJECTED_KEY)
+            return messages.result(
+                False, LETTER_CONFIRM_REJECTED_KEY, diagnosis=self._confirm_diagnosis(sent, verify)
+            )
         stamp = datetime.now().replace(microsecond=0).isoformat()
         records[key] = {"type": parsed.get("type", ""), "confirmed_at": stamp}
         self.store.save_letters_confirmations(records)
         self._store_confirmation_cache(key, None)
         return messages.result(True, LETTER_CONFIRM_OK_KEY, confirmed_at=stamp)
+
+    @staticmethod
+    def _confirm_diagnosis(sent, verify):
+        diagnosis = {
+            "post_status": getattr(sent, "status_code", 0),
+            "post_path": urlparse(str(getattr(sent, "url", "") or "")).path,
+            "post_redirects": len(getattr(sent, "history", None) or []),
+            "response_notices": page_notices(getattr(sent, "text", "") or ""),
+        }
+        if verify is not None:
+            after = confirmation_evidence(verify.text) or {}
+            diagnosis["after_marks"] = after.get("confirmation_marks", [])
+            diagnosis["after_disabled"] = bool(after.get("confirmation_disabled"))
+            diagnosis["after_button"] = after.get("confirmation_button", "")
+        return diagnosis
 
     def archive_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)

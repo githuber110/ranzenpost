@@ -13,6 +13,11 @@ Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release numb
   sheet or form, now runs as soon as that is closed instead of being dropped.
 - The app also refreshes when its window inside Home Assistant gets the focus. Switching panels in
   Home Assistant may never hide the page, so coming back that way went unnoticed.
+- When a read confirmation for a parent letter is not taken over, the card keeps the message and
+  offers the technical details: what the school server answered and how the confirmation form
+  looked afterwards. A letter that asks for a confirmation shows how its form is built behind the
+  same button, with field names only and never their content. The app still sends nothing on its
+  own.
 
 ## 2609.01.25
 
