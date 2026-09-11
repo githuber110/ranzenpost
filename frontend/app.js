@@ -308,6 +308,8 @@ const state = {
   calendarRestarting: false,
   calendarBusy: "",
   loads: {},
+  loadedAt: {},
+  refreshDeferred: false,
   pending: {},
   refreshFailed: {},
   bulkProgress: null,
@@ -650,6 +652,7 @@ function restoreSheetScroll(offset) {
 
 function render() {
   if (state.detached) return;
+  flushDeferredRefresh();
   const app = root();
   closeColorDialog();
   const keptSheetScroll = sheetScrollTop();
@@ -821,6 +824,7 @@ function setView(name, options) {
     closeTeacherRoom();
     if (changed) enterView(name, options);
     render();
+    revalidateActiveView();
   });
 }
 
@@ -1945,15 +1949,62 @@ function hasOpenFormGuard() {
   return !!(state.sheet || state.absenceForm || state.teacherRoom || state.letterDetail);
 }
 
+const VIEW_STALE_MS = 2 * 60 * 1000;
+
+function activeViewLoadKeys() {
+  switch (state.view) {
+    case "post":
+      return [postSegmentIs("letters") ? lettersLoadKey(state.lettersTab) : "pinboard"];
+    case "messenger":
+      return [MESSENGER_LOAD_KEY];
+    case "conferences":
+      return ["conferences"];
+    case "absence":
+      return ["absence"];
+    case "timetable":
+      return ["timetable", "marks", "cancellations"];
+    case "overview":
+      return ["pinboard", lettersLoadKey(state.lettersTab), "marks", "cancellations", "absence", "conferences", MESSENGER_LOAD_KEY];
+    default:
+      return [];
+  }
+}
+
+function activeViewIsStale() {
+  const now = Date.now();
+  return activeViewLoadKeys().some((key) => {
+    const stamp = Number(state.loadedAt[key]) || 0;
+    return stamp > 0 && now - stamp > VIEW_STALE_MS;
+  });
+}
+
+function revalidateActiveView() {
+  if (hasOpenFormGuard()) return;
+  if (!activeViewIsStale()) return;
+  Promise.resolve(refreshActiveView()).catch(routeOrIgnoreBackgroundFailure);
+}
+
+function flushDeferredRefresh() {
+  if (!state.refreshDeferred || document.hidden || hasOpenFormGuard()) return;
+  state.refreshDeferred = false;
+  window.setTimeout(() => {
+    Promise.resolve(refreshActiveView()).catch(routeOrIgnoreBackgroundFailure);
+  }, 0);
+}
+
 function setupVisibilityRefresh() {
   const maybeRefresh = () => {
     if (document.hidden) return;
-    if (hasOpenFormGuard()) return;
     if (Date.now() - lastVisibilityRefreshAt < VISIBILITY_REFRESH_MS) return;
+    if (hasOpenFormGuard()) {
+      state.refreshDeferred = true;
+      return;
+    }
     refreshActiveView();
   };
   document.addEventListener("visibilitychange", maybeRefresh);
   window.addEventListener("pageshow", maybeRefresh);
+  window.addEventListener("focus", maybeRefresh);
 }
 
 async function refreshActiveView() {
@@ -5443,6 +5494,7 @@ async function reload(key, run, keepOnFailure) {
   try {
     const data = await run();
     if (!isCurrentLoad(key, ticket)) return null;
+    state.loadedAt[key] = Date.now();
     delete state.refreshFailed[key];
     return { data };
   } catch (error) {
@@ -5525,6 +5577,7 @@ function switchPostTab(segment) {
   state._keepScroll = 0;
   state._scrollTop = true;
   render();
+  revalidateActiveView();
 }
 
 function openPostSegment(segment) {

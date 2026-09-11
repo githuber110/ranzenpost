@@ -3,6 +3,17 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.26
+
+- Opening a view shows what was loaded before and fetches it fresh in the background once it is
+  older than two minutes. A pinboard left open in the Home Assistant app kept showing its old state
+  for hours, so a push about new entries led to a list with nothing new at the top.
+- Switching between letters and the pinboard does the same.
+- A refresh that was due when the app came back to the foreground, but was held back by an open
+  sheet or form, now runs as soon as that is closed instead of being dropped.
+- The app also refreshes when its window inside Home Assistant gets the focus. Switching panels in
+  Home Assistant may never hide the page, so coming back that way went unnoticed.
+
 ## 2609.01.25
 
 - In the Home Assistant app the subscription card no longer offers "Add to calendar". The app
