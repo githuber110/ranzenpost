@@ -1,0 +1,31 @@
+<html>
+<head>
+<title>Elternbrief - IServ - school.example</title>
+</head>
+<body>
+<div class="panel panel-default">
+<div class="panel-body">
+<div class="parent-letter-body top-border translatable-content editor-content">
+<p>Liebe Eltern,</p>
+<p>bitte bestaetigen Sie den Erhalt dieses Briefes.</p>
+</div>
+</div>
+<div class="panel-body pt-0">
+<form name="form" method="post" action="" class="form-horizontal" role="form">
+<h3 class="mt-0 top-border">Nachricht an die Schule</h3>
+<div class="mt-3">
+<div style="height: 12rem">
+<iserv-editor id="form_text" name="form[text]" config="{&quot;toolbar&quot;:[]}" initial-content="" fill-available-space></iserv-editor>
+<script type="module" src="/iserv/parentletter/static/assets/editor-fixture.js"></script>
+</div>
+</div>
+<div class="top-border">
+<button type="submit" id="form_submit" name="form[submit]" class="btn-success btn btn-primary" confirmation-type="SEEN"><span class="glyphicon glyphicon-check"></span> Gelesen</button>
+<a class="btn btn-default" href="/iserv/parentletter/parent/index"><span class="fal fa-xmark bootstrap-button-icon"></span> Abbrechen</a>
+</div>
+<input type="hidden" id="form__token" name="form[_token]" class="form-control" value="fixture-token-0005">
+</form>
+</div>
+</div>
+</body>
+</html>
