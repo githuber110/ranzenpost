@@ -16,6 +16,10 @@ const FACT_KEYS = [
   "after_marks",
   "after_disabled",
   "after_button",
+  "confirmation_target",
+  "confirmation_button_attributes",
+  "confirmation_form",
+  "script_sources",
 ];
 
 function letter() {

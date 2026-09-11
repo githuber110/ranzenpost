@@ -3,6 +3,21 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.01.27
+
+- In the Home Assistant app, "Add to calendar" is back. It opens the calendar through the phone's
+  browser, and the feed server hands the browser on to the calendar app's subscription dialog.
+  Opening the plain address in Safari only imported the events once, as a copy that never changed.
+- Copying the address in the Home Assistant app copies that same subscription link. A note tells
+  anyone who added the calendar through Safari before that those events may be a frozen copy, and
+  how to replace them with a subscription.
+- The iPhone hint names the setting Apple documents: Settings, Apps, Calendar, Calendar Accounts,
+  Fetch New Data.
+- A read confirmation is sent the way a browser sends it: to the button's own target when it has
+  one, and with the page's origin and address. Its technical details also show the structure of the
+  form, the attributes of the button and the scripts of the page, still without any value or letter
+  text.
+
 ## 2609.01.26
 
 - Opening a view shows what was loaded before and fetches it fresh in the background once it is
