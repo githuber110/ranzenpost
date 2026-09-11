@@ -2027,3 +2027,103 @@ def test_the_evidence_shows_form_structure_button_and_scripts_without_values(tmp
     assert "fixture-token-0004" not in shown
     assert "token=abc" not in shown
     assert "bestaetigen" not in shown
+
+
+EDITOR_PAGE_URL = f"https://school.example/iserv/parentletter/parent/show/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}"
+
+
+def _editor_page(config="{&quot;toolbar&quot;:[]}", initial=""):
+    return _fixture_text("letter_confirm_seen_editor.html").replace(
+        'config="{&quot;toolbar&quot;:[]}" initial-content=""',
+        f'config="{config}" initial-content="{initial}"',
+        1,
+    )
+
+
+def test_the_read_confirmation_sends_the_message_editor_like_a_browser(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen_editor.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is True
+    _, payload = client.posts[0]
+    assert payload == {
+        "form[text][html]": "<p></p>",
+        "form[text][plain]": "",
+        "form[text][mode]": "rich",
+        "form[_token]": "fixture-token-0005",
+        "form[submit]": "",
+    }
+
+
+def test_a_message_typed_for_the_school_goes_into_both_editor_fields(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen_editor.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT, "Danke <3")
+    _, payload = client.posts[0]
+    assert payload["form[text][plain]"] == "Danke <3"
+    assert payload["form[text][html]"] == "<p>Danke &lt;3</p>"
+    assert payload["form[text][mode]"] == "rich"
+
+
+def test_an_editor_limited_to_plain_text_sends_the_plain_mode():
+    from app.iserv.letters import build_confirmation_payload, parse_confirmation
+
+    parsed = parse_confirmation(_editor_page(config="{&quot;plain&quot;:&quot;Plain&quot;}"), EDITOR_PAGE_URL)
+    payload = build_confirmation_payload(parsed)
+    assert payload["form[text][mode]"] == "plain"
+    assert payload["form[text][html]"] == "<p></p>"
+
+
+def test_a_prefilled_editor_sends_what_it_shows():
+    from app.iserv.letters import build_confirmation_payload, parse_confirmation
+
+    parsed = parse_confirmation(_editor_page(initial="&lt;p&gt;Gelesen&lt;/p&gt;"), EDITOR_PAGE_URL)
+    payload = build_confirmation_payload(parsed)
+    assert payload["form[text][html]"] == "<p>Gelesen</p>"
+    assert payload["form[text][plain]"] == "Gelesen"
+
+
+def test_an_editor_on_the_page_keeps_the_receipt_sendable_and_is_named_in_the_evidence(tmp_path):
+    from app.iserv.letters import parse_confirmation
+
+    html = _fixture_text("letter_confirm_seen_editor.html")
+    parsed = parse_confirmation(html, EDITOR_PAGE_URL)
+    assert parsed["sendable"] is True
+    assert parsed["editor"] == "form[text]"
+    service, _, _ = _confirm_service(tmp_path, [html])
+    evidence = service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation_evidence"]
+    assert "form[text] (iserv-editor)" in evidence["confirmation_fields"]
+
+
+def test_a_custom_element_outside_the_form_names_is_never_sent():
+    from app.iserv.letters import parse_confirmation
+
+    html = _fixture_text("letter_confirm_seen_editor.html").replace(
+        '<div class="top-border">', '<div class="top-border"><iserv-icon name="check"></iserv-icon>', 1
+    )
+    parsed = parse_confirmation(html, EDITOR_PAGE_URL)
+    assert set(parsed["fields"]) == {"form[text][html]", "form[text][plain]", "form[text][mode]", "form[_token]"}
+
+
+def test_an_unknown_iserv_element_is_never_sent_even_with_a_form_name():
+    from app.iserv.letters import parse_confirmation
+
+    html = _fixture_text("letter_confirm_seen_editor.html").replace(
+        '<div class="top-border">', '<div class="top-border"><iserv-picker name="form[choice]" value="yes"></iserv-picker>', 1
+    )
+    parsed = parse_confirmation(html, EDITOR_PAGE_URL)
+    assert "form[choice]" not in parsed["fields"]
+
+
+def test_a_set_initial_mode_is_sent_as_the_editor_would_send_it():
+    from app.iserv.letters import build_confirmation_payload, parse_confirmation
+
+    html = _fixture_text("letter_confirm_seen_editor.html").replace(
+        'initial-content=""', 'initial-content="" initial-mode="plain"', 1
+    )
+    payload = build_confirmation_payload(parse_confirmation(html, EDITOR_PAGE_URL))
+    assert payload["form[text][mode]"] == "plain"
