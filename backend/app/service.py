@@ -324,6 +324,15 @@ def _code_provider(secrets, used=None, sleeper=time.sleep, clock=time.time):
     return provide
 
 
+def _browser_headers(page_url):
+    page = str(page_url or "")
+    parts = urlparse(page)
+    headers = {"Referer": page} if page else {}
+    if parts.scheme and parts.netloc:
+        headers["Origin"] = f"{parts.scheme}://{parts.netloc}"
+    return headers
+
+
 class IServService:
     def __init__(self, store, client_factory=None):
         self.store = store
@@ -924,7 +933,7 @@ class IServService:
         if not parsed.get("sendable"):
             return messages.result(False, LETTER_CONFIRM_UNSUPPORTED_KEY)
         payload = build_confirmation_payload(parsed, text)
-        sent = client.post_absolute(parsed["action"], data=payload)
+        sent = client.post_absolute(parsed["action"], data=payload, headers=_browser_headers(response.url))
         status = getattr(sent, "status_code", 0)
         if status not in (200, 201, 204, 302):
             return messages.result(

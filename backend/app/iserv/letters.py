@@ -1,5 +1,5 @@
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -288,7 +288,7 @@ def parse_confirmation(html, base_url):
         submits[name] = control.get("value") or ""
     return {
         "type": kind,
-        "action": urljoin(base_url, form.get("action") or base_url),
+        "action": urljoin(base_url, button.get("formaction") or form.get("action") or base_url),
         "fields": fields,
         "submits": submits,
         "text_field": text_field,
@@ -358,6 +358,70 @@ def _is_named_submit(control):
     return control.name == "input" and (control.get("type") or "text").lower() == "submit"
 
 
+OUTLINE_VALUE_ATTRIBUTES = (
+    "type",
+    "name",
+    "id",
+    "role",
+    "method",
+    "action",
+    "enctype",
+    "formaction",
+    "formmethod",
+    "formenctype",
+    "target",
+    "class",
+    CONFIRMATION_ATTR,
+)
+OUTLINE_LENGTH = 1200
+OUTLINE_VALUE_LENGTH = 60
+OUTLINE_PATH_LENGTH = 160
+SCRIPT_LIMIT = 12
+
+
+def _path_only(value):
+    parsed = urlparse(str(value or ""))
+    if parsed.scheme or parsed.netloc or parsed.query:
+        return parsed.path
+    return str(value or "")
+
+
+def _outline_node(node):
+    parts = []
+    for name, value in node.attrs.items():
+        if name == "value":
+            continue
+        text = " ".join(value) if isinstance(value, list) else str(value or "")
+        if name in OUTLINE_VALUE_ATTRIBUTES or name.startswith("data-"):
+            if "/" in text or "?" in text:
+                text = _short(_path_only(text), OUTLINE_PATH_LENGTH)
+            else:
+                text = _short(text, OUTLINE_VALUE_LENGTH)
+            parts.append(f"{name}={text}" if text else name)
+        else:
+            parts.append(name)
+    label = node.name + (f"[{', '.join(parts)}]" if parts else "")
+    if node.name == "button":
+        label += f" '{_short(node.get_text(' '), BUTTON_TEXT_LENGTH)}'"
+    return label
+
+
+def _form_outline(form):
+    nodes = [form] + list(form.find_all(True))
+    return " | ".join(_outline_node(node) for node in nodes)[:OUTLINE_LENGTH]
+
+
+def _script_sources(soup):
+    found = []
+    for node in soup.find_all("script", src=True):
+        path = urlparse(node.get("src") or "").path
+        if path and path not in found:
+            found.append(path)
+        if len(found) >= SCRIPT_LIMIT:
+            break
+    return found
+
+
 def confirmation_evidence(html):
     soup = BeautifulSoup(html or "", "html.parser")
     marked = soup.find_all(attrs={CONFIRMATION_ATTR: True})
@@ -381,6 +445,10 @@ def confirmation_evidence(html):
         "confirmation_fields": fields,
         "confirmation_submits": submits,
         "page_notices": page_notices(html),
+        "confirmation_target": _path_only(first.get("formaction") or (form.get("action") if form is not None else "")),
+        "confirmation_button_attributes": sorted(first.attrs.keys()),
+        "confirmation_form": _form_outline(form) if form is not None else "",
+        "script_sources": _script_sources(soup),
     }
 
 

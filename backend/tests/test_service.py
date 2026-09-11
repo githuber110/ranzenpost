@@ -1657,6 +1657,7 @@ class ConfirmClient(FakeClient):
         self.post_status = post_status
         self.post_text = post_text
         self.posts = []
+        self.post_headers = []
         self.stage = 0
         self.list_html = _fixture_text("letters_index.html")
 
@@ -1673,11 +1674,12 @@ class ConfirmClient(FakeClient):
             response.text = self.list_html
         return response
 
-    def post_absolute(self, url, data, timeout=30):
+    def post_absolute(self, url, data, timeout=30, headers=None):
         class R:
             pass
 
         self.posts.append((url, dict(data)))
+        self.post_headers.append(dict(headers or {}))
         self.stage += 1
         response = R()
         response.status_code = self.post_status
@@ -1982,3 +1984,46 @@ def test_a_confirmation_that_went_through_carries_no_diagnosis(tmp_path):
     result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
     assert result["ok"] is True
     assert "diagnosis" not in result
+
+
+def test_the_read_confirmation_goes_where_the_button_points_like_a_browser(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen_formaction.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert result["ok"] is True
+    url, payload = client.posts[0]
+    assert url == (
+        f"https://school.example/iserv/parentletter/parent/confirm/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}?token=abc"
+    )
+    assert payload == {"form[_token]": "fixture-token-0004", "form[submit]": ""}
+
+
+def test_the_read_confirmation_carries_origin_and_referer_like_a_browser(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    headers = client.post_headers[0]
+    assert headers["Origin"] == "https://school.example"
+    assert headers["Referer"].startswith("https://school.example/")
+    assert headers["Referer"].endswith(f"/parent/show/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}")
+
+
+def test_the_evidence_shows_form_structure_button_and_scripts_without_values(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen_formaction.html")])
+    evidence = service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation_evidence"]
+    target = f"/iserv/parentletter/parent/confirm/{CONFIRM_LETTER}/{CONFIRM_RECIPIENT}"
+    assert evidence["confirmation_target"] == target
+    assert "formaction" in evidence["confirmation_button_attributes"]
+    assert "data-modal-target" in evidence["confirmation_button_attributes"]
+    assert "confirmation-type=SEEN" in evidence["confirmation_form"]
+    assert f"formaction={target}" in evidence["confirmation_form"]
+    assert "'Gelesen'" in evidence["confirmation_form"]
+    assert evidence["script_sources"] == ["/iserv/js/parentletter.abc123.js", "/iserv/js/runtime.def456.js"]
+    shown = str(evidence)
+    assert "fixture-token-0004" not in shown
+    assert "token=abc" not in shown
+    assert "bestaetigen" not in shown

@@ -59,13 +59,13 @@ function trackNavigation(window) {
   return opened;
 }
 
-describe("[P255] the companion app never offers the hand-off it swallows", () => {
-  test("no subscribe button, copying leads", () => {
+describe("[P259] the companion app opens the calendar through the browser first", () => {
+  test("subscribing leads, copying follows", () => {
     const { window } = loadApp();
     asWebView(window);
     const labels = buttonTexts(actions(window));
-    expect(labels).not.toContain(window.eval("t('calendar.subscribe.add')"));
-    expect(labels[0]).toContain(window.eval("t('calendar.subscribe.copy')"));
+    expect(labels[0]).toContain(window.eval("t('calendar.subscribe.add')"));
+    expect(labels.join(" ")).toContain(window.eval("t('calendar.subscribe.copy')"));
   });
 
   test("copying and the manual steps stay available", () => {
