@@ -431,7 +431,7 @@
   "calendar.subscribe.webview.hint": "В приложении Home Assistant кнопка открывает календарь через браузер. Если там ничего не открылось, помогут два шага ниже.",
   "calendar.subscribe.webview.step1": "Скопируйте адрес и откройте его в Safari.",
   "calendar.subscribe.webview.step1Other": "Скопируйте адрес и откройте его в браузере телефона.",
-  "calendar.subscribe.webview.step2": "Подтвердите подписку в календаре.",
+  "calendar.subscribe.webview.step2": "Подтвердите подписку в календаре. Если iOS покажет окно с адресом, нажмите там «Найти» – адрес верен как есть.",
   "calendar.subscribe.webview.title": "Два шага на телефоне",
   "child.class": "Класс {name}",
   "child.nameWithClass": "{name} · {class}",
