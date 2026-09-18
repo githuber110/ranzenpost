@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ALLOWED_FILES = {"CLAUDE.md", "LICENSE", "iserv_connector/config.yaml", "repository.yaml", "package.json"}
+ALLOWED_FILES = set()
 BINARY_EXTENSIONS = {".woff2", ".woff", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".gif", ".ico"}
 
 FORBIDDEN_HASHES = {
@@ -48,6 +48,13 @@ def line_contains_forbidden_token(lowered_line):
     return False
 
 
+def history_identities():
+    output = subprocess.run(
+        ["git", "log", "--format=%an%n%cn"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    return sorted({line.strip() for line in output.splitlines() if line.strip()})
+
+
 def find_offenders():
     offenders = []
     for name in tracked_files():
@@ -64,6 +71,12 @@ def find_offenders():
 
 def test_tracked_files_contain_no_personal_data():
     assert find_offenders() == []
+
+
+def test_history_identities_carry_no_personal_data():
+    identities = history_identities()
+    assert identities
+    assert [name for name in identities if line_contains_forbidden_token(name.lower())] == []
 
 
 def test_tripwire_still_detects_a_real_violation(tmp_path, monkeypatch):
