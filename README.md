@@ -2,6 +2,10 @@
 
 # Ranzenpost — an unofficial IServ client for parents
 
+[![build](https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg)](https://github.com/githuber110/ranzenpost/actions/workflows/build.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5.svg)](#install)
+
 A [Home Assistant](https://www.home-assistant.io) add-on that signs in with your own parent
 account on an [IServ](https://iserv.de) school server and puts the parts parents actually use —
 timetable, parent letters, noticeboards and absences — into one mobile-first UI.
@@ -11,6 +15,61 @@ calendar app to your child's lessons, without opening the IServ website. Everyth
 Home Assistant instance; there is no service of ours in between.
 
 Not affiliated with IServ GmbH.
+
+## Install
+
+[![Add the Ranzenpost repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgithuber110%2Franzenpost)
+
+1. Click the button above — Home Assistant opens and asks you to confirm the repository. Or add it
+   by hand: **Settings → Add-ons → Add-on Store → ⋮ → Repositories** and paste
+   `https://github.com/githuber110/ranzenpost`.
+2. **Ranzenpost (IServ)** now appears in the store. Open it, click **Install**, then **Start**.
+3. Open **Ranzenpost** from the Home Assistant sidebar. The setup wizard asks for your school's
+   address, your parent login and — if your school uses it — one code from your authenticator app.
+   No YAML, no tokens to copy by hand.
+
+**Requirements:** Home Assistant OS or Supervised (the add-on store needs the Supervisor) on
+`amd64` or `aarch64`, and an IServ parent account at a school that has the parent modules enabled.
+
+**Updating:** new versions show up under **Settings → Add-ons → Ranzenpost (IServ)** like any other
+add-on. Settings and the school connection survive an update.
+
+[`iserv_connector/DOCS.md`](iserv_connector/DOCS.md) is the documentation shown inside Home
+Assistant and goes into more detail on options, notifications and MQTT.
+
+## Contents
+
+- [Install](#install)
+- [Why Ranzenpost](#why-ranzenpost)
+- [Screens](#screens)
+- [Features](#features)
+  - [Timetable](#timetable)
+  - [Absences — view and report](#absences--view-and-report)
+  - [Letters and noticeboards](#letters-and-noticeboards)
+  - [Overview](#overview)
+  - [Calendar subscription](#calendar-subscription)
+  - [Notifications](#notifications)
+  - [Setup, languages, themes](#setup-languages-themes)
+- [Calendar port](#calendar-port)
+- [Privacy](#privacy)
+- [Getting help](#getting-help)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support the project](#support-the-project)
+
+## Why Ranzenpost
+
+- **One app, not a website in a frame.** A UI built for a phone in a parent's hand: today's lessons
+  first, four taps for a sick note, swipe to mark a letter read.
+- **Reads and writes.** Absences, archiving, read confirmations and exam marks go back to IServ —
+  always after an explicit confirmation, never on their own.
+- **Your Home Assistant, nobody else's server.** The only outbound connections are your school's
+  IServ and a public-holiday API that learns nothing but a federal state and a year.
+- **Six languages, right-to-left included.** German, English, Arabic, Turkish, Russian, Ukrainian.
+- **Made for families.** Several children per account, a calendar feed per child, push messages
+  for every timetable change, and school holidays for all 16 federal states.
+- **Tested against a fixture server.** Backend, frontend and end-to-end suites run in CI on every
+  push; the release image is built from a tagged commit whose version is checked against the tag.
 
 ## Screens
 
@@ -135,20 +194,6 @@ notices and calendar tokens are invented**, not from a real school.
 - Settings writes are atomic; a file that was corrupted by a power cut is quarantined instead of
   taking your configuration down with it.
 
-## Install
-
-Requires a Home Assistant installation with the Supervisor (Home Assistant OS or Supervised) on
-`amd64` or `aarch64`, and an IServ parent account for a school whose IServ has the parent modules
-enabled.
-
-1. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, and add
-   `https://github.com/githuber110/ranzenpost`.
-2. Install **Ranzenpost (IServ)** and open it.
-3. The setup wizard runs entirely in the app's own UI — no YAML, no tokens to copy by hand.
-
-[`iserv_connector/DOCS.md`](iserv_connector/DOCS.md) is the documentation shown inside Home
-Assistant and goes into more detail on options, notifications and MQTT.
-
 ## Calendar port
 
 Calendar feeds are served on a second port (8100) so calendar apps can reach them directly, separate
@@ -179,31 +224,20 @@ Two things worth knowing before you do:
   school URL, children, phone numbers and secrets locally, leaving you back at the setup wizard.
 - The repository itself contains no personal data.
 
-## Development
+## Getting help
 
-No build step for the frontend — it is vanilla JS served as-is.
+- Something looks wrong? Check the add-on log first: **Settings → Add-ons → Ranzenpost (IServ) →
+  Log**.
+- Then open an [issue](https://github.com/githuber110/ranzenpost/issues) with the add-on version
+  (shown on that same page) and the relevant log lines. Names of children, teachers and your school
+  may appear in the log — please strip them before pasting.
+- Found a security problem? Do not open a public issue — see [SECURITY.md](SECURITY.md).
 
-```bash
-python -m venv .venv
-.venv/bin/pip install -r backend/requirements-dev.txt
-```
+## Contributing
 
-### Layout
-
-- `iserv_connector/` — the Home Assistant add-on manifest (`config.yaml`, `DOCS.md`, changelog).
-- `Dockerfile` — builds the add-on image, published to `ghcr.io`.
-- `backend/`
-  - `app/iserv/` — the IServ client: form login with TOTP, children, timetable, absences, letters.
-  - `app/` — config store, encryption, mapping, poller, calendar feed, the FastAPI Ingress service.
-- `frontend/` — the Ingress web UI (vanilla JS).
-  - `i18n/` — the string database, one flat `key -> text` file per language.
-- `docs/screenshots/` — the images used above.
-
-### Conventions
-
-Code is English and comment-free. No user-visible text lives in the frontend code: German
-(`frontend/i18n/de.json`) is the source of truth and the API answers with a `message_key`. CSS uses
-logical properties throughout so the Arabic layout mirrors correctly.
+Bug reports, translations and pull requests are welcome. The development setup, the test suites
+and the code conventions (English identifiers, no comments, every user-visible string in
+`frontend/i18n/`) are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
@@ -224,3 +258,10 @@ The MIT license covers only the code. The bundled fonts are licensed under the
   [licence](frontend/fonts/OFL-NotoSansArabic.txt).
 
 All four live in `frontend/fonts/`.
+
+## Support the project
+
+Ranzenpost is built in the evenings by one parent, for free, and stays that way. If it saves you a
+few trips to the IServ website and you feel like saying thanks:
+
+<a href="https://buymeacoffee.com/githuber110"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00.svg?style=for-the-badge&logoColor=black" alt="Buy me a coffee"></a>
