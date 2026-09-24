@@ -84,7 +84,7 @@ describe("withheld messages are an empty state, not an error", () => {
     expect(empty.querySelector("p").textContent).toBe(window.eval("t('messenger.empty.withheld')"));
     expect(buttonLabels(view).join(" ")).not.toContain(window.eval("t('common.retry')"));
     expect(view.textContent).not.toContain(window.eval("t('messenger.unavailable.title')"));
-    expect(empty.querySelector(".ico-slot").innerHTML).toBe(window.eval("icon('messages', 40)").innerHTML);
+    expect(empty.querySelector(".ico-slot").innerHTML).toBe(window.eval("icon('messages')").innerHTML);
   });
 
   test("the teacher room button is the only action left", () => {

@@ -628,7 +628,7 @@ describe("a width change re-renders instead of stretching a bitmap", () => {
 describe("the viewer is wired into the shell", () => {
   test("index.html loads the module and its stylesheet", () => {
     expect(indexHtml).toMatch(/<link rel="stylesheet" href="\.\/pdfviewer\.css\?v=\d+">/);
-    expect(indexHtml).toMatch(/<script src="\.\/pdfviewer\.js\?v=\d+"><\/script>/);
+    expect(indexHtml).toMatch(/<script src="\.\/pdfviewer\.js\?v=\d+" defer><\/script>/);
     expect(indexHtml.indexOf("pdfviewer.js")).toBeLessThan(indexHtml.indexOf("app.js"));
   });
 

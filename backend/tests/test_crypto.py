@@ -1,5 +1,6 @@
 import pytest
 
+from app import crypto
 from app.crypto import (
     decrypt_dict,
     derive_key,
@@ -50,3 +51,14 @@ def test_derive_key_changes_with_salt_and_passphrase():
 def test_derived_key_works_with_fernet():
     key = derive_key("pw", generate_salt())
     assert decrypt_dict(encrypt_dict({"x": 1}, key), key) == {"x": 1}
+
+
+def test_a_token_is_recognised_by_its_shape_without_the_key():
+    key = crypto.generate_key()
+    token = crypto.encrypt_dict({"username": "u"}, key)
+    assert crypto.is_token_like(token) is True
+    assert crypto.is_token_like(crypto.encrypt_dict({}, key)) is True
+    assert crypto.is_token_like("") is False
+    assert crypto.is_token_like("this is not a token") is False
+    assert crypto.is_token_like("gAAAAA-old") is False
+    assert crypto.is_token_like(token[:40]) is False

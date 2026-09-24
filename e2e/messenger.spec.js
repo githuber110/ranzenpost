@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   checkTapTargets,
@@ -30,7 +31,7 @@ async function watchForbiddenRoutes(page) {
 }
 
 async function openMessenger(page) {
-  await page.locator(".tabbar .tab").nth(4).click();
+  await openArea(page, "messenger");
   await page.waitForSelector(".rows .row", { timeout: 8000 });
 }
 

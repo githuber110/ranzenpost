@@ -18,9 +18,9 @@ const TIMES = { 1: "08:00", 2: "08:50", 3: "09:50" };
 function withCancellations(window, periods) {
   window.eval(`
     state.childId = ${JSON.stringify(CHILD)};
-    state.children = [{ child_id: ${JSON.stringify(CHILD)}, name: "Kind" }];
+    state.children = [{ key: ${JSON.stringify(CHILD)}, name: "Kind" }];
     state.cancellations = { data: { cancellations: ${JSON.stringify(
-      periods.map((period) => ({ id: `x${period}`, child_id: CHILD, date: WEDNESDAY, period }))
+      periods.map((period) => ({ id: `x${period}`, child_key: CHILD, date: WEDNESDAY, period }))
     )} } };
   `);
 }

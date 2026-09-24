@@ -4,11 +4,14 @@ from urllib.parse import quote
 import pytest
 import requests
 
+from app import holidays
 from app.iserv.errors import DataError, TwoFactorError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.iserv.timetable import detect_changes
-from app.service import IServService, NotConfiguredError, SickNoteNotFoundError
+from app.absence_service import SickNoteNotFoundError
+from app.service import NotConfiguredError, _as_int
 from app.store import Store
+from tests.support import add_school, connection_service, single_school
 
 
 class FakeClient:
@@ -48,11 +51,15 @@ class FakeClient:
 
 
 def make(tmp_path, configured=True):
-    store = Store(tmp_path / "data")
     if configured:
-        store.save_config({"school_url": "https://school.example"})
-        store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-    return IServService(store, client_factory=lambda url: FakeClient(url)), store
+        service, store, _ = single_school(
+            tmp_path / "data", "https://school.example", client_factory=lambda url: FakeClient(url)
+        )
+        return service, store
+    store = Store(tmp_path / "data")
+    connection_id = store.add_connection("https://school.example")
+    store.update_connection(connection_id["id"], school_url="")
+    return connection_service(store, connection_id["id"], lambda url: FakeClient(url)), store
 
 
 def test_children(tmp_path):
@@ -109,10 +116,6 @@ def test_check_connection_not_configured(tmp_path):
 
 
 def test_check_connection_auth_failed(tmp_path):
-    store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-
     def factory(url):
         client = FakeClient(url)
 
@@ -122,15 +125,11 @@ def test_check_connection_auth_failed(tmp_path):
         client.login = boom
         return client
 
-    service = IServService(store, client_factory=factory)
+    service, _, _ = single_school(tmp_path / "data", "https://school.example", client_factory=factory)
     assert service.check_connection() == "auth_failed"
 
 
 def test_check_connection_network(tmp_path):
-    store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-
     def factory(url):
         client = FakeClient(url)
 
@@ -140,7 +139,7 @@ def test_check_connection_network(tmp_path):
         client.login = boom
         return client
 
-    service = IServService(store, client_factory=factory)
+    service, _, _ = single_school(tmp_path / "data", "https://school.example", client_factory=factory)
     assert service.check_connection() == "network"
 
 
@@ -444,6 +443,9 @@ class BrokenDsa:
 def with_client(tmp_path, client):
     service, store = make(tmp_path)
     service.client_factory = lambda url: client
+    service.iserv_session()
+    if hasattr(client, "paths"):
+        client.paths.clear()
     return service, store
 
 
@@ -509,7 +511,7 @@ def test_pinboard_attachments_carry_download_url(tmp_path):
     service._dsa = lambda: FakeDsa([_board()])
     attachment = service.pinboard()["feed"][0]["attachments"][0]
     assert attachment["file"] == "f.pdf"
-    assert attachment["url"] == "api/pinboard/attachment/f.pdf"
+    assert attachment["url"] == f"api/pinboard/attachment/f.pdf?connection={service.id}"
     assert attachment["filename"] == "f.pdf"
 
 
@@ -545,7 +547,7 @@ def test_pinboard_board_level_attachments_are_returned_in_folder(tmp_path):
     service._dsa = lambda: FakeDsa([board])
     folder = service.pinboard()["folders"][0]
     assert folder["attachments"][0]["filename"] == "einladung.pdf"
-    assert folder["attachments"][0]["url"] == "api/pinboard/attachment/einladung.pdf"
+    assert folder["attachments"][0]["url"] == f"api/pinboard/attachment/einladung.pdf?connection={service.id}"
 
 
 def test_pinboard_board_without_attachments_returns_empty_list(tmp_path):
@@ -576,7 +578,7 @@ def test_pinboard_attachment_url_carries_spaces_and_umlauts(tmp_path):
     service._dsa = lambda: FakeDsa([board])
     attachment = service.pinboard()["feed"][0]["attachments"][0]
     assert attachment["file"] == "Einladung Elternabend äöü.pdf"
-    assert attachment["url"] == "api/pinboard/attachment/Einladung Elternabend äöü.pdf"
+    assert attachment["url"] == f"api/pinboard/attachment/Einladung Elternabend äöü.pdf?connection={service.id}"
 
 
 def test_timetable_fills_period_times_automatically(tmp_path):
@@ -629,9 +631,6 @@ class ChangeClient(FakeClient):
 
 
 def make_with_changes(tmp_path):
-    store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
     clients = []
 
     def factory(url):
@@ -639,7 +638,8 @@ def make_with_changes(tmp_path):
         clients.append(client)
         return client
 
-    return IServService(store, client_factory=factory), clients
+    service, _, _ = single_school(tmp_path / "data", "https://school.example", client_factory=factory)
+    return service, clients
 
 
 def test_timetable_marks_substitutions(tmp_path):
@@ -733,10 +733,10 @@ class PartialCancelClient(SharedSlotClient):
 
 
 def make_with_client(tmp_path, client_class):
-    store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-    return IServService(store, client_factory=lambda url: client_class(url))
+    service, _, _ = single_school(
+        tmp_path / "data", "https://school.example", client_factory=lambda url: client_class(url)
+    )
+    return service
 
 
 def test_timetable_keeps_both_lessons_of_a_shared_slot(tmp_path):
@@ -800,6 +800,9 @@ class FakeAbsenceDsa:
     def sick_note_children(self):
         return [{"id": 7, "name": "Mia", "class_name": "2b"}]
 
+    def sick_note_children_or_raise(self):
+        return self.sick_note_children()
+
     def lesson_slots(self):
         return self._slots
 
@@ -807,6 +810,11 @@ class FakeAbsenceDsa:
         return {str(slot["number"]): slot["startTime"] for slot in self._raw_slots if slot.get("startTime")}
 
     def user_requests(self, path, student_id=None):
+        return self._requests.get(path, [])
+
+    def user_requests_or_raise(self, path, student_id=None):
+        if getattr(self, "requests_fail", False):
+            raise DataError("requests unreadable", message_key="api.data.absences")
         return self._requests.get(path, [])
 
     def send_request(self, request):
@@ -873,7 +881,7 @@ def test_absences_overview_entry_attachments_carry_download_url(tmp_path):
             "mimetype": "application/pdf",
             "size": 1234,
             "file": "0123456789abcdef0123456789abcdef-5.pdf",
-            "url": "api/absences/attachment/0123456789abcdef0123456789abcdef-5.pdf",
+            "url": f"api/absences/attachment/0123456789abcdef0123456789abcdef-5.pdf?connection={service.id}",
         }
     ]
 
@@ -1024,7 +1032,7 @@ def test_poller_observation_path_also_writes_into_history_cache(tmp_path):
 
     from app.poller import Poller
 
-    Poller(service, store=store)._poll_absences()
+    Poller(service, store=store)._poll_absences(service, service.id)
 
     assert "7040002" in store.load_absence_history()
 
@@ -1229,8 +1237,17 @@ def test_delete_absence_never_touches_a_sick_note(tmp_path):
     assert dsa.deleted is None, "IServ refuses it anyway - do not even try"
 
 
+def listing(dsa, path, entry_id=42):
+    dsa._requests[path] = [{"id": entry_id}]
+    return dsa
+
+
+LEAVE_LIST = "user-requests-to-school/student-absences/"
+KINDERGARTEN_LIST = "user-requests-to-school/not-attend/kindergarten/"
+
+
 def test_delete_absence_hits_the_item_route(tmp_path):
-    dsa = FakeAbsenceDsa(status=204)
+    dsa = listing(FakeAbsenceDsa(status=204), LEAVE_LIST)
     service, _ = with_absences(tmp_path, dsa)
     result = service.delete_absence({"type": "leave", "id": 42})
     assert result["ok"] is True
@@ -1238,11 +1255,11 @@ def test_delete_absence_hits_the_item_route(tmp_path):
 
 
 def test_delete_absence_explains_a_refusal(tmp_path):
-    dsa = FakeAbsenceDsa(status=403)
+    dsa = listing(FakeAbsenceDsa(status=403), LEAVE_LIST)
     service, _ = with_absences(tmp_path, dsa)
     result = service.delete_absence({"type": "leave", "id": 42})
     assert result["ok"] is False
-    assert "Eltern-Konten" in result["message"]
+    assert "hilft nur ein Anruf in der Schule" in result["message"]
 
 
 def test_delete_absence_needs_the_deregister_target(tmp_path):
@@ -1254,10 +1271,28 @@ def test_delete_absence_needs_the_deregister_target(tmp_path):
 
 
 def test_delete_absence_uses_the_deregister_target(tmp_path):
-    dsa = FakeAbsenceDsa(status=204)
+    dsa = listing(FakeAbsenceDsa(status=204), KINDERGARTEN_LIST)
     service, _ = with_absences(tmp_path, dsa)
     service.delete_absence({"type": "deregister", "id": 42, "target": "kindergarten"})
     assert dsa.deleted == "user-requests-to-school/not-attend/kindergarten/42"
+
+
+def test_delete_absence_leaves_an_entry_alone_that_iserv_does_not_list(tmp_path):
+    dsa = listing(FakeAbsenceDsa(status=204), LEAVE_LIST, entry_id=7)
+    service, _ = with_absences(tmp_path, dsa)
+    result = service.delete_absence({"type": "leave", "id": 42})
+    assert result["ok"] is False
+    assert result["message_key"] == "api.absence.upstream.gone"
+    assert dsa.deleted is None
+
+
+def test_delete_absence_does_not_delete_when_the_list_cannot_be_read(tmp_path):
+    dsa = listing(FakeAbsenceDsa(status=204), LEAVE_LIST)
+    dsa.requests_fail = True
+    service, _ = with_absences(tmp_path, dsa)
+    with pytest.raises(DataError):
+        service.delete_absence({"type": "leave", "id": 42})
+    assert dsa.deleted is None
 
 
 def test_iserv_badges_reads_native_unread_counts(tmp_path):
@@ -1317,7 +1352,7 @@ def test_check_connection_reuses_a_live_session_instead_of_logging_in_again(tmp_
 
 
 def test_code_provider_never_sends_the_same_code_twice(tmp_path):
-    from app.service import _code_provider
+    from app.sign_in import _code_provider
 
     slept = []
     ticks = iter([0.0, 5.0, 40.0, 40.0])
@@ -1333,8 +1368,7 @@ def test_code_provider_never_sends_the_same_code_twice(tmp_path):
 
 def _seen_service(tmp_path, letters_html=None):
     store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
+    add_school(store, "https://school.example")
     return store
 
 
@@ -1406,7 +1440,7 @@ def test_marking_a_letter_read_never_hides_it_if_iserv_keeps_reporting_unread(tm
     key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
 
     before = service.letters("current")["letters"]
-    target_before = next(entry for entry in before if service._letter_key(entry) == key)
+    target_before = next(entry for entry in before if service._letters()._letter_key(entry) == key)
     assert target_before["unread"] is True
     assert "technical" not in target_before
 
@@ -1414,7 +1448,7 @@ def test_marking_a_letter_read_never_hides_it_if_iserv_keeps_reporting_unread(tm
     assert not (store.dir / "letters_read_override.json").exists()
 
     after = service.letters("current")["letters"]
-    target_after = next(entry for entry in after if service._letter_key(entry) == key)
+    target_after = next(entry for entry in after if service._letters()._letter_key(entry) == key)
     assert target_after["unread"] is True
 
 
@@ -1494,7 +1528,7 @@ def test_archive_tab_never_reports_unread(tmp_path):
 
 
 def test_letters_come_back_newest_first(tmp_path):
-    from app.service import _published_sort_key
+    from app.sorting import _published_sort_key
 
     values = ["01.09.2026 08:00", "31.08.2026 15:15", "kaputt", "01.09.2026 09:30"]
     ordered = sorted(values, key=_published_sort_key, reverse=True)
@@ -1523,7 +1557,7 @@ def test_pinboard_folders_sort_by_highest_post_id_not_by_updated_timestamp(tmp_p
 
 
 def test_letter_detail_leaves_attachment_filename_empty_instead_of_inventing_one(tmp_path, monkeypatch):
-    import app.service as service_module
+    import app.letter_service as letter_service_module
 
     class FetchClient:
         def fetch(self, path):
@@ -1533,7 +1567,7 @@ def test_letter_detail_leaves_attachment_filename_empty_instead_of_inventing_one
             return self.fetch(path)
 
     monkeypatch.setattr(
-        service_module,
+        letter_service_module,
         "parse_letter_detail",
         lambda text, url: {
             "title": "T",
@@ -1545,7 +1579,7 @@ def test_letter_detail_leaves_attachment_filename_empty_instead_of_inventing_one
     service, _ = make(tmp_path)
     service._session = lambda: FetchClient()
     detail = service.letter_detail("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222")
-    assert detail["attachments"] == [{"filename": "", "url": "api/letters/attachment/5"}]
+    assert detail["attachments"] == [{"filename": "", "url": f"api/letters/attachment/5?connection={service.id}"}]
 
 
 def test_conferences_reports_unavailable_instead_of_raising_when_the_fetch_fails(tmp_path):
@@ -1628,7 +1662,7 @@ def test_sick_note_pdf_uses_school_replace_term_in_title(tmp_path):
 
 
 def test_folder_order_sorts_alphabetically_and_folds_umlauts():
-    from app.service import _folder_order
+    from app.sorting import _folder_order
 
     titles = ["Zebra", "Äpfel", "betreuung", "10 - Schulkonferenz", "Ostern"]
     assert sorted(titles, key=_folder_order) == [
@@ -1703,8 +1737,14 @@ def test_letter_detail_carries_the_open_read_receipt(tmp_path):
         "open": True,
         "done": False,
         "sendable": True,
+        "can_reply": False,
         "confirmed_at": "",
     }
+
+
+def test_letter_detail_says_when_the_confirmation_can_carry_a_message(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen_editor.html")])
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation"]["can_reply"] is True
 
 
 def test_letter_detail_has_no_confirmation_when_iserv_asks_for_none(tmp_path):
@@ -1786,7 +1826,7 @@ def test_letters_list_carries_the_open_confirmation_after_enrichment(tmp_path):
     entries = service.letters("current")["letters"]
     assert all(entry["confirmation"]["open"] for entry in entries)
     assert service.pending_confirmation_keys("current") == {
-        service._letter_key(entry) for entry in entries
+        service._letters()._letter_key(entry) for entry in entries
     }
 
 
@@ -1805,7 +1845,7 @@ def test_enrich_keeps_refreshing_an_open_confirmation_but_stops_once_it_is_done(
     done = next(
         entry
         for entry in service.letters("current")["letters"]
-        if service._letter_key(entry) == f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"
+        if service._letters()._letter_key(entry) == f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"
     )
     assert done["confirmation"]["done"] is True
     assert done["confirmation"]["open"] is False
@@ -2127,3 +2167,133 @@ def test_a_set_initial_mode_is_sent_as_the_editor_would_send_it():
     )
     payload = build_confirmation_payload(parse_confirmation(html, EDITOR_PAGE_URL))
     assert payload["form[text][mode]"] == "plain"
+
+
+def test_a_confirmation_recorded_while_another_is_sent_is_kept(tmp_path):
+    service, store, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    sending = client.post_absolute
+
+    def post_while_another_is_recorded(url, data=None, headers=None, **kwargs):
+        store.save_letters_confirmations({"other:1": {"type": "seen", "confirmed_at": "2026-09-23T08:00:00"}})
+        return sending(url, data=data, headers=headers, **kwargs)
+
+    client.post_absolute = post_while_another_is_recorded
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    records = store.load_letters_confirmations()
+    assert set(records) == {"other:1", f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"}
+
+
+def test_a_message_for_a_letter_without_a_message_field_is_refused_and_nothing_is_sent(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT, "Danke")
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.confirm.noMessageField"
+    assert client.posts == []
+
+
+def test_a_confirmation_that_is_still_being_sent_is_not_sent_again(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen_editor.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    service._letters()._confirming.add(f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}")
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT, "Danke")
+    assert result["message_key"] == "api.letters.confirm.busy"
+    assert client.posts == []
+
+
+def test_clearing_local_data_keeps_a_confirmation_in_flight_busy(tmp_path):
+    service, _, client = _confirm_service(
+        tmp_path,
+        [_fixture_text("letter_confirm_seen_editor.html"), _fixture_text("letter_confirm_done.html")],
+    )
+    letters = service._letters()
+    absences = service._absences()
+    letters._confirming.add(f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}")
+    service._clear_local_data()
+    assert service._letters() is letters
+    assert service._absences() is not absences
+    result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT, "Danke")
+    assert result["message_key"] == "api.letters.confirm.busy"
+    assert client.posts == []
+
+
+class VacationClient(FakeClient):
+    vacations = []
+
+    def get_timetable(self, child_id, reference=None):
+        week = super().get_timetable(child_id, reference)
+        week.vacations = list(self.vacations)
+        return week
+
+
+@pytest.mark.parametrize("vacations, wednesday", [([], []), ([{"name": "Off", "start_date": "2026-09-02", "end_date": "2026-09-02"}], [1, 2])])
+def test_the_timetable_learns_free_weekdays_but_skips_vacation_days(tmp_path, vacations, wednesday):
+    VacationClient.vacations = vacations
+    service, store, _ = single_school(tmp_path / "data", "https://school.example", client_factory=lambda url: VacationClient(url))
+    config = store.load_config()
+    config["period_grid"] = {"days": {"uuid-1": {"2": [1, 2]}}, "seen": {"uuid-1": {"2": {"empty": ["2026-08-17", "2026-08-24"]}}}}
+    store.save_config(config)
+    service.timetable("uuid-1")
+    assert store.load_config()["period_grid"]["days"]["uuid-1"]["2"] == wednesday
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, 0),
+        ("", 0),
+        ("0", 0),
+        ("5", 5),
+        ("-5", -5),
+        ("8", 8),
+        ("-8", -8),
+        ("9", 8),
+        ("-9", -8),
+        ("99", 8),
+        ("-99", -8),
+        (3.7, 3),
+        (-3.7, -3),
+        (True, 1),
+        (False, 0),
+        ("abc", 0),
+        (" 4 ", 4),
+        ([], 0),
+        ({}, 0),
+        ("3.5", 0),
+    ],
+)
+def test_the_week_offset_is_clamped_like_the_holidays_module(value, expected):
+    assert holidays.clamp_week_offset(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, None),
+        ("", None),
+        ("0", 0),
+        ("5", 5),
+        ("-5", -5),
+        (3.7, None),
+        (-3.7, None),
+        (True, None),
+        (False, None),
+        ("abc", None),
+        (" 4 ", 4),
+        ([], None),
+        ({}, None),
+        ("  -7  ", -7),
+        ("7.0", None),
+        (0, 0),
+        ("00", 0),
+    ],
+)
+def test_as_int_parses_or_rejects_the_value(value, expected):
+    assert _as_int(value) == expected

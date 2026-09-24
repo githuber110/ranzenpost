@@ -1,0 +1,9 @@
+{
+  "step": "done",
+  "attempts": 0,
+  "school_url": "https://school-one.example",
+  "username": "parent.one",
+  "has_2fa": true,
+  "verified_2fa": true,
+  "selected_child": "11111111-aaaa-4bbb-8ccc-000000000001"
+}

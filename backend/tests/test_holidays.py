@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from app import holidays
 from app.iserv.absences import _date_part, _epoch
 from app.server import create_app
+from app.iserv.errors import DataError
+from app.service import NotConfiguredError
 from app.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -80,11 +82,12 @@ class FakeClock:
         return self.value
 
 
+SCHOOL = "a1b2c3d4"
+
+
 def make_store(tmp_path, region="DE-NI", name="data"):
     store = Store(tmp_path / name)
-    config = store.load_config()
-    config[holidays.CONFIG_KEY] = region
-    store.save_config(config)
+    store.add_connection("https://school-one.example", connection_id=SCHOOL, setup_complete=True, holiday_region=region)
     return store
 
 
@@ -293,9 +296,7 @@ def test_the_cache_keeps_regions_apart(tmp_path):
     clock = FakeClock()
     calendar = holidays.HolidayCalendar(store, fetcher=fetcher, clock=clock)
     calendar.range_info(date(2026, 10, 12), date(2026, 10, 18))
-    config = store.load_config()
-    config[holidays.CONFIG_KEY] = "DE-BY"
-    store.save_config(config)
+    store.update_connection(SCHOOL, holiday_region="DE-BY")
     calendar.range_info(date(2026, 10, 12), date(2026, 10, 18))
     assert fetcher.calls == [("DE-NI", 2026), ("DE-BY", 2026)]
     assert set(store.load_holidays_cache()) == {"DE-NI|2026", "DE-BY|2026"}
@@ -321,10 +322,7 @@ def test_without_a_region_the_calendar_reports_disabled(tmp_path):
 
 
 def test_an_unknown_region_value_is_treated_as_switched_off(tmp_path):
-    store = Store(tmp_path / "data")
-    config = store.load_config()
-    config[holidays.CONFIG_KEY] = "DE-XX"
-    store.save_config(config)
+    store = make_store(tmp_path, "DE-XX")
     fetcher = CountingFetcher()
     calendar = holidays.HolidayCalendar(store, fetcher=fetcher, clock=FakeClock())
     payload = calendar.range_info(date(2026, 10, 12), date(2026, 10, 18))
@@ -334,7 +332,19 @@ def test_an_unknown_region_value_is_treated_as_switched_off(tmp_path):
 
 def test_the_default_config_ships_the_region_switched_off(tmp_path):
     store = Store(tmp_path / "data")
-    assert store.load_config()[holidays.CONFIG_KEY] == ""
+    entry = store.add_connection("https://school-one.example")
+    assert store.connection_store(entry["id"]).load_config()[holidays.CONFIG_KEY] == ""
+
+
+def test_the_calendar_takes_the_region_of_the_named_config_over_the_first_school(tmp_path):
+    store = make_store(tmp_path, "DE-NI")
+    store.add_connection("https://school-two.example", setup_complete=True, holiday_region="DE-BY")
+    fetcher = CountingFetcher()
+    calendar = holidays.HolidayCalendar(store, fetcher=fetcher, clock=FakeClock())
+    second = store.connections()[1]["id"]
+    calendar.range_info(date(2026, 10, 12), date(2026, 10, 18), store.connection_store(second).load_config())
+    calendar.range_info(date(2026, 10, 12), date(2026, 10, 18))
+    assert fetcher.calls == [("DE-BY", 2026), ("DE-NI", 2026)]
 
 
 def test_all_sixteen_regions_are_offered_with_a_translation_key():
@@ -537,6 +547,21 @@ def test_a_malformed_entry_is_dropped_while_the_rest_survives(tmp_path, monkeypa
     assert week_row(payload, "2026-10-12")["coverage"] == holidays.COVERAGE_FULL
 
 
+class StubConnection:
+    def __init__(self, store, connection_id):
+        self.id = connection_id
+        self.store = store.connection_store(connection_id)
+
+    def display_name(self):
+        return self.store.display_name()
+
+    def child_key(self, child_id):
+        return f"{self.id}:{child_id}"
+
+    def modules(self):
+        return {}
+
+
 class StubService:
     def __init__(self, store):
         self.store = store
@@ -546,6 +571,17 @@ class StubService:
 
     def check_connection(self):
         return "ok"
+
+    def first_connection(self):
+        entries = self.store.connections()
+        if not entries:
+            raise NotConfiguredError("no school connected")
+        return StubConnection(self.store, entries[0]["id"])
+
+    def known_connection(self, connection_id):
+        if self.store.connection(connection_id) is None:
+            raise DataError("unknown connection", message_key="api.connection.unknown")
+        return StubConnection(self.store, connection_id)
 
 
 @pytest.fixture
@@ -600,7 +636,7 @@ def test_the_holiday_endpoint_refuses_an_oversized_range(client):
 
 
 def test_the_holiday_endpoint_reports_disabled_without_a_region(tmp_path):
-    store = Store(tmp_path / "data")
+    store = make_store(tmp_path, "")
     calendar = holidays.HolidayCalendar(store, fetcher=CountingFetcher(), clock=FakeClock())
     http = TestClient(create_app(StubService(store), holiday_calendar=calendar))
     body = http.get("/api/holidays?start=2026-10-12&end=2026-10-18").json()
@@ -610,26 +646,44 @@ def test_the_holiday_endpoint_reports_disabled_without_a_region(tmp_path):
 
 def test_the_region_setting_survives_a_post_and_a_get(client):
     http, store, _ = client
-    saved = http.post("/api/config", json={holidays.CONFIG_KEY: "DE-BY"})
+    saved = http.post(f"/api/connections/{SCHOOL}", json={holidays.CONFIG_KEY: "DE-BY"})
     assert saved.status_code == 200
     assert saved.json() == {"saved": True}
-    assert store.load_config()[holidays.CONFIG_KEY] == "DE-BY"
-    assert http.get("/api/config").json()[holidays.CONFIG_KEY] == "DE-BY"
+    assert store.connection(SCHOOL)[holidays.CONFIG_KEY] == "DE-BY"
+    assert http.get(f"/api/connections/{SCHOOL}").json()[holidays.CONFIG_KEY] == "DE-BY"
 
 
-def test_the_region_key_is_covered_by_the_config_allow_list(client):
+def test_the_region_key_is_covered_by_the_connection_allow_list(client):
     http, _, _ = client
-    response = http.post("/api/config", json={holidays.CONFIG_KEY: "DE-SH"})
+    response = http.post(f"/api/connections/{SCHOOL}", json={holidays.CONFIG_KEY: "DE-SH"})
     assert response.status_code == 200
     assert "unknown_keys" not in response.json()
 
 
+def test_the_region_key_is_no_longer_a_global_setting(client):
+    http, _, _ = client
+    response = http.post("/api/config", json={holidays.CONFIG_KEY: "DE-SH"})
+    assert response.status_code == 400
+    assert response.json()["keys"] == [holidays.CONFIG_KEY]
+
+
 def test_switching_the_region_off_again_is_accepted(client):
     http, store, _ = client
-    http.post("/api/config", json={holidays.CONFIG_KEY: ""})
-    assert store.load_config()[holidays.CONFIG_KEY] == ""
+    http.post(f"/api/connections/{SCHOOL}", json={holidays.CONFIG_KEY: ""})
+    assert store.connection(SCHOOL)[holidays.CONFIG_KEY] == ""
     body = http.get("/api/holidays?start=2026-10-12&end=2026-10-18").json()
     assert body["status"] == "disabled"
+
+
+def test_the_holiday_endpoint_follows_the_named_school(client):
+    http, store, fetcher = client
+    second = store.add_connection("https://school-two.example", setup_complete=True, holiday_region="DE-BY")["id"]
+    body = http.get(f"/api/holidays?start=2026-10-12&end=2026-10-18&connection={second}").json()
+    assert body["region"] == "DE-BY"
+    assert http.get("/api/holidays?start=2026-10-12&end=2026-10-18").json()["region"] == "DE-NI"
+    unknown = http.get("/api/holidays?start=2026-10-12&end=2026-10-18&connection=deadbeef").json()
+    assert unknown["error"] == "network"
+    assert unknown["message_key"] == "api.connection.unknown"
 
 
 def by_calendar(tmp_path):

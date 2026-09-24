@@ -3,7 +3,7 @@ import { loadApp } from "./loadApp.js";
 
 const SUBSCRIPTION = {
   id: "sub-1",
-  child_id: "c1",
+  child_key: "c1",
   label: "3b",
   components: ["timetable"],
   color: "#135859",
@@ -25,7 +25,7 @@ function actionsFor(agent) {
   const { window } = loadApp();
   Object.defineProperty(window.navigator, "userAgent", { value: agent, configurable: true });
   window.eval(`
-    state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+    state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
     state.childId = "c1";
     state.calendar = { data: {
       subscriptions: [],
@@ -115,7 +115,7 @@ describe("the subscription path fits the device it is shown on", () => {
     const { window } = loadApp();
     Object.defineProperty(window.navigator, "userAgent", { value: COMPANION_UA, configurable: true });
     window.eval(`
-      state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+      state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
       state.childId = "c1";
       state.calendar = { data: {
         subscriptions: [],

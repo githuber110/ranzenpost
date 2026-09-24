@@ -131,9 +131,9 @@ class RegionSuggester:
         self.clock = clock or clock_module.time
         self._cache = {}
 
-    def _school(self):
+    def _school(self, connection_id=None):
         try:
-            profile = self.service.school_profile()
+            profile = self.service.school_profile(connection_id)
         except Exception:
             return None
         return profile if isinstance(profile, dict) else {}
@@ -164,8 +164,8 @@ class RegionSuggester:
             self._cache[postal_code] = (self.clock(), dict(result))
         return result
 
-    def suggest(self):
-        school = self._school()
+    def suggest(self, connection_id=None):
+        school = self._school(connection_id)
         if school is None:
             return no_suggestion(REASON_NOT_CONFIGURED)
         if not is_german_country(school.get("country")):

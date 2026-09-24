@@ -73,7 +73,7 @@ describe("notification sheet: chip list + nested picker replace the old free-for
 
     expect(chipsOf(document).length).toBe(0);
     expect(document.querySelector(".notify-empty").textContent).toBe(
-      "Noch kein Ziel gewählt – ohne Ziel wird nichts gesendet."
+      "Noch kein Gerät gewählt. Ohne Gerät wird nichts gesendet."
     );
   });
 
@@ -109,7 +109,7 @@ describe("notification sheet: chip list + nested picker replace the old free-for
     const heads = overlines(document);
     expect(heads).toContain("Push aufs Handy");
     expect(heads).toContain("An alle Geräte");
-    expect(heads).toContain("Weitere Dienste");
+    expect(heads).toContain("Weitere Geräte");
 
     expect(rowsOf(document, "mobile").length).toBe(3);
     expect(rowsOf(document, "group").length).toBe(1);
@@ -241,13 +241,13 @@ describe("notification sheet: chip list + nested picker replace the old free-for
     expect(hint).not.toBeUndefined();
   });
 
-  test("the event section keeps all four events switched on by default", () => {
+  test("the event section keeps all five events switched on by default", () => {
     const { window, document } = openNotifySheet(ENRICHED);
     const groups = [...document.querySelectorAll(".field-group")];
     const eventGroup = groups[groups.length - 1];
     const checks = [...eventGroup.querySelectorAll("input[type=checkbox]")];
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     expect(checks.every((check) => check.checked)).toBe(true);
     expect(eventGroup.textContent).toContain("Stundenplan-Änderungen");
     expect(window.eval("state.sheetForm.events")).toEqual({});
@@ -302,6 +302,19 @@ describe("the settings row names the device instead of counting services", () =>
 
   test("no target at all now names the absence of a target, not the old Home Assistant default", () => {
     const { window } = openNotifySheet(ENRICHED);
-    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Kein Ziel");
+    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Kein Gerät");
+  });
+});
+
+describe("the notification sheet is named like its settings section", () => {
+  test("its title is the first word of the section in every language", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { document } = openNotifySheet(ENRICHED);
+    expect(document.querySelector(".sheet-title").textContent).toBe("Mitteilungen");
+    for (const lang of ["de", "en", "ar", "tr", "ru", "uk"]) {
+      const bundle = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "i18n", `${lang}.json`), "utf8"));
+      expect(bundle["settings.section.notifications"].startsWith(bundle["settings.notify.sheet"]), lang).toBe(true);
+    }
   });
 });

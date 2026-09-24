@@ -30,6 +30,12 @@ function answer(window, payload) {
   window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
 }
 
+function confirmThroughSheet(window, entry) {
+  const sent = window.eval("(function (l) { return confirmLetterRead(l); })")(entry);
+  window.document.querySelector(".scrim .sheet-foot .btn-stack .btn:not(.ghost)").click();
+  return sent;
+}
+
 function card(window, entry, detail) {
   return window.eval("(function (l, d) { return letterConfirmationBlock(l, d); })")(entry, detail);
 }
@@ -49,13 +55,12 @@ describe("the confirmation card can show what the school server did", () => {
   test("a failed send keeps its message on the card with the answer behind the details button", async () => {
     const { window } = loadApp();
     const entry = letter();
-    window.eval("confirmAction = () => Promise.resolve(true);");
     answer(window, {
       ok: false,
       message_key: "api.letters.confirm.rejected",
       diagnosis: { post_status: 200, after_disabled: true },
     });
-    await window.eval("(function (l) { return confirmLetterRead(l); })")(entry);
+    await confirmThroughSheet(window, entry);
     expect(entry.confirmationFailure).toBeTruthy();
     const node = card(window, entry, { confirmation: OPEN });
     expect(node.textContent).toContain(window.eval("t('api.letters.confirm.rejected')"));
@@ -66,9 +71,8 @@ describe("the confirmation card can show what the school server did", () => {
     const { window } = loadApp();
     const entry = letter();
     entry.confirmationFailure = { message: "x", diagnosis: null };
-    window.eval("confirmAction = () => Promise.resolve(true);");
     answer(window, { ok: true, confirmed_at: "2026-09-11T10:00:00" });
-    await window.eval("(function (l) { return confirmLetterRead(l); })")(entry);
+    await confirmThroughSheet(window, entry);
     expect(entry.confirmationFailure).toBeNull();
     expect(entry.confirmation.done).toBe(true);
   });

@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { goto, checkTapTargets, checkTapTargetOverlaps, checkLastRowReachable } = require("./helpers");
+const { goto, openArea, checkTapTargets, checkTapTargetOverlaps, checkLastRowReachable } = require("./helpers");
 
 const VIEWPORTS = [
   { name: "320", width: 320, height: 800 },
@@ -17,7 +17,7 @@ const VIEWS = [
   { key: "absence", tabIndex: 2 },
   { key: "post-letters", tabIndex: 3 },
   { key: "post-pinboard", tabIndex: 3, segment: 1 },
-  { key: "chat", tabIndex: 4 },
+  { key: "chat", area: "messenger" },
 ];
 
 async function assertNoOverlapOrCoverage(page, label) {
@@ -38,7 +38,10 @@ for (const viewport of VIEWPORTS) {
     for (const view of VIEWS) {
       test(`${view.key}: no undersized targets, no unrelated targets overlapping`, async ({ page }) => {
         await goto(page);
-        if (view.tabIndex !== null) {
+        if (view.area) {
+          await openArea(page, view.area);
+          await waitForContentSettled(page);
+        } else if (view.tabIndex !== null) {
           await page.locator(".tabbar .tab").nth(view.tabIndex).click();
           await waitForContentSettled(page);
           if (view.segment !== undefined) {

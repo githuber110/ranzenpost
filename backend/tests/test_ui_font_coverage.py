@@ -1,5 +1,6 @@
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -60,7 +61,11 @@ def bundle_characters(language):
 
 
 def required_characters(language):
-    return {ch for ch in bundle_characters(language) | GERMAN_DATA_BASELINE if not ch.isspace()}
+    return {
+        ch
+        for ch in bundle_characters(language) | GERMAN_DATA_BASELINE
+        if not ch.isspace() and unicodedata.category(ch) != "Cf"
+    }
 
 
 def parse_unicode_range(value):

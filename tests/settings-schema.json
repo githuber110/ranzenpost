@@ -1,0 +1,41 @@
+{
+  "keys": [
+    "children",
+    "connections",
+    "course_filters",
+    "created_at",
+    "holiday_region",
+    "label",
+    "language",
+    "modules_card_hidden",
+    "modules_disabled",
+    "navigation",
+    "notify_events",
+    "notify_services",
+    "overview_blocks",
+    "own_entries",
+    "own_entries_ha",
+    "period_grid",
+    "period_times",
+    "phones",
+    "poll_state",
+    "reported_modules",
+    "schema_version",
+    "school_name",
+    "school_url",
+    "setup_complete",
+    "short_name",
+    "subjects",
+    "teachers"
+  ],
+  "internal": {
+    "schema_version": "internal store version",
+    "connections": "container of the per-school entries",
+    "school_url": "fixed by the wizard, not a setting",
+    "school_name": "learned from the school profile, not a setting",
+    "created_at": "internal timestamp",
+    "setup_complete": "internal wizard flag",
+    "children": "chosen in the wizard, propagation covered by test_children_page.py and e2e/two-schools.spec.js",
+    "poll_state": "internal poller bookkeeping"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": { "default": "mdi:school-outline", "state": { "on": "mdi:school" } },
+      "timetable_changed_today": { "default": "mdi:calendar-check", "state": { "on": "mdi:calendar-alert" } }
+    },
+    "calendar": {
+      "lessons": { "default": "mdi:timetable" },
+      "exams": { "default": "mdi:pencil-ruler" },
+      "absences": { "default": "mdi:account-off" },
+      "own_entries": { "default": "mdi:calendar-star" },
+      "holidays": { "default": "mdi:beach" }
+    },
+    "event": {
+      "timetable_changed": { "default": "mdi:calendar-sync" }
+    },
+    "sensor": {
+      "current_lesson": { "default": "mdi:book-open-variant" },
+      "next_lesson": { "default": "mdi:book-arrow-right" },
+      "school_end_today": { "default": "mdi:home-clock" },
+      "next_school_day": { "default": "mdi:clock-start" },
+      "changes_today": { "default": "mdi:swap-horizontal" },
+      "next_exam": { "default": "mdi:clipboard-text-clock" },
+      "exams_upcoming": { "default": "mdi:clipboard-list-outline" },
+      "unread_letters": { "default": "mdi:email-outline" },
+      "unread_posts": { "default": "mdi:bulletin-board" },
+      "open_absences": { "default": "mdi:account-clock" },
+      "next_absence": { "default": "mdi:calendar-account" },
+      "timetable_last_updated": { "default": "mdi:update" },
+      "next_holiday": { "default": "mdi:beach" },
+      "next_conference": { "default": "mdi:account-group" },
+      "connection": { "default": "mdi:lan-connect", "state": { "error": "mdi:lan-disconnect", "unconfigured": "mdi:lan-pending" } }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="de-DE">
+<head><meta charset="UTF-8"><title>Zwei-Faktor-Authentifizierung einrichten</title></head>
+<body>
+<h1>Zwei-Faktor-Authentifizierung einrichten</h1>
+<div class="alert alert-info">Für Ihren Account ist die Zwei-Faktor-Authentifizierung verpflichtend. Bitte richten Sie sie jetzt ein, um fortzufahren.</div>
+<p>Scanne den QR-Code oder gib den Schlüssel manuell ein.</p>
+<div class="qr"><img src="data:image/png;base64,PLACEHOLDER" alt="QR"></div>
+<a class="otpauth-link" href="otpauth://totp/IServ:parent.one?secret=KRSXG5CTMVRXEZLU&amp;issuer=IServ&amp;algorithm=SHA1&amp;digits=6&amp;period=30">In App öffnen</a>
+<form name="confirm" method="post" action="/iserv/auth/twofactor/setup/confirm" id="twofactor_confirm">
+  <label>Bezeichnung <input type="text" name="confirm[name]" value=""></label>
+  <input type="text" name="confirm[_fake_username]" value="" autocomplete="off">
+  <label>2FA-Code * <input type="text" name="confirm[code]" value=""></label>
+  <button type="submit" name="confirm[actions][submit]">Aktivieren</button>
+  <input type="hidden" name="confirm[_token]" value="csrf-setup-token">
+</form>
+</body>
+</html>

@@ -745,3 +745,112 @@ def test_the_teacher_permission_is_read_from_the_element_iserv_puts_it_in():
 
     assert parse_privileges(WITH_CREDENTIALS) == {"can_write_to_teacher": True}
     assert parse_privileges("<html><body></body></html>") is None
+
+
+def _records(caplog, level):
+    return [record for record in caplog.records if record.name == "app.messenger" and record.levelno == level]
+
+
+def test_withheld_credentials_are_noted_once_as_information_and_never_as_a_warning(caplog):
+    service = _service(_page_client(WITHOUT_CREDENTIALS))
+    with caplog.at_level(logging.DEBUG, logger="app.messenger"):
+        for _ in range(3):
+            with pytest.raises(MessengerStageError) as caught:
+                service._bootstrap()
+            assert caught.value.stage == STAGE_NO_CREDENTIALS
+    assert _records(caplog, logging.WARNING) == []
+    noted = [record for record in _records(caplog, logging.INFO) if "withholds" in record.getMessage()]
+    assert len(noted) == 1
+    assert noted[0].exc_info is None
+
+
+def test_credentials_that_arrive_over_the_authenticate_call_leave_no_warning_behind(caplog):
+    client = FakeIServClient(
+        page=FakePage(200, SPA_PAGE_HTML, url=f"{BASE}/iserv/messenger/"),
+        pages={
+            "/iserv/messenger/": FakePage(200, SPA_PAGE_HTML, url=f"{BASE}/iserv/messenger/"),
+            "/messenger/authenticate": FakePage(200, "", json_data=AUTHENTICATE_PAYLOAD),
+        },
+    )
+    with caplog.at_level(logging.DEBUG, logger="app.messenger"):
+        assert _service(client)._bootstrap()["access_token"] == "tok-x"
+    warned = [record.getMessage() for record in _records(caplog, logging.WARNING)]
+    assert [line for line in warned if "credentials" in line or "authenticate" in line] == []
+
+
+def test_the_probe_and_the_client_read_the_authenticate_answer_through_one_function():
+    from app import modules
+    from app.iserv.messenger import authenticate_over_xhr
+
+    assert modules.authenticate_over_xhr is authenticate_over_xhr
+    assert MessengerService._authentication_over_xhr.__globals__["authenticate_over_xhr"] is authenticate_over_xhr
+
+
+POSTED_AUTH = {"access_token": "tok-posted-secret", "user_id": "@parent.one:school.example"}
+
+
+def _withheld_client(posted):
+    client = _page_client(WITHOUT_CREDENTIALS)
+    client.posted = posted
+    return client
+
+
+def test_withheld_credentials_are_asked_for_once_by_post_and_signed_in_with_the_answer():
+    client = _withheld_client(FakePage(200, "", json_data=POSTED_AUTH))
+    store = DictStore()
+    auth = _service(client, store)._bootstrap()
+    assert auth["access_token"] == "tok-posted-secret"
+    assert auth["home_server"] == "school.example"
+    assert [url for url, _ in client.posts] == [f"{BASE}/iserv/messenger/authenticate"]
+    assert client.followed == [False]
+    assert store.load_secrets()["messenger_access_token"] == "tok-posted-secret"
+
+
+def test_a_refused_post_keeps_the_calm_answer_and_waits_a_day():
+    client = _withheld_client(FakePage(403, ""))
+    store = DictStore()
+    service = _service(client, store)
+    for _ in range(3):
+        with pytest.raises(MessengerStageError) as caught:
+            service._bootstrap()
+        assert caught.value.stage == STAGE_NO_CREDENTIALS
+    assert len(client.posts) == len(parse_authenticate_paths(WITHOUT_CREDENTIALS))
+    assert caught.value.detail["authenticate_post"] == "not tried again within a day"
+
+
+def test_the_post_answer_never_leaks_into_the_diagnosis():
+    client = _withheld_client(FakePage(200, "", json_data={"access_token": "tok-half-secret"}))
+    with pytest.raises(MessengerStageError) as caught:
+        _service(client, DictStore())._bootstrap()
+    rendered = json.dumps(caught.value.detail)
+    assert "tok-half-secret" not in rendered
+    assert "access_token" in caught.value.detail["authenticate_post_fields"]
+
+
+def test_the_post_looks_like_the_messenger_page_asking():
+    client = _withheld_client(FakePage(200, "", json_data=POSTED_AUTH))
+    _service(client, DictStore())._bootstrap()
+    headers = client.post_headers[0]
+    assert headers["X-Requested-With"] == "XMLHttpRequest"
+    assert headers["Referer"] == f"{BASE}/iserv/messenger/"
+
+
+def test_a_stamp_from_the_future_does_not_block_the_post_forever():
+    client = _withheld_client(FakePage(200, "", json_data=POSTED_AUTH))
+    store = DictStore({"messenger_authenticate_post_at": 9_999_999_999})
+    auth = _service(client, store)._bootstrap()
+    assert auth["access_token"] == "tok-posted-secret"
+
+
+def test_the_post_is_tried_again_after_a_day():
+    client = _withheld_client(FakePage(403, ""))
+    store = DictStore()
+    service = _service(client, store)
+    service.now = lambda: 1_000_000.0
+    with pytest.raises(MessengerStageError):
+        service._bootstrap()
+    tried = len(client.posts)
+    service.now = lambda: 1_000_000.0 + 24 * 60 * 60 + 1
+    with pytest.raises(MessengerStageError):
+        service._bootstrap()
+    assert len(client.posts) == 2 * tried

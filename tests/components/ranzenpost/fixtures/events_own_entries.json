@@ -1,0 +1,32 @@
+[
+  {
+    "uid": "own-20260902-e1@sample",
+    "summary": "Chess club",
+    "description": "Date: 02.09.2026\nTime: 15:00–16:00\nKind: Club",
+    "location": "",
+    "start": "2026-09-02T15:00:00+02:00",
+    "end": "2026-09-02T16:00:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "",
+    "subject_code": "",
+    "subject": "",
+    "name": "",
+    "kind": "own_entries"
+  },
+  {
+    "uid": "own-20260903-e2@sample",
+    "summary": "Dentist",
+    "description": "Date: 03.09.2026\nTime: 16:00–16:30\nKind: Appointment",
+    "location": "",
+    "start": "2026-09-03T16:00:00+02:00",
+    "end": "2026-09-03T16:30:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "",
+    "subject_code": "",
+    "subject": "",
+    "name": "",
+    "kind": "own_entries"
+  }
+]

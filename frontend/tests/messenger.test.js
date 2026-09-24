@@ -337,7 +337,7 @@ describe("sending", () => {
     await window.eval("(function (node) { return sendMessengerMessage(node); })")(view.querySelector(".composer-input"));
     const sends = calls.filter((call) => call.url.includes("api/messenger/send"));
     expect(sends.length).toBe(1);
-    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag" });
+    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag", connection_id: "" });
     expect(room.draft).toBe("");
     expect(room.sending).toBe(false);
     expect(calls.some((call) => call.url.includes("api/messenger/room?id="))).toBe(true);
@@ -437,7 +437,7 @@ describe("the way in", () => {
   test("before the rooms are loaded the tab badge comes from the poller state", () => {
     const { window } = loadApp();
     const total = window.eval(
-      "(function (poll) { state.messengerRooms = null; state.config = { poll_state: poll }; return badgeCount('messenger'); })"
+      "(function (poll) { state.messengerRooms = null; state.config = { connections: [{ id: 's1', poll_state: poll }] }; return badgeCount('messenger'); })"
     );
     expect(total({ messenger_unread: 4 })).toBe(4);
     expect(total({ messenger_unread: 0 })).toBe(0);
@@ -447,7 +447,7 @@ describe("the way in", () => {
   test("the loaded rooms beat the poller state for the tab badge", () => {
     const { window } = loadApp();
     setRooms(window, ROOMS);
-    window.eval("(function () { state.config = { poll_state: { messenger_unread: 99 } }; })")();
+    window.eval("(function () { state.config = { connections: [{ id: 's1', poll_state: { messenger_unread: 99 } }] }; })")();
     expect(window.eval("badgeCount('messenger')")).toBe(3);
   });
 

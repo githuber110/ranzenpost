@@ -76,6 +76,13 @@ def test_login_completes_full_two_factor_flow():
     assert session.two_factor_data["_csrf_token"] == "csrf-token-example"
 
 
+def test_login_remembers_the_login_page_it_was_served():
+    client, _ = make_client()
+    assert client.login_page == ""
+    client.login("parent", "secret", lambda: "451884")
+    assert client.login_page == read("login_page.html")
+
+
 def test_login_raises_on_wrong_credentials():
     client, _ = make_client(login_failed=True)
     with pytest.raises(LoginError):
@@ -97,6 +104,44 @@ def test_get_timetable_after_login():
     assert len(week.combined) == 2
 
 
+def test_get_timetable_always_sends_child_id_for_a_two_child_account():
+    calls = []
+
+    class RecordingSession(FakeSession):
+        def get(self, url, timeout=None, params=None):
+            if "time-table/data" in url:
+                calls.append(params)
+            return super().get(url, timeout=timeout, params=params)
+
+    client = IServClient(BASE, session=RecordingSession())
+    client.login("parent", "secret", lambda: "451884")
+    children = client.get_children()
+    assert len(children) == 2
+    for child in children:
+        client.get_timetable(child.child_id)
+    assert len(calls) == 2
+    for params, child in zip(calls, children):
+        assert params["childId"] == child.child_id
+        assert json.loads(params["filter"])["child"] == child.child_id
+
+
+def test_get_timetable_reports_a_403_as_area_forbidden_not_a_login_failure():
+    from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+
+    class ForbiddenSession(FakeSession):
+        def get(self, url, timeout=None, params=None):
+            if "time-table/data" in url:
+                return FakeResponse("forbidden", url, status_code=403)
+            return super().get(url, timeout=timeout, params=params)
+
+    client = IServClient(BASE, session=ForbiddenSession())
+    client.login("parent", "secret", lambda: "451884")
+    with pytest.raises(DataError) as excinfo:
+        client.get_timetable("22222222-2222-4222-8222-222222222222")
+    assert excinfo.value.message_key == CHILD_PAGE_FORBIDDEN_KEY
+    assert not isinstance(excinfo.value, LoginError)
+
+
 def test_fetch_or_raise_returns_the_response_on_success():
     client, _ = make_client()
     client.login("parent", "secret", lambda: "451884")
@@ -107,11 +152,24 @@ def test_fetch_or_raise_returns_the_response_on_success():
 def test_fetch_or_raise_raises_on_a_non_200_response():
     class FailingSession(FakeSession):
         def get(self, url, timeout=None, params=None):
-            return FakeResponse("maintenance", url, status_code=503)
+            return FakeResponse("gone", url, status_code=404)
 
     client = IServClient(BASE, session=FailingSession())
     with pytest.raises(DataError):
         client.fetch_or_raise("/iserv/parentconference/attendee/")
+
+
+def test_fetch_or_raise_reports_a_server_error_as_an_outage():
+    from app.iserv.errors import OutageError
+
+    class FailingSession(FakeSession):
+        def get(self, url, timeout=None, params=None):
+            return FakeResponse("maintenance", url, status_code=503)
+
+    client = IServClient(BASE, session=FailingSession())
+    with pytest.raises(OutageError) as caught:
+        client.fetch_or_raise("/iserv/parentconference/attendee/")
+    assert caught.value.reason == "status:503"
 
 
 class SecuritySession:

@@ -10,8 +10,9 @@ from app.marks import MarkRegistry
 from app.store import Store
 from app.subscriptions import SubscriptionRegistry, SubscriptionError
 
-CHILD_ID = "child-uuid-a"
-SECOND_CHILD_ID = "child-uuid-b"
+CONNECTION_ID = "a1b2c3d4"
+CHILD_ID = f"{CONNECTION_ID}:child-uuid-a"
+SECOND_CHILD_ID = f"{CONNECTION_ID}:child-uuid-b"
 CHILD_NAME = "Zwiebelfisch Quastenflosser"
 SECOND_CHILD_NAME = "Kraakebolle Nebelkrähe"
 NOW = datetime(2026, 9, 2, 6, 0)
@@ -105,14 +106,20 @@ def _store(tmp_path, language="de", region="DE-NI", children=None, subjects=None
     store = Store(tmp_path / "data")
     config = store.load_config()
     config["language"] = language
-    config["holiday_region"] = region
-    config["children"] = children or [
+    store.save_config(config)
+    listed = children or [
         {"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"},
         {"child_id": SECOND_CHILD_ID, "name": SECOND_CHILD_NAME, "class_name": "7B"},
     ]
-    config["subjects"] = subjects or {"D": {"label": "Deutsch", "color": "#0e6b70"}}
-    config["period_times"] = {"1": "08:00", "3": "09:45", "4": "10:30"}
-    store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id=CONNECTION_ID,
+        setup_complete=True,
+        holiday_region=region,
+        children=[dict(child, child_id=child["child_id"].split(":", 1)[-1]) for child in listed],
+        subjects=subjects or {"D": {"label": "Deutsch", "color": "#0e6b70"}},
+        period_times={"1": "08:00", "3": "09:45", "4": "10:30"},
+    )
     return store
 
 
@@ -195,7 +202,7 @@ def test_a_stored_label_that_only_repeats_the_class_is_read_as_no_label(tmp_path
             "subscriptions": [
                 {
                     "id": "legacy",
-                    "child_id": CHILD_ID,
+                    "child_key": CHILD_ID,
                     "label": "5A",
                     "components": ["timetable"],
                     "color": "",
@@ -417,6 +424,21 @@ def test_a_substitution_keeps_the_uid_of_the_plain_lesson(tmp_path):
     after = _uids(_build(store, subscription))
 
     assert before == after
+
+
+def test_a_migrated_subscription_keeps_the_uids_of_the_single_school_release(tmp_path):
+    import hashlib
+
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    subscription = _subscription(store)
+    legacy_tag = hashlib.sha256(b"child-uuid-a").hexdigest()[:16]
+
+    uids = _uids(_build(store, subscription))
+
+    assert uids
+    assert all(uid.startswith(f"{legacy_tag}-") for uid in uids)
+    assert feed.child_tag(CHILD_ID) == legacy_tag
 
 
 def test_two_children_never_share_a_uid(tmp_path):
@@ -724,7 +746,7 @@ def test_the_calendar_skeleton_is_complete(tmp_path):
 def test_text_fields_are_escaped(tmp_path):
     store = _store(tmp_path)
     store.save_calendar_snapshot(
-        _snapshot([_lesson(subject_label="Mathe, Kurs; A\\B", room="Raum; 101")])
+        _snapshot([_lesson(subject_code="MK", subject_label="Mathe, Kurs; A\\B", room="Raum; 101")])
     )
 
     ics = _build(store, _subscription(store))
@@ -799,9 +821,7 @@ def test_the_subject_colour_is_read_from_the_configuration_at_request_time(tmp_p
     subscription = _subscription(store)
     assert _build(store, subscription).count("COLOR:teal") == 2
 
-    config = store.load_config()
-    config["subjects"] = {"D": {"label": "Deutsch", "color": "#c71585"}}
-    store.save_config(config)
+    store.update_connection(CONNECTION_ID, subjects={"D": {"label": "Deutsch", "color": "#c71585"}})
 
     later = _build(store, subscription, now=NOW + timedelta(hours=2))
     assert "COLOR:mediumvioletred" in later
@@ -821,6 +841,29 @@ def test_only_css3_colour_names_are_emitted():
     assert feed_ics.nearest_color_name("") == ""
 
 
+def test_a_palette_name_reaches_the_feed_as_the_nearest_css3_name(tmp_path):
+    from app.mapping import PALETTE, subject_base
+
+    store = _store(tmp_path, subjects={"D": {"label": "Deutsch", "color": "yellow", "color_source": "user"}})
+    store.save_calendar_snapshot(_snapshot([_lesson(color="yellow")]))
+
+    ics = _build(store, _subscription(store))
+
+    assert f"COLOR:{feed_ics.nearest_color_name(subject_base('yellow'))}" in ics
+    assert "COLOR:yellow" in ics or "COLOR:gold" in ics
+    for name, base, *_ in PALETTE:
+        assert feed_ics.nearest_color_name(base) in feed_ics.CSS3_COLORS, name
+
+
+def test_a_custom_hex_colour_reaches_the_feed_as_its_nearest_css3_name(tmp_path):
+    store = _store(tmp_path, subjects={"D": {"label": "Deutsch", "color": "#C71585", "color_source": "user"}})
+    store.save_calendar_snapshot(_snapshot([_lesson(color="#c71585")]))
+
+    ics = _build(store, _subscription(store))
+
+    assert "COLOR:mediumvioletred" in ics
+
+
 def test_holiday_events_never_carry_a_colour_or_category(tmp_path):
     store = _store(tmp_path)
     store.save_calendar_snapshot(_snapshot([]))
@@ -833,9 +876,8 @@ def test_holiday_events_never_carry_a_colour_or_category(tmp_path):
 
 def test_the_calendar_follows_the_entered_time_not_the_one_the_school_sent(tmp_path):
     store = _store(tmp_path)
-    config = store.load_config()
-    config["period_times"] = dict(config["period_times"], **{"1": "07:40"})
-    store.save_config(config)
+    scoped = store.connection_store(CONNECTION_ID).load_config()
+    store.update_connection(CONNECTION_ID, period_times=dict(scoped["period_times"], **{"1": "07:40"}))
     store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
 
     ics = _build(store, _subscription(store))
@@ -847,9 +889,8 @@ def test_the_calendar_follows_the_entered_time_not_the_one_the_school_sent(tmp_p
 
 def test_the_calendar_detail_line_names_the_entered_time_too(tmp_path):
     store = _store(tmp_path)
-    config = store.load_config()
-    config["period_times"] = dict(config["period_times"], **{"1": "07:40"})
-    store.save_config(config)
+    scoped = store.connection_store(CONNECTION_ID).load_config()
+    store.update_connection(CONNECTION_ID, period_times=dict(scoped["period_times"], **{"1": "07:40"}))
     store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
 
     ics = _unfold(_build(store, _subscription(store)))
@@ -860,9 +901,8 @@ def test_the_calendar_detail_line_names_the_entered_time_too(tmp_path):
 
 def test_a_period_without_an_entered_time_still_uses_the_school_time(tmp_path):
     store = _store(tmp_path)
-    config = store.load_config()
-    config["period_times"] = dict(config["period_times"], **{"1": ""})
-    store.save_config(config)
+    scoped = store.connection_store(CONNECTION_ID).load_config()
+    store.update_connection(CONNECTION_ID, period_times=dict(scoped["period_times"], **{"1": ""}))
     store.save_calendar_snapshot(_snapshot([_lesson(start_time="08:00")]))
 
     ics = _build(store, _subscription(store))

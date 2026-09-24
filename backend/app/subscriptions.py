@@ -4,17 +4,21 @@ import secrets
 import threading
 import time
 
+from .store import children_of_config, config_for_child
+
 COMPONENT_TIMETABLE = "timetable"
 COMPONENT_SCHOOL_HOLIDAYS = "school_holidays"
 COMPONENT_PUBLIC_HOLIDAYS = "public_holidays"
 COMPONENT_MARKS = "marks"
 COMPONENT_ABSENCES = "absences"
+COMPONENT_OWN_ENTRIES = "own_entries"
 COMPONENTS = (
     COMPONENT_TIMETABLE,
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_PUBLIC_HOLIDAYS,
     COMPONENT_MARKS,
     COMPONENT_ABSENCES,
+    COMPONENT_OWN_ENTRIES,
 )
 
 LAST_FETCH_FIELD = "last_fetched_at"
@@ -23,7 +27,7 @@ TOKEN_BYTES = 32
 IDENTIFIER_BYTES = 8
 MAX_LABEL_LENGTH = 60
 MIN_NAME_TOKEN_LENGTH = 3
-TOKEN_LOG_PREFIX_LENGTH = 6
+TOKEN_LOG_PREFIX_LENGTH = 4
 
 ERROR_COMPONENTS = "api.calendar.error.components"
 ERROR_CHILD = "api.calendar.error.child"
@@ -62,9 +66,7 @@ def normalize_color(value):
 
 def child_name_tokens(config):
     tokens = set()
-    for child in config.get("children") or []:
-        if not isinstance(child, dict):
-            continue
+    for child in children_of_config(config):
         for part in _NAME_SPLIT.split(str(child.get("name") or "")):
             folded = part.casefold()
             if len(folded) >= MIN_NAME_TOKEN_LENGTH:
@@ -77,33 +79,33 @@ def label_carries_child_name(label, config):
     return any(token in folded for token in child_name_tokens(config))
 
 
-def normalize_label(label, config, child_id):
+def normalize_label(label, config, child_key):
     text = " ".join(str(label or "").split())
     if len(text) > MAX_LABEL_LENGTH:
         raise SubscriptionError(ERROR_LABEL_LENGTH)
-    return settled_label(text, config, child_id)
+    return settled_label(text, config, child_key)
 
 
-def settled_label(label, config, child_id):
+def settled_label(label, config, child_key):
     text = " ".join(str(label or "").split())
-    if text and text.casefold() == _class_name(config, child_id).casefold():
+    if text and text.casefold() == _class_name(config, child_key).casefold():
         return ""
     return text
 
 
-def _child(config, child_id):
-    for child in config.get("children") or []:
-        if isinstance(child, dict) and child.get("child_id") == child_id:
+def _child(config, child_key):
+    for child in children_of_config(config):
+        if child.get("key") == child_key:
             return child
     return {}
 
 
-def _class_name(config, child_id):
-    return " ".join(str(_child(config, child_id).get("class_name") or "").split())
+def _class_name(config, child_key):
+    return " ".join(str(_child(config, child_key).get("class_name") or "").split())
 
 
-def child_name(config, child_id):
-    return " ".join(str(_child(config, child_id).get("name") or "").split())
+def child_name(config, child_key):
+    return " ".join(str(_child(config, child_key).get("name") or "").split())
 
 
 def child_first_name(name):
@@ -113,13 +115,8 @@ def child_first_name(name):
     return parts[0] if parts else ""
 
 
-def known_child(config, child_id):
-    children = config.get("children") or []
-    if not children:
-        return False
-    return any(
-        isinstance(child, dict) and child.get("child_id") == child_id for child in children
-    )
+def known_child(config, child_key):
+    return any(child.get("key") == child_key for child in children_of_config(config))
 
 
 def token_log_prefix(token):
@@ -135,7 +132,7 @@ def _as_epoch(value):
 def public_view(entry):
     return {
         "id": entry.get("id", ""),
-        "child_id": entry.get("child_id", ""),
+        "child_key": entry.get("child_key", ""),
         "label": entry.get("label", ""),
         "components": list(entry.get("components") or []),
         "color": entry.get("color", ""),
@@ -156,7 +153,7 @@ class SubscriptionRegistry:
     def __init__(self, store, clock=None):
         self.store = store
         self.clock = clock or time.time
-        self._lock = threading.Lock()
+        self._lock = getattr(store, "lock", None) or threading.Lock()
 
     def _read(self):
         data = self.store.load_calendar_subscriptions()
@@ -164,7 +161,7 @@ class SubscriptionRegistry:
         entries = [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
         config = self.store.load_config()
         for entry in entries:
-            entry["label"] = settled_label(entry.get("label"), config, entry.get("child_id", ""))
+            entry["label"] = settled_label(entry.get("label"), config, entry.get("child_key", ""))
         return entries
 
     def _write(self, entries):
@@ -181,31 +178,32 @@ class SubscriptionRegistry:
                 self._write(entries)
         return [public_view(entry) for entry in entries]
 
-    def move_child(self, old_id, new_id):
-        if not old_id or not new_id or old_id == new_id:
+    def move_child(self, old_key, new_key):
+        if not old_key or not new_key or old_key == new_key:
             return 0
         with self._lock:
             entries = self._read()
             moved = 0
             for entry in entries:
-                if entry.get("child_id") == old_id:
-                    entry["child_id"] = new_id
+                if entry.get("child_key") == old_key:
+                    entry["child_key"] = new_key
                     moved += 1
             if moved:
                 self._write(entries)
         return moved
 
-    def create(self, child_id, components, label="", color="", require_region=True):
+    def create(self, child_key, components, label="", color="", require_region=True):
         config = self.store.load_config()
         selected = normalize_components(components)
-        if not known_child(config, child_id):
+        if not known_child(config, child_key):
             raise SubscriptionError(ERROR_CHILD)
-        if require_region and COMPONENT_TIMETABLE in selected and not config.get("holiday_region"):
+        region = config_for_child(self.store, child_key).get("holiday_region")
+        if require_region and COMPONENT_TIMETABLE in selected and not region:
             raise SubscriptionError(ERROR_REGION)
-        resolved = normalize_label(label, config, child_id)
+        resolved = normalize_label(label, config, child_key)
         entry = {
             "id": secrets.token_hex(IDENTIFIER_BYTES),
-            "child_id": child_id,
+            "child_key": child_key,
             "label": resolved,
             "components": selected,
             "color": normalize_color(color),
@@ -240,11 +238,12 @@ class SubscriptionRegistry:
                 entry["color"] = normalize_color(color)
             if components is not None:
                 selected = normalize_components(components)
-                if require_region and COMPONENT_TIMETABLE in selected and not config.get("holiday_region"):
+                region = config_for_child(self.store, entry.get("child_key", "")).get("holiday_region")
+                if require_region and COMPONENT_TIMETABLE in selected and not region:
                     raise SubscriptionError(ERROR_REGION)
                 entry["components"] = selected
             if label is not None:
-                entry["label"] = normalize_label(label, config, entry.get("child_id", ""))
+                entry["label"] = normalize_label(label, config, entry.get("child_key", ""))
             return entry
 
         return self._mutate(subscription_id, change)
@@ -295,10 +294,10 @@ class SubscriptionRegistry:
 
     def children_with_component(self, component):
         return {
-            entry.get("child_id")
+            entry.get("child_key")
             for entry in self._read()
-            if component in (entry.get("components") or []) and entry.get("child_id")
+            if component in (entry.get("components") or []) and entry.get("child_key")
         }
 
     def children_with_timetable(self):
-        return self.children_with_component(COMPONENT_TIMETABLE)
+        return self.children_with_component(COMPONENT_TIMETABLE) | self.children_with_component(COMPONENT_OWN_ENTRIES)

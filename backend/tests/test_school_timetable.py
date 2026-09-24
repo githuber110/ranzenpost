@@ -8,6 +8,7 @@ from app.iserv.errors import DataError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.service import TIMETABLE_UNREADABLE_KEY, IServService
 from app.store import Store
+from tests.support import add_school, connection_service
 
 FIXTURE = json.loads(
     (pathlib.Path(__file__).resolve().parent / "fixtures" / "dsa_current_timetable.json").read_text(encoding="utf-8")
@@ -82,14 +83,16 @@ class SchoolApp:
     def sick_note_children(self):
         return []
 
+    def sick_note_children_or_raise(self):
+        return self.sick_note_children()
+
     def students(self):
         return []
 
 
 def make(tmp_path, school_app=None, config=None):
     store = Store(tmp_path / "data")
-    store.save_config(dict({"school_url": "https://school.example"}, **(config or {})))
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
+    connection_id = add_school(store, "https://school.example", **(config or {}))
     clients = []
 
     def factory(url):
@@ -97,7 +100,8 @@ def make(tmp_path, school_app=None, config=None):
         clients.append(client)
         return client
 
-    service = IServService(store, client_factory=factory)
+    service = connection_service(store, connection_id, factory)
+    store = service.store
     app = school_app if school_app is not None else SchoolApp()
     service._dsa = lambda: app
     return service, store, app, clients
@@ -131,13 +135,15 @@ def test_a_stored_child_under_the_old_id_is_moved_to_the_school_account_id_by_na
 
 def test_a_calendar_subscription_follows_the_child_to_its_new_id(tmp_path):
     service, store, _, _ = make(tmp_path, config={"children": [{"child_id": "uuid-old", "name": "Kim Muster"}]})
+    old_key = service.child_key("uuid-old")
+    other_key = service.child_key("uuid-other")
     store.save_calendar_subscriptions({"subscriptions": [
-        {"id": "sub1", "child_id": "uuid-old", "label": "Kim", "components": ["timetable"], "token": "t", "color": ""},
-        {"id": "sub2", "child_id": "uuid-other", "label": "Alex", "components": ["timetable"], "token": "u", "color": ""},
+        {"id": "sub1", "child_key": old_key, "label": "Kim", "components": ["timetable"], "token": "t", "color": ""},
+        {"id": "sub2", "child_key": other_key, "label": "Alex", "components": ["timetable"], "token": "u", "color": ""},
     ]})
     service.children()
     entries = store.load_calendar_subscriptions()["subscriptions"]
-    assert [entry["child_id"] for entry in entries] == ["500001", "uuid-other"]
+    assert [entry["child_key"] for entry in entries] == [service.child_key("500001"), other_key]
 
 
 def test_a_stored_child_that_matches_no_current_child_is_left_alone(tmp_path):

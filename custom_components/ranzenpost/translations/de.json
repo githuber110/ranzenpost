@@ -1,0 +1,238 @@
+{
+  "config": {
+    "flow_title": "Ranzenpost",
+    "create_entry": {
+      "default": "Fertig. Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
+    },
+    "step": {
+      "hassio_confirm": {
+        "title": "Ranzenpost-Add-on verbinden",
+        "description": "Das Add-on {addon} wurde gefunden. Home Assistant damit verbinden?"
+      },
+      "install_addon": {
+        "title": "Ranzenpost-Add-on installieren",
+        "description": "Das Ranzenpost-Add-on ist noch nicht installiert. Repository {repository} hinzufügen, dann das Add-on installieren und starten?"
+      },
+      "addon_no_discovery": {
+        "title": "Das Add-on hat sich noch nicht gemeldet",
+        "description": "Das Add-on {addon} ist installiert, hat aber seine Verbindungsdaten noch nicht gemeldet. Öffne das Add-on, prüfe, dass es läuft, und trage Host, Port und Token aus dem Block „Home Assistant“ in den Einstellungen ein.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Hostname des Add-on-Containers, steht in dessen Einstellungen.",
+          "port": "Port der Integrations-API, standardmäßig 8099.",
+          "token": "Zugangstoken aus den Add-on-Einstellungen."
+        }
+      },
+      "manual": {
+        "title": "Ranzenpost manuell verbinden",
+        "description": "Trage Host, Port und Token des laufenden Ranzenpost-Containers ein. Das Token steht in den Ranzenpost-Einstellungen.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Hostname oder IP-Adresse des Ranzenpost-Containers.",
+          "port": "Port der Integrations-API, standardmäßig 8099.",
+          "token": "Zugangstoken aus den Ranzenpost-Einstellungen."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ranzenpost-Token erneuern",
+        "description": "Das Token für {host} wurde abgelehnt. Trage das aktuelle Token aus den Ranzenpost-Einstellungen ein.",
+        "data": {
+          "token": "Token"
+        }
+      }
+    },
+    "progress": {
+      "install_addon": "Das Ranzenpost-Add-on wird installiert. Das kann ein paar Minuten dauern.",
+      "start_addon": "Das Ranzenpost-Add-on startet.",
+      "wait_discovery": "Warte darauf, dass das Add-on seine Verbindungsdaten meldet."
+    },
+    "error": {
+      "cannot_connect": "Das Add-on ist nicht erreichbar. Prüfe, ob es läuft.",
+      "invalid_auth": "Das Token wurde abgelehnt. Kopiere es erneut aus den Ranzenpost-Einstellungen.",
+      "unknown": "Das Add-on hat unerwartet geantwortet."
+    },
+    "abort": {
+      "already_configured": "Dieses Ranzenpost-Add-on ist bereits verbunden. Jeder Add-on-Host kann einmal verbunden werden.",
+      "already_in_progress": "Eine Ranzenpost-Einrichtung läuft bereits.",
+      "addon_install_failed": "Das Ranzenpost-Add-on konnte nicht installiert werden. Sieh im Supervisor-Protokoll nach.",
+      "addon_start_failed": "Das Ranzenpost-Add-on konnte nicht gestartet werden. Sieh im Add-on-Protokoll nach.",
+      "not_ranzenpost_addon": "Diese Meldung gehört nicht zum Ranzenpost-Add-on.",
+      "reauth_successful": "Das Token wurde erneuert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ranzenpost-Optionen",
+        "description": "Wie oft die Integration das Add-on abfragt und welche Profile Entitäten bekommen.",
+        "data": {
+          "scan_interval": "Abfrageintervall",
+          "children": "Profile"
+        },
+        "data_description": {
+          "scan_interval": "Sekunden zwischen zwei Anfragen an das Add-on, mindestens 30.",
+          "children": "Leer lassen, um Entitäten für alle Profile anzulegen."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": {
+        "name": "Schultag heute"
+      },
+      "timetable_changed_today": {
+        "name": "Stundenplan heute geändert"
+      }
+    },
+    "calendar": {
+      "lessons": {
+        "name": "Stunden"
+      },
+      "exams": {
+        "name": "Arbeiten"
+      },
+      "absences": {
+        "name": "Abwesenheiten"
+      },
+      "own_entries": {
+        "name": "Eigene Einträge"
+      },
+      "holidays": {
+        "name": "Ferien"
+      }
+    },
+    "event": {
+      "timetable_changed": {
+        "name": "Stundenplanänderung",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "substitution": "Vertretung",
+              "cancellation": "Ausfall",
+              "room_change": "Raumwechsel",
+              "new_lesson": "Neue Stunde"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_lesson": {
+        "name": "Aktuelle Stunde"
+      },
+      "next_lesson": {
+        "name": "Nächste Stunde"
+      },
+      "school_end_today": {
+        "name": "Schulschluss heute"
+      },
+      "next_school_day": {
+        "name": "Nächster Schultag"
+      },
+      "changes_today": {
+        "name": "Änderungen heute"
+      },
+      "next_exam": {
+        "name": "Nächste Arbeit"
+      },
+      "exams_upcoming": {
+        "name": "Anstehende Arbeiten"
+      },
+      "unread_letters": {
+        "name": "Ungelesene Elternbriefe"
+      },
+      "unread_posts": {
+        "name": "Ungelesene Pinnwandbeiträge"
+      },
+      "open_absences": {
+        "name": "Offene Abwesenheiten"
+      },
+      "next_absence": {
+        "name": "Nächste Abwesenheit"
+      },
+      "timetable_last_updated": {
+        "name": "Stundenplan zuletzt aktualisiert"
+      },
+      "next_holiday": {
+        "name": "Nächste Ferien"
+      },
+      "next_conference": {
+        "name": "Nächster Elternsprechtag"
+      },
+      "connection": {
+        "name": "Verbindung",
+        "state": {
+          "ok": "Verbunden",
+          "error": "Fehler",
+          "unconfigured": "Nicht eingerichtet",
+          "unreachable": "Nicht erreichbar",
+          "auth_failed": "Anmeldung erforderlich"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "timetable_changed": "Stundenplan geändert",
+      "lesson_cancelled": "Stunde fällt aus",
+      "substitution": "Vertretung",
+      "new_letter": "Neuer Elternbrief",
+      "new_noticeboard_post": "Neuer Pinnwandbeitrag",
+      "absence_status_changed": "Status einer Abwesenheit geändert",
+      "school_unreachable": "Schule nicht erreichbar",
+      "school_reachable": "Schule wieder erreichbar",
+      "login_needed": "Anmeldung erforderlich"
+    },
+    "condition_type": {
+      "is_school_day": "Ist ein Schultag",
+      "lesson_running": "Eine Stunde läuft"
+    }
+  },
+  "issues": {
+    "login_needed": {
+      "title": "Anmeldung für {school} erforderlich",
+      "description": "Ranzenpost konnte sich bei {school} nicht mehr anmelden. Öffne Ranzenpost in der Seitenleiste, gehe zu den Einstellungen, wähle diese Schule aus und melde dich erneut an."
+    },
+    "login_twofactor_setup": {
+      "title": "Zwei-Faktor für {school} erforderlich",
+      "description": "IServ verlangt jetzt Zwei-Faktor für diesen Zugang bei {school}. Öffne Ranzenpost in der Seitenleiste und schließe die Einrichtung ab."
+    },
+    "login_unknown_account": {
+      "title": "Account bei {school} unbekannt",
+      "description": "IServ bei {school} kennt den gespeicherten Accountnamen nicht mehr. Öffne Ranzenpost in der Seitenleiste und verbinde die Schule neu."
+    },
+    "login_default_password": {
+      "title": "Standardpasswort bei {school} gesperrt",
+      "description": "IServ bei {school} lässt das Standardpasswort nicht aus dem Internet zu. Ändere das Passwort im Schulnetz oder im Browser und verbinde danach Ranzenpost neu."
+    },
+    "login_locked": {
+      "title": "Zugang bei {school} gesperrt",
+      "description": "IServ bei {school} hat den Zugang vorübergehend gesperrt. Nicht erneut anmelden, das verlängert die Sperre. Etwas warten oder die Schule fragen, danach Ranzenpost öffnen."
+    },
+    "login_code_refused": {
+      "title": "Code bei {school} abgelehnt",
+      "description": "IServ bei {school} lehnt den Bestätigungscode der App immer wieder ab. Der Zugang der App muss neu eingerichtet werden. Öffne Ranzenpost in der Seitenleiste und richte die Schule ganz neu ein."
+    },
+    "addon_too_old": {
+      "title": "Ranzenpost-Add-on aktualisieren",
+      "description": "Das Ranzenpost-Add-on läuft in Version {addon_version}, diese Integration ({integration_version}) braucht mindestens {required_version}. Aktualisiere das Add-on im Add-on-Store. Geräte und Entitäten erscheinen von selbst, sobald es seine Schulen wieder meldet."
+    },
+    "integration_too_old": {
+      "title": "Ranzenpost-Integration aktualisieren",
+      "description": "Das Ranzenpost-Add-on läuft in Version {addon_version}, eine öffentliche Version vor dieser Integration ({integration_version}). Aktualisiere die Integration über HACS, damit beide zusammenpassen; bis dahin können Daten fehlen."
+    },
+    "no_school_yet": {
+      "title": "Noch keine Schule angemeldet",
+      "description": "Fertig. Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
+    }
+  }
+}

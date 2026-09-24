@@ -13,12 +13,13 @@ week; a fix ships as a regular add-on update, and the report is published togeth
 
 Please include the add-on version, what an attacker would need (local network, the Home Assistant
 login, a calendar link, …) and, if you have one, a way to reproduce against the fixture server
-(`backend/tests/e2e_fixture_app.py`) — never against a real school.
+(`backend/tests/e2e_fixture_app.py`), never against a real school.
 
 ## Scope
 
-In scope: everything in this repository — the add-on, its Ingress UI, the calendar feed server
-on port 8100, the setup wizard and the IServ client.
+In scope: everything in this repository. That is the add-on, its Ingress UI, the calendar feed
+server on port 8100, the setup wizard, the IServ client, the Home Assistant integration, the
+dashboard card and the integration API on port 8099 with its bearer token.
 
 Out of scope: IServ itself, Home Assistant, and issues that need an already compromised Home
 Assistant instance or physical access to the device.

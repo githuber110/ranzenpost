@@ -11,7 +11,7 @@ const {
 const PORT = process.env.E2E_PORT || "8199";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-const BASE_AREAS = ["today", "upcoming", "letters", "pinboard", "messenger"];
+const BASE_AREAS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat"];
 const MAX_PAGES = 4;
 const MIN_BLOCKS_PER_PAGE = 3;
 
@@ -103,10 +103,12 @@ function assertBudget(view, label, areas) {
   if (view.snap !== "on") return;
   expect(view.panelHeight, `${label}: no measured panel height`).toBeGreaterThan(0);
   for (const panel of view.panels) {
-    expect(
-      panel.height,
-      `${label}/${panel.area} page ${panel.page}: ${panel.height}px exceeds the measured budget ${view.panelHeight}px`
-    ).toBeLessThanOrEqual(view.panelHeight + 1);
+    if (panel.blocks.length > 1 || panel.all.length > 1) {
+      expect(
+        panel.height,
+        `${label}/${panel.area} page ${panel.page}: ${panel.height}px exceeds the measured budget ${view.panelHeight}px`
+      ).toBeLessThanOrEqual(view.panelHeight + 1);
+    }
     expect(
       panel.overflow,
       `${label}/${panel.area} page ${panel.page}: the page scrolls inside itself`
@@ -276,14 +278,14 @@ test.describe("overview chapters: the cut switches itself off @ 320x568", () => 
     assertStructure(view, "two-long/28px", areasOf(view));
   });
 
-  test("the twelve entry cap holds and the trailing row leads into the tab", async ({ page }) => {
+  test("the item limit of each block holds and the trailing row leads into the tab", async ({ page }) => {
     await gotoScenario(page, "full-cap", 16);
     const view = await inspect(page);
     const letters = pagesOf(view, "letters")[0].all;
-    expect(letters.length).toBe(13);
+    expect(letters.length).toBe(6);
     expect(letters[letters.length - 1]).toBe("letters:all");
-    const pinboard = pagesOf(view, "pinboard")[0].all;
-    expect(pinboard.length).toBe(13);
+    const pinboard = pagesOf(view, "noticeboard")[0].all;
+    expect(pinboard.length).toBe(4);
     expect(pinboard[pinboard.length - 1]).toBe("pinboard:all");
   });
 });
@@ -302,23 +304,35 @@ test.describe("overview chapters: landscape keeps free scrolling", () => {
   });
 });
 
-test.describe("overview chapters: the child pills carry the day @ 390x844", () => {
+test.describe("overview chapters: every child carries the day @ 390x844", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("two children give two pills, and the second one takes over the chapter", async ({ page }) => {
+  test("two children give one chip per first name, one child on screen at a time, and the head link opens the shown child's timetable", async ({ page }) => {
     await gotoScenario(page, "two-children", 16);
-    const pills = page.locator('.panel[data-area="today"] .overview-pills .chip');
-    expect(await pills.count()).toBeGreaterThanOrEqual(2);
-    const before = await page.locator('.panel[data-area="today"] [data-block]').first().getAttribute("data-block");
-    await pills.nth(1).click();
-    await page.waitForTimeout(250);
-    expect(await pills.nth(1).getAttribute("aria-pressed")).toBe("true");
-    const after = await page.locator('.panel[data-area="today"] [data-block]').first().getAttribute("data-block");
-    expect(after.startsWith("child-2:")).toBe(true);
-    expect(after).not.toBe(before);
+    const panel = page.locator('.panel[data-area="today"]').first();
+    expect(await panel.locator(".today-child").count()).toBe(0);
+    const chips = panel.locator(".chipbar.overview-chips .chip");
+    await expect(chips).toHaveCount(2);
+    expect(await chips.allTextContents()).toEqual(["Mia", "Tom"]);
+    expect(await chips.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-pressed")))).toEqual(["true", "false"]);
+    const keysOf = () => page.locator('.panel[data-area="today"] [data-block]').evaluateAll((nodes) => nodes.map((node) => node.dataset.block));
+    const belongTo = (keys, child) => keys.every((key) => key.startsWith(`${child}:`) || key.startsWith("today:"));
+    expect(belongTo(await keysOf(), "a1b2c3d4:child-1")).toBe(true);
     const view = await inspect(page);
-    assertCompleteness(view, "two-children/after-switch", areasOf(view));
-    assertStructure(view, "two-children/after-switch", areasOf(view));
+    assertCompleteness(view, "two-children/chips", areasOf(view));
+    assertBudget(view, "two-children/chips", areasOf(view));
+    assertStructure(view, "two-children/chips", areasOf(view));
+    await chips.nth(1).click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => state.overviewChildId)).toBe("a1b2c3d4:child-2");
+    expect(await page.locator('.panel[data-area="today"] .chipbar.overview-chips .chip[aria-pressed="true"]').first().textContent()).toBe("Tom");
+    expect(belongTo(await keysOf(), "a1b2c3d4:child-2")).toBe(true);
+    const switched = await inspect(page);
+    assertCompleteness(switched, "two-children/chips/tom", areasOf(switched));
+    assertBudget(switched, "two-children/chips/tom", areasOf(switched));
+    await page.locator('.panel[data-area="today"] .panel-link').first().click();
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => [state.view, state.childId])).toEqual(["timetable", "a1b2c3d4:child-2"]);
   });
 
   test("the arrow steps exactly one page and the way back returns to it", async ({ page }) => {

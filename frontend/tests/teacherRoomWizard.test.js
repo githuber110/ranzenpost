@@ -30,7 +30,7 @@ function seed(window, children, rooms) {
   `);
 }
 
-const ONE_CHILD = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+const ONE_CHILD = [{ key: "c1", name: "Mia", class_name: "3b" }];
 const MIA = { id: "11111111-1111-4111-8111-111111111111", name: "Mia Muster" };
 const TOM = { id: "22222222-2222-4222-8222-222222222222", name: "Tom Muster" };
 
@@ -393,6 +393,7 @@ describe("the one POST", () => {
     await settle();
     const create = posts.find((call) => call.url.includes("api/messenger/room/teacher"));
     expect(create.body).toEqual({
+      connection_id: "",
       teacher: TEACHER_A.value,
       child_ids: [MIA.id, TOM.id],
       add_other_parents: true,

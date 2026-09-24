@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
+import { shippedScriptText } from "./shippedSources.js";
 
 function mockBlobResponse(window, { ok = true, disposition = "", type = "" } = {}) {
   window.URL.createObjectURL = () => "blob:mock-url";
@@ -275,12 +276,8 @@ describe("the overlay closes cleanly and gives focus back", () => {
 });
 
 describe("structural tripwire: no target=_blank on our own api paths, no window bypass", () => {
-  test("app.js never opens a relative api/... path in a new top-level tab", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+  test("no shipped script opens a relative api/... path in a new top-level tab", async () => {
+    const source = shippedScriptText();
     const attrBlocks = source.match(/\{[^{}]*target:\s*"_blank"[^{}]*\}/g) || [];
     expect(attrBlocks.length).toBeGreaterThan(0);
     for (const block of attrBlocks) {
@@ -289,22 +286,14 @@ describe("structural tripwire: no target=_blank on our own api paths, no window 
     }
   });
 
-  test("the old 401-window path is gone for good: window.open is never called from app.js", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+  test("the old 401-window path is gone for good: window.open is never called from a shipped script", async () => {
+    const source = shippedScriptText();
     expect(source.includes("window.open(")).toBe(false);
     expect(source.includes(".location.replace(")).toBe(false);
   });
 
   test("blob: urls only ever come from our own fetch response, never from a remote src", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+    const source = shippedScriptText();
     expect(source).toContain("URL.createObjectURL(blob)");
     expect(source).not.toMatch(/src:\s*["'`]https?:/);
   });

@@ -76,17 +76,17 @@ describe("the settings wear the same compact head as every other screen", () => 
 });
 
 describe("Elternsprechtage: the Uebersicht tab stays aria-current", () => {
-  test("conferences view keeps the overview tab marked current, settings has none active", () => {
+  test("conferences view marks the More tab current because conferences sit under More, settings has none active", () => {
     const { window } = loadApp();
     const conferencesTab = window.eval(`
       (function () {
         state.view = "conferences";
         const bar = tabbar();
-        const overviewBtn = [...bar.querySelectorAll(".tab")][0];
-        return overviewBtn.getAttribute("aria-current");
+        const tabs = [...bar.querySelectorAll(".tab")];
+        return [tabs[0].getAttribute("aria-current"), tabs[tabs.length - 1].getAttribute("aria-current"), tabs[tabs.length - 1].className];
       })()
     `);
-    expect(conferencesTab).toBe("page");
+    expect(conferencesTab).toEqual([null, "page", "tab tab-more"]);
 
     const settingsActive = window.eval(`
       (function () {

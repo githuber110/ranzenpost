@@ -14,7 +14,7 @@ function seed(window, subscription) {
   `);
   return window.eval(`(function (s, c) { return calendarSubscriptionBlock(s, c); })`)(
     subscription,
-    { child_id: "c1", name: "Mia", class_name: "5A" }
+    { key: "c1", name: "Mia", class_name: "5A" }
   );
 }
 
@@ -26,7 +26,7 @@ function subscription(extra) {
   return Object.assign(
     {
       id: "s1",
-      child_id: "c1",
+      child_key: "c1",
       label: "5A",
       components: ["timetable"],
       color: "#2486ed",

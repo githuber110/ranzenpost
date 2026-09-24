@@ -7,7 +7,7 @@ from app import supervisor
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 GUARD_FILE = APP / "supervisor.py"
-ROUTE_FILE = APP / "server.py"
+ROUTE_FILE = APP / "calendar_routes.py"
 
 RESTART_PATTERN = re.compile(r"addons/self/restart")
 SANCTION_CALL = "restart_addon(requested_by_user=True)"
@@ -16,7 +16,7 @@ ROUTE_PATH = '"/api/calendar/restart"'
 RESTART_SYMBOL = "restart_addon"
 ALLOWED_MODULES = {
     pathlib.Path("supervisor.py"),
-    pathlib.Path("server.py"),
+    pathlib.Path("calendar_routes.py"),
 }
 
 
@@ -32,16 +32,21 @@ def test_only_the_supervisor_guard_names_the_restart_endpoint():
     assert offenders == []
 
 
-def test_no_module_outside_the_allowlist_can_reach_the_restart_at_all():
+def restart_reachers(root):
     offenders = []
     scanned = 0
-    for path in sorted(APP.rglob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         scanned += 1
-        relative = path.relative_to(APP)
+        relative = path.relative_to(root)
         if relative in ALLOWED_MODULES:
             continue
         if RESTART_SYMBOL in path.read_text(encoding="utf-8"):
-            offenders.append(str(relative))
+            offenders.append(str(relative.as_posix()))
+    return offenders, scanned
+
+
+def test_no_module_outside_the_allowlist_can_reach_the_restart_at_all():
+    offenders, scanned = restart_reachers(APP)
     assert offenders == [], f"{RESTART_SYMBOL} may only live in {sorted(str(p) for p in ALLOWED_MODULES)}"
     assert scanned > len(ALLOWED_MODULES), "the sweep must cover the whole app package"
 
@@ -55,19 +60,16 @@ def test_the_allowlist_names_only_modules_that_actually_exist_and_use_it():
         )
 
 
-def test_the_sweep_would_catch_a_new_module_reaching_for_the_restart(tmp_path, monkeypatch):
-    planted = APP / "zz_restart_tripwire_probe.py"
-    planted.write_text("from .supervisor import restart_addon\n", encoding="utf-8")
-    try:
-        offenders = [
-            str(path.relative_to(APP))
-            for path in sorted(APP.rglob("*.py"))
-            if path.relative_to(APP) not in ALLOWED_MODULES
-            and RESTART_SYMBOL in path.read_text(encoding="utf-8")
-        ]
-        assert offenders == ["zz_restart_tripwire_probe.py"]
-    finally:
-        planted.unlink()
+def test_the_sweep_would_catch_a_new_module_reaching_for_the_restart(tmp_path):
+    (tmp_path / "supervisor.py").write_text("def restart_addon():\n    return None\n", encoding="utf-8")
+    (tmp_path / "calendar_routes.py").write_text("from .supervisor import restart_addon\n", encoding="utf-8")
+    nested = tmp_path / "iserv" / "deep"
+    nested.mkdir(parents=True)
+    (nested / "probe.py").write_text("from ...supervisor import restart_addon\n", encoding="utf-8")
+    (tmp_path / "harmless.py").write_text("VALUE = 1\n", encoding="utf-8")
+    offenders, scanned = restart_reachers(tmp_path)
+    assert offenders == ["iserv/deep/probe.py"]
+    assert scanned == 4
 
 
 def test_exactly_one_sanctioned_caller_exists_and_it_is_the_user_route():

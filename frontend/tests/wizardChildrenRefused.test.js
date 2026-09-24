@@ -73,7 +73,7 @@ describe("wizard: the school server refuses the area the children are listed in"
 
   test("a child list that arrives is still offered for picking", async () => {
     const { window, app } = wizardAt(
-      [{ child_id: "c1", name: "Kim", class_name: "3b" }],
+      [{ key: "c1", name: "Kim", class_name: "3b" }],
       () => {}
     );
     await flush();

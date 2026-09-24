@@ -1,0 +1,196 @@
+{
+  "now_lesson": {
+    "date": "2026-09-02",
+    "weekday": "wednesday",
+    "period": 1,
+    "subject": "Maths",
+    "subject_code": "MA",
+    "teacher": "Mrs Example",
+    "room": "R101",
+    "start": "2026-09-02T09:00:00+02:00",
+    "end": "2026-09-02T09:45:00+02:00",
+    "substitution": false,
+    "cancelled": false,
+    "kind": "",
+    "before": {},
+    "after": {},
+    "note": "",
+    "minutes_until": 0,
+    "minutes_left": 30
+  },
+  "next_lesson": {
+    "date": "2026-09-02",
+    "weekday": "wednesday",
+    "period": 2,
+    "subject": "English",
+    "subject_code": "EN",
+    "teacher": "Mr Stand-in",
+    "room": "R202",
+    "start": "2026-09-02T09:50:00+02:00",
+    "end": "2026-09-02T10:35:00+02:00",
+    "substitution": true,
+    "cancelled": false,
+    "kind": "substitution",
+    "before": {
+      "teacher": "Mrs Example"
+    },
+    "after": {
+      "teacher": "Mr Stand-in"
+    },
+    "note": "Substitution",
+    "minutes_until": 35,
+    "minutes_left": 80
+  },
+  "school_end_today": "2026-09-02T13:05:00+02:00",
+  "next_school_day": {
+    "date": "2026-09-03",
+    "weekday": "thursday",
+    "days_until": 1,
+    "start": "2026-09-03T08:00:00+02:00",
+    "end": "2026-09-03T12:25:00+02:00",
+    "lessons": 5,
+    "first_lesson": "Biology"
+  },
+  "changes_today": [
+    {
+      "date": "2026-09-02",
+      "weekday": "wednesday",
+      "period": 2,
+      "subject": "English",
+      "subject_code": "EN",
+      "teacher": "Mr Stand-in",
+      "room": "R202",
+      "start": "2026-09-02T09:50:00+02:00",
+      "end": "2026-09-02T10:35:00+02:00",
+      "substitution": true,
+      "cancelled": false,
+      "kind": "substitution",
+      "before": {
+        "teacher": "Mrs Example"
+      },
+      "after": {
+        "teacher": "Mr Stand-in"
+      },
+      "note": "Substitution",
+      "minutes_until": 35,
+      "minutes_left": 80
+    },
+    {
+      "date": "2026-09-02",
+      "weekday": "wednesday",
+      "period": 4,
+      "subject": "Art",
+      "subject_code": "AR",
+      "teacher": "Ms Brush",
+      "room": "R303",
+      "start": "2026-09-02T11:40:00+02:00",
+      "end": "2026-09-02T12:25:00+02:00",
+      "substitution": false,
+      "cancelled": true,
+      "kind": "cancellation",
+      "before": {},
+      "after": {},
+      "note": "Cancelled",
+      "minutes_until": 145,
+      "minutes_left": 190
+    }
+  ],
+  "unread_letters": {
+    "count": 2,
+    "items": [
+      {
+        "title": "Field trip",
+        "sender": "Mrs Example",
+        "date": "2026-09-01",
+        "child": "Alex"
+      },
+      {
+        "title": "Photo day",
+        "sender": "Head Office",
+        "date": "2026-08-28",
+        "child": "Alex"
+      }
+    ]
+  },
+  "unread_posts": {
+    "count": 1,
+    "items": [
+      {
+        "title": "Lost and found",
+        "sender": "Caretaker",
+        "date": "",
+        "child": ""
+      }
+    ]
+  },
+  "open_absences": {
+    "count": 1,
+    "items": [
+      {
+        "kind": "sick",
+        "summary": "Sick note",
+        "start": "2026-09-04",
+        "end": "2026-09-04",
+        "status": "pending",
+        "days_until": 2
+      }
+    ]
+  },
+  "next_absence": {
+    "kind": "sick",
+    "summary": "Sick note",
+    "start": "2026-09-04",
+    "end": "2026-09-04",
+    "status": "pending",
+    "days_until": 2
+  },
+  "next_exam": {
+    "date": "2026-09-03",
+    "weekday": "thursday",
+    "days_until": 1,
+    "period": 1,
+    "subject": "Biology",
+    "subject_code": "BI",
+    "name": "Chapter 3",
+    "start": "2026-09-03T08:00:00+02:00",
+    "end": "2026-09-03T08:45:00+02:00",
+    "teacher": "Dr Leaf",
+    "room": "R404"
+  },
+  "exams_upcoming": {
+    "count": 2,
+    "items": [
+      {
+        "date": "2026-09-03",
+        "weekday": "thursday",
+        "days_until": 1,
+        "period": 1,
+        "subject": "Biology",
+        "subject_code": "BI",
+        "name": "Chapter 3",
+        "start": "2026-09-03T08:00:00+02:00",
+        "end": "2026-09-03T08:45:00+02:00",
+        "teacher": "Dr Leaf",
+        "room": "R404"
+      },
+      {
+        "date": "2026-09-15",
+        "weekday": "tuesday",
+        "days_until": 13,
+        "period": 3,
+        "subject": "Maths",
+        "subject_code": "MA",
+        "name": "",
+        "start": "2026-09-15T09:50:00+02:00",
+        "end": "2026-09-15T10:35:00+02:00",
+        "teacher": "",
+        "room": ""
+      }
+    ],
+    "days": 30
+  },
+  "school_day_today": true,
+  "timetable_changed_today": true,
+  "timetable_last_updated": "2026-09-01T18:30:00+02:00",
+  "timetable_last_updated_source": "iserv"
+}

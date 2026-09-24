@@ -3,7 +3,7 @@ import { loadApp } from "./loadApp.js";
 
 function renderGrid(window, lessons) {
   const run = window.eval(
-    "(function (data) { state.childId = 'c1'; state.children = [{ child_id: 'c1' }]; return timetableGrid(data); })"
+    "(function (data) { state.childId = 'c1'; state.children = [{ key: 'c1' }]; return timetableGrid(data); })"
   );
   return run({ lessons, period_times: {} });
 }

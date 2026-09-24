@@ -14,7 +14,7 @@ function grid(window) {
   window.eval(`
     state.config = { subjects: {}, teachers: {}, period_times: { "1": "08:00", "2": "08:50" } };
     state.childId = "c1";
-    state.children = [{ child_id: "c1", name: "Mia" }];
+    state.children = [{ key: "c1", name: "Mia" }];
   `);
   return window.eval(`(function (week) { return timetableGrid(week); })`)(WEEK);
 }

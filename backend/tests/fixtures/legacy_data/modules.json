@@ -1,0 +1,13 @@
+{
+  "modules": {
+    "timetable": true,
+    "letters": true,
+    "pinboard": true,
+    "absences": true,
+    "conferences": false,
+    "messenger": true
+  },
+  "unknown": [],
+  "checked_at": 1756800000,
+  "iserv_version": "3.9.1"
+}

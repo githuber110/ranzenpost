@@ -53,10 +53,10 @@ const LOADERS = [
   },
   {
     name: "timetable",
-    route: "api/timetable?child_id=",
+    route: "api/timetable?child=",
     good: { lessons: [{ day_of_week: 1, period: 1, subject_label: "Mathe" }] },
     view: "timetable",
-    seed: "state.childId = 'c1'; state.children = [{ child_id: 'c1', name: 'Alex' }]; state.timetableAvailable = true;",
+    seed: "state.childId = 'c1'; state.children = [{ key: 'c1', name: 'Alex' }]; state.modules.available.timetable = true;",
     call: "reloadTimetable()",
     stock: "Mathe",
     errorTitle: "timetable.error.title",

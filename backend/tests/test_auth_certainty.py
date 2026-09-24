@@ -173,6 +173,22 @@ def test_a_wrong_password_is_still_recognised_through_the_probe():
     assert _probing_client(probe).accepts_password("secret") is False
 
 
+def test_a_bare_forbidden_answer_to_the_probe_is_unknown_and_no_lock():
+    refused = "<html><head><title>Zugriff verweigert</title></head><body></body></html>"
+    probe = ProbeSession(FakeAnswer(200, LOGIN_PAGE), FakeAnswer(403, refused))
+    client = _probing_client(probe)
+    assert client.accepts_password("secret") is None
+    assert client.refusal == ""
+    assert client.answered is True
+
+
+def test_a_server_failure_answer_to_the_probe_counts_as_not_answered():
+    probe = ProbeSession(FakeAnswer(200, LOGIN_PAGE), FakeAnswer(503, "<html><body>busy</body></html>"))
+    client = _probing_client(probe)
+    assert client.accepts_password("secret") is None
+    assert client.answered is False
+
+
 def test_the_probe_never_reports_a_password_as_accepted_after_a_network_failure():
     class Dead:
         headers = {}
@@ -190,7 +206,9 @@ def test_the_probe_never_reports_a_password_as_accepted_after_a_network_failure(
     client = _client(RecordingSession())
     client.username = "parent"
     client._probe_session = lambda: Dead()
+    client.answered = True
     assert client.accepts_password("secret") is None
+    assert client.answered is False
 
 
 REJECT_HTML = "<html><body><ul><li>Das Passwort ist zu kurz.</li></ul></body></html>"

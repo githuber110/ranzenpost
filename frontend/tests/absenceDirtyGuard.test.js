@@ -106,12 +106,13 @@ describe("the wizard replaces the screen shell: no tab bar, own header", () => {
     expect(view.querySelector(".icon-btn[aria-label='Zurück']")).toBeNull();
   });
 
-  test("header('conferences') wraps back + title for the conferences view", () => {
+  test("header('conferences') carries the title without a back button, conferences is an area of its own now", () => {
     const { window } = loadApp();
     const bar = window.eval("(function () { state.conferences = { items: [] }; return header('conferences'); })()");
     const row = bar.querySelector(".header-title-row");
     expect(row).not.toBeNull();
-    expect(row.querySelector(".icon-btn.header-back[aria-label='Zurück']")).not.toBeNull();
+    expect(row.querySelector(".header-title").textContent).toBe("Elternsprechtage");
+    expect(row.querySelector(".icon-btn.header-back")).toBeNull();
   });
 
   test("header('settings') wraps back + title, the view itself carries no head", () => {

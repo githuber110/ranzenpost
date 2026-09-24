@@ -1,12 +1,16 @@
 import copy
 
-from app.iserv.errors import LoginError
+from app.iserv.errors import DataError, LoginError
 from app import messages
 from app.poller import BAD_CREDENTIALS_KEY, Poller
 
 
+SCHOOL = "s1"
+
+
 class FakeService:
     def __init__(self, children, timetables, store=None):
+        self.id = SCHOOL
         self._children = children
         self._timetables = timetables
         self.store = store
@@ -30,21 +34,6 @@ class FakeStore:
 
     def save_config(self, config):
         self._config = copy.deepcopy(config)
-
-
-class PublisherRecorder:
-    def __init__(self):
-        self.calls = []
-
-    def publish_state(self, child_id, last_updated, has_changes, error=None):
-        self.calls.append(
-            {
-                "child_id": child_id,
-                "last_updated": last_updated,
-                "has_changes": has_changes,
-                "error": error,
-            }
-        )
 
 
 class NotifierRecorder:
@@ -100,53 +89,59 @@ def _display_lesson(
     }
 
 
-def test_first_run_publishes_and_does_not_notify_without_changes():
+def test_first_run_reports_a_change_and_does_not_notify_without_changes():
     children = [{"child_id": "c1", "name": "Alice"}]
     timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
     events = poller.poll_once()
-    assert len(publisher.calls) == 1
-    assert publisher.calls[0]["child_id"] == "c1"
-    assert publisher.calls[0]["has_changes"] is False
-    assert publisher.calls[0]["error"] is None
     assert notifier.calls == []
-    assert events == [{"child_id": "c1", "changed": True, "has_changes": False}]
+    assert events == [{"child_key": f"{SCHOOL}:c1", "changed": True, "has_changes": False}]
 
 
-def test_unchanged_second_run_does_not_republish_or_notify():
+def test_unchanged_second_run_reports_no_change_and_does_not_notify():
     children = [{"child_id": "c1", "name": "Alice"}]
     timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
     poller.poll_once()
-    first_count = len(publisher.calls)
     events = poller.poll_once()
-    assert len(publisher.calls) == first_count
     assert notifier.calls == []
-    assert events == [{"child_id": "c1", "changed": False, "has_changes": False}]
+    assert events == [{"child_key": f"{SCHOOL}:c1", "changed": False, "has_changes": False}]
+
+
+def test_the_push_text_names_the_child_by_first_name():
+    children = [{"child_id": "c1", "name": "Musterkind, Anna Lena"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
+    notifier = NotifierRecorder()
+    poller = Poller(FakeService(children, timetables), notifier=notifier, store=FakeStore())
+    poller.poll_once()
+    timetables["c1"] = _timetable(
+        "2026-08-31T12:00",
+        lessons=[{"subject": "Math"}],
+        changes=[{"lesson": 3, "note": "Entfall"}],
+    )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["name"] == "Anna"
+    assert notifier.calls[0]["message"] == messages.text_count("de", "notify.timetable.changes", 1, {"name": "Anna"})
+    assert "Musterkind" not in notifier.calls[0]["message"]
 
 
 def test_new_changes_trigger_notifier():
     children = [{"child_id": "c1", "name": "Alice"}]
     timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
@@ -162,29 +157,23 @@ def test_new_changes_trigger_notifier():
     assert notifier.calls[0]["name"] == "Alice"
     assert "Stundenplan" in notifier.calls[0]["message"]
     assert "Alice" in notifier.calls[0]["message"]
-    assert publisher.calls[-1]["has_changes"] is True
-    assert events == [{"child_id": "c1", "changed": True, "has_changes": True}]
+    assert events == [{"child_key": f"{SCHOOL}:c1", "changed": True, "has_changes": True}]
 
 
-def test_signature_change_without_new_changes_publishes_but_does_not_notify():
+def test_signature_change_without_new_changes_reports_but_does_not_notify():
     children = [{"child_id": "c1", "name": "Alice"}]
     timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
     poller.poll_once()
-    before = len(publisher.calls)
     timetables["c1"] = _timetable("2026-08-31T11:00", lessons=[{"subject": "English"}])
     events = poller.poll_once()
-    assert len(publisher.calls) == before + 1
-    assert publisher.calls[-1]["has_changes"] is False
     assert notifier.calls == []
-    assert events == [{"child_id": "c1", "changed": True, "has_changes": False}]
+    assert events == [{"child_key": f"{SCHOOL}:c1", "changed": True, "has_changes": False}]
 
 
 def test_every_change_notifies_even_when_count_stays():
@@ -192,11 +181,9 @@ def test_every_change_notifies_even_when_count_stays():
     timetables = {
         "c1": _timetable("2026-08-31T10:00", changes=[{"lesson": 3, "note": "Vertretung"}])
     }
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
@@ -218,22 +205,15 @@ def test_fetch_error_for_one_child_does_not_abort_others():
         "c1": RuntimeError("boom"),
         "c2": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}]),
     }
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
     poller = Poller(
         FakeService(children, timetables),
-        publisher=publisher,
         notifier=notifier,
         store=FakeStore(),
     )
     events = poller.poll_once()
-    assert events[0] == {"child_id": "c1", "error": "boom"}
-    assert events[1] == {"child_id": "c2", "changed": True, "has_changes": False}
-    error_calls = [call for call in publisher.calls if call["error"] is not None]
-    assert error_calls == [
-        {"child_id": "c1", "last_updated": None, "has_changes": False, "error": "boom"}
-    ]
-    assert any(call["child_id"] == "c2" and call["error"] is None for call in publisher.calls)
+    assert events[0] == {"child_key": f"{SCHOOL}:c1", "error": "boom", "kind": "RuntimeError"}
+    assert events[1] == {"child_key": f"{SCHOOL}:c2", "changed": True, "has_changes": False}
 
 
 def test_poll_state_is_kept_next_to_other_config():
@@ -252,13 +232,14 @@ def test_poll_state_is_kept_next_to_other_config():
     assert config["host"] == "schule.example"
     assert config["nested"] == {"totp": "secret"}
     assert "poll_state" in config
-    assert "c1" in config["poll_state"]
-    assert config["poll_state"]["c1"]["changes_count"] == 0
-    assert isinstance(config["poll_state"]["c1"]["signature"], str)
+    assert f"{SCHOOL}:c1" in config["poll_state"]
+    assert config["poll_state"][f"{SCHOOL}:c1"]["changes_count"] == 0
+    assert isinstance(config["poll_state"][f"{SCHOOL}:c1"]["signature"], str)
 
 
 class AuthFailingService:
     def __init__(self, store, fail_times, children_after=None):
+        self.id = SCHOOL
         self.store = store
         self._fail_times = fail_times
         self._children_after = children_after if children_after is not None else []
@@ -568,7 +549,7 @@ def test_upgrade_migration_without_plan_signature_pushes_nothing_on_first_poll_a
         {
             "children": children,
             "poll_state": {
-                "c1": {
+                f"{SCHOOL}:c1": {
                     "last_updated": "2026-08-31T10:00",
                     "changes_count": 0,
                     "signature": Poller._signature(old_lessons, []),
@@ -582,7 +563,7 @@ def test_upgrade_migration_without_plan_signature_pushes_nothing_on_first_poll_a
     poller = Poller(FakeService(children, timetables), notifier=notifier, store=store)
     poller.poll_once()
     assert notifier.calls == []
-    assert "plan_signature" in store.load_config()["poll_state"]["c1"]
+    assert "plan_signature" in store.load_config()["poll_state"][f"{SCHOOL}:c1"]
 
     timetables["c1"] = _timetable("2026-08-31T12:00", lessons=[_display_lesson(room="R3")])
     poller.poll_once()
@@ -720,13 +701,13 @@ def test_the_first_poll_in_a_new_week_re_seeds_the_stored_anchor():
     store = FakeStore()
     poller = _poller(children, timetables, NotifierRecorder(), store=store)
     poller.poll_once()
-    assert store.load_config()["poll_state"]["c1"]["week_anchor"] == "2026-08-31"
+    assert store.load_config()["poll_state"][f"{SCHOOL}:c1"]["week_anchor"] == "2026-08-31"
 
     timetables["c1"] = _next_week(
         "2026-09-07T10:00", lessons=[_display_lesson(date="2026-09-07")]
     )
     poller.poll_once()
-    assert store.load_config()["poll_state"]["c1"]["week_anchor"] == "2026-09-07"
+    assert store.load_config()["poll_state"][f"{SCHOOL}:c1"]["week_anchor"] == "2026-09-07"
 
 
 def test_withdrawn_changes_back_to_the_known_regular_plan_still_say_cleared():
@@ -826,3 +807,181 @@ def test_a_legacy_latched_incident_is_warned_about_again():
 
     poller.poll_once()
     assert len(notifier.calls) == 1
+
+
+class FeedWeeksConnection:
+    def __init__(self, break_at):
+        self.break_at = break_at
+        self.calls = []
+
+    def timetable(self, child_id, week_offset=0):
+        self.calls.append(week_offset)
+        if week_offset == self.break_at:
+            raise DataError("the timetable payload shape was not understood")
+        return {"start_date": f"week-{week_offset}"}
+
+
+def test_collect_feed_weeks_logs_once_when_a_later_week_cannot_be_read(caplog):
+    poller = Poller(FakeService({}, {}), store=FakeStore())
+    connection = FeedWeeksConnection(break_at=2)
+    current = {"start_date": "week-0"}
+
+    with caplog.at_level("WARNING"):
+        weeks = poller._collect_feed_weeks(connection, "c1", current)
+
+    assert [week["start_date"] for week in weeks] == ["week-0", "week-1"]
+    assert any("timetable child#c1 week 2 failed" in message for message in caplog.messages)
+    assert any("DataError" in message for message in caplog.messages)
+
+
+def test_collect_feed_weeks_keeps_every_week_when_all_reads_succeed():
+    poller = Poller(FakeService({}, {}), store=FakeStore())
+    connection = FeedWeeksConnection(break_at=None)
+    current = {"start_date": "week-0"}
+
+    weeks = poller._collect_feed_weeks(connection, "c1", current)
+
+    assert [week["start_date"] for week in weeks] == [f"week-{i}" for i in range(4)]
+def _filtered(timetable, signature):
+    return dict(timetable, courses={"parallel": 2, "chosen": bool(signature), "hidden": 1, "new": 0, "signature": signature})
+
+
+def test_choosing_courses_rebases_the_timetable_without_a_push():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    both = [_display_lesson(subject_code="E1"), _display_lesson(subject_code="E2", teacher_code="DDD")]
+    changed = [dict(both[1], change_kind="changed", changed_fields=["room"])]
+    timetables = {"c1": _filtered(_timetable("2026-08-31T10:00", lessons=both, changes=[{"subject": "E2"}]), "")}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = _poller(children, timetables, notifier, store)
+    poller.poll_once()
+    notifier.calls.clear()
+
+    timetables["c1"] = _filtered(_timetable("2026-08-31T10:00", lessons=both[:1], changes=[]), "abc")
+    poller.poll_once()
+    assert notifier.calls == []
+    assert store.load_config()["poll_state"][f"{SCHOOL}:c1"]["course_signature"] == "abc"
+
+    timetables["c1"] = _filtered(_timetable("2026-08-31T11:00", lessons=both[:1] + changed, changes=[{"subject": "E2"}]), "def")
+    poller.poll_once()
+    assert notifier.calls == []
+
+    timetables["c1"] = _filtered(_timetable("2026-08-31T12:00", lessons=[dict(both[0], room="R9")] + changed, changes=[{"subject": "E2"}]), "def")
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+
+def test_a_poll_state_without_course_signature_is_not_a_rebase():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = _poller(children, timetables, notifier, store)
+    poller.poll_once()
+    state = store.load_config()
+    state["poll_state"][f"{SCHOOL}:c1"].pop("course_signature")
+    store.save_config(state)
+    timetables["c1"] = _timetable("2026-08-31T11:00", lessons=[_display_lesson(room="R2")])
+    poller.poll_once()
+    assert notifier.calls[0]["message"] == messages.text_in("de", "notify.timetable.plan", {"name": "Alice"})
+
+
+CHOSEN_DURING_POLL = {"c1": {"chosen": ["SP|MUE"], "known": ["SP|MUE", "SP|SCH"]}}
+
+
+def _save_user_settings(store):
+    config = store.load_config()
+    config["course_filters"] = copy.deepcopy(CHOSEN_DURING_POLL)
+    config["subjects"] = {"SP": {"code": "SP", "label": "Sport"}}
+    store.save_config(config)
+
+
+class SavesDuringTimetable(FakeService):
+    def timetable(self, child_id):
+        _save_user_settings(self.store)
+        return super().timetable(child_id)
+
+
+class SavesDuringLogin(FakeService):
+    def children(self):
+        _save_user_settings(self.store)
+        raise LoginError("invalid username or password")
+
+
+def test_a_course_choice_saved_during_a_poll_survives_the_poll_state_write():
+    store = FakeStore({"language": "de", "course_filters": {}})
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[{"subject": "Math"}])}
+    poller = Poller(SavesDuringTimetable(children, timetables, store=store), notifier=NotifierRecorder(), store=store)
+    poller.poll_once()
+    saved = store.load_config()
+    assert saved["course_filters"] == CHOSEN_DURING_POLL
+    assert saved["subjects"]["SP"]["label"] == "Sport"
+    assert f"{SCHOOL}:c1" in saved["poll_state"]
+
+
+def test_a_setting_saved_during_a_failed_login_survives_the_auth_flag_write():
+    store = FakeStore({"language": "de"})
+    poller = Poller(SavesDuringLogin([], {}, store=store), store=store, notifiers={"auth": NotifierRecorder()})
+    poller.poll_once()
+    saved = store.load_config()
+    assert saved["course_filters"] == CHOSEN_DURING_POLL
+    assert saved["auth_incident_sent"] is True
+
+
+def test_the_poller_still_clears_its_own_auth_flags_after_a_good_poll():
+    store = FakeStore({"language": "de", "auth_incident_sent": True, "auth_incident_reason": "bad_credentials", "auth_incident": True})
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00")}
+    poller = Poller(SavesDuringTimetable(children, timetables, store=store), notifier=NotifierRecorder(), store=store)
+    poller.poll_once()
+    saved = store.load_config()
+    assert "auth_incident_sent" not in saved
+    assert "auth_incident_reason" not in saved
+    assert "auth_incident" not in saved
+    assert saved["course_filters"] == CHOSEN_DURING_POLL
+
+
+def test_a_course_choice_saved_during_a_poll_survives_in_the_real_connection_store(tmp_path):
+    from app import courses
+    from app.store import Store
+    from tests.support import add_school, scoped
+
+    base = Store(tmp_path / "data")
+    connection_id = add_school(base, children=[{"child_id": "c1", "name": "Alice"}])
+    store = scoped(base, connection_id)
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00")}
+    service = SavesDuringTimetable(children, timetables, store=store)
+    service.id = connection_id
+    Poller(service, notifier=NotifierRecorder(), store=store).poll_once()
+    saved = store.load_config()
+    assert courses.filter_of(saved, "c1") == CHOSEN_DURING_POLL["c1"]
+    assert saved["subjects"]["SP"]["label"] == "Sport"
+    assert saved["poll_state"]
+
+
+def test_a_restart_with_an_unchanged_plan_pushes_nothing(tmp_path):
+    from app.store import Store
+    from tests.support import add_school, scoped
+
+    base = Store(tmp_path / "data")
+    connection_id = add_school(base, children=[{"child_id": "c1", "name": "Alice"}])
+    store = scoped(base, connection_id)
+    children = [{"child_id": "c1", "name": "Alice"}]
+    lessons = [_display_lesson(), _display_lesson(period=2, subject_code="DE", teacher_code="XYZ")]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=lessons, changes=[{"subject": "DE"}])}
+    notifier = NotifierRecorder()
+
+    first = FakeService(children, timetables, store=store)
+    first.id = connection_id
+    Poller(first, notifier=notifier, store=store).poll_once()
+    notifier.calls.clear()
+    Poller(first, notifier=notifier, store=store).poll_once()
+    assert notifier.calls == []
+
+    restarted_store = scoped(Store(tmp_path / "data"), connection_id)
+    again = FakeService(children, copy.deepcopy(timetables), store=restarted_store)
+    again.id = connection_id
+    Poller(again, notifier=notifier, store=restarted_store).poll_once()
+    assert notifier.calls == []

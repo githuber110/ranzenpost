@@ -6,7 +6,7 @@ function prepare(window) {
     state.config = {};
     state.children = [];
     state.absence = { data: { children: [], rules: {} } };
-    state.timetableAvailable = true;
+    state.modules.available.timetable = true;
   `);
 }
 

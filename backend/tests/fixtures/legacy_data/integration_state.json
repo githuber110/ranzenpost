@@ -1,0 +1,23 @@
+{
+  "last_request": 1758000000,
+  "last_poll": 1758000100,
+  "last_poll_ok": true,
+  "last_error": "",
+  "letters": [
+    "Letter one"
+  ],
+  "posts": [],
+  "conferences": [],
+  "school_name": "School One",
+  "changes": [
+    {
+      "child_id": "11111111-aaaa-4bbb-8ccc-000000000001",
+      "at": "2026-09-01T08:00:00+02:00",
+      "kind": "cancellation",
+      "summary": "D",
+      "date": "2026-09-01",
+      "period": 1,
+      "new": false
+    }
+  ]
+}

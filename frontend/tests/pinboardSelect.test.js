@@ -64,8 +64,8 @@ describe("pinboard: bulk actions are exactly Gelesen/Ungelesen markieren", () =>
   });
 });
 
-describe("pinboard: bulk mark read/unread calls the seen API with the right tile_ids", () => {
-  test("bulkMarkPinboardRead posts tile_ids with unseen:false", async () => {
+describe("pinboard: bulk mark read/unread calls the seen API with the right keys", () => {
+  test("bulkMarkPinboardRead posts keys with unseen:false", async () => {
     const { window } = loadApp();
     const calls = [];
     window.fetch = (url, opts) => {
@@ -79,12 +79,12 @@ describe("pinboard: bulk mark read/unread calls the seen API with the right tile
     `);
     await window.eval("bulkMarkPinboardRead()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
-    expect(calls[0].body).toEqual({ tile_ids: [1, 2], unseen: false });
+    expect(calls[0].body).toEqual({ keys: [1, 2], unseen: false });
     expect(window.eval("state.pinboardSelectMode")).toBe(false);
     expect(window.eval("state.pinboardSelected")).toEqual([]);
   });
 
-  test("bulkMarkPinboardUnread posts tile_ids with unseen:true", async () => {
+  test("bulkMarkPinboardUnread posts keys with unseen:true", async () => {
     const { window } = loadApp();
     const calls = [];
     window.fetch = (url, opts) => {
@@ -98,7 +98,7 @@ describe("pinboard: bulk mark read/unread calls the seen API with the right tile
     `);
     await window.eval("bulkMarkPinboardUnread()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
-    expect(calls[0].body).toEqual({ tile_ids: [1], unseen: true });
+    expect(calls[0].body).toEqual({ keys: [1], unseen: true });
   });
 });
 

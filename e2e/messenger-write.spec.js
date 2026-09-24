@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   checkTapTargets,
@@ -45,7 +46,7 @@ async function settled(page) {
 }
 
 async function openChat(page) {
-  await page.locator(".tabbar .tab").nth(CHAT_TAB).click();
+  await openArea(page, "messenger");
   await page.waitForSelector(".rows .row", { timeout: 8000 });
 }
 

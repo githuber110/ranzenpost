@@ -69,6 +69,7 @@ def build(target):
 
     _copy_tree(ROOT / "backend" / "app", target / "backend" / "app")
     shutil.copy2(ROOT / "backend" / "requirements.txt", target / "backend" / "requirements.txt")
+    shutil.copy2(ROOT / "backend" / "requirements.lock.txt", target / "backend" / "requirements.lock.txt")
 
     frontend = target / "frontend"
     frontend.mkdir(parents=True)

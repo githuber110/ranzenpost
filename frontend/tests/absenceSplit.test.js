@@ -96,7 +96,7 @@ describe("absence empty state honesty", () => {
     const box = { data: { entries: [], phones: [] } };
     const view = renderAbsenceView(window, box);
     expect(view.textContent).toContain("Nichts Aktuelles gemeldet");
-    expect(view.textContent).toContain("blendet IServ für Eltern automatisch aus");
+    expect(view.textContent).toContain("blendet IServ automatisch aus");
     expect(view.textContent).not.toContain("erscheinen hier, sobald du sie eingereicht hast");
   });
 

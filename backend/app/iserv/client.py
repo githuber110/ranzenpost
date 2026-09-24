@@ -1,19 +1,44 @@
 import json
 import time
+from collections import namedtuple
 from datetime import date
 from urllib.parse import urlparse
 
 import requests
 
+from .. import requestlog
+from ..lockout import LOCKED, classify_login_response, login_refusal
 from .auth import apply_login_fields, fill_two_factor_code
 from .pages import base_shape, refusal_of
 from .children import (
+    CHILD_PAGE_FORBIDDEN_KEY,
+    FORBIDDEN_STATUSES,
     child_page_message_key,
     child_select_present,
     page_diagnosis,
     parse_children,
 )
-from .errors import DataError, LoginError, PasswordError, TwoFactorError
+from .errors import (
+    LOGIN_SESSION_KEY,
+    LOGIN_TWOFACTOR_KEY,
+    DataError,
+    LoginError,
+    OutageError,
+    PasswordError,
+    RATE_LIMIT_STATUS,
+    REASON_BAD_CREDENTIALS,
+    REASON_DEFAULT_PASSWORD,
+    REASON_LOCKED,
+    REASON_MAINTENANCE_PAGE,
+    REASON_TWOFACTOR_SETUP,
+    REASON_UNEXPECTED,
+    REASON_UNKNOWN_ACCOUNT,
+    TwoFactorError,
+    rate_limit_outage,
+    TwoFactorSetupRequired,
+    status_reason,
+    transport_outage,
+)
 from .forms import (
     find_client_redirect,
     find_login_form,
@@ -32,6 +57,7 @@ from .twofactor import (
     parse_token_rows,
     password_changed,
     registration_rejected,
+    setup_required,
 )
 
 LOGIN_FAILED_MARKER = "Anmeldung fehlgeschlagen"
@@ -48,8 +74,39 @@ MAX_REDIRECTS = 6
 ACCEPTED_LOGIN_STATUSES = (200, 302)
 REGISTRATION_UNCONFIRMED_KEY = "api.twofactor.unconfirmed"
 LOGIN_CREDENTIALS_KEY = "api.login.credentials"
-LOGIN_TWOFACTOR_KEY = "api.login.twofactor"
-LOGIN_SESSION_KEY = "api.login.session"
+LOGIN_UNKNOWN_ACCOUNT_KEY = "api.login.unknownAccount"
+LOGIN_DEFAULT_PASSWORD_KEY = "api.login.defaultPassword"
+LOGIN_TWOFACTOR_SETUP_KEY = "api.login.twofactorSetup"
+LOGIN_LOCKED_KEY = "api.login.locked"
+REFUSAL_KEYS = {
+    REASON_BAD_CREDENTIALS: LOGIN_CREDENTIALS_KEY,
+    REASON_UNKNOWN_ACCOUNT: LOGIN_UNKNOWN_ACCOUNT_KEY,
+    REASON_DEFAULT_PASSWORD: LOGIN_DEFAULT_PASSWORD_KEY,
+    REASON_LOCKED: LOGIN_LOCKED_KEY,
+}
+MAINTENANCE_MARKERS = ("wartung", "maintenance")
+
+
+def server_failure(response):
+    status = int(getattr(response, "status_code", 0) or 0)
+    if status == RATE_LIMIT_STATUS:
+        return rate_limit_outage(response)
+    if status >= 500:
+        return OutageError(status_reason(status), detail=base_shape(response))
+    return None
+
+
+def login_form_of(response):
+    failure = server_failure(response)
+    if failure is not None:
+        raise failure
+    text = getattr(response, "text", "") or ""
+    form = find_login_form(parse_forms(text, getattr(response, "url", "")))
+    if form is not None:
+        return form
+    lowered = text.lower()
+    reason = REASON_MAINTENANCE_PAGE if any(marker in lowered for marker in MAINTENANCE_MARKERS) else REASON_UNEXPECTED
+    raise OutageError(reason, detail=base_shape(response))
 
 
 def login_shape(response, stage, two_factor_offered):
@@ -82,7 +139,7 @@ def password_outcome(answer, cookie_names):
     if int(getattr(answer, "status_code", 0) or 0) not in ACCEPTED_LOGIN_STATUSES:
         return None
     text = getattr(answer, "text", "") or ""
-    if LOGIN_FAILED_MARKER in text:
+    if LOGIN_FAILED_MARKER in text or login_refusal(text):
         return False
     forms = parse_forms(text, getattr(answer, "url", ""))
     if find_two_factor_form(forms) is not None:
@@ -92,29 +149,41 @@ def password_outcome(answer, cookie_names):
     return None
 
 
+CappedBody = namedtuple("CappedBody", "status_code text truncated")
+CAPPED_CHUNK = 64 * 1024
+
+
 class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
-        self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.01.30")
+        self.session = requestlog.install(session or requests.Session())
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.02.00")
         self.timeout = timeout
         self.username = ""
+        self.login_page = ""
+        self.landing_page = None
+        self.refusal = ""
+        self.answered = False
         self.sleeper = time.sleep
 
     def login(self, username, password, code_provider):
         self.username = username
         response = self._get("/iserv/")
-        login_form = find_login_form(parse_forms(response.text, response.url))
-        if login_form is None:
-            raise LoginError("login form not found")
+        login_form = login_form_of(response)
+        self.login_page = response.text
 
         payload = apply_login_fields(login_form.fields, username, password)
         response = self._post(login_form.action, payload)
-        if LOGIN_FAILED_MARKER in response.text:
+        self._raise_server_failure(response)
+        refusal = login_refusal(response.text)
+        if not refusal and self._locked_out(response):
+            refusal = REASON_LOCKED
+        if refusal:
             raise LoginError(
-                "invalid username or password",
-                message_key=LOGIN_CREDENTIALS_KEY,
+                "iserv refused the sign-in: " + refusal,
+                message_key=REFUSAL_KEYS[refusal],
                 detail=login_shape(response, "credentials", False),
+                reason=refusal,
             )
 
         two_factor_form = find_two_factor_form(parse_forms(response.text, response.url))
@@ -125,8 +194,16 @@ class IServClient:
             if "_remember_me" in payload:
                 payload["_remember_me"] = "on"
             response = self._post(two_factor_form.action, payload)
+            self._raise_server_failure(response)
 
         response = self._follow_client_redirects(response)
+        self.landing_page = response
+        if not offered and setup_required(response.text, response.url, self.is_authenticated()):
+            raise TwoFactorSetupRequired(
+                "iserv requires setting up two-factor first",
+                message_key=LOGIN_TWOFACTOR_SETUP_KEY,
+                detail=login_shape(response, "twofactor_setup", False),
+            )
         if not self.is_authenticated():
             again = find_two_factor_form(parse_forms(response.text, response.url)) is not None
             raise TwoFactorError(
@@ -135,6 +212,17 @@ class IServClient:
                 detail=login_shape(response, "two_factor" if offered else "session", offered),
             )
         return self
+
+    def _locked_out(self, response):
+        if self.is_authenticated() or find_two_factor_form(parse_forms(response.text, response.url)) is not None:
+            return False
+        return classify_login_response(response.text) == LOCKED
+
+    @staticmethod
+    def _raise_server_failure(response):
+        failure = server_failure(response)
+        if failure is not None:
+            raise failure
 
     def is_authenticated(self):
         return SESSION_COOKIE in self._cookie_names()
@@ -148,8 +236,27 @@ class IServClient:
     def fetch(self, path, params=None):
         return self._get(path, params=params)
 
+    def fetch_capped(self, path, limit, timeout):
+        body = bytearray()
+        truncated = False
+        try:
+            response = self.session.get(self._url(path), timeout=timeout, stream=True)
+            try:
+                for chunk in response.iter_content(chunk_size=CAPPED_CHUNK):
+                    body.extend(chunk)
+                    if len(body) > limit:
+                        del body[limit:]
+                        truncated = True
+                        break
+            finally:
+                response.close()
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
+        return CappedBody(int(response.status_code or 0), bytes(body).decode("utf-8", "replace"), truncated)
+
     def fetch_or_raise(self, path, params=None):
         response = self._get(path, params=params)
+        self._raise_server_failure(response)
         if response.status_code != 200:
             raise DataError(f"request failed: {response.status_code}")
         return response
@@ -243,6 +350,8 @@ class IServClient:
         return probe
 
     def accepts_password(self, password):
+        self.refusal = ""
+        self.answered = False
         if not self.username or not password:
             return None
         probe = self._probe_session()
@@ -260,7 +369,16 @@ class IServClient:
                 if not target:
                     break
                 answer = probe.get(self._url(target), timeout=self.timeout)
-            return password_outcome(answer, {cookie.name for cookie in probe.cookies})
+            cookies = {cookie.name for cookie in probe.cookies}
+            self.answered = server_failure(answer) is None
+            self.refusal = login_refusal(answer.text) or ""
+            code_prompt = find_two_factor_form(parse_forms(answer.text, answer.url)) is not None
+            signed_in = SESSION_COOKIE in cookies
+            if not self.refusal and not signed_in and not code_prompt and classify_login_response(answer.text) == LOCKED:
+                self.refusal = LOCKED
+            if not self.refusal and not code_prompt and setup_required(answer.text, answer.url, SESSION_COOKIE in cookies):
+                self.refusal = REASON_TWOFACTOR_SETUP
+            return password_outcome(answer, cookies)
         except requests.RequestException:
             return None
         finally:
@@ -268,6 +386,7 @@ class IServClient:
 
     def get_children(self):
         response = self._get("/iserv/time-table/")
+        self._raise_server_failure(response)
         if response.status_code != 200 or not child_select_present(response.text):
             raise DataError(
                 "child list page was not readable",
@@ -284,6 +403,13 @@ class IServClient:
             "childId": child_id,
         }
         response = self._get("/iserv/time-table/data", params=params)
+        self._raise_server_failure(response)
+        if response.status_code in FORBIDDEN_STATUSES:
+            raise DataError(
+                f"timetable request failed: {response.status_code}",
+                message_key=CHILD_PAGE_FORBIDDEN_KEY,
+                detail=page_diagnosis(response),
+            )
         if response.status_code != 200:
             raise DataError(f"timetable request failed: {response.status_code}")
         try:
@@ -306,13 +432,22 @@ class IServClient:
         return response
 
     def _get(self, path, **kwargs):
-        return self.session.get(self._url(path), timeout=self.timeout, **kwargs)
+        try:
+            return self.session.get(self._url(path), timeout=self.timeout, **kwargs)
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
 
     def _post(self, path, data):
-        return self.session.post(self._url(path), data=data, timeout=self.timeout)
+        try:
+            return self.session.post(self._url(path), data=data, timeout=self.timeout)
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
 
     def _delete(self, path, data):
-        return self.session.request("DELETE", self._url(path), data=data, timeout=self.timeout)
+        try:
+            return self.session.request("DELETE", self._url(path), data=data, timeout=self.timeout)
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
 
     def _is_same_origin(self, url):
         target = urlparse(url)

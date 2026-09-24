@@ -4,17 +4,17 @@ import { loadApp } from "./loadApp.js";
 describe("formatEpoch", () => {
   test("formats a unix epoch as a de-DE date and time", () => {
     const { window } = loadApp();
-    const text = window.formatEpoch(1700000000);
+    const text = window.eval("formatEpoch")(1700000000);
     expect(text).toMatch(/\d{1,2}\.\d{1,2}\.\d{4}/);
     expect(text).toMatch(/\d{1,2}:\d{2}/);
   });
 
   test("returns an empty string for falsy or invalid values", () => {
     const { window } = loadApp();
-    expect(window.formatEpoch(0)).toBe("");
-    expect(window.formatEpoch(null)).toBe("");
-    expect(window.formatEpoch(undefined)).toBe("");
-    expect(window.formatEpoch("not-a-number")).toBe("");
+    expect(window.eval("formatEpoch")(0)).toBe("");
+    expect(window.eval("formatEpoch")(null)).toBe("");
+    expect(window.eval("formatEpoch")(undefined)).toBe("");
+    expect(window.eval("formatEpoch")("not-a-number")).toBe("");
   });
 });
 

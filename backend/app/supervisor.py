@@ -3,6 +3,7 @@ import os
 
 from . import messages
 from .calendar_listener import DEFAULT_PORT as FEED_PORT
+from .store import edit_config
 
 CORE_API = "http://supervisor/core/api"
 SUPERVISOR_API = "http://supervisor"
@@ -27,6 +28,13 @@ PORT_FAILED_KEY = "api.calendar.error.portFailed"
 RESTART_ACCEPTED_KEY = "api.calendar.restart.accepted"
 RESTART_FAILED_KEY = "api.calendar.error.restartFailed"
 RESTART_PATH = "/addons/self/restart"
+INGRESS_PANEL_PREFIX = "/hassio/ingress/"
+DISCOVERY_PATH = "/discovery"
+DISCOVERY_SERVICE = "ranzenpost"
+DISCOVERY_PORT = 8099
+DISCOVERY_RETRY_SECONDS = 60
+DISCOVERY_MAX_ATTEMPTS = 5
+DISCOVERY_FALLBACK_HOST = "local-ranzenpost"
 RESTART_PENDING_KEY = "calendar_restart_pending"
 RESTART_DELAY_SECONDS = 0.5
 
@@ -120,6 +128,28 @@ def _addon_info():
     return _unwrap(payload)
 
 
+def addon_version():
+    info = _addon_info() or {}
+    return str(info.get("version") or "").strip()
+
+
+def core_version():
+    return str(_core_config().get("version") or "").strip()
+
+
+def ingress_path():
+    info = _addon_info() or {}
+    slug = str(info.get("slug") or "").strip()
+    if not slug or not info.get("ingress"):
+        return ""
+    return f"{INGRESS_PANEL_PREFIX}{slug}"
+
+
+def addon_hostname():
+    info = _addon_info() or {}
+    return str(info.get("hostname") or "").strip()
+
+
 def host_state():
     config = _core_config()
     for field, source in (
@@ -210,12 +240,66 @@ def _post_restart(token):
         logger.warning("the add-on restart call did not come back", exc_info=True)
 
 
-def _schedule_restart(token):
+def _schedule_later(delay, function, args=()):
     import threading
 
-    timer = threading.Timer(RESTART_DELAY_SECONDS, _post_restart, args=(token,))
+    timer = threading.Timer(delay, function, args=args)
     timer.daemon = True
     timer.start()
+
+
+def _schedule_restart(token):
+    _schedule_later(RESTART_DELAY_SECONDS, _post_restart, (token,))
+
+
+def discovery_host(info):
+    data = _unwrap(info) or {}
+    hostname = str(data.get("hostname") or "").strip().lower()
+    if hostname:
+        return hostname
+    slug = str(data.get("slug") or "").strip().lower().replace("_", "-")
+    return slug or DISCOVERY_FALLBACK_HOST
+
+
+_latest_announcement = {"token": None}
+
+
+def announce_discovery(token, schedule=None, attempt=1):
+    supervisor_token = _token()
+    if not supervisor_token:
+        return None
+    if attempt == 1:
+        _latest_announcement["token"] = token
+    elif _latest_announcement["token"] != token:
+        logger.info("the discovery retry was dropped because the token was rotated in the meantime")
+        return False
+    runner = schedule if schedule is not None else _schedule_later
+    host = discovery_host(_addon_info())
+    payload = {
+        "service": DISCOVERY_SERVICE,
+        "config": {"host": host, "port": DISCOVERY_PORT, "token": token},
+    }
+    import requests
+
+    try:
+        response = requests.post(
+            f"{SUPERVISOR_API}{DISCOVERY_PATH}",
+            headers=_headers(supervisor_token),
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        logger.warning(
+            "the discovery announcement to the supervisor failed, attempt %s of %s",
+            attempt,
+            DISCOVERY_MAX_ATTEMPTS,
+        )
+        if attempt < DISCOVERY_MAX_ATTEMPTS:
+            runner(DISCOVERY_RETRY_SECONDS, announce_discovery, (token, schedule, attempt + 1))
+        return False
+    logger.info("the integration was announced to the supervisor at %s:%s", host, DISCOVERY_PORT)
+    return True
 
 
 def restart_addon(requested_by_user=False, schedule=None):
@@ -236,14 +320,13 @@ def restart_addon(requested_by_user=False, schedule=None):
 def _write_restart_pending(store, pending):
     if store is None:
         return
-    config = store.load_config()
-    if bool(config.get(RESTART_PENDING_KEY)) == bool(pending):
-        return
-    if pending:
-        config[RESTART_PENDING_KEY] = True
-    else:
-        config.pop(RESTART_PENDING_KEY, None)
-    store.save_config(config)
+    def change(config):
+        if pending:
+            config[RESTART_PENDING_KEY] = True
+        else:
+            config.pop(RESTART_PENDING_KEY, None)
+
+    edit_config(store, change)
 
 
 def restart_pending(store):

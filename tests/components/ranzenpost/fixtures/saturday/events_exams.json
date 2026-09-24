@@ -1,0 +1,17 @@
+[
+  {
+    "uid": "exam-20260909-p2@sample",
+    "summary": "Exam: Biology",
+    "description": "Chapter 3",
+    "location": "R404",
+    "start": "2026-09-09T08:50:00+02:00",
+    "end": "2026-09-09T09:35:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "#cc3333",
+    "subject_code": "BI",
+    "subject": "Biology",
+    "name": "Chapter 3",
+    "kind": ""
+  }
+]

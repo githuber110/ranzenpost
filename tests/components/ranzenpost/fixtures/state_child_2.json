@@ -1,0 +1,30 @@
+{
+  "now_lesson": null,
+  "next_lesson": null,
+  "school_end_today": null,
+  "next_school_day": null,
+  "changes_today": [],
+  "unread_letters": {
+    "count": 0,
+    "items": []
+  },
+  "unread_posts": {
+    "count": 0,
+    "items": []
+  },
+  "open_absences": {
+    "count": 0,
+    "items": []
+  },
+  "next_absence": null,
+  "next_exam": null,
+  "exams_upcoming": {
+    "count": 0,
+    "items": [],
+    "days": 30
+  },
+  "school_day_today": false,
+  "timetable_changed_today": false,
+  "timetable_last_updated": null,
+  "timetable_last_updated_source": ""
+}

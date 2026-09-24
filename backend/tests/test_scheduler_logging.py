@@ -28,6 +28,25 @@ def test_poll_cycle_failure_is_logged(caplog, monkeypatch):
     assert "poll cycle failed" in caplog.text
 
 
+def test_notifiers_for_wire_an_outage_channel_defaulting_to_on(tmp_path, monkeypatch):
+    store = Store(tmp_path / "data")
+    store.save_config({"notify_services": ["service.push"]})
+    sent = []
+    monkeypatch.setattr(scheduler, "notify", lambda message, service: sent.append((service, message)) or True)
+
+    notifiers = scheduler.notifiers_for(store)
+
+    assert "outage" in notifiers
+    assert notifiers["outage"]("", "an outage message") is True
+    assert sent == [("service.push", "an outage message")]
+
+    sent.clear()
+    store.save_config({"notify_services": ["service.push"], "notify_events": {"outage": False}})
+    notifiers = scheduler.notifiers_for(store)
+    assert notifiers["outage"]("", "an outage message") is False
+    assert sent == []
+
+
 def test_make_notifier_without_a_target_sends_nothing(tmp_path, monkeypatch):
     store = Store(tmp_path / "data")
     store.save_config({"notify_services": []})

@@ -125,7 +125,7 @@ const WALKS = {
 
 async function installPayload(page, data) {
   const body = JSON.stringify(payload(data));
-  await page.route("**/api/absences", (route) => {
+  await page.route((url) => url.pathname.endsWith("/api/absences"), (route) => {
     if (route.request().method() !== "GET") return route.continue();
     return route.fulfill({ status: 200, contentType: "application/json", body });
   });

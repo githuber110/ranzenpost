@@ -25,7 +25,7 @@ class StubService:
         self.error = error
         self.calls = 0
 
-    def school_profile(self):
+    def school_profile(self, connection_id=None):
         self.calls += 1
         if self.error is not None:
             raise self.error
@@ -316,7 +316,14 @@ def _api(made, tmp_path):
         def is_configured(self):
             return True
 
+        def first_connection(self):
+            return self
+
+        def known_connection(self, connection_id):
+            return self
+
     store = Store(tmp_path)
+    store.add_connection("https://school-one.example", setup_complete=True)
     return TestClient(create_app(MinimalService(store), region_suggester=made)), store
 
 
@@ -345,7 +352,7 @@ def test_the_endpoint_never_writes_the_suggestion_into_the_configuration(tmp_pat
     made = suggester({"postal_code": "30159", "country": ""}, rows=[locality("03")])
     api, store = _api(made, tmp_path)
     assert api.get("/api/holidays/region-suggestion").json()["region"] == "DE-NI"
-    assert store.load_config()["holiday_region"] == ""
+    assert store.connections()[0]["holiday_region"] == ""
 
 
 def test_the_origin_key_exists_in_every_language_bundle():

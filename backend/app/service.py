@@ -1,297 +1,95 @@
 import logging
-import re
+import threading
 import time
-from datetime import date, datetime, timedelta
-from urllib.parse import quote, urlparse
+from datetime import date, timedelta
+from urllib.parse import quote
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-from . import messages
-from .iserv.absences import (
-    DEREGISTER_TARGETS,
-    ERROR_BODY,
-    ERROR_DATE,
-    ERROR_DAYCARE_KIND,
-    ERROR_DEREGISTER_TARGET,
-    ERROR_PICKUP_TIME,
-    ERROR_RANGE,
-    ERROR_REPEAT,
-    ERROR_STUDENT,
-    ERROR_SICK_LOCKED,
-    ERROR_SUBJECT,
-    KIND_DAYCARE,
-    KIND_DEREGISTER,
-    KIND_LEAVE,
-    KIND_SICK,
-    SICK_LOCKED_KEY,
-    LEAVE_PATH,
-    REQUESTS_PATH,
-    TARGET_AFTERNOON_CARE,
-    build_request,
-    delete_path,
-    merge_absence_history,
-    normalize_sick_note,
-    normalize_user_request,
-    prune_absence_history,
-    record_absence_history,
-    sick_day_options,
+from . import courses, holidays, integration, lockout, messages, modules, period_grid, signin_pause
+from .signin_pause import PAUSES
+from .store import (
+    LOGIN_HOLD,
+    LOGIN_REVISION_KEY,
+    connection_display_name,
+    connection_short_name,
+    edit_config,
+    edit_secrets,
+    edit_slot,
+    host_of,
+    split_child_key,
 )
+from .absence_service import AbsenceService
+from .child_service import LETTERS_CHILD_PREFIX, SCHOOL_CACHE_SECONDS, ChildService, _unknown_child
+from .letter_service import LetterService
+from .not_configured import ConnectionChangedError, NotConfiguredError
+from .attachments import _attachment_dict, _clean_filename
+from .identifiers import _as_int
+from .sorting import _folder_sort_key, _published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.conferences import parse_conferences
-from .iserv.html import plain_text
-from .iserv.dsa import (
-    DieSchulAppClient,
-    parse_children_from_me,
-    absence_rules,
-    deregister_options,
-    enabled_absence_types,
-    student_for_name,
+from .iserv.dsa import DieSchulAppClient
+from .iserv.client import (
+    LOGIN_TWOFACTOR_SETUP_KEY,
+    PASSWORD_UNVERIFIED,
+    REFUSAL_KEYS,
 )
-from .iserv.sick_note_pdf import (
-    render_sick_note_pdf,
-    sick_note_pdf_filename,
-    sick_note_title,
-)
-from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
-from .iserv.client import PASSWORD_UNVERIFIED
-from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
-from .iserv.letters import (
-    RESTORE_ACTION,
-    build_archive_payload,
-    build_batch_confirm_payload,
-    build_confirmation_payload,
-    confirmation_evidence,
-    build_hide_payload,
-    parse_archive_form,
-    parse_batch_confirm,
-    page_notices,
-    parse_confirmation,
-    parse_hide_confirm,
-    parse_letter_detail,
-    parse_letter_list,
+from .iserv.errors import (
+    REASON_BAD_CREDENTIALS,
+    REASON_RATE_LIMITED,
+    REASON_TWOFACTOR_SETUP,
+    REASON_UNEXPECTED,
+    REASON_UNKNOWN_ACCOUNT,
+    DataError,
+    LoginError,
+    OutageError,
+    PasswordError,
+    TwoFactorError,
+    status_reason,
+    transport_outage,
 )
 from .iserv.dsa_timetable import parse_current_timetable
-from .iserv.timetable import lesson_key
-from .iserv.totp import generate_code
+from .iserv.timetable import display_rows
 from .iserv.twofactor import parse_delete_token
 from .mapping import (
-    LESSON_MINUTES as LESSON_LENGTH,
-    configured_time,
     merge_discovered_codes,
-    shift_time,
     to_display,
 )
 from .messenger import MessengerService
+from .sign_in import SignInService, _next_totp_code, _sign_in_failure_reason
 
-LETTERS_INDEX_PATH = "/iserv/parentletter/parent/index"
-LETTERS_ARCHIVE_PATH = "/iserv/parentletter/parent/archive"
-LETTERS_SHOW_PATH = "/iserv/parentletter/parent/show/{letter}/{recipient}"
-LETTERS_ATTACHMENT_PATH = "/iserv/parentletter/attachment/{attachment}"
 CONFERENCES_PATH = "/iserv/parentconference/attendee/"
 NAV_BADGES_PATH = "/iserv/app/navigation/badges"
+START_PAGE_PATH = "/iserv/"
+MODULES_RECHECK_SECONDS = 60
+MODULES_RECHECKED_KEY = "api.modules.rechecked"
+MODULES_TOO_SOON_KEY = "api.modules.tooSoon"
+TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 DSA_API_PATH = "/iserv/dieschulapp/api/1.0"
 DSA_FILE_PATH = DSA_API_PATH + "/files/{filename}"
-PINBOARD_ATTACHMENT_URL = "api/pinboard/attachment/{filename}"
-ABSENCE_ATTACHMENT_URL = "api/absences/attachment/{filename}"
-LESSON_SLOTS_PATH = "timetable-slots/"
-LESSON_SLOTS_PARAMS = {"filterBy": "type:is(lesson)"}
-LEAVE_MIN_DAYS_KEY = "requestToSchools_studentAbsence_minDays"
-ABSENCE_ERROR_KEYS = {
-    ERROR_SUBJECT: "api.absence.error.subject",
-    ERROR_BODY: "api.absence.error.requestBody",
-    ERROR_DEREGISTER_TARGET: "api.absence.error.deregisterTarget",
-    ERROR_DAYCARE_KIND: "api.absence.error.daycareKind",
-    ERROR_REPEAT: "api.absence.error.repeat",
-    ERROR_STUDENT: "api.absence.error.student",
-    ERROR_DATE: "api.absence.error.date",
-    ERROR_PICKUP_TIME: "api.absence.error.pickupTime",
-    ERROR_RANGE: "api.absence.error.range",
-    ERROR_SICK_LOCKED: "api.absence.lockedSick",
-}
-DEREGISTER_LIST_PATHS = {
-    target: f"{REQUESTS_PATH}not-attend/{target}/" for target in DEREGISTER_TARGETS
-}
-DAYCARE_LIST_PATH = f"{REQUESTS_PATH}not-attend/{TARGET_AFTERNOON_CARE}/"
-ABSENCE_ERROR_FALLBACK_KEY = "api.absence.error.unknownKind"
-ABSENCE_SENT_KEYS = {
-    KIND_SICK: "api.absence.sent.sick",
-    KIND_LEAVE: "api.absence.sent.leave",
-    KIND_DEREGISTER: "api.absence.sent.deregister",
-    KIND_DAYCARE: "api.absence.sent.daycare",
-}
-LETTER_CONFIRM_OK_KEY = "api.letters.confirm.ok"
-LETTER_CONFIRM_DONE_KEY = "api.letters.confirm.alreadyDone"
-LETTER_CONFIRM_GONE_KEY = "api.letters.confirm.gone"
-LETTER_CONFIRM_UNSUPPORTED_KEY = "api.letters.confirm.unsupported"
-LETTER_CONFIRM_UPSTREAM_KEY = "api.letters.confirm.upstream"
-LETTER_CONFIRM_REJECTED_KEY = "api.letters.confirm.rejected"
-LETTER_OPEN_READ = "read"
-LETTER_OPEN_BLOCKED = "blocked"
-LETTER_OPEN_FAILED = "failed"
-CHILD_PAGE_KEYS = (CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY)
-LETTER_ARCHIVE_FAILED_KEY = "api.letters.archiveFailed"
-LETTER_RESTORE_FAILED_KEY = "api.letters.restoreFailed"
-WRITE_OK_STATUSES = (200, 201, 204, 302, 303)
-
-
-def _require_write(response, message_key):
-    status = int(getattr(response, "status_code", 0) or 0)
-    if status not in WRITE_OK_STATUSES:
-        raise DataError(
-            "the school server refused the change",
-            message_key=message_key,
-            detail={"status": status},
-        )
-    return response
+UNKNOWN_CONNECTION_KEY = "api.connection.unknown"
+STATUS_OK = "ok"
+STATUS_AUTH_FAILED = "auth_failed"
+STATUS_NETWORK = "network"
+STATUS_OUTAGE = "outage"
+STATUS_NOT_CONFIGURED = "not_configured"
+STATUS_PENDING = "pending"
+HEALTH_STALE_AFTER_SECONDS = 5 * 60
+HEALTH_CHECK_TIMEOUT_SECONDS = 5
+REPAIR_REFUSAL_KEYS = dict(
+    REFUSAL_KEYS,
+    **{REASON_TWOFACTOR_SETUP: LOGIN_TWOFACTOR_SETUP_KEY, lockout.LOCKED: lockout.human_message_key(lockout.LOCKED)},
+)
+REPAIR_COUNTED_REFUSALS = (REASON_BAD_CREDENTIALS, REASON_UNKNOWN_ACCOUNT, lockout.LOCKED)
+UPSTREAM_ERRORS = (LoginError, TwoFactorError, DataError, requests.RequestException)
 TIMETABLE_UNREADABLE_KEY = "api.timetable.unreadable"
+COURSES_SAVED_KEY = "api.courses.saved"
+COURSES_RESET_KEY = "api.courses.reset"
 SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
-SCHOOL_CACHE_SECONDS = 600
-SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
-SAFE_FILENAME = re.compile(r"^[^\x00-\x1f/\\]{1,120}$")
 
 
-def _absence_failure(response, status_key="api.absence.upstream.statusSubmit"):
-    status = getattr(response, "status_code", None)
-    if status is None:
-        return messages.result(False, "api.absence.upstream.unreachable")
-    if status in (400, 422):
-        detail = _absence_detail(response)
-        if detail:
-            return {"ok": False, "message": detail}
-        return messages.result(False, "api.absence.upstream.rejected")
-    if status in (401, 403):
-        return messages.result(False, "api.absence.upstream.forbidden")
-    if status == 404:
-        return messages.result(False, "api.absence.upstream.gone")
-    return messages.result(False, status_key, {"status": status})
-
-
-def _absence_detail(response):
-    try:
-        data = response.json()
-    except Exception:
-        return ""
-    if isinstance(data, dict):
-        for key in ("message", "detail", "error"):
-            value = data.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    return ""
-
-
-def _folder_order(title):
-    text = (title or "").strip().lower()
-    for umlaut, plain in (("ä", "a"), ("ö", "o"), ("ü", "u"), ("ß", "ss")):
-        text = text.replace(umlaut, plain)
-    return text
-
-
-def _folder_sort_key(last_post_id, title):
-    if last_post_id is None:
-        return (1, _folder_order(title))
-    return (0, -last_post_id)
-
-
-def _published_sort_key(value):
-    text = (value or "").strip()
-    parts = text.split(" ")[0].split(".")
-    if len(parts) == 3:
-        try:
-            day, month, year = (int(part) for part in parts)
-            time_part = text.split(" ")[1] if " " in text else "00:00"
-            hour, _, minute = time_part.partition(":")
-            return (1, year, month, day, int(hour or 0), int(minute or 0))
-        except ValueError:
-            pass
-    return (0, 0, 0, 0, 0, 0)
-
-
-def _clean_id(value):
-    value = (value or "").strip()
-    if not SAFE_ID.match(value):
-        raise DataError("invalid identifier")
-    return value
-
-
-def _clean_filename(value):
-    value = (value or "").strip()
-    if ".." in value or "/" in value or not SAFE_FILENAME.match(value):
-        raise DataError("invalid filename")
-    return value
-
-
-def _attachment_file(attachment):
-    candidate = (getattr(attachment, "file", "") or attachment.filename or "").strip()
-    if ".." in candidate or not SAFE_FILENAME.match(candidate):
-        return ""
-    return candidate
-
-
-def _absence_attachment_url(file_name):
-    file_name = (file_name or "").strip()
-    if ".." in file_name or not SAFE_FILENAME.match(file_name):
-        return ""
-    return ABSENCE_ATTACHMENT_URL.format(filename=file_name)
-
-
-def _attachment_dict(attachment):
-    file_name = _attachment_file(attachment)
-    return {
-        "id": attachment.id,
-        "filename": attachment.filename,
-        "extension": attachment.extension,
-        "mimetype": attachment.mimetype,
-        "size": attachment.size,
-        "file": file_name,
-        "url": PINBOARD_ATTACHMENT_URL.format(filename=file_name) if file_name else "",
-        "created_at": attachment.created_at,
-        "updated_at": attachment.updated_at,
-        "image_width": attachment.image_width,
-        "image_height": attachment.image_height,
-    }
-
-
-def _min_days(settings):
-    value = (settings or {}).get(LEAVE_MIN_DAYS_KEY)
-    if isinstance(value, bool) or value in (None, ""):
-        return 0
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-MAX_WEEK_OFFSET = 8
-
-
-def _week_offset(value):
-    try:
-        offset = int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-    return max(-MAX_WEEK_OFFSET, min(MAX_WEEK_OFFSET, offset))
-
-
-def _as_int(value):
-    if isinstance(value, bool):
-        return None
-    try:
-        return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-class NotConfiguredError(Exception):
-    pass
-
-
-class SickNoteNotFoundError(Exception):
-    pass
-
-
-TOTP_PERIOD = 30
 DISCONNECT_NO_UUID_KEY = "api.disconnect.noUuid"
 DISCONNECT_REMOVED_KEY = "api.disconnect.removed"
 DISCONNECT_FAILED_KEY = "api.disconnect.failed"
@@ -303,73 +101,176 @@ def _disconnect_result(attempted, removed, key):
     return body
 
 
-def _next_totp_code(secret, used=None, sleeper=time.sleep, clock=time.time):
-    code = generate_code(secret)
-    if used is not None and used.get("code") == code:
-        now = clock()
-        sleeper(max(0.0, TOTP_PERIOD - (now % TOTP_PERIOD)) + 1)
-        code = generate_code(secret)
-    if used is not None:
-        used["code"] = code
-    return code
+def _sign_in_state(name):
+    return property(
+        lambda self: getattr(self._sign_in, name),
+        lambda self, value: setattr(self._sign_in, name, value),
+    )
 
 
-def _code_provider(secrets, used=None, sleeper=time.sleep, clock=time.time):
-    def provide():
-        secret = secrets.get("totp_secret")
-        if not secret:
-            raise TwoFactorError("account requires a two-factor code but none is stored")
-        return _next_totp_code(secret, used, sleeper, clock)
-
-    return provide
+def _auth_health(reason):
+    return {"status": STATUS_AUTH_FAILED, "stale": False, "reason": reason}
 
 
-def _browser_headers(page_url):
-    page = str(page_url or "")
-    parts = urlparse(page)
-    headers = {"Referer": page} if page else {}
-    if parts.scheme and parts.netloc:
-        headers["Origin"] = f"{parts.scheme}://{parts.netloc}"
-    return headers
+class ConnectionService:
+    _client = _sign_in_state("_client")
+    _last_code = _sign_in_state("_last_code")
+    _session_lock = _sign_in_state("_session_lock")
+    _expiry_window = _sign_in_state("_expiry_window")
 
-
-class IServService:
     def __init__(self, store, client_factory=None):
         self.store = store
+        self.id = str(getattr(store, "id", "") or "")
         self.client_factory = client_factory or (lambda url: IServClient(url))
-        self._client = None
-        self._last_code = {}
+        self._sign_in = SignInService(self)
         self._messenger_service = None
+        self._absence_service = None
         self._timetable_page_denied = False
-        self._children_cache = (0.0, {})
         self._settings_cache = (0.0, None)
+        self._modules_recheck_at = 0.0
+        self._letter_service = LetterService(self)
+        self._child_service = ChildService(self)
+        self.clock = time.time
 
     def is_configured(self):
         config = self.store.load_config()
         secrets = self.store.load_secrets()
-        return bool(config.get("school_url")) and bool(secrets.get("username"))
+        return bool(config.get("school_url")) and bool(secrets.get("username")) and bool(config.get("setup_complete"))
 
-    def _login(self):
-        config = self.store.load_config()
-        secrets = self.store.load_secrets()
-        if not config.get("school_url") or not secrets.get("username"):
-            raise NotConfiguredError("school url or credentials missing")
-        client = self.client_factory(config["school_url"])
-        client.login(
-            secrets["username"],
-            secrets["password"],
-            _code_provider(secrets, self._last_code),
-        )
-        self._client = client
-        return client
+    def display_name(self):
+        return connection_display_name(self.store.load_config())
+
+    def child_key(self, child_id):
+        return f"{self.id}:{child_id}"
+
+    def stored_children(self):
+        return self._child_service.stored_children()
+
+    def authorized_child(self, child_id):
+        return self._child_service.authorized_child(child_id)
+
+    def _login(self, timeout=None):
+        return self._sign_in._login(timeout)
+
+    def session_not_opened_held(self):
+        return self._sign_in.session_not_opened_held()
+
+    def code_refused_since_sign_in(self):
+        return self._sign_in.code_refused_since_sign_in()
+
+    def code_refusal_needs_setup(self):
+        return self._sign_in.code_refusal_needs_setup()
+
+    def code_repair_announced(self):
+        return self._sign_in.code_repair_announced()
+
+    def note_code_repair_announced(self):
+        return self._sign_in.note_code_repair_announced()
+
+    def _outage_hold(self, now):
+        reader = getattr(self.store, "load_integration_state", None)
+        slot = reader() if callable(reader) else {}
+        left = integration.outage_wait_left(slot, now)
+        if not left:
+            return None
+        return OutageError(slot.get(integration.OUTAGE_REASON) or REASON_UNEXPECTED, retry_after=left)
+
+    def _release_login_hold(self, fingerprint):
+        return self._sign_in._release_login_hold(fingerprint)
+
+    def _detect_modules(self, client):
+        if not callable(getattr(client, "fetch", None)):
+            return
+        try:
+            self._store_registry(self._probe_modules(client))
+        except Exception:
+            logger.debug("module detection failed", exc_info=True)
+
+    def _probe_modules(self, client):
+        try:
+            page = client.fetch(START_PAGE_PATH)
+        except OutageError:
+            raise
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
+        status = int(getattr(page, "status_code", 0) or 0)
+        if status >= 500:
+            raise OutageError(status_reason(status))
+        html = getattr(page, "text", "") if status == 200 else ""
+        login_html = str(getattr(client, "login_page", "") or "")
+        registry = modules.detect(html, client.fetch, self.store.load_modules(), login_html=login_html)
+        if registry["modules"][modules.TIMETABLE] and self._timetable_setting_off():
+            registry["modules"][modules.TIMETABLE] = False
+        return registry
+
+    def _timetable_setting_off(self):
+        try:
+            settings = self._school_settings()
+        except Exception:
+            logger.debug("timetable availability lookup failed", exc_info=True)
+            return False
+        return settings.get(TIMETABLE_SETTING, True) is False
+
+    def _store_registry(self, registry):
+        def change(slot):
+            previous = dict(slot)
+            if modules.changed(previous if previous else None, registry):
+                logger.info("school#%s %s", self.id, modules.summary(registry))
+            slot.clear()
+            slot.update(modules.with_history(previous, registry))
+
+        edit_slot(self.store, "modules", change)
+
+    def modules(self):
+        stored = self.store.load_modules()
+        registry = modules.normalize(stored if stored else None)
+        if self._timetable_page_denied:
+            registry["modules"][modules.TIMETABLE] = False
+        if not stored and registry["modules"][modules.TIMETABLE] and self._timetable_setting_off():
+            registry["modules"][modules.TIMETABLE] = False
+        return registry
+
+    def stored_modules(self):
+        stored = self.store.load_modules()
+        return modules.normalize(stored if stored else None)
+
+    def module_available(self, name):
+        return self.modules()["modules"].get(name, True)
+
+    def refresh_modules(self):
+        if self._client is None or not self._client.is_authenticated():
+            self._login()
+            return self.modules()
+        if callable(getattr(self._client, "fetch", None)):
+            self._store_registry(self._probe_modules(self._client))
+        return self.modules()
+
+    def recheck_modules(self, clock=time.time):
+        now = clock()
+        if now - self._modules_recheck_at < MODULES_RECHECK_SECONDS:
+            return messages.result(False, MODULES_TOO_SOON_KEY, error="rate_limited", modules=self.modules())
+        self._modules_recheck_at = now
+        registry = self.refresh_modules()
+        return messages.result(True, MODULES_RECHECKED_KEY, modules=registry)
 
     def _session(self):
-        if self._client is None or not self._client.is_authenticated():
-            return self._login()
-        return self._client
+        return self._sign_in._session()
 
     def iserv_session(self):
         return self._session()
+
+    def _trust_school_app(self):
+        return self._sign_in._trust_school_app()
+
+    def _forget_session(self, client):
+        return self._sign_in._forget_session(client)
+
+    def signed_in_session(self):
+        client = self._client
+        return client if client is not None and client.is_authenticated() else None
+
+    def me_if_signed_in(self):
+        return self.me() if self.signed_in_session() is not None else None
 
     def _messenger(self):
         if self._messenger_service is None:
@@ -403,22 +304,84 @@ class IServService:
     def messenger_unread_pulse(self):
         return self._messenger().unread_pulse()
 
+    def _noted_outage(self):
+        reader = getattr(self.store, "load_integration_state", None)
+        slot = reader() if callable(reader) else {}
+        return bool(isinstance(slot, dict) and slot.get(integration.OUTAGE_SINCE))
+
+    def _session_status(self):
+        if not self._noted_outage():
+            return "ok"
+        try:
+            page = self._client.fetch(START_PAGE_PATH)
+        except requests.RequestException:
+            return STATUS_OUTAGE
+        return STATUS_OUTAGE if int(getattr(page, "status_code", 0) or 0) >= 500 else "ok"
+
     def check_connection(self):
         if not self.is_configured():
             return "not_configured"
         if self._client is not None and self._client.is_authenticated():
-            return "ok"
-        try:
-            self._login()
-        except (LoginError, TwoFactorError):
-            self._client = None
-            return "auth_failed"
-        except requests.RequestException:
-            self._client = None
-            return "network"
-        except NotConfiguredError:
-            return "not_configured"
+            return self._session_status()
+        with self._session_lock:
+            try:
+                self._login()
+            except (LoginError, TwoFactorError):
+                self._client = None
+                return "auth_failed"
+            except OutageError:
+                self._client = None
+                return STATUS_OUTAGE
+            except requests.RequestException:
+                self._client = None
+                return "network"
+            except NotConfiguredError:
+                return "not_configured"
         return "ok"
+
+    def _stored_status(self, slot):
+        if slot.get(integration.OUTAGE_SINCE):
+            return STATUS_OUTAGE
+        if slot.get("last_poll_ok"):
+            return STATUS_OK
+        error = str(slot.get("last_error") or "")
+        if error in (STATUS_AUTH_FAILED, STATUS_NETWORK, STATUS_OUTAGE):
+            return error
+        return STATUS_NETWORK
+
+    def health_status(self, clock=time.time):
+        if not self.is_configured():
+            return {"status": STATUS_NOT_CONFIGURED, "stale": False}
+        slot = self.store.load_integration_state()
+        last_poll = slot.get("last_poll")
+        last_poll = int(last_poll) if isinstance(last_poll, (int, float)) and not isinstance(last_poll, bool) else 0
+        if last_poll and clock() - last_poll < HEALTH_STALE_AFTER_SECONDS:
+            status = self._stored_status(slot)
+            if status == STATUS_AUTH_FAILED:
+                return _auth_health(slot.get(integration.AUTH_REASON) or REASON_BAD_CREDENTIALS)
+            return {"status": status, "stale": False}
+        if self._outage_hold(clock()) is not None:
+            return {"status": STATUS_OUTAGE, "stale": False}
+        if self._client is not None and self._client.is_authenticated():
+            return {"status": self._session_status(), "stale": False}
+        with self._session_lock:
+            try:
+                self._login(timeout=HEALTH_CHECK_TIMEOUT_SECONDS)
+            except (LoginError, TwoFactorError) as error:
+                self._client = None
+                return _auth_health(_sign_in_failure_reason(error))
+            except OutageError:
+                self._client = None
+                return {"status": STATUS_OUTAGE, "stale": False}
+            except NotConfiguredError:
+                return {"status": STATUS_NOT_CONFIGURED, "stale": False}
+            except requests.Timeout:
+                self._client = None
+                return {"status": self._stored_status(slot), "stale": True}
+            except requests.RequestException:
+                self._client = None
+                return {"status": STATUS_NETWORK, "stale": False}
+        return {"status": STATUS_OK, "stale": False}
 
     def change_password(self, current, new):
         try:
@@ -438,21 +401,69 @@ class IServService:
         username = secrets.get("username", "")
         if not url or not username:
             raise NotConfiguredError("school url or credentials missing")
+        held = self._outage_hold(self.clock())
+        if held is not None and held.reason == REASON_RATE_LIMITED:
+            return messages.result(False, signin_pause.PAUSE_MESSAGES[signin_pause.RATE_LIMITED], retry_in=held.retry_after)
+        pause = self._repair_pause(url)
+        if signin_pause.is_paused(pause, self.clock()):
+            return self._repair_paused(pause)
         client = self.client_factory(url)
         client.username = username
         accepted = client.accepts_password(password)
+        refusal = getattr(client, "refusal", "") or (REASON_BAD_CREDENTIALS if accepted is False else "")
+        if refusal in REPAIR_COUNTED_REFUSALS:
+            pause = signin_pause.register_failure(pause, refusal, self.clock())
+            self._save_repair_pause(url, pause)
+            if signin_pause.is_paused(pause, self.clock()):
+                return self._repair_paused(pause)
+        if refusal in REPAIR_REFUSAL_KEYS and refusal != REASON_BAD_CREDENTIALS:
+            return messages.result(False, REPAIR_REFUSAL_KEYS[refusal])
         if accepted is False:
             return messages.result(False, "api.repair.rejected")
         if accepted is None:
-            return messages.result(False, "api.repair.unreachable")
+            answered = getattr(client, "answered", False) is True
+            return messages.result(False, "api.repair.unexpected" if answered else "api.repair.unreachable")
+        self._save_repair_pause(url, None)
         self._store_password(password)
         return messages.result(True, "api.repair.ok")
 
+    def _repair_pause(self, url):
+        reader = getattr(self.store, "load_wizard", None)
+        state = reader() if callable(reader) else {}
+        pauses = signin_pause.live_pauses(state.get(PAUSES) if isinstance(state, dict) else {}, self.clock())
+        return signin_pause.entry_of(pauses, url)
+
+    def _save_repair_pause(self, url, entry):
+        reader = getattr(self.store, "load_wizard", None)
+        writer = getattr(self.store, "save_wizard", None)
+        if not callable(reader) or not callable(writer):
+            return
+        state = reader()
+        pauses = dict(state.get(PAUSES) or {})
+        if entry:
+            pauses[url] = entry
+        elif url in pauses:
+            pauses.pop(url)
+        else:
+            return
+        if pauses:
+            state[PAUSES] = pauses
+        else:
+            state.pop(PAUSES, None)
+        writer(state)
+
+    def _repair_paused(self, pause):
+        left = signin_pause.seconds_left(pause, self.clock())
+        return messages.result(False, signin_pause.message_key(pause), retry_in=left)
+
     def _store_password(self, password):
-        secrets = self.store.load_secrets()
-        secrets["password"] = password
-        self.store.save_secrets(secrets)
-        self._client = None
+        def store(secrets):
+            secrets["password"] = password
+            secrets.pop(LOGIN_HOLD, None)
+
+        with self._session_lock:
+            edit_secrets(self.store, store)
+            self._client = None
 
     def disconnect(self):
         secrets = self.store.load_secrets()
@@ -482,137 +493,23 @@ class IServService:
         return _disconnect_result(True, removed, DISCONNECT_REMOVED_KEY if removed else DISCONNECT_FAILED_KEY)
 
     def _clear_local_data(self):
-        self.store.save_seen({})
-        self.store.save_absence_history({})
-        self.store.save_letters_search_cache({})
-        self.store.save_letters_confirmations({})
-        self.store.reset_config()
-        self.store.delete_secrets()
-        self._client = None
+        with self._session_lock:
+            self._child_service.retire()
+            self.store.reset_config()
+            self.store.delete_secrets()
+            self._client = None
+            self._messenger_service = None
+            self._absence_service = None
+            self._child_service = ChildService(self)
 
     def children(self):
-        self._timetable_page_denied = False
-        listed = self._children_from_school_account()
-        if listed:
-            self._remember_children(listed)
-            self._migrate_stored_children(listed)
-            self._learn_children(listed)
-            return listed
-        try:
-            native = self._session().get_children()
-        except DataError as error:
-            if error.message_key not in CHILD_PAGE_KEYS:
-                raise
-            fallback = self._children_from_school_app()
-            if not fallback:
-                raise
-            logger.warning(
-                "the timetable page refused the child list, using the school app list instead",
-                exc_info=True,
-            )
-            self._timetable_page_denied = True
-            self._learn_children(fallback)
-            return fallback
-        try:
-            students = self._dsa().students()
-        except Exception:
-            logger.debug("dsa students lookup failed", exc_info=True)
-            students = []
-        result = []
-        for child in native:
-            student = student_for_name(students, child.name)
-            result.append({
-                "child_id": child.child_id,
-                "name": child.name,
-                "class_name": student.get("class_name", "") if student else "",
-                "student_id": student.get("id") if student else None,
-                "class_full": student.get("class_full", "") if student else "",
-                "class_code": student.get("class_code", "") if student else "",
-            })
-        self._learn_children(result)
-        return result
-
-    def _learn_children(self, children):
-        config = self.store.load_config()
-        stored = [child for child in config.get("children") or [] if isinstance(child, dict)]
-        known = {str(child.get("child_id") or "") for child in stored}
-        added = []
-        for child in children:
-            child_id = str(child.get("child_id") or "")
-            if not child_id or child_id in known:
-                continue
-            known.add(child_id)
-            entry = {"child_id": child_id}
-            if child.get("name"):
-                entry["name"] = child["name"]
-            if child.get("class_name"):
-                entry["class_name"] = child["class_name"]
-            added.append(entry)
-        if not added:
-            return
-        config["children"] = stored + added
-        self.store.save_config(config)
-        logger.info("the app learned %d child(ren) it had not stored yet", len(added))
-
-    def _children_from_school_account(self):
-        try:
-            payload = self._dsa().me_with_children()
-        except Exception:
-            logger.debug("school account lookup failed", exc_info=True)
-            return []
-        return parse_children_from_me(payload)
-
-    def _remember_children(self, children):
-        self._children_cache = (time.time(), {child["child_id"]: child for child in children})
+        return self._child_service.children()
 
     def _cached_child(self, child_id):
-        stamp, cached = self._children_cache
-        if time.time() - stamp > SCHOOL_CACHE_SECONDS or child_id not in cached:
-            listed = self._children_from_school_account()
-            if listed:
-                self._remember_children(listed)
-                cached = self._children_cache[1]
-        return cached.get(child_id)
+        return self._child_service._cached_child(child_id)
 
     def _migrate_stored_children(self, children):
-        config = self.store.load_config()
-        stored = config.get("children") or []
-        if not stored:
-            return
-        current_ids = {child["child_id"] for child in children}
-        migrated = []
-        changed = False
-        for entry in stored:
-            if not isinstance(entry, dict):
-                continue
-            child_id = str(entry.get("child_id") or "")
-            match = None if child_id in current_ids else student_for_name(children, entry.get("name"))
-            if match is None:
-                migrated.append(entry)
-                continue
-            moved = dict(entry, child_id=match["child_id"])
-            if match.get("class_name"):
-                moved["class_name"] = match["class_name"]
-            migrated.append(moved)
-            changed = True
-            self._move_child_subscriptions(child_id, match["child_id"])
-            logger.info("stored child moved to the school account id")
-        if changed:
-            config["children"] = migrated
-            self.store.save_config(config)
-
-    def _move_child_subscriptions(self, old_id, new_id):
-        from .marks import MarkRegistry
-        from .subscriptions import SubscriptionRegistry
-
-        try:
-            SubscriptionRegistry(self.store).move_child(old_id, new_id)
-        except Exception:
-            logger.warning("calendar subscriptions could not follow the child", exc_info=True)
-        try:
-            MarkRegistry(self.store).move_child(old_id, new_id)
-        except Exception:
-            logger.warning("marks could not follow the child", exc_info=True)
+        return self._child_service._migrate_stored_children(children)
 
     def _school_settings(self):
         stamp, cached = self._settings_cache
@@ -642,44 +539,33 @@ class IServService:
             )
         return parse_current_timetable(payload, target)
 
-    def _children_from_school_app(self):
-        try:
-            students = self._dsa().sick_note_children()
-        except Exception:
-            logger.debug("school app child list lookup failed", exc_info=True)
-            return []
-        return [
-            {
-                "child_id": str(student.get("id")),
-                "name": student.get("name", ""),
-                "class_name": student.get("class_name", ""),
-                "student_id": student.get("id"),
-                "class_full": student.get("class_full", ""),
-                "class_code": student.get("class_code", ""),
-            }
-            for student in students
-            if student.get("id") is not None and student.get("name")
-        ]
-
     def _dsa(self):
         client = self._session()
-        return DieSchulAppClient(client.base_url, client.session)
+        return DieSchulAppClient(
+            client.base_url,
+            client.session,
+            on_expired=lambda: self._forget_session(client),
+            on_answered=self._trust_school_app,
+        )
 
     def school_profile(self):
         return self._dsa().school()
 
     def pinboard(self):
         boards = self._dsa().pinboards_or_raise()
-        seen_state = self.store.load_seen()
-        seen = set(seen_state.get("pinboard", []))
-        if not seen_state.get("pinboard_initialised"):
+
+        def initialise(seen_state):
+            if seen_state.get("pinboard_initialised"):
+                return
+            known = set(seen_state.get("pinboard", []))
             for board in boards:
                 for column in board.columns:
                     for tile in column.tiles:
-                        seen.add(tile.id)
-            seen_state["pinboard"] = sorted(seen)
+                        known.add(tile.id)
+            seen_state["pinboard"] = sorted(known)
             seen_state["pinboard_initialised"] = True
-            self.store.save_seen(seen_state)
+
+        seen = set(edit_slot(self.store, "seen", initialise).get("pinboard", []))
         folders = []
         feed = []
         for board in boards:
@@ -704,7 +590,7 @@ class IServService:
                         "folder_title": board.title,
                         "column_title": column.title,
                         "unread": is_unread,
-                        "attachments": [_attachment_dict(a) for a in tile.attachments],
+                        "attachments": [_attachment_dict(a, self.id) for a in tile.attachments],
                     }
                     tiles.append(entry)
                     feed.append(entry)
@@ -716,7 +602,7 @@ class IServService:
                     "unread": unread_count,
                     "last_post_id": last_post_id,
                     "columns": columns,
-                    "attachments": [_attachment_dict(a) for a in board.attachments],
+                    "attachments": [_attachment_dict(a, self.id) for a in board.attachments],
                     "author": board.author,
                     "students_can_create_tiles": board.students_can_create_tiles,
                 }
@@ -730,288 +616,56 @@ class IServService:
         return self._session().fetch(DSA_FILE_PATH.format(filename=quote(filename, safe="")))
 
     def absence_attachment(self, filename):
-        return self.pinboard_attachment(filename)
+        return self._absences().absence_attachment(filename)
 
     def mark_pinboard_seen(self, tile_ids=None, mark_all=False, unseen=False):
-        seen = self.store.load_seen()
-        current = set(seen.get("pinboard", []))
+        listed = []
         if mark_all:
             for board in self._dsa().pinboards():
                 for column in board.columns:
-                    for tile in column.tiles:
-                        current.add(tile.id)
-        elif unseen:
-            for tile_id in tile_ids or []:
-                current.discard(tile_id)
-        else:
-            for tile_id in tile_ids or []:
-                current.add(tile_id)
-        seen["pinboard"] = sorted(current)
-        self.store.save_seen(seen)
-        return {"seen": len(current)}
+                    listed.extend(tile.id for tile in column.tiles)
 
-    def _letter_key(self, entry):
-        return f"{entry.get('letter_id')}:{entry.get('recipient_id')}"
+        def change(seen):
+            current = set(seen.get("pinboard", []))
+            if mark_all:
+                current.update(listed)
+            elif unseen:
+                current.difference_update(tile_ids or [])
+            else:
+                current.update(tile_ids or [])
+            seen["pinboard"] = sorted(current)
+
+        return {"seen": len(edit_slot(self.store, "seen", change)["pinboard"])}
+
+    def _letters(self):
+        return self._letter_service
 
     def letters(self, tab="current"):
-        client = self._session()
-        path = LETTERS_ARCHIVE_PATH if tab == "archive" else LETTERS_INDEX_PATH
-        response = client.fetch_or_raise(path)
-        entries = parse_letter_list(response.text, response.url)
-        entries.sort(key=lambda item: _published_sort_key(item.get("published")), reverse=True)
-        search_cache = self.store.load_letters_search_cache()
-        records = self.store.load_letters_confirmations()
-        for entry in entries:
-            key = self._letter_key(entry)
-            entry["unread"] = bool(entry.get("unread")) and tab != "archive"
-            cached = search_cache.get(key) or {}
-            entry["body_text"] = cached.get("body_text", "")
-            entry["attachments"] = cached.get("attachments", [])
-            entry["confirmation"] = self._confirmation_state(
-                cached.get("confirmation"), records.get(key)
-            )
-        return {"letters": entries}
-
-    def _confirmation_state(self, parsed, record):
-        record = record if isinstance(record, dict) else None
-        parsed = parsed if isinstance(parsed, dict) else None
-        if parsed is None and record is None:
-            return None
-        kind = (parsed or {}).get("type") or (record or {}).get("type") or ""
-        done = record is not None
-        return {
-            "type": kind,
-            "open": bool(parsed) and not done,
-            "done": done,
-            "sendable": bool((parsed or {}).get("sendable")),
-            "confirmed_at": (record or {}).get("confirmed_at", ""),
-        }
-
-    def _cached_confirmation(self, parsed):
-        if not parsed:
-            return None
-        return {"type": parsed.get("type", ""), "sendable": bool(parsed.get("sendable"))}
-
-    def _confirmation_cache_entry(self, public):
-        if not public or not public.get("open"):
-            return None
-        return {"type": public.get("type", ""), "sendable": bool(public.get("sendable"))}
-
-    def _store_confirmation_cache(self, key, parsed):
-        cache = self.store.load_letters_search_cache()
-        entry = cache.get(key)
-        if not isinstance(entry, dict):
-            return
-        state = self._cached_confirmation(parsed)
-        if entry.get("confirmation") == state:
-            return
-        entry["confirmation"] = state
-        cache[key] = entry
-        self.store.save_letters_search_cache(cache)
-
-    def _needs_confirmation_refresh(self, entry):
-        if not isinstance(entry, dict):
-            return True
-        if "confirmation" not in entry:
-            return True
-        return bool(entry.get("confirmation"))
+        return self._letters().letters(tab)
 
     def enrich_letters_search(self, tab="current"):
-        entries = self.letters(tab)["letters"]
-        cache = self.store.load_letters_search_cache()
-        records = self.store.load_letters_confirmations()
-        indexed = 0
-        for entry in entries:
-            key = self._letter_key(entry)
-            cached = cache.get(key)
-            known = key in cache
-            if known and key in records:
-                continue
-            if known and not self._needs_confirmation_refresh(cached):
-                continue
-            detail = self.letter_detail(entry.get("letter_id"), entry.get("recipient_id"))
-            cache[key] = {
-                "body_text": cached.get("body_text", "") if known else plain_text(detail.get("body_html", "")),
-                "attachments": cached.get("attachments", []) if known else detail.get("attachments", []),
-                "confirmation": self._confirmation_cache_entry(detail.get("confirmation")),
-            }
-            indexed += 1
-        if indexed:
-            self.store.save_letters_search_cache(cache)
-        return indexed
+        return self._letters().enrich_letters_search(tab)
 
     def pending_confirmation_keys(self, tab="current"):
-        entries = self.letters(tab)["letters"]
-        return {
-            self._letter_key(entry)
-            for entry in entries
-            if (entry.get("confirmation") or {}).get("open")
-        }
+        return self._letters().pending_confirmation_keys(tab)
 
     def mark_letters_read(self, keys=None, mark_all=False):
-        targets = list(keys or [])
-        if mark_all:
-            targets = [
-                self._letter_key(entry)
-                for entry in self.letters("current")["letters"]
-                if entry.get("unread")
-            ]
-        opened = 0
-        blocked = 0
-        failed = 0
-        for key in targets:
-            letter_id, _, recipient_id = str(key).partition(":")
-            try:
-                outcome = self._open_letter(letter_id, recipient_id)
-            except DataError:
-                logger.warning("a letter could not be opened while marking it read", exc_info=True)
-                outcome = LETTER_OPEN_FAILED
-            if outcome == LETTER_OPEN_READ:
-                opened += 1
-            elif outcome == LETTER_OPEN_BLOCKED:
-                blocked += 1
-            else:
-                failed += 1
-        return {"read": opened, "blocked": blocked, "failed": failed}
-
-    def _open_letter(self, letter_id, recipient_id):
-        letter_id = _clean_id(letter_id)
-        recipient_id = _clean_id(recipient_id)
-        if not letter_id or not recipient_id:
-            return LETTER_OPEN_FAILED
-        response = self._session().fetch(
-            LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id)
-        )
-        if getattr(response, "status_code", 0) != 200:
-            return LETTER_OPEN_FAILED
-        parsed = parse_confirmation(response.text, response.url)
-        self._store_confirmation_cache(f"{letter_id}:{recipient_id}", parsed)
-        if parsed is not None:
-            return LETTER_OPEN_BLOCKED
-        return LETTER_OPEN_READ
-
-    def _fetch_letter_page(self, letter_id, recipient_id):
-        client = self._session()
-        response = client.fetch_or_raise(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
-        return client, response
+        return self._letters().mark_letters_read(keys, mark_all)
 
     def letter_detail(self, letter_id, recipient_id):
-        letter_id = _clean_id(letter_id)
-        recipient_id = _clean_id(recipient_id)
-        _, response = self._fetch_letter_page(letter_id, recipient_id)
-        detail = parse_letter_detail(response.text, response.url)
-        parsed = parse_confirmation(response.text, response.url)
-        key = f"{letter_id}:{recipient_id}"
-        self._store_confirmation_cache(key, parsed)
-        record = self.store.load_letters_confirmations().get(key)
-        attachments = [
-            {"filename": item.get("filename") or "", "url": f"api/letters/attachment/{item.get('attachment_id')}"}
-            for item in detail.get("attachments", [])
-            if item.get("attachment_id")
-        ]
-        return {
-            "title": detail.get("title", ""),
-            "body_html": detail.get("body_html", ""),
-            "attachments": attachments,
-            "archive_url_present": bool(detail.get("archive_url")),
-            "confirmation": self._confirmation_state(self._cached_confirmation(parsed), record),
-            "confirmation_evidence": confirmation_evidence(response.text) if parsed is not None else None,
-        }
+        return self._letters().letter_detail(letter_id, recipient_id)
 
     def confirm_letter(self, letter_id, recipient_id, text=None):
-        letter_id = _clean_id(letter_id)
-        recipient_id = _clean_id(recipient_id)
-        key = f"{letter_id}:{recipient_id}"
-        records = self.store.load_letters_confirmations()
-        if key in records:
-            return messages.result(False, LETTER_CONFIRM_DONE_KEY)
-        client, response = self._fetch_letter_page(letter_id, recipient_id)
-        parsed = parse_confirmation(response.text, response.url)
-        if parsed is None:
-            self._store_confirmation_cache(key, None)
-            return messages.result(False, LETTER_CONFIRM_GONE_KEY)
-        if not parsed.get("sendable"):
-            return messages.result(False, LETTER_CONFIRM_UNSUPPORTED_KEY)
-        payload = build_confirmation_payload(parsed, text)
-        sent = client.post_absolute(parsed["action"], data=payload, headers=_browser_headers(response.url))
-        status = getattr(sent, "status_code", 0)
-        if status not in (200, 201, 204, 302):
-            return messages.result(
-                False,
-                LETTER_CONFIRM_UPSTREAM_KEY,
-                {"status": status},
-                diagnosis=self._confirm_diagnosis(sent, None),
-            )
-        _, verify = self._fetch_letter_page(letter_id, recipient_id)
-        if parse_confirmation(verify.text, verify.url) is not None:
-            return messages.result(
-                False, LETTER_CONFIRM_REJECTED_KEY, diagnosis=self._confirm_diagnosis(sent, verify)
-            )
-        stamp = datetime.now().replace(microsecond=0).isoformat()
-        records[key] = {"type": parsed.get("type", ""), "confirmed_at": stamp}
-        self.store.save_letters_confirmations(records)
-        self._store_confirmation_cache(key, None)
-        return messages.result(True, LETTER_CONFIRM_OK_KEY, confirmed_at=stamp)
-
-    @staticmethod
-    def _confirm_diagnosis(sent, verify):
-        diagnosis = {
-            "post_status": getattr(sent, "status_code", 0),
-            "post_path": urlparse(str(getattr(sent, "url", "") or "")).path,
-            "post_redirects": len(getattr(sent, "history", None) or []),
-            "response_notices": page_notices(getattr(sent, "text", "") or ""),
-        }
-        if verify is not None:
-            after = confirmation_evidence(verify.text) or {}
-            diagnosis["after_marks"] = after.get("confirmation_marks", [])
-            diagnosis["after_disabled"] = bool(after.get("confirmation_disabled"))
-            diagnosis["after_button"] = after.get("confirmation_button", "")
-        return diagnosis
+        return self._letters().confirm_letter(letter_id, recipient_id, text)
 
     def archive_letter(self, letter_id, recipient_id):
-        letter_id = _clean_id(letter_id)
-        recipient_id = _clean_id(recipient_id)
-        client = self._session()
-        response = client.fetch_or_raise(LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id))
-        detail = parse_letter_detail(response.text, response.url)
-        archive_url = detail.get("archive_url")
-        if not archive_url:
-            raise DataError("archive action not available", message_key=LETTER_ARCHIVE_FAILED_KEY)
-        confirm_page = client.fetch_or_raise(archive_url)
-        form = parse_hide_confirm(confirm_page.text, confirm_page.url)
-        if form is None:
-            raise DataError("archive confirmation form not found", message_key=LETTER_ARCHIVE_FAILED_KEY)
-        _require_write(
-            client.post_absolute(form.action, data=build_hide_payload(form)),
-            LETTER_ARCHIVE_FAILED_KEY,
-        )
-        return True
+        return self._letters().archive_letter(letter_id, recipient_id)
 
     def restore_letter(self, letter_id, recipient_id):
-        letter_id = _clean_id(letter_id)
-        recipient_id = _clean_id(recipient_id)
-        client = self._session()
-        response = client.fetch_or_raise(LETTERS_ARCHIVE_PATH)
-        form = parse_archive_form(response.text, response.url, RESTORE_ACTION)
-        if form is None:
-            raise DataError("restore action not available", message_key=LETTER_RESTORE_FAILED_KEY)
-        payload = build_archive_payload(form, [f"{letter_id}-{recipient_id}"], RESTORE_ACTION)
-        staged = _require_write(
-            client.post_absolute(form["action"], data=payload), LETTER_RESTORE_FAILED_KEY
-        )
-        confirm = parse_batch_confirm(staged.text, staged.url)
-        if confirm is None:
-            raise DataError("restore confirmation form not found", message_key=LETTER_RESTORE_FAILED_KEY)
-        _require_write(
-            client.post_absolute(confirm.action, data=build_batch_confirm_payload(confirm, RESTORE_ACTION)),
-            LETTER_RESTORE_FAILED_KEY,
-        )
-        return True
+        return self._letters().restore_letter(letter_id, recipient_id)
 
     def letter_attachment(self, attachment_id):
-        attachment_id = _clean_id(attachment_id)
-        client = self._session()
-        return client.fetch(LETTERS_ATTACHMENT_PATH.format(attachment=attachment_id))
+        return self._letters().letter_attachment(attachment_id)
 
     def me(self):
         data = self._dsa()._get("users/me") or {}
@@ -1073,176 +727,24 @@ class IServService:
         return {str(key): value for key, value in payload.items() if isinstance(value, int)}
 
     def timetable_available(self):
-        if self._timetable_page_denied:
-            return False
-        try:
-            settings = self._school_settings()
-        except Exception:
-            logger.debug("timetable availability lookup failed", exc_info=True)
-            return True
-        return bool(settings.get("timetable_availableForGuardiansAndStudents", True))
+        return self.module_available(modules.TIMETABLE)
+
+    def _absences(self):
+        if self._absence_service is None:
+            self._absence_service = AbsenceService(self)
+        return self._absence_service
 
     def absences_overview(self):
-        dsa = self._dsa()
-        settings = dsa.school_settings()
-        config = self.store.load_config()
-        periods = dsa.lesson_slots()
-        targets = deregister_options(settings)
-        return {
-            "children": dsa.sick_note_children(),
-            "types": enabled_absence_types(settings),
-            "deregister_options": targets,
-            "periods": periods,
-            "period_labels": self._period_labels(dsa, periods, config.get("language"), config),
-            "rules": absence_rules(settings),
-            "day_options": sick_day_options(),
-            "leave_min_days": _min_days(settings),
-            "entries": self._absence_entries(dsa, targets, settings),
-            "phones": config.get("phones", []),
-        }
-
-    def _absence_entries(self, dsa, targets, settings):
-        entries = [
-            normalize_sick_note(item)
-            for item in dsa.sick_notes(since=(date.today() - timedelta(days=30)).isoformat())
-        ]
-        if settings.get("requestToSchools_studentAbsence_isActive"):
-            entries.extend(
-                normalize_user_request(item, KIND_LEAVE)
-                for item in dsa.user_requests(LEAVE_PATH)
-            )
-        for target in targets:
-            entries.extend(
-                normalize_user_request(item, KIND_DEREGISTER, target)
-                for item in dsa.user_requests(DEREGISTER_LIST_PATHS[target])
-            )
-        if settings.get("requestToSchools_notAttend_afternoonCare_isActive"):
-            entries.extend(
-                normalize_user_request(item, KIND_DAYCARE, TARGET_AFTERNOON_CARE)
-                for item in dsa.user_requests(DAYCARE_LIST_PATH)
-            )
-        for entry in entries:
-            for attachment in entry.get("attachments") or []:
-                attachment["url"] = _absence_attachment_url(attachment.get("file"))
-        self._update_absence_history(entries)
-        merged = merge_absence_history(entries, self.store.load_absence_history())
-        merged.sort(key=lambda entry: entry.get("from_date") or "", reverse=True)
-        return merged
-
-    def _update_absence_history(self, entries):
-        history = record_absence_history(self.store.load_absence_history(), entries)
-        history = prune_absence_history(history)
-        self.store.save_absence_history(history)
-
-    def _period_labels(self, dsa, periods, language=None, config=None):
-        starts = self._slot_times(dsa, "period_times")
-        ends = self._slot_end_times(dsa)
-        labels = []
-        for slot in periods or []:
-            number = slot.get("number")
-            name = slot.get("name") or messages.text_in(
-                language, "common.period.label", {"number": number}
-            )
-            chosen = configured_time(config, number)
-            if chosen:
-                start = chosen
-                end = ends.get(str(number)) if chosen == starts.get(str(number)) else shift_time(chosen, LESSON_LENGTH)
-            else:
-                start = starts.get(str(number))
-                end = ends.get(str(number))
-            label = f"{name} {start} - {end}" if start and end else name
-            labels.append({"number": number, "label": label})
-        return labels
-
-    def _slot_times(self, dsa, method):
-        try:
-            return getattr(dsa, method)() or {}
-        except Exception:
-            logger.debug("dsa slot times lookup failed", exc_info=True)
-            return {}
-
-    def _slot_end_times(self, dsa):
-        reader = getattr(dsa, "_get", None)
-        if reader is None:
-            return {}
-        try:
-            slots = reader(LESSON_SLOTS_PATH, dict(LESSON_SLOTS_PARAMS))
-        except Exception:
-            logger.debug("dsa lesson slots lookup failed", exc_info=True)
-            return {}
-        ends = {}
-        for slot in slots or []:
-            number = slot.get("number")
-            end = slot.get("endTime")
-            if number is not None and end:
-                ends[str(number)] = end
-        return ends
+        return self._absences().absences_overview()
 
     def report_absence(self, payload, attachments=None):
-        kind = payload.get("type")
-        dsa = self._dsa()
-        periods = dsa.lesson_slots() if kind == KIND_SICK else None
-        try:
-            request = build_request(
-                kind, payload.get("student_id"), payload, periods=periods, attachments=attachments
-            )
-        except ValueError as error:
-            return messages.result(False, ABSENCE_ERROR_KEYS.get(str(error), ABSENCE_ERROR_FALLBACK_KEY))
-        response = dsa.send_request(request)
-        if response is not None and response.status_code in (200, 201, 204):
-            return messages.result(True, ABSENCE_SENT_KEYS.get(kind, "api.absence.sent.generic"))
-        return _absence_failure(response)
+        return self._absences().report_absence(payload, attachments)
 
     def delete_absence(self, payload):
-        kind = payload.get("type")
-        if kind == KIND_SICK:
-            return messages.result(False, SICK_LOCKED_KEY)
-
-        try:
-            path = delete_path(kind, payload.get("id"), payload.get("target"))
-        except ValueError as error:
-            return messages.result(False, ABSENCE_ERROR_KEYS.get(str(error), ABSENCE_ERROR_FALLBACK_KEY))
-        response = self._dsa().delete_entry(path)
-        if response is not None and response.status_code in (200, 202, 204):
-            return messages.result(True, "api.absence.withdrawn")
-        return _absence_failure(response, "api.absence.upstream.statusWithdraw")
+        return self._absences().delete_absence(payload)
 
     def sick_note_pdf(self, sick_note_id):
-        try:
-            wanted_id = int(str(sick_note_id).strip())
-        except (TypeError, ValueError):
-            raise SickNoteNotFoundError("invalid sick note id")
-        dsa = self._dsa()
-        note = next(
-            (
-                normalize_sick_note(item)
-                for item in dsa.sick_notes()
-                if _as_int(item.get("id")) == wanted_id
-            ),
-            None,
-        )
-        if note is None:
-            raise SickNoteNotFoundError("sick note not found")
-        children = dsa.sick_note_children()
-        child = next(
-            (c for c in children if _as_int(c.get("id")) == note.get("student_id")), None
-        )
-        if child is None:
-            raise SickNoteNotFoundError("sick note not found")
-        settings = dsa.school_settings()
-        title = sick_note_title(settings)
-        name = child.get("name") or ""
-        class_code = (note.get("technical") or {}).get("class_code") or ""
-        pdf_bytes = render_sick_note_pdf(
-            title,
-            name,
-            class_code,
-            note.get("from_date"),
-            note.get("till_date"),
-            note.get("from_period"),
-            note.get("till_period"),
-        )
-        return pdf_bytes, sick_note_pdf_filename(title, name)
+        return self._absences().sick_note_pdf(sick_note_id)
 
     def _school_period_times(self):
         try:
@@ -1251,45 +753,74 @@ class IServService:
             logger.debug("dsa period times lookup failed", exc_info=True)
             return {}
 
+    def _school_period_slots(self):
+        try:
+            reader = getattr(self._dsa(), "period_slots", None)
+        except Exception:
+            reader = None
+        if not callable(reader):
+            return self._school_period_times()
+        try:
+            return reader() or {}
+        except Exception:
+            logger.debug("dsa period slots lookup failed", exc_info=True)
+            return {}
+
     def _merge_period_times(self, config, discovered):
-        times = dict(config.get("period_times", {}))
-        changed = False
-        for number, start in (discovered or {}).items():
-            if start and not times.get(str(number)):
-                times[str(number)] = start
-                changed = True
-        if not changed:
-            return config
-        merged = dict(config)
-        merged["period_times"] = times
-        return merged
+        return period_grid.merge_iserv(config, discovered)
 
     def timetable(self, child_id, reference=None, week_offset=0):
-        offset = _week_offset(week_offset)
+        payload, config = self._timetable_payload(child_id, reference, week_offset)
+        shown = courses.apply(payload, courses.filter_of(config, child_id))
+        if payload.get("week_offset") == 0:
+            lessons = shown.get("lessons") or []
+            vacations = payload.get("vacations") or []
+            edit_config(self.store, lambda current: current.update(period_grid.merge_profile(current, str(child_id), lessons, vacations)))
+        return shown
+
+    def timetable_courses(self, child_id, reference=None):
+        payload, config = self._timetable_payload(child_id, reference, 0)
+        lessons = list(payload["lessons"])
+        try:
+            upcoming, config = self._timetable_payload(child_id, reference, 1)
+        except Exception:
+            logger.debug("next week was not readable for the course list", exc_info=True)
+        else:
+            lessons.extend(upcoming["lessons"])
+        return courses.catalogue(lessons, courses.filter_of(config, child_id), config)
+
+    def save_course_filter(self, child_id, chosen, known, confirmed_empty=False):
+        value = None if chosen is None else {"chosen": chosen, "known": known}
+        if value is not None and confirmed_empty:
+            value[courses.CONFIRMED_EMPTY_KEY] = True
+        config = edit_config(self.store, lambda current: current.update(courses.with_filter(current, child_id, value)))
+        stored = courses.filter_of(config, child_id)
+        key = COURSES_SAVED_KEY if stored is not None else COURSES_RESET_KEY
+        return messages.result(True, key, chosen=len(stored["chosen"]) if stored else 0)
+
+    def _timetable_payload(self, child_id, reference=None, week_offset=0):
+        if str(child_id).startswith(LETTERS_CHILD_PREFIX):
+            raise _unknown_child()
+        offset = holidays.clamp_week_offset(week_offset)
         target = (reference or date.today()) + timedelta(days=7 * offset)
         child = self._cached_child(str(child_id))
         if child is not None and child.get("course_ids"):
             week = self._school_timetable(target, child["course_ids"])
         else:
             week = self._session().get_timetable(child_id, target)
-        config = self.store.load_config()
-        merged = merge_discovered_codes(config, week.combined + week.plain)
-        school_times = self._school_period_times()
-        merged = self._merge_period_times(merged, school_times)
-        if merged != config:
-            self.store.save_config(merged)
-            config = merged
-        lesson_changes = getattr(week, "lesson_changes", None) or {}
-        cancelled = getattr(week, "cancelled", None) or []
+        school_slots = self._school_period_slots()
+        school_times = {key: slot["start"] for key, slot in period_grid.normalize_slots(school_slots).items()}
+
+        def learn(current):
+            merged = merge_discovered_codes(current, week.combined + week.plain)
+            current.update(self._merge_period_times(merged, school_slots))
+
+        config = edit_config(self.store, learn)
         lessons = [
-            to_display(lesson, config, lesson_changes.get(lesson_key(lesson.date, lesson.period, lesson.subject)))
-            for lesson in week.combined
+            dict(to_display(lesson, config, change), course_key=courses.regular_course_key(lesson, change))
+            for lesson, change in display_rows(week)
         ]
-        for lesson in cancelled:
-            change = dict(lesson_changes.get(lesson_key(lesson.date, lesson.period, lesson.subject)) or {})
-            change["kind"] = "cancelled"
-            lessons.append(to_display(lesson, config, change))
-        return {
+        payload = {
             "last_updated": week.last_updated,
             "start_date": week.start_date,
             "end_date": week.end_date,
@@ -1302,3 +833,427 @@ class IServService:
             "substitutions_released": self._substitutions_released(),
             "vacations": list(getattr(week, "vacations", None) or []),
         }
+        return payload, config
+
+
+def _unknown_connection():
+    return DataError("unknown connection", message_key=UNKNOWN_CONNECTION_KEY)
+
+
+def _split_prefixed(value):
+    text = str(value or "")
+    connection_id, separator, rest = text.partition(":")
+    if not separator:
+        return "", text
+    return connection_id, rest
+
+
+def _tag_media_urls(payload, connection_id):
+    for message in (payload or {}).get("messages") or []:
+        url = message.get("media_url") if isinstance(message, dict) else ""
+        if url:
+            message["media_url"] = f"{url}?connection={connection_id}"
+    return payload
+
+
+class IServService:
+    def __init__(self, store, client_factory=None):
+        self.store = store
+        self.client_factory = client_factory or (lambda url: IServClient(url))
+        self._connections = {}
+        self._lock = threading.Lock()
+
+    def connection(self, connection_id, entry=None):
+        connection_id = str(connection_id or "")
+        entry = entry if entry is not None else (self.store.connection(connection_id) or {})
+        revision = entry.get(LOGIN_REVISION_KEY, 0)
+        with self._lock:
+            existing = self._connections.get(connection_id)
+            if existing is None or getattr(existing, "login_revision", 0) != revision:
+                existing = ConnectionService(self.store.connection_store(connection_id), self.client_factory)
+                existing.login_revision = revision
+                self._connections[connection_id] = existing
+            return existing
+
+    def connections(self, include_pending=False):
+        entries = self.store.connections()
+        known = {entry["id"] for entry in entries}
+        with self._lock:
+            for stale in [name for name in self._connections if name not in known]:
+                self._connections.pop(stale, None)
+        return [
+            self.connection(entry["id"], entry)
+            for entry in entries
+            if include_pending or entry.get("setup_complete")
+        ]
+
+    def known_connection(self, connection_id):
+        connection_id = str(connection_id or "")
+        if not connection_id or self.store.connection(connection_id) is None:
+            raise _unknown_connection()
+        return self.connection(connection_id)
+
+    def first_connection(self):
+        listed = self.connections()
+        if not listed:
+            raise NotConfiguredError("no school connected")
+        return listed[0]
+
+    def _pick(self, connection_id):
+        if connection_id:
+            return self.known_connection(connection_id)
+        return self.first_connection()
+
+    def resolve(self, child_key):
+        connection_id, child_id = split_child_key(child_key)
+        if not connection_id or self.store.connection(connection_id) is None:
+            raise _unknown_child()
+        connection = self.connection(connection_id)
+        return connection, connection.authorized_child(child_id)
+
+    def is_configured(self):
+        return any(connection.is_configured() for connection in self.connections())
+
+    def many(self):
+        return len(self.store.connections()) > 1
+
+    def annotate(self, connection, item):
+        item = dict(item)
+        item["connection_id"] = connection.id
+        item["school"] = connection.display_name()
+        return item
+
+    def summaries(self, with_status=False):
+        rows = []
+        for entry in self.store.connections():
+            connection = self.connection(entry["id"])
+            row = {
+                "id": entry["id"],
+                "name": connection_display_name(entry),
+                "school_name": entry.get("school_name", ""),
+                "label": entry.get("label", ""),
+                "short_name": connection_short_name(entry),
+                "school_url": entry.get("school_url", ""),
+                "host": host_of(entry.get("school_url")),
+                "setup_complete": bool(entry.get("setup_complete")),
+                "username": connection.store.load_secrets().get("username", ""),
+                "children": [self._child(connection, child) for child in connection.stored_children()],
+            }
+            if with_status:
+                row["status"] = connection.check_connection() if row["setup_complete"] else STATUS_PENDING
+            rows.append(row)
+        return rows
+
+    def check_connection(self):
+        return self._aggregate_statuses([connection.check_connection() for connection in self.connections()])
+
+    def health_overview(self, clock=time.time):
+        rows = self.summaries(with_status=False)
+        statuses = []
+        for row in rows:
+            if not row["setup_complete"]:
+                row["status"], row["stale"] = STATUS_PENDING, False
+                continue
+            connection = self.connection(row["id"])
+            result = connection.health_status(clock=clock)
+            row["status"], row["stale"] = result["status"], result["stale"]
+            if result.get("reason"):
+                row["reason"] = result["reason"]
+            statuses.append(row["status"])
+        return self._aggregate_statuses(statuses), rows
+
+    @staticmethod
+    def _aggregate_statuses(statuses):
+        if not statuses:
+            return STATUS_NOT_CONFIGURED
+        if STATUS_OK in statuses:
+            return STATUS_OK
+        if all(status == STATUS_AUTH_FAILED for status in statuses):
+            return STATUS_AUTH_FAILED
+        if all(status == STATUS_NOT_CONFIGURED for status in statuses):
+            return STATUS_NOT_CONFIGURED
+        if all(status == STATUS_OUTAGE for status in statuses):
+            return STATUS_OUTAGE
+        return STATUS_NETWORK
+
+    def children(self, connection_id=None):
+        if connection_id:
+            connection, raw = self._children_of(self.known_connection(connection_id))
+            return [self._child(connection, child) for child in raw]
+        listed = []
+        failures = []
+        connections = self.connections()
+        for connection in connections:
+            try:
+                connection, raw = self._children_of(connection)
+            except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
+                failures.append(error)
+                logger.warning("child list of school#%s unavailable", connection.id, exc_info=True)
+                raw = [dict(child, unavailable=True) for child in connection.stored_children()]
+            listed.extend(self._child(connection, child) for child in raw)
+        if failures and len(failures) == len(connections):
+            if not listed or not all(isinstance(failure, OutageError) for failure in failures):
+                raise failures[0]
+        listed.sort(key=child_sort_key)
+        return listed
+
+    def _children_of(self, connection):
+        try:
+            return connection, connection.children()
+        except ConnectionChangedError:
+            entry = self.store.connection(connection.id)
+            if entry is None:
+                raise
+            fresh = self.connection(connection.id, entry)
+            return fresh, fresh.children()
+
+    def _child(self, connection, child):
+        item = self.annotate(connection, child)
+        item["key"] = connection.child_key(str(child.get("child_id") or ""))
+        return item
+
+    def timetable(self, child_key, reference=None, week_offset=0):
+        connection, child_id = self.resolve(child_key)
+        return connection.timetable(child_id, reference, week_offset)
+
+    def timetable_courses(self, child_key, reference=None):
+        connection, child_id = self.resolve(child_key)
+        return connection.timetable_courses(child_id, reference)
+
+    def save_course_filter(self, child_key, chosen, known, confirmed_empty=False):
+        connection, child_id = self.resolve(child_key)
+        if child_id not in {child["child_id"] for child in connection.stored_children()}:
+            raise _unknown_child()
+        return connection.save_course_filter(child_id, chosen, known, confirmed_empty)
+
+    def timetable_available(self):
+        return self.module_available(modules.TIMETABLE)
+
+    def modules(self):
+        registries = [connection.modules() for connection in self.connections()]
+        if not registries:
+            return modules.default_registry()
+        merged = modules.default_registry()
+        merged["modules"] = {
+            name: any(registry["modules"].get(name, True) for registry in registries) for name in modules.MODULES
+        }
+        for field in ("unsupported", "unknown"):
+            seen = set()
+            for registry in registries:
+                for entry in registry[field]:
+                    if entry["segment"] not in seen:
+                        seen.add(entry["segment"])
+                        merged[field].append(entry)
+        merged["checked_at"] = max(registry["checked_at"] for registry in registries)
+        merged["iserv_version"] = next(
+            (registry["iserv_version"] for registry in registries if registry["iserv_version"]), ""
+        )
+        return merged
+
+    def modules_of(self, connection_id):
+        return self.known_connection(connection_id).modules()
+
+    def module_available(self, name):
+        return self.modules()["modules"].get(name, True)
+
+    def recheck_modules(self, connection_id=None):
+        return self._pick(connection_id).recheck_modules()
+
+    def me(self, connection_id=None):
+        return self._pick(connection_id).me()
+
+    def school_profile(self, connection_id=None):
+        return self._pick(connection_id).school_profile()
+
+    def iserv_session(self, connection_id=None):
+        return self._pick(connection_id).iserv_session()
+
+    def change_password(self, connection_id, current, new):
+        return self._pick(connection_id).change_password(current, new)
+
+    def repair_password(self, connection_id, password):
+        return self._pick(connection_id).repair_password(password)
+
+    def disconnect(self, connection_id=None):
+        connection = self._pick(connection_id)
+        result = connection.disconnect()
+        with self._lock:
+            self._connections.pop(connection.id, None)
+        return result
+
+    def _merge(self, collect):
+        results = []
+        failures = []
+        connections = self.connections()
+        for connection in connections:
+            try:
+                results.append((connection, collect(connection)))
+            except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
+                failures.append((connection, error))
+                logger.warning("school#%s did not answer", connection.id, exc_info=True)
+        if not connections:
+            raise NotConfiguredError("no school connected")
+        if failures and not results:
+            raise failures[0][1]
+        return results, [connection.id for connection, _ in failures]
+
+    def letters(self, tab="current"):
+        results, unavailable = self._merge(lambda connection: connection.letters(tab))
+        entries = []
+        for connection, data in results:
+            for entry in data.get("letters") or []:
+                tagged = self.annotate(connection, entry)
+                tagged["key"] = ":".join(
+                    [connection.id, str(entry.get("letter_id")), str(entry.get("recipient_id"))]
+                )
+                entries.append(tagged)
+        entries.sort(key=lambda item: _published_sort_key(item.get("published")), reverse=True)
+        return {"letters": entries, "unavailable": unavailable}
+
+    def mark_letters_read(self, keys=None, mark_all=False):
+        totals = {"read": 0, "blocked": 0, "failed": 0}
+        grouped = {}
+        for key in keys or []:
+            connection_id, rest = _split_prefixed(key)
+            grouped.setdefault(connection_id, []).append(rest)
+        targets = self.connections() if mark_all else [self.known_connection(name) for name in grouped]
+        for connection in targets:
+            outcome = connection.mark_letters_read(grouped.get(connection.id), mark_all)
+            for name in totals:
+                totals[name] += int(outcome.get(name) or 0)
+        return totals
+
+    def letter_detail(self, connection_id, letter_id, recipient_id):
+        return self.known_connection(connection_id).letter_detail(letter_id, recipient_id)
+
+    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
+        return self.known_connection(connection_id).confirm_letter(letter_id, recipient_id, text)
+
+    def archive_letter(self, connection_id, letter_id, recipient_id):
+        return self.known_connection(connection_id).archive_letter(letter_id, recipient_id)
+
+    def restore_letter(self, connection_id, letter_id, recipient_id):
+        return self.known_connection(connection_id).restore_letter(letter_id, recipient_id)
+
+    def letter_attachment(self, connection_id, attachment_id):
+        return self.known_connection(connection_id).letter_attachment(attachment_id)
+
+    def pinboard(self):
+        results, unavailable = self._merge(lambda connection: connection.pinboard())
+        folders = []
+        feed = []
+        for connection, data in results:
+            for folder in data.get("folders") or []:
+                tagged = self.annotate(connection, folder)
+                tagged["key"] = f"{connection.id}:{folder.get('id')}"
+                folders.append(tagged)
+            for entry in data.get("feed") or []:
+                tagged = self.annotate(connection, entry)
+                tagged["key"] = f"{connection.id}:{entry.get('id')}"
+                tagged["folder_key"] = f"{connection.id}:{entry.get('folder_id')}"
+                feed.append(tagged)
+        return {"folders": folders, "feed": feed, "unavailable": unavailable}
+
+    def mark_pinboard_seen(self, keys=None, mark_all=False, unseen=False):
+        grouped = {}
+        for key in keys or []:
+            connection_id, rest = _split_prefixed(key)
+            tile_id = _as_int(rest)
+            if tile_id is not None:
+                grouped.setdefault(connection_id, []).append(tile_id)
+        targets = self.connections() if mark_all else [self.known_connection(name) for name in grouped]
+        seen = 0
+        for connection in targets:
+            outcome = connection.mark_pinboard_seen(grouped.get(connection.id), mark_all, unseen)
+            seen += int(outcome.get("seen") or 0)
+        return {"seen": seen}
+
+    def pinboard_attachment(self, connection_id, filename):
+        return self.known_connection(connection_id).pinboard_attachment(filename)
+
+    def absence_attachment(self, connection_id, filename):
+        return self.known_connection(connection_id).absence_attachment(filename)
+
+    def conferences(self):
+        results, unavailable = self._merge(lambda connection: connection.conferences())
+        items = []
+        errors = []
+        empty = True
+        for connection, data in results:
+            if data.get("error"):
+                errors.append(connection.id)
+            if not data.get("empty", not data.get("items")):
+                empty = False
+            for item in data.get("items") or []:
+                items.append(self.annotate(connection, item))
+        payload = {"items": items, "empty": empty and not items, "unavailable": unavailable}
+        if errors and len(errors) == len(results):
+            payload["error"] = "unavailable"
+        return payload
+
+    def absences_overview(self, connection_id=None):
+        connection = self._pick(connection_id)
+        overview = connection.absences_overview()
+        overview["connection_id"] = connection.id
+        overview["school"] = connection.display_name()
+        return overview
+
+    def report_absence(self, connection_id, payload, attachments=None):
+        return self._pick(connection_id).report_absence(payload, attachments)
+
+    def delete_absence(self, connection_id, payload):
+        return self._pick(connection_id).delete_absence(payload)
+
+    def sick_note_pdf(self, connection_id, sick_note_id):
+        return self._pick(connection_id).sick_note_pdf(sick_note_id)
+
+    def messenger_rooms(self):
+        results, unavailable = self._merge(lambda connection: connection.messenger_rooms())
+        rooms = []
+        self_user_ids = {}
+        can_write = False
+        for connection, data in results:
+            self_user_ids[connection.id] = data.get("self_user_id", "")
+            can_write = can_write or bool(data.get("can_write_to_teacher"))
+            for room in data.get("rooms") or []:
+                tagged = self.annotate(connection, room)
+                tagged["self_user_id"] = data.get("self_user_id", "")
+                rooms.append(tagged)
+        rooms.sort(key=lambda room: room.get("last_message_at") or 0, reverse=True)
+        return {
+            "rooms": rooms,
+            "self_user_ids": self_user_ids,
+            "can_write_to_teacher": can_write,
+            "unavailable": unavailable,
+        }
+
+    def messenger_room_messages(self, connection_id, room_id, before=None):
+        connection = self._pick(connection_id)
+        return _tag_media_urls(connection.messenger_room_messages(room_id, before), connection.id)
+
+    def messenger_send(self, connection_id, room_id, text):
+        return self._pick(connection_id).messenger_send(room_id, text)
+
+    def messenger_media(self, connection_id, server_name, media_id):
+        return self._pick(connection_id).messenger_media(server_name, media_id)
+
+    def messenger_mark_read(self, connection_id, room_id, event_id):
+        return self._pick(connection_id).messenger_mark_read(room_id, event_id)
+
+    def messenger_teacher_search(self, connection_id, query):
+        return self._pick(connection_id).messenger_teacher_search(query)
+
+    def messenger_teacher_room_children(self, connection_id):
+        return self._pick(connection_id).messenger_teacher_room_children()
+
+    def messenger_create_teacher_room(self, connection_id, teacher, child_ids, add_other_parents):
+        return self._pick(connection_id).messenger_create_teacher_room(teacher, child_ids, add_other_parents)
+
+    def messenger_unread_pulse(self):
+        total = None
+        for connection in self.connections():
+            count = connection.messenger_unread_pulse()
+            if count is None:
+                continue
+            total = (total or 0) + int(count)
+        return total

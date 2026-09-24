@@ -1,24 +1,44 @@
 import requests
 
 from .iserv.auth import apply_login_fields
-from .iserv.client import SESSION_COOKIE, IServClient
-from .iserv.errors import LoginError, TwoFactorError
+from .iserv.client import SESSION_COOKIE, IServClient, login_form_of, server_failure
+from .iserv.errors import (
+    REASON_RATE_LIMITED,
+    LoginError,
+    OutageError,
+    TwoFactorError,
+    TwoFactorSetupRequired,
+    login_reason,
+    session_never_opened,
+)
 from .iserv.forms import find_client_redirect, find_login_form, find_two_factor_form, parse_forms
 from .iserv.totp import generate_code
+from .iserv.twofactor import setup_required
 from . import messages
-from .lockout import classify_login_response
+from .lockout import TWOFACTOR_REQUIRED_SETUP, classify_login_response, login_refusal
 
-LOGIN_FAILED = "Anmeldung fehlgeschlagen"
+
+RATE_LIMITED = "rate_limited"
+OUTAGE = "outage"
 
 
 def _cookie_names(session):
     return {cookie.name for cookie in session.cookies}
 
 
+def outage_status(error):
+    return RATE_LIMITED if getattr(error, "reason", "") == REASON_RATE_LIMITED else OUTAGE
+
+
+def outage_result(error):
+    return {"status": outage_status(error), "retry_after": getattr(error, "retry_after", None)}
+
+
 class IServProber:
     def __init__(self, timeout=15):
         self.timeout = timeout
         self._pending = None
+        self.retry_after = None
 
     def probe_url(self, base):
         try:
@@ -36,21 +56,29 @@ class IServProber:
                 "message": messages.text("api.wizard.notIserv")}
 
     def verify_login(self, url, username, password):
+        self.retry_after = None
         try:
             session = requests.Session()
             page = session.get(f"{url}/iserv/", timeout=self.timeout)
-            login_form = find_login_form(parse_forms(page.text, page.url))
-            if login_form is None:
-                return "unknown"
+            login_form = login_form_of(page)
             payload = apply_login_fields(login_form.fields, username, password)
             response = session.post(login_form.action, data=payload, timeout=self.timeout)
+            failure = server_failure(response)
+            if failure is not None:
+                raise failure
+        except OutageError as error:
+            self.retry_after = error.retry_after
+            return outage_status(error)
         except requests.RequestException:
-            return "unknown"
-        if LOGIN_FAILED in response.text:
-            return "bad_credentials"
+            return OUTAGE
+        refusal = login_refusal(response.text)
+        if refusal:
+            return refusal
         if find_two_factor_form(parse_forms(response.text, response.url)) is not None:
             return "twofactor"
         for _ in range(5):
+            if setup_required(response.text, response.url, SESSION_COOKIE in _cookie_names(session)):
+                return TWOFACTOR_REQUIRED_SETUP
             if SESSION_COOKIE in _cookie_names(session):
                 return "no_2fa"
             target = find_client_redirect(response.text, response.url)
@@ -60,20 +88,29 @@ class IServProber:
                 response = session.get(target, timeout=self.timeout)
             except requests.RequestException:
                 break
+        if setup_required(response.text, response.url, SESSION_COOKIE in _cookie_names(session)):
+            return TWOFACTOR_REQUIRED_SETUP
         if SESSION_COOKIE in _cookie_names(session):
             return "no_2fa"
-        if classify_login_response(response.text, response.status_code) != "normal":
-            return "locked"
+        kind = classify_login_response(response.text)
+        if kind != "normal":
+            return kind
         return "unknown"
 
     def verify_totp(self, url, username, password, secret):
+        self.retry_after = None
         try:
             client = IServClient(url, timeout=self.timeout)
             client.login(username, password, lambda: generate_code(secret))
-        except TwoFactorError:
-            return "bad_code"
-        except LoginError:
-            return "bad_credentials"
+        except TwoFactorError as error:
+            return "unknown" if session_never_opened(error) else "bad_code"
+        except TwoFactorSetupRequired:
+            return TWOFACTOR_REQUIRED_SETUP
+        except LoginError as error:
+            return login_reason(error)
+        except OutageError as error:
+            self.retry_after = error.retry_after
+            return outage_status(error)
         except requests.RequestException:
             return "unknown"
         return "ok" if client.is_authenticated() else "unknown"
@@ -96,16 +133,22 @@ class IServProber:
         try:
             client = IServClient(url, timeout=self.timeout)
             client.login(username, password, lambda: code)
-        except TwoFactorError:
-            return {"status": "bad_code"}
-        except LoginError:
-            return {"status": "bad_credentials"}
+        except TwoFactorError as error:
+            return {"status": "unknown" if session_never_opened(error) else "bad_code"}
+        except TwoFactorSetupRequired:
+            return {"status": TWOFACTOR_REQUIRED_SETUP}
+        except LoginError as error:
+            return {"status": login_reason(error)}
+        except OutageError as error:
+            return outage_result(error)
         except requests.RequestException:
             return {"status": "network"}
         try:
             registration = client.start_totp_registration()
         except TwoFactorError:
             return {"status": "no_form"}
+        except OutageError as error:
+            return outage_result(error)
         except requests.RequestException:
             return {"status": "network"}
         self._pending = {
@@ -128,6 +171,8 @@ class IServProber:
         except TwoFactorError as error:
             self._pending = None
             return {"status": "code_rejected", "message": str(error)}
+        except OutageError as error:
+            return outage_result(error)
         except requests.RequestException:
             return {"status": "network"}
         self._pending = None

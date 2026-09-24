@@ -1,0 +1,47 @@
+{
+  "version": "2609.02.00",
+  "schools": [
+    {
+      "id": "a1b2c3d4",
+      "name": "Sample School",
+      "url_host": "school.example",
+      "modules": {
+        "timetable": true,
+        "letters": true,
+        "pinboard": true,
+        "absences": true,
+        "conferences": true,
+        "messenger": true
+      },
+      "disabled": {
+        "timetable": false,
+        "letters": false,
+        "pinboard": false,
+        "absences": false,
+        "conferences": false,
+        "messenger": false
+      },
+      "status": "ok",
+      "children": [
+        {
+          "key": "a1b2c3d4:child-1",
+          "name": "Alex Sample",
+          "class_name": "5b"
+        },
+        {
+          "key": "a1b2c3d4:child-2",
+          "name": "Kim Sample",
+          "class_name": "8a"
+        }
+      ],
+      "last_poll": "2026-09-05T03:49:00+02:00",
+      "last_success": "2026-09-05T03:49:00+02:00",
+      "own_entries": false
+    }
+  ],
+  "language": "de",
+  "timezone": "Europe/Berlin",
+  "feed_port_open": true,
+  "last_poll": "2026-09-05T03:49:00+02:00",
+  "ingress_path": "/hassio/ingress/ranzenpost"
+}

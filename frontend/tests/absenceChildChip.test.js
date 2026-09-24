@@ -50,11 +50,11 @@ describe(">1 child: the child question is a real wizard step, never a sheet", ()
     const { window } = loadApp();
     const wz = openWizard(window, "sick", data(twoChildren));
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-    expect(entry.text).toBe("Bitte das Kind auswählen.");
+    expect(entry.text).toBe("Bitte auswählen, wer gemeint ist.");
     expect(entry.step).toBe("child");
     wz.go("review");
     expect(wz.step).toBe("child");
-    expect(wz.status).toBe("Bitte das Kind auswählen.");
+    expect(wz.status).toBe("Bitte auswählen, wer gemeint ist.");
   });
 
   test("the chosen child rides in the progress row and the review facts, not in a dead chip", () => {
@@ -67,7 +67,7 @@ describe(">1 child: the child question is a real wizard step, never a sheet", ()
     lead.click();
     expect(wz.step).toBe("child");
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Kind");
+    expect(facts[0].label).toBe("Person");
     expect(facts[0].value).toBe("Bella");
     expect(facts[0].step).toBe("child");
   });
@@ -81,7 +81,7 @@ describe("exactly 1 child: the child step is skipped entirely", () => {
     expect(wz.form.student_id).toBe("1");
     expect(wz.node.querySelector(".sw-lead-btn")).toBeNull();
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Kind");
+    expect(facts[0].label).toBe("Person");
     expect(facts[0].value).toBe("Alice");
     expect(facts[0].step).toBe("");
   });

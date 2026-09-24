@@ -7,9 +7,9 @@ import requests
 
 from . import messages
 from .iserv.errors import DataError, LoginError
+from .store import edit_secrets, transaction
 from .iserv.messenger import (
     AUTH_FIELDS,
-    BOOTSTRAP_MARKER,
     MAX_CONTINUATION_HOPS,
     STAGE_BOOTSTRAP,
     STAGE_MESSAGE_KEYS,
@@ -36,19 +36,17 @@ from .iserv.messenger import (
     parse_teacher_room_form,
     new_txn_id,
     page_diagnosis,
-    parse_authenticate_paths,
-    parse_authentication,
+    authenticate_by_post,
+    authenticate_over_xhr,
     parse_bootstrap,
     parse_mxc,
     parse_privileges,
     parse_room_list,
-    _shape_only,
     embedded_shape,
     credentials_note,
     granted_privileges,
     credentials_withheld,
     endpoint_hints,
-    shape_of,
     parse_room_messages,
     parse_teacher_suggestions,
     room_membership,
@@ -67,6 +65,8 @@ EVENT_ID_RE = re.compile(r"^\$[\w.=~+/-]{1,255}$")
 MATRIX_BASE_URL_KEY = "messenger_matrix_base_url"
 PRIVILEGES_KNOWN_KEY = "messenger_privileges_known"
 TEACHER_PRIVILEGE_KEY = "messenger_can_write_to_teacher"
+AUTHENTICATE_POST_TRIED_KEY = "messenger_authenticate_post_at"
+AUTHENTICATE_POST_INTERVAL_SECONDS = 24 * 60 * 60
 JOIN_TIMEOUT_SECONDS = 15
 JOIN_POLL_SECONDS = 1.0
 
@@ -122,7 +122,9 @@ class MessengerService:
         self.store = iserv_service.store
         self.matrix_client_factory = matrix_client_factory or MatrixClient
         self.clock = time.monotonic
+        self.now = time.time
         self.sleeper = time.sleep
+        self._withheld_noted = False
 
     def _fetch_page(self, client, path):
         try:
@@ -147,45 +149,46 @@ class MessengerService:
         return response, hops
 
     def _authentication_over_xhr(self, client, response, diagnosis):
-        attempts = []
-        shapes = []
-        for path in parse_authenticate_paths(response.text):
-            try:
-                answer = client.fetch(path)
-            except requests.RequestException:
-                logger.warning("messenger authenticate call failed at %s", path, exc_info=True)
-                attempts.append({"path": path, "status": 0})
-                continue
-            status = int(getattr(answer, "status_code", 0) or 0)
-            attempts.append({"path": path, "status": status})
-            if status != 200:
-                logger.warning("messenger authenticate answered %s at %s", status, path)
-                continue
-            try:
-                body = answer.json()
-            except ValueError:
-                logger.warning("messenger authenticate answered without json at %s", path, exc_info=True)
-                headers = getattr(answer, "headers", None) or {}
-                body = getattr(answer, "text", "") or ""
-                shapes.append("%s: no json, type=%s, len=%d, starts=%s" % (
-                    path,
-                    str(headers.get("content-type") or "?").split(";")[0].strip(),
-                    len(body),
-                    _shape_only(body.strip()[:8]),
-                ))
-                continue
-            try:
-                return parse_authentication(body)
-            except BootstrapNotFoundError:
-                logger.warning("messenger authenticate answered without usable data at %s", path, exc_info=True)
-                marked = body.get(BOOTSTRAP_MARKER) if isinstance(body, dict) else None
-                shapes.append("%s: %s" % (path, shape_of(marked if isinstance(marked, dict) else body)))
-        diagnosis["authenticate_attempts"] = ", ".join(
-            f"{attempt['path']} {attempt['status']}" for attempt in attempts
+        outcome = authenticate_over_xhr(client.fetch, response.text)
+        diagnosis["authenticate_attempts"] = outcome.attempts_note()
+        if outcome.shapes:
+            diagnosis["authenticate_fields"] = outcome.shapes_note()
+        return outcome.auth
+
+    def _claim_authenticate_post(self):
+        with transaction(self.store):
+            secrets = self.store.load_secrets()
+            now = self.now()
+            tried = float(secrets.get(AUTHENTICATE_POST_TRIED_KEY) or 0)
+            if 0 <= now - tried < AUTHENTICATE_POST_INTERVAL_SECONDS:
+                return False
+            secrets[AUTHENTICATE_POST_TRIED_KEY] = now
+            self.store.save_secrets(secrets)
+            return True
+
+    def _authentication_by_post(self, client, response, diagnosis):
+        if not self._claim_authenticate_post():
+            diagnosis["authenticate_post"] = "not tried again within a day"
+            return None
+        base = str(getattr(client, "base_url", "") or "").rstrip("/")
+        headers = {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json",
+            "Origin": base,
+            "Referer": base + MESSENGER_PAGE_PATH,
+        }
+        outcome = authenticate_by_post(
+            lambda path: client.post_absolute(base + path, {}, follow_redirects=False, headers=headers), response.text
         )
-        if shapes:
-            diagnosis["authenticate_fields"] = " | ".join(shapes)
-        return None
+        diagnosis["authenticate_post"] = outcome.attempts_note()
+        if outcome.shapes:
+            diagnosis["authenticate_post_fields"] = outcome.shapes_note()
+        logger.info(
+            "messenger credentials withheld, authenticate by post: %s, credentials %s",
+            diagnosis["authenticate_post"],
+            "received" if outcome.auth else "not received",
+        )
+        return outcome.auth
 
     def _bootstrap(self):
         client = self.iserv.iserv_session()
@@ -209,28 +212,39 @@ class MessengerService:
             diagnosis["page_fields"] = embedded_shape(response.text)
             diagnosis["page_endpoints"] = endpoint_hints(response.text)
             if credentials_withheld(response.text):
-                logger.warning("iserv served the messenger page without credentials: %s", diagnosis)
-                raise MessengerStageError(STAGE_NO_CREDENTIALS, diagnosis)
-            logger.warning("messenger page carried no embedded credentials: %s", diagnosis)
-            auth = self._authentication_over_xhr(client, response, diagnosis)
+                auth = self._authentication_by_post(client, response, diagnosis)
+                if auth is None:
+                    self._note_withheld(diagnosis)
+                    raise MessengerStageError(STAGE_NO_CREDENTIALS, diagnosis)
+            if auth is None:
+                logger.info("messenger page carried no embedded credentials, asking the authenticate call")
+                auth = self._authentication_over_xhr(client, response, diagnosis)
         if auth is None:
             logger.warning("messenger bootstrap exhausted every path: %s", diagnosis)
             raise MessengerStageError(STAGE_BOOTSTRAP, diagnosis)
-        secrets = self.store.load_secrets()
-        secrets.update({f"messenger_{field}": auth.get(field, "") for field in AUTH_FIELDS})
-        secrets[MATRIX_BASE_URL_KEY] = self._matrix_base_url(client)
-        self.store.save_secrets(secrets)
+        self._withheld_noted = False
+        fields = {f"messenger_{field}": auth.get(field, "") for field in AUTH_FIELDS}
+        fields[MATRIX_BASE_URL_KEY] = self._matrix_base_url(client)
+        edit_secrets(self.store, lambda secrets: secrets.update(fields))
         return auth
+
+    def _note_withheld(self, diagnosis):
+        if self._withheld_noted:
+            logger.debug("iserv still withholds the messenger credentials")
+            return
+        self._withheld_noted = True
+        logger.info("iserv withholds the messenger credentials for this account: %s", diagnosis)
 
     def _remember_privileges(self, html):
         privileges = parse_privileges(html)
         if privileges is None:
             logger.warning("the messenger page named no privileges, keeping what is stored")
             return
-        secrets = self.store.load_secrets()
-        secrets[PRIVILEGES_KNOWN_KEY] = "1"
-        secrets[TEACHER_PRIVILEGE_KEY] = "1" if privileges.get("can_write_to_teacher") else ""
-        self.store.save_secrets(secrets)
+        fields = {
+            PRIVILEGES_KNOWN_KEY: "1",
+            TEACHER_PRIVILEGE_KEY: "1" if privileges.get("can_write_to_teacher") else "",
+        }
+        edit_secrets(self.store, lambda secrets: secrets.update(fields))
 
     def _load_privileges(self):
         client = self.iserv.iserv_session()
@@ -523,6 +537,15 @@ class MessengerService:
         def call(client):
             response = client.sync(timeout_ms=0)
             self._require_matrix_ok("pulse", response)
-            return total_unread(response.json())
+            body = response.json()
+            rooms = body.get("rooms") if isinstance(body, dict) else None
+            join = rooms.get("join") if isinstance(rooms, dict) else None
+            shape_understood = isinstance(body, dict) and (rooms is None or isinstance(rooms, dict)) and (
+                join is None or isinstance(join, dict)
+            )
+            if not shape_understood:
+                logger.warning("matrix pulse answered a body of type %s that could not be read", type(body).__name__)
+                raise MessengerStageError(STAGE_MATRIX, {"where": "pulse", "shape": type(body).__name__})
+            return total_unread(body)
 
         return self._with_matrix(call)

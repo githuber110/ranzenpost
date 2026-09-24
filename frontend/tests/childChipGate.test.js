@@ -5,10 +5,10 @@ function renderHeaderFor(window, view, childCount) {
   const run = window.eval(`
     (function (view, childCount) {
       state.children = childCount === 1
-        ? [{ child_id: "c1", name: "Alice", class_name: "3b" }]
+        ? [{ key: "c1", name: "Alice", class_name: "3b" }]
         : [
-            { child_id: "c1", name: "Alice", class_name: "3b" },
-            { child_id: "c2", name: "Bella", class_name: "1a" },
+            { key: "c1", name: "Alice", class_name: "3b" },
+            { key: "c2", name: "Bella", class_name: "1a" },
           ];
       state.childId = "c1";
       return header(view).outerHTML;
@@ -51,7 +51,7 @@ describe("letter card child tag gated on >1 child", () => {
     const { window } = loadApp();
     const run = window.eval(`
       (function () {
-        state.children = [{ child_id: "c1", name: "Alice" }];
+        state.children = [{ key: "c1", name: "Alice" }];
         return letterRow({ title: "Test", sender: "Frau X", child: "Alice", recipients: null, unread: false }).outerHTML;
       })
     `);
@@ -64,7 +64,7 @@ describe("letter card child tag gated on >1 child", () => {
     const { window } = loadApp();
     const run = window.eval(`
       (function () {
-        state.children = [{ child_id: "c1", name: "Alice" }, { child_id: "c2", name: "Bella" }];
+        state.children = [{ key: "c1", name: "Alice" }, { key: "c2", name: "Bella" }];
         return letterRow({ title: "Test", sender: "Frau X", child: "Alice", recipients: null, unread: false }).outerHTML;
       })
     `);

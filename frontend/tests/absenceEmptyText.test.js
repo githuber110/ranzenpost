@@ -6,7 +6,7 @@ describe("absence empty state: two sentences, no dangling reference", () => {
     const { window } = loadApp();
     const text = window.t("absence.empty.text");
     expect(text).toBe(
-      "Aktuelle und zukünftige Meldungen erscheinen hier. Vergangene Krankmeldungen blendet IServ für Eltern automatisch aus."
+      "Aktuelle und zukünftige Meldungen erscheinen hier. Vergangene Krankmeldungen blendet IServ automatisch aus."
     );
     expect(text).not.toContain("Vergangene Abwesenheiten");
     expect(text.split(". ").length).toBe(2);

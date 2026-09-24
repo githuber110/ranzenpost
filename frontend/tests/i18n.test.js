@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
+import { shippedScriptText } from "./shippedSources.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const i18nDir = path.join(dirname, "..", "i18n");
@@ -106,9 +107,9 @@ describe("language resolution", () => {
 describe("formats follow the active language", () => {
   test("dates render in the active locale", () => {
     const { window } = loadApp();
-    expect(window.showDate("2026-09-07")).toBe("07.09.2026");
+    expect(window.eval('showDate("2026-09-07")')).toBe("07.09.2026");
     window.setLanguageBundle("en", base, base);
-    expect(window.showDate("2026-09-07")).toBe("09/07/2026");
+    expect(window.eval('showDate("2026-09-07")')).toBe("09/07/2026");
   });
 
   test("numbers render in the active locale", () => {
@@ -274,8 +275,7 @@ describe("right-to-left is switched on for arabic and off again for everyone els
   });
 
   test("content that comes from iserv keeps its own direction", () => {
-    const css = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
-    const bodyBlocks = css.match(/class: "body-html"[^)]*/g) || [];
+    const bodyBlocks = shippedScriptText().match(/class: "body-html"[^)]*/g) || [];
     expect(bodyBlocks.length).toBeGreaterThan(0);
     for (const block of bodyBlocks) expect(block).toContain('dir: "auto"');
   });

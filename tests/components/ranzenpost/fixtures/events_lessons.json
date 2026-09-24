@@ -1,0 +1,47 @@
+[
+  {
+    "uid": "lesson-20260902-p1@sample",
+    "summary": "Maths",
+    "description": "Mrs Example, R101",
+    "location": "R101",
+    "start": "2026-09-02T09:00:00+02:00",
+    "end": "2026-09-02T09:45:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "#3366cc",
+    "subject_code": "MA",
+    "subject": "Maths",
+    "name": "",
+    "kind": ""
+  },
+  {
+    "uid": "lesson-20260902-p4@sample",
+    "summary": "Cancelled: Art",
+    "description": "Ms Brush, R303\nThis lesson is cancelled",
+    "location": "R303",
+    "start": "2026-09-02T11:40:00+02:00",
+    "end": "2026-09-02T12:25:00+02:00",
+    "all_day": false,
+    "cancelled": true,
+    "color": "",
+    "subject_code": "AR",
+    "subject": "Art",
+    "name": "",
+    "kind": ""
+  },
+  {
+    "uid": "lesson-20260903-p1@sample",
+    "summary": "Biology",
+    "description": "Dr Leaf, R404",
+    "location": "R404",
+    "start": "2026-09-03T08:00:00+02:00",
+    "end": "2026-09-03T08:45:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "#33cc66",
+    "subject_code": "BI",
+    "subject": "Biology",
+    "name": "",
+    "kind": ""
+  }
+]

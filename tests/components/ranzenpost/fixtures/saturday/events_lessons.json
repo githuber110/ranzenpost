@@ -1,0 +1,17 @@
+[
+  {
+    "uid": "lesson-20260907-p1@sample",
+    "summary": "Maths",
+    "description": "Mrs Example, R101",
+    "location": "R101",
+    "start": "2026-09-07T08:00:00+02:00",
+    "end": "2026-09-07T08:45:00+02:00",
+    "all_day": false,
+    "cancelled": false,
+    "color": "#3366cc",
+    "subject_code": "MA",
+    "subject": "Maths",
+    "name": "",
+    "kind": ""
+  }
+]

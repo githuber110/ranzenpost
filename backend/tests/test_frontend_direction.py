@@ -26,8 +26,8 @@ FOREIGN_FIELD = re.compile(
 )
 DIRECTION_ATTRIBUTE = re.compile(r"\bdir\s*:")
 FUNCTION_DECLARATION = re.compile(
-    r"^\s*(?:async\s+)?function\s+([A-Za-z_\$][\w\$]*)"
-    r"|^\s*(?:const|let|var)\s+([A-Za-z_\$][\w\$]*)\s*=\s*(?:async\s+)?"
+    r"^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Za-z_\$][\w\$]*)"
+    r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_\$][\w\$]*)\s*=\s*(?:async\s+)?"
     r"(?:function\b|\([^;]*\)\s*=>|[\w\$]+\s*=>)"
 )
 MODULE_SCOPE = "<module>"
@@ -164,7 +164,7 @@ def scan_source(name, text):
 def scan():
     undirected = {}
     for path in sources():
-        found, _ = scan_source(path.name, path.read_text(encoding="utf-8"))
+        found, _ = scan_source(path.relative_to(FRONTEND).as_posix(), path.read_text(encoding="utf-8"))
         for key, count in found.items():
             undirected[key] = undirected.get(key, 0) + count
     return undirected
@@ -196,17 +196,28 @@ def test_the_direction_debt_list_holds_no_entry_that_is_already_paid():
     )
 
 
+FACTORY_MODULE = "lib/dom.js"
 FACTORY_DEFINITION = re.compile(
     r"(?:const|let|var)\s+" + FOREIGN_TEXT_FACTORY + r"\s*=[^;]*?dir:\s*\"auto\"", re.S
 )
+FACTORY_BINDING = re.compile(r"\bconst\s*\{[^}]*\b" + FOREIGN_TEXT_FACTORY + r"\b[^}]*\}\s*=\s*dom;")
+FACTORY_REDEFINITION = re.compile(r"\b(?:const|let|var|function)\s+" + FOREIGN_TEXT_FACTORY + r"\b")
 
 
 def test_the_foreign_text_factory_exists_and_forces_a_direction():
-    source = (FRONTEND / "app.js").read_text(encoding="utf-8")
+    source = (FRONTEND / FACTORY_MODULE).read_text(encoding="utf-8")
     assert FACTORY_DEFINITION.search(source), (
         f"{FOREIGN_TEXT_FACTORY} is the single sanctioned way to render an IServ field - "
         "it has to set dir=\"auto\" itself"
     )
+
+
+def test_app_takes_the_foreign_text_factory_from_the_dom_kit():
+    source = (FRONTEND / "app.js").read_text(encoding="utf-8")
+    assert FACTORY_BINDING.search(source)
+    assert not FACTORY_REDEFINITION.search(source)
+    assert FACTORY_REDEFINITION.search("function iservText(tag) {}")
+    assert not FACTORY_BINDING.search("const { el } = dom;")
 
 
 def test_the_scanner_accepts_the_foreign_text_factory():
@@ -257,6 +268,16 @@ def test_the_scanner_charges_a_nested_node_to_the_node_that_renders_the_text():
     )
     undirected, _ = scan_source("app.js", source)
     assert undirected == {("app.js", "letterRow", "letter.title"): 1}
+
+
+def test_the_scanner_charges_a_node_to_the_function_a_module_exports():
+    for head in ("export function", "export async function", "export default function", "export default async function"):
+        source = f'{head} letterRow(letter) {{\n  return el("div", {{ class: "row-title" }}, letter.title);\n}}'
+        undirected, _ = scan_source("lib/letters.js", source)
+        assert undirected == {("lib/letters.js", "letterRow", "letter.title"): 1}, head
+    source = 'export const letterRow = (letter) =>\n  el("div", { class: "row-title" }, letter.title);\n'
+    undirected, _ = scan_source("lib/letters.js", source)
+    assert undirected == {("lib/letters.js", "letterRow", "letter.title"): 1}
 
 
 def test_the_scanner_leaves_translated_text_alone():

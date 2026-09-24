@@ -17,7 +17,7 @@ function seed(window) {
 
 const SUBSCRIPTION = {
   id: "s1",
-  child_id: "c1",
+  child_key: "c1",
   label: "5A",
   components: ["timetable"],
   color: "#2486ed",
@@ -31,7 +31,7 @@ const SUBSCRIPTION = {
 function actions(window) {
   seed(window);
   return window.eval(`(function (s, c) { return calendarActions(s, c); })`)(SUBSCRIPTION, {
-    child_id: "c1",
+    key: "c1",
     name: "Mia",
   });
 }

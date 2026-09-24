@@ -14,12 +14,12 @@ from app.store import Store
 from tests.test_poller import (
     FakeService,
     NotifierRecorder,
-    PublisherRecorder,
     _display_lesson,
     _timetable,
 )
 
-CHILD_ID = "child-uuid-a"
+CONNECTION_ID = "a1b2c3d4"
+CHILD_ID = f"{CONNECTION_ID}:child-uuid-a"
 CHILD_NAME = "Zwiebelfisch Quastenflosser"
 NOW = datetime(2026, 9, 2, 6, 0)
 NOW_EPOCH = int(NOW.replace(tzinfo=timezone.utc).timestamp())
@@ -36,10 +36,13 @@ def _bundle(language):
 
 def _store(tmp_path):
     store = Store(tmp_path / "data")
-    config = store.load_config()
-    config["children"] = [{"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}]
-    config["period_times"] = dict(PERIOD_TIMES)
-    store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id=CONNECTION_ID,
+        setup_complete=True,
+        children=[{"child_id": CHILD_ID.split(":", 1)[-1], "name": CHILD_NAME, "class_name": "5A"}],
+        period_times=dict(PERIOD_TIMES),
+    )
     return store
 
 
@@ -50,7 +53,7 @@ def _registry(store):
 def test_a_marker_survives_a_reload_of_the_registry(tmp_path):
     store = _store(tmp_path)
     created = _registry(store).create(CHILD_ID, WEDNESDAY_ISO, 3)
-    assert created["child_id"] == CHILD_ID
+    assert created["child_key"] == CHILD_ID
     assert created["period"] == 3
     listed = _registry(store).list(CHILD_ID)["cancellations"]
     assert [entry["id"] for entry in listed] == [created["id"]]
@@ -118,11 +121,11 @@ def test_the_routes_create_list_and_delete_a_marker(tmp_path):
     client = _client(store)
     created = client.post(
         "/api/cancellations",
-        json={"child_id": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3},
+        json={"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3},
     )
     assert created.status_code == 200
     marker = created.json()
-    listed = client.get("/api/cancellations", params={"child_id": CHILD_ID}).json()
+    listed = client.get("/api/cancellations", params={"child": CHILD_ID}).json()
     assert [entry["id"] for entry in listed["cancellations"]] == [marker["id"]]
     removed = client.delete(f"/api/cancellations/{marker['id']}")
     assert removed.status_code == 200
@@ -133,7 +136,7 @@ def test_a_refused_marker_answers_with_a_message_key(tmp_path):
     client = _client(_store(tmp_path))
     answer = client.post(
         "/api/cancellations",
-        json={"child_id": "someone-else", "date": WEDNESDAY_ISO, "period": 3},
+        json={"child_key": "someone-else", "date": WEDNESDAY_ISO, "period": 3},
     )
     assert answer.status_code == 400
     assert answer.json()["message_key"] == cancellations.ERROR_CHILD
@@ -143,30 +146,24 @@ def test_an_own_marker_never_touches_the_iserv_data_and_pushes_nothing(tmp_path)
     store = _store(tmp_path)
     children = [{"child_id": "c1", "name": "Alice"}]
     timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
-    publisher = PublisherRecorder()
     notifier = NotifierRecorder()
-    poller = Poller(
-        FakeService(children, timetables, store=store),
-        publisher=publisher,
-        notifier=notifier,
-        store=store,
-    )
+    service = FakeService(children, timetables, store=store)
+    service.id = CONNECTION_ID
+    poller = Poller(service, notifier=notifier, store=store)
     poller.poll_once()
-    before = store.load_config()["poll_state"]["c1"]
-    publishes = len(publisher.calls)
+    key = f"{CONNECTION_ID}:c1"
+    before = store.connection(CONNECTION_ID)["poll_state"][key]
 
-    config = store.load_config()
-    config["children"] = config["children"] + [{"child_id": "c1", "name": "Alice"}]
-    store.save_config(config)
-    CancellationRegistry(store, clock=lambda: NOW_EPOCH).create("c1", "2026-08-31", 1)
+    entry = store.connection(CONNECTION_ID)
+    store.update_connection(CONNECTION_ID, children=entry["children"] + [{"child_id": "c1", "name": "Alice"}])
+    CancellationRegistry(store, clock=lambda: NOW_EPOCH).create(key, "2026-08-31", 1)
 
     poller.poll_once()
-    after = store.load_config()["poll_state"]["c1"]
+    after = store.connection(CONNECTION_ID)["poll_state"][key]
     assert after["signature"] == before["signature"]
     assert after["plan_signature"] == before["plan_signature"]
     assert after["changes_signature"] == before["changes_signature"]
     assert notifier.calls == []
-    assert len(publisher.calls) == publishes
 
 
 def test_the_poller_never_learns_about_own_markers_at_all():
@@ -206,9 +203,9 @@ def test_the_feed_only_drops_the_child_and_slot_that_was_marked():
 
     day = holidays.parse_day(WEDNESDAY_ISO)
     entries = [
-        {"child_id": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3},
-        {"child_id": "other-child", "date": WEDNESDAY_ISO, "period": 4},
-        {"child_id": CHILD_ID, "date": "not-a-date", "period": 5},
+        {"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3},
+        {"child_key": "other-child", "date": WEDNESDAY_ISO, "period": 4},
+        {"child_key": CHILD_ID, "date": "not-a-date", "period": 5},
     ]
     assert feed.dropped_slots(entries, CHILD_ID) == {(day, 3)}
     assert feed.dropped_slots(entries, "other-child") == {(day, 4)}

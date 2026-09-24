@@ -3,6 +3,98 @@
 Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
 00 at release time), MM is an internal pre-beta counter incremented until the next release.
 
+## 2609.02.00
+
+Ranzenpost now reaches into Home Assistant, handles several schools and knows your school's lesson times.
+
+### Highlights
+
+- **Home Assistant integration and dashboard card.** Install the integration through HACS. It finds the add-on or
+  offers to install it. You get one device per school and one per child, with calendars for lessons, exams, absences
+  and holidays, sensors, and a timetable change event. Automations get device triggers and conditions such as
+  "lesson cancelled", "new letter" or "is a school day". The card `custom:ranzenpost-card` is built from the app's
+  blocks, such as today, next lesson, week, letters and holidays, in a visual editor, and it registers itself.
+  ![The app next to the dashboard card](https://raw.githubusercontent.com/githuber110/ranzenpost/v2609.02.00/docs/screenshots/hero.png)
+- **Several schools in one app.** Add further schools or IServ accounts, each with its own login, children and
+  settings. Letters, posts and chats merge into one feed with a school chip on every row. Children are sorted by name
+  across schools. A school whose login fails is flagged on its own while the others keep working.
+- **Lesson times and own entries.** Each school gets a lesson times page: start and duration per period, taken from
+  IServ or set by you, with extra periods at the end of the day. Add breaks, clubs and appointments, once or repeating, for one child or
+  all. The timetable, today, the card and the calendar feed show them. On request each child gets a Home Assistant
+  calendar with them. Lessons come first: an entry that a lesson covers is shortened, never deleted. Before the summer
+  holidays one button copies the series into the next school year.
+- **Arrange the app yourself.** Switch the ten overview blocks on or off, choose compact or normal, and set their
+  order. The bottom bar can be ordered too. One switch hides an IServ module from the app, the card and Home
+  Assistant.
+- **Tablets and laptops.** A navigation rail replaces the tab bar. Letters, posts, absences, chats and settings open
+  beside their list, and the timetable shows every child side by side.
+  ![The timetable at desktop width](https://raw.githubusercontent.com/githuber110/ranzenpost/v2609.02.00/docs/screenshots/desktop-timetable.png)
+
+### Also new
+
+- Class timetables with parallel courses: choose once per person which courses they attend. The timetable, the card,
+  the calendar feed and Home Assistant then show only those. Until you choose, course changes send no push.
+- Subject colours from a palette of 24, or any colour of your own. Each works in the light and the dark theme.
+- A read confirmation with a message field lets you write to the school. You see the message before anything is sent.
+- A help page with a troubleshooting report for a GitHub issue: versions, module states and the log, with names,
+  addresses and secrets removed. The app sends nothing on its own.
+- The settings list the IServ modules your account offers. Modules Ranzenpost does not know yet lead to a prefilled
+  GitHub issue. The older timetable module shows as present but not supported yet.
+
+### Changed
+
+- Settings are grouped by use: Display, Notifications & Home Assistant, School, Areas, Account, Help. The calendar
+  subscription and Subjects & teachers are full pages. The wording is plainer and uses names instead of role words.
+- A new overview starts with six blocks. An overview you already arranged stays as it is.
+- Only the modules your account offers appear, in the app and in Home Assistant.
+- Calendar events carry the subject's colour, code and name. Cancelled lessons are struck through.
+- When IServ sends only a subject's long name, Ranzenpost derives a short code you can edit.
+- Times follow your language's format everywhere, lesson times included.
+- Outage and recovery pushes have their own switch.
+- Ranzenpost asks the school only about children the account lists, and sends absences only for entries the school
+  offers.
+- The log names every error of a check with its cause and every push with its reason. It holds no content and no
+  names.
+
+### Sign-in and outages
+
+Ranzenpost signs in less often when something is wrong, so the school is less likely to lock the account.
+
+- Each case has its own message instead of "wrong password" or "unreachable": a locked account, an outage or
+  maintenance, a request to slow down, two-factor made mandatory later, an unknown account, a blocked default
+  password, a sign-in without a session, and a refused two-factor code.
+- After a refused password or a lock, Ranzenpost waits 30 minutes, then longer up to 12 hours. A new password is tried
+  at once. The wait starts over after a day without a new lock.
+- A refused two-factor code leads to a new setup instead of a password prompt. If it keeps failing, you get one push
+  and one Home Assistant repair, and nothing more after that.
+- No push goes out while IServ is down. You get one when it is back.
+- After wrong passwords the setup keeps what you typed and waits briefly with a countdown instead of stopping.
+
+### Fixed
+
+- A subject that appears in a later week, or a week without it, no longer marks unchanged lessons as changed. The
+  false "timetable changed" pushes are gone.
+- Two groups of one subject with the same substitute no longer show twice or as cancelled.
+- Holiday weeks load again.
+- Removing an exam mark or an own cancellation reaches a subscribed calendar as fast as adding it.
+- The card editor keeps a dropdown open until you choose.
+- A timetable, message list or child list that cannot be read shows an error instead of an empty list.
+- Settings saved at the same time no longer overwrite each other. A removed school leaves nothing behind.
+- Signing in with another account forgets the old children and course choices, even while a list is still loading.
+- Chats load for schools that keep the chat credentials out of the page. An expired school app session is renewed.
+- The course page starts with every course ticked, so saving right away hides nothing.
+- Cancelling the withdrawal of an absence returns to its details. A new sheet always starts empty.
+
+### Removed
+
+- The MQTT bridge. The integration replaces it, and the four `mqtt_*` options disappear.
+
+### Upgrade notes
+
+- Install the add-on and the integration of the same release. After installing or updating the integration, restart
+  Home Assistant and reload the page. A repair tells you when one of them is a release behind.
+- The first start moves children to a new internal key made of school and child. Calendar subscriptions keep working.
+
 ## 2609.01.30
 
 - A subscribed calendar is now called "Ranzenpost – <first name of the child>" unless it has a

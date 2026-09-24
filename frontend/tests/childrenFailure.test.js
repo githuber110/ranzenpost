@@ -19,7 +19,7 @@ async function quiet(window) {
 }
 
 const CHILD = {
-  child_id: "c1",
+  key: "c1",
   name: "Kim",
   class_name: "3b",
   student_id: "s1",

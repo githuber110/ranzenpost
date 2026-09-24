@@ -40,6 +40,7 @@ COUNT_INDEPENDENT_KEYS = {
     "common.badge.overflow": "the badge cap is always the same nine, the plus sign carries the rest",
     "nav.unread": "a spoken tab label that names the area and the bare number, no counted noun is inflected",
     "post.segment.unread": "a spoken segment label that names the area and the bare number, no counted noun is inflected",
+    "blocks.count.fresh": "a chapter head count that shows the bare number and the word new, no counted noun is inflected",
 }
 
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")

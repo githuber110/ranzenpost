@@ -288,38 +288,42 @@ describe("overview: no Morgen-pivot, calm evening note instead", () => {
     }
   });
 
-  test("weekend: no dedicated pivot day, just today's (empty) schedule", () => {
+  test("weekend: no dedicated pivot day and no empty schedule either, the today block stays away", () => {
     const { window } = loadApp();
     const week = { lessons: [], period_times: {} };
     const section = renderOverviewTodayAt(window, "2026-09-05T10:00:00", week);
-    expect(section.querySelector(".section-label").textContent).toBe("Heute");
-    expect(section.textContent).toContain("Heute ist schulfrei.");
-    expect(section.textContent).not.toContain("Morgen");
+    expect(section).toBeNull();
   });
 
-  test("overviewView never prefetches week=1, on a weekend or otherwise", () => {
+  test("overviewView prefetches week=1 only for the blocks that look ahead", () => {
     const { window } = loadApp();
-    window.eval(`
-      window.__weeks = [];
-      loadOverviewWeek = (childId, week) => { window.__weeks.push(week); return Promise.resolve(); };
-      autoLoad = (key, fn) => fn();
-      state.children = [{ child_id: "solo" }];
-      state.overviewWeeks = {};
-      state.absence = {};
-      state.letters = {};
-      state.pinboard = {};
-      state.conferences = {};
-      state.me = {};
-      const RealDate = Date;
-      function FixedDate(...args) {
-        if (args.length === 0) return new RealDate("2026-09-05T10:00:00");
-        return new RealDate(...args);
-      }
-      FixedDate.prototype = RealDate.prototype;
-      Date = FixedDate;
-      overviewView();
-      Date = RealDate;
+    const run = window.eval(`
+      (function (blocks) {
+        window.__weeks = [];
+        loadOverviewWeek = (childId, week) => { window.__weeks.push(week); return Promise.resolve(); };
+        autoLoad = (key, fn) => fn();
+        state.children = [{ key: "solo" }];
+        state.overviewWeeks = {};
+        state.absence = {};
+        state.letters = {};
+        state.pinboard = {};
+        state.conferences = {};
+        state.me = {};
+        state.config = { overview_blocks: blocks };
+        const RealDate = Date;
+        function FixedDate(...args) {
+          if (args.length === 0) return new RealDate("2026-09-05T10:00:00");
+          return new RealDate(...args);
+        }
+        FixedDate.prototype = RealDate.prototype;
+        Date = FixedDate;
+        overviewView();
+        Date = RealDate;
+        return [...new Set(window.__weeks)];
+      })
     `);
-    expect(window.eval("window.__weeks")).toEqual([0]);
+    expect(run([{ key: "today" }, { key: "letters" }])).toEqual([0]);
+    expect(run([{ key: "today" }, { key: "next_lesson" }])).toEqual([0, 1]);
+    expect(run([{ key: "changes" }])).toEqual([0, 1]);
   });
 });

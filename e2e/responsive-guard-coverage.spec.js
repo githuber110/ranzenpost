@@ -45,16 +45,20 @@ for (const viewport of VIEWPORTS) {
       test.describe(lang.key, () => {
         test.use({ locale: lang.locale });
 
-        test(`subjects sheet + color dialog fit (${lang.key})`, async ({ page }) => {
+        test(`subjects page + color dialog fit (${lang.key})`, async ({ page }) => {
           await goto(page);
           await openSettings(page);
           await (await settingRow(page, "settings.names")).click();
-          await waitForSheetSettled(page);
-          await assertScreenClean(page, `${viewport.name}/${lang.key}/subjects-sheet`);
+          await page.waitForSelector(".names-page .names-block", { timeout: 8000 });
+          await assertScreenClean(page, `${viewport.name}/${lang.key}/subjects-page`);
 
           await page.locator(".swatch-trigger").first().click();
           await expect(page.locator(".color-dialog")).toBeVisible();
           await assertScreenClean(page, `${viewport.name}/${lang.key}/color-dialog`);
+
+          await page.locator(".color-dialog .colour-own-toggle").click();
+          await expect(page.locator(".color-dialog .colour-hex")).toBeVisible();
+          await assertScreenClean(page, `${viewport.name}/${lang.key}/color-dialog-own`);
         });
 
         test(`password sheet fits (${lang.key})`, async ({ page }) => {

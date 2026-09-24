@@ -1,6 +1,6 @@
 import app.iserv_prober as prober_mod
 from app.iserv_prober import IServProber
-from app.iserv.errors import LoginError, TwoFactorError
+from app.iserv.errors import LoginError, TwoFactorError, TwoFactorSetupRequired
 
 VALID_SECRET = "JBSWY3DPEHPK3PXP"
 
@@ -118,3 +118,48 @@ def test_confirm_2fa_omits_the_uuid_when_no_new_row_can_be_identified(monkeypatc
     prober.begin_2fa("https://x", "u", "p", "123456")
     result = prober.confirm_2fa("https://x", "u", "p", "123456")
     assert result == {"status": "ok", "secret": VALID_SECRET}
+
+
+def test_a_code_while_iserv_still_forces_the_setup_is_not_a_wrong_password(monkeypatch):
+    patch(monkeypatch, [StubClient(login_exc=TwoFactorSetupRequired("setup"))])
+    assert IServProber().begin_2fa("https://x", "u", "p", "123456") == {"status": "twofactor_required_setup"}
+
+
+def test_a_stored_secret_check_names_the_forced_setup(monkeypatch):
+    patch(monkeypatch, [StubClient(login_exc=TwoFactorSetupRequired("setup"))])
+    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "twofactor_required_setup"
+
+
+def test_a_stored_secret_check_keeps_the_reason_iserv_named(monkeypatch):
+    for reason in ("locked", "unknown_account", "default_password_blocked", "bad_credentials"):
+        patch(monkeypatch, [StubClient(login_exc=LoginError("refused", reason=reason))])
+        assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == reason
+
+
+def test_a_stored_secret_check_without_a_session_is_unknown_and_not_a_wrong_code(monkeypatch):
+    never_opened = TwoFactorError("no session", detail={"login_stage": "session"})
+    patch(monkeypatch, [StubClient(login_exc=never_opened)])
+    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
+    refused = TwoFactorError("code", detail={"login_stage": "two_factor"})
+    patch(monkeypatch, [StubClient(login_exc=refused)])
+    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
+
+
+def test_a_stored_secret_check_that_opens_no_session_after_the_code_is_unknown_like_the_running_connection(monkeypatch):
+    after_the_code = TwoFactorError(
+        "no session", message_key="api.login.session", detail={"login_stage": "two_factor"}
+    )
+    patch(monkeypatch, [StubClient(login_exc=after_the_code)])
+    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
+    refused = TwoFactorError("code", message_key="api.login.twofactor", detail={"login_stage": "two_factor"})
+    patch(monkeypatch, [StubClient(login_exc=refused)])
+    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
+
+
+def test_starting_the_setup_without_a_session_is_unknown_and_not_a_wrong_code(monkeypatch):
+    for detail, key in (({"login_stage": "session"}, ""), ({"login_stage": "two_factor"}, "api.login.session")):
+        patch(monkeypatch, [StubClient(login_exc=TwoFactorError("no session", message_key=key, detail=detail))])
+        assert IServProber().begin_2fa("https://x", "u", "p", "123456") == {"status": "unknown"}, detail
+    refused = TwoFactorError("code", message_key="api.login.twofactor", detail={"login_stage": "two_factor"})
+    patch(monkeypatch, [StubClient(login_exc=refused)])
+    assert IServProber().begin_2fa("https://x", "u", "p", "123456") == {"status": "bad_code"}

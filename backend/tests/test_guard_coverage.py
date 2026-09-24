@@ -94,6 +94,34 @@ def test_a_file_planted_next_to_the_others_would_be_seen(tmp_path, monkeypatch):
     assert set(sources_guard.stylesheet_names()) == {"fresh.css"}
 
 
+def test_a_module_planted_in_a_nested_folder_is_seen_and_scanned(tmp_path, monkeypatch):
+    import tests.frontend_sources as sources_guard
+    import tests.test_frontend_direction as direction_guard
+
+    frontend = tmp_path / "frontend"
+    nested = frontend / "lib" / "deep"
+    nested.mkdir(parents=True)
+    (nested / "fresh.js").write_text(
+        "export function fresh(letter) {\n"
+        "  try { x(); } catch (error) {}\n"
+        '  return el("div", { class: "row-title" }, letter.title);\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    (frontend / "lib" / "fresh.css").write_text(".a { color: red; }\n", encoding="utf-8")
+    for exempt in ("tests", "vendor"):
+        (frontend / exempt / "lib").mkdir(parents=True)
+        (frontend / exempt / "lib" / "skipped.js").write_text("const a = 1;\n", encoding="utf-8")
+    monkeypatch.setattr(sources_guard, "ROOT", tmp_path)
+    monkeypatch.setattr(sources_guard, "FRONTEND", frontend)
+    monkeypatch.setattr(error_guard, "FRONTEND", frontend)
+    monkeypatch.setattr(direction_guard, "FRONTEND", frontend)
+    assert set(sources_guard.script_names()) == {"lib/deep/fresh.js"}
+    assert set(sources_guard.stylesheet_names()) == {"lib/fresh.css"}
+    assert error_guard.scan() == {("lib/deep/fresh.js", "fresh"): [2]}
+    assert direction_guard.scan() == {("lib/deep/fresh.js", "fresh", "letter.title"): 1}
+
+
 def test_the_two_exemptions_are_named_and_reasoned_in_code_not_in_a_comment():
     assert VENDOR_EXEMPT_PATHS == ("frontend/vendor",)
     assert TEST_TREE_PATHS == ("frontend/tests",)

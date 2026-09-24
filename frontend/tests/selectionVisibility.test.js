@@ -34,13 +34,13 @@ function overviewWithMark(window) {
       FixedDate.prototype = RealDate.prototype;
       Date = FixedDate;
       state.childId = "c1";
-      state.children = [{ child_id: "c1", name: "Kind" }];
+      state.children = [{ key: "c1", name: "Kind" }];
       state.weekOffset = 0;
       state.timetable = week;
       state.config = { period_times: week.period_times };
       state.marks = { data: { marks: [
-        { id: "m1", child_id: "c1", date: "2026-09-02", period: 2, kind: "exam", label: "" },
-        { id: "m2", child_id: "c1", date: "2026-09-02", period: 3, kind: "exam", label: "" }
+        { id: "m1", child_key: "c1", date: "2026-09-02", period: 2, kind: "exam", label: "" },
+        { id: "m2", child_key: "c1", date: "2026-09-02", period: 3, kind: "exam", label: "" }
       ] } };
       const result = overviewToday();
       Date = RealDate;

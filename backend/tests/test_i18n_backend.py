@@ -20,6 +20,8 @@ GERMAN_HAYSTACK_MODULES = {
     "conferences.py": "matches IServ's own German pages, never shown to the user",
     "holidays.py": "region names and transliteration for the public holiday feeds",
     "sick_note_pdf.py": "the sick note is a German letter handed in at a German school",
+    "module_catalogue.py": "official IServ module names from doku.iserv.de; the UI names them through i18n keys",
+    "vocabulary.py": "IServ page labels the diagnostic report may keep; matched against page text, never shown as UI text",
 }
 
 TRANSLITERATION_LITERALS = {'"ä"', '"ö"', '"ü"', '"ß"', "'ä'", "'ö'", "'ü'", "'ß'"}
@@ -28,6 +30,7 @@ GERMAN_HAYSTACK_LITERALS = {
     ("client.py", '"Anmeldung fehlgeschlagen"'): "marker text on IServ's own login page",
     ("iserv_prober.py", '"Anmeldung fehlgeschlagen"'): "marker text on IServ's own login page",
     ("timetable.py", '"ausfall"'): "IServ change-kind token in the timetable JSON",
+    ("diagnostics.py", '"schule"'): "host name suffix of German school domains, redacted from the report, never shown",
 }
 
 GERMAN_TEXT_DEBT = {}

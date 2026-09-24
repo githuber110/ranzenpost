@@ -15,7 +15,7 @@ const FROZEN_DIGEST = "2fb1591565d7bee34fdea16b8ef54361b2bdc67e61a1e1a5e1598f227
 
 const SUBSCRIPTION = {
   id: "sub-1",
-  child_id: "c1",
+  child_key: "c1",
   label: "3b",
   components: ["timetable", "school_holidays"],
   color: "#135859",
@@ -27,7 +27,7 @@ function payloadFor(region, subscriptions, host = {}) {
   return {
     subscriptions,
     components: ["timetable", "school_holidays", "public_holidays"],
-    holiday_region: region,
+    holiday_regions: { s1: region },
     path_template: "/calendar/{token}.ics",
     port: 8100,
     host: "ha.example",
@@ -43,7 +43,7 @@ function setup({ region = "DE-NI", subscriptions = [], responses = {}, host = {}
   const { window } = loadApp();
   const calls = [];
   window.eval("render = function () { window.__renders = (window.__renders || 0) + 1; };");
-  window.eval('state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
+  window.eval('state.children = [{ key: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
   window.eval('state.view = "timetable";');
   window.eval(`state.calendar = { data: ${JSON.stringify(payloadFor(region, subscriptions, host))}, error: false };`);
   window.fetch = (url, options) => {
@@ -83,8 +83,8 @@ describe("creating a calendar subscription", () => {
     expect(writes[0].url).toMatch(/api\/calendar\/subscriptions$/);
     expect(writes[0].options.method).toBe("POST");
     expect(JSON.parse(writes[0].options.body)).toEqual({
-      child_id: "c1",
-      components: ["timetable"],
+      child_key: "c1",
+      components: ["timetable", "own_entries"],
       label: "3b",
       color: "#135859",
     });
@@ -135,7 +135,7 @@ describe("the at-least-one rule is explained before anything is sent", () => {
     box.dispatchEvent(new window.Event("change", { bubbles: true }));
 
     expect(window.eval("window.__renders")).toBe(0);
-    expect(window.eval("state.calendarDraft.components")).toEqual(["timetable", "public_holidays"]);
+    expect(window.eval("state.calendarDraft.components")).toEqual(["timetable", "public_holidays", "own_entries"]);
     expect(buttonWithText(form, base["calendar.subscribe.create"]).hasAttribute("disabled")).toBe(false);
   });
 
@@ -164,7 +164,7 @@ describe("the at-least-one rule is explained before anything is sent", () => {
     expect(boxes[1].disabled).toBe(false);
     expect(form.textContent).toContain(base["calendar.subscribe.region.locked"]);
     expect(buttonWithText(form, base["calendar.subscribe.region.open"])).not.toBeNull();
-    expect(window.eval("state.calendarDraft.components")).toEqual(["school_holidays"]);
+    expect(window.eval("state.calendarDraft.components")).toEqual(["school_holidays", "own_entries"]);
   });
 });
 
@@ -173,7 +173,7 @@ describe("the calendar is named after Ranzenpost and the child's first name", ()
 
   function block(window, label) {
     const nodes = window.eval(`(function (s, c) { return calendarSubscriptionBlock(s, c); })`)(
-      { id: "s1", child_id: "c1", label, components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" },
+      { id: "s1", child_key: "c1", label, components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" },
       window.eval("state.children[0]")
     );
     const holder = window.document.createElement("div");
@@ -220,7 +220,7 @@ describe("the calendar is named after Ranzenpost and the child's first name", ()
   });
 
   test("editing keeps the default name as placeholder", () => {
-    const { window, calls } = setup({ subscriptions: [{ id: "s1", child_id: "c1", label: "", components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" }] });
+    const { window, calls } = setup({ subscriptions: [{ id: "s1", child_key: "c1", label: "", components: ["timetable"], color: "", token: "t", path: "/calendar/t.ics" }] });
     window.eval("state.calendarDraft = calendarEditDraft(state.calendar.data.subscriptions[0], state.children[0]);");
 
     const form = window.eval("calendarForm(state.calendarDraft)");
@@ -278,7 +278,7 @@ describe("the subscription address is built from the host of this device", () =>
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "ha.example", port_open: true } });
     window.eval(qrJs);
     window.eval("window.__handoff = null; handOffCalendarUrl = (url) => { window.__handoff = url; };");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(sheetNode.querySelector(".cal-url").textContent).toBe("http://ha.example:8100/calendar/token-1.ics");
     const addButton = buttonWithText(sheetNode, base["calendar.subscribe.add"]);
@@ -293,7 +293,7 @@ describe("the subscription address is built from the host of this device", () =>
 
   test("without a usable host the address is withheld", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "", port_open: true } });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(sheetNode.querySelector(".cal-url")).toBeNull();
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.host.missing"]);
@@ -304,7 +304,7 @@ describe("the subscription address is built from the host of this device", () =>
 describe("the port notice reflects the backend's supervisor state", () => {
   test("an open port shows no notice at all", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: true, supervisor: true } });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(sheetNode.querySelector(".cal-port")).toBeNull();
     expect(sheetNode.textContent).not.toContain(base["calendar.subscribe.port.closed"]);
@@ -313,7 +313,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
 
   test("a closed port on a supervisor install offers the open-port button", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.port.closed"]);
     const openButton = buttonWithText(sheetNode, base["calendar.subscribe.port.open"]);
@@ -323,7 +323,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
 
   test("a closed port without supervisor access shows the manual hint instead", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: false } });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     const manualHint = window.eval('t("calendar.subscribe.port.manual", { port: "8100" })');
     expect(sheetNode.textContent).toContain(manualHint);
@@ -333,7 +333,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
   test("after opening the port the restart button replaces the notice and warns honestly", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
     window.eval("state.calendarPortRestart = true;");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     const button = sheetNode.querySelector(".cal-restart-go");
     expect(button).toBeTruthy();
@@ -345,11 +345,11 @@ describe("the port notice reflects the backend's supervisor state", () => {
 
   test("without a required restart there is no restart button at all", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: true, supervisor: true } });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
     expect(sheetNode.querySelector(".cal-restart-go")).toBeNull();
 
     const closed = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
-    const closedNode = closed.window.eval("calendarSheet()");
+    const closedNode = closed.window.eval("calendarPageView()");
     expect(closedNode.querySelector(".cal-restart-go")).toBeNull();
     expect(closedNode.querySelector(".cal-port-open")).toBeTruthy();
   });
@@ -359,7 +359,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
       subscriptions: [SUBSCRIPTION],
       host: { port_open: true, supervisor: true, restart_pending: true },
     });
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(window.eval("state.calendarPortRestart")).toBe(false);
     expect(sheetNode.querySelector(".cal-restart-go")).toBeTruthy();
@@ -378,7 +378,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
     });
     window.eval("state.calendarPortRestart = true;");
     window.eval("window.location.reload = function () { window.__reloaded = true; };");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
     window.document.body.append(sheetNode);
 
     sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -402,7 +402,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
     });
     window.eval("state.calendarPortRestart = true;");
     window.eval("window.location.reload = function () { window.__reloaded = true; };");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
     window.document.body.append(sheetNode);
 
     sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -427,7 +427,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
     });
     window.eval("state.calendarPortRestart = true;");
     window.eval("window.location.reload = function () { window.__reloaded = true; };");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
     window.document.body.append(sheetNode);
 
     expect(calls.filter((call) => call.url.includes("api/calendar/restart"))).toEqual([]);
@@ -445,7 +445,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
   test("while restarting the sheet says so instead of offering the button again", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { port_open: false, supervisor: true } });
     window.eval("state.calendarPortRestart = true; state.calendarRestarting = true;");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
 
     expect(sheetNode.querySelector(".cal-restart-go")).toBeNull();
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.restart.running"]);
@@ -465,7 +465,7 @@ describe("the port notice reflects the backend's supervisor state", () => {
       },
     });
     window.eval("state.calendarPortRestart = true;");
-    const sheetNode = window.eval("calendarSheet()");
+    const sheetNode = window.eval("calendarPageView()");
     window.document.body.append(sheetNode);
 
     sheetNode.querySelector(".cal-restart-go").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -476,21 +476,25 @@ describe("the port notice reflects the backend's supervisor state", () => {
     expect(window.eval("state.toast && state.toast.kind")).toBe("bad");
   });
 
-  test("after the reload the subscription sheet comes back instead of stranding the user", () => {
+  test("after the reload the subscription page comes back instead of stranding the user", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION] });
     window.eval('writeStoredText("calendarResumeSheet", "1");');
-    window.eval("state.sheet = null; resumeCalendarSheet();");
+    window.eval("state.sheet = null; resumeCalendarPage();");
 
-    expect(window.eval("state.sheet === calendarSheet")).toBe(true);
+    expect(window.eval("state.view")).toBe("settings");
+    expect(window.eval("state.settingsPage")).toBe("calendar");
+    expect(window.eval("state.sheet")).toBe(null);
     expect(window.eval('readStoredText("calendarResumeSheet")')).toBe("");
   });
 
-  test("a normal start does not reopen the sheet", () => {
+  test("a normal start does not reopen the page", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION] });
     window.eval('writeStoredText("calendarResumeSheet", "");');
-    window.eval("state.sheet = null; resumeCalendarSheet();");
+    window.eval("state.sheet = null; resumeCalendarPage();");
 
     expect(window.eval("state.sheet")).toBe(null);
+    expect(window.eval("state.settingsPage")).toBe(null);
+    expect(window.eval("state.view")).toBe("timetable");
   });
 });
 

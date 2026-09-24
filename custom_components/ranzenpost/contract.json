@@ -1,0 +1,1093 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/githuber110/ranzenpost/custom_components/ranzenpost/contract.json",
+  "title": "Ranzenpost integration API",
+  "description": "Every GET route under /api/integration answers JSON in one of the shapes below. All routes need the header Authorization: Bearer <token>; 401 without or with a wrong token, 403 when called through the ingress proxy, 429 after ten failed attempts a minute from one source. Times are ISO 8601 with the Europe/Berlin offset, all-day dates are YYYY-MM-DD with an exclusive end. Every school of the add-on appears in /info with its own id; a child is addressed by its key, a school by its id.",
+  "routes": {
+    "/api/integration/info": {
+      "$ref": "#/$defs/info"
+    },
+    "/api/integration/state": {
+      "$ref": "#/$defs/state",
+      "query": [
+        "child"
+      ]
+    },
+    "/api/integration/events": {
+      "$ref": "#/$defs/events",
+      "query": [
+        "child",
+        "kind",
+        "start",
+        "end",
+        "school",
+        "purpose"
+      ]
+    },
+    "/api/integration/school": {
+      "$ref": "#/$defs/school",
+      "query": [
+        "id"
+      ]
+    },
+    "/api/integration/changes": {
+      "$ref": "#/$defs/changes"
+    }
+  },
+  "errors": {
+    "$ref": "#/$defs/error"
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "datetime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+0[12]:00$"
+    },
+    "dateOrDatetime": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/date"
+        },
+        {
+          "$ref": "#/$defs/datetime"
+        }
+      ]
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^(#[0-9a-fA-F]{6})?$"
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "error",
+        "message_key",
+        "message"
+      ],
+      "properties": {
+        "error": {
+          "type": "string",
+          "enum": [
+            "unauthorized",
+            "forbidden",
+            "rate_limited",
+            "unknown_child",
+            "unknown_school",
+            "bad_kind",
+            "bad_range",
+            "bad_purpose"
+          ]
+        },
+        "message_key": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "message_vars": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schoolId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "The id of a school connection inside the add-on. It is created once and never changes."
+    },
+    "childKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}:.+$",
+      "description": "The school id, a colon and the id of the child inside that school."
+    },
+    "child": {
+      "type": "object",
+      "required": [
+        "key",
+        "name",
+        "class_name"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/childKey"
+        },
+        "name": {
+          "type": "string"
+        },
+        "class_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schoolInfo": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "url_host",
+        "modules",
+        "disabled",
+        "status",
+        "children",
+        "last_poll",
+        "last_success",
+        "own_entries"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/schoolId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url_host": {
+          "type": "string"
+        },
+        "modules": {
+          "$ref": "#/$defs/modules"
+        },
+        "disabled": {
+          "$ref": "#/$defs/modulesDisabled"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error",
+            "unconfigured",
+            "unreachable",
+            "auth_failed"
+          ]
+        },
+        "status_reason": {
+          "type": "string",
+          "enum": [
+            "",
+            "bad_credentials",
+            "unknown_account",
+            "default_password_blocked",
+            "twofactor_required_setup",
+            "locked",
+            "code_step_failed"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/child"
+          }
+        },
+        "last_poll": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_success": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "own_entries": {
+          "type": "boolean",
+          "description": "Whether the school's own entries go to a Home Assistant calendar. Only then /events answers kind=own_entries with purpose=calendar and the integration creates an own-entries calendar per child. The card asks with purpose=card and gets clubs and appointments either way. Breaks never leave the app."
+        }
+      },
+      "additionalProperties": false
+    },
+    "info": {
+      "type": "object",
+      "required": [
+        "version",
+        "schools",
+        "language",
+        "timezone",
+        "feed_port_open",
+        "last_poll",
+        "ingress_path"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "schools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/schoolInfo"
+          }
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "de",
+            "en",
+            "ar",
+            "tr",
+            "ru",
+            "uk"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "const": "Europe/Berlin"
+        },
+        "feed_port_open": {
+          "type": "boolean"
+        },
+        "last_poll": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ingress_path": {
+          "type": "string",
+          "description": "The Home Assistant panel path that opens the app, for example /hassio/ingress/<slug>. Empty when the add-on runs without the Supervisor."
+        }
+      },
+      "additionalProperties": false
+    },
+    "modules": {
+      "type": "object",
+      "description": "Which IServ modules the connected account offers. A missing module is a state, not an error: its entities are not created and its counts stay empty.",
+      "required": [
+        "timetable",
+        "letters",
+        "pinboard",
+        "absences",
+        "conferences",
+        "messenger"
+      ],
+      "properties": {
+        "timetable": {
+          "type": "boolean"
+        },
+        "letters": {
+          "type": "boolean"
+        },
+        "pinboard": {
+          "type": "boolean"
+        },
+        "absences": {
+          "type": "boolean"
+        },
+        "conferences": {
+          "type": "boolean"
+        },
+        "messenger": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modulesDisabled": {
+      "type": "object",
+      "description": "Which IServ modules the user switched off in the app. A disabled module gets no entities and no card blocks, whatever its availability says.",
+      "required": [
+        "timetable",
+        "letters",
+        "pinboard",
+        "absences",
+        "conferences",
+        "messenger"
+      ],
+      "properties": {
+        "timetable": {
+          "type": "boolean"
+        },
+        "letters": {
+          "type": "boolean"
+        },
+        "pinboard": {
+          "type": "boolean"
+        },
+        "absences": {
+          "type": "boolean"
+        },
+        "conferences": {
+          "type": "boolean"
+        },
+        "messenger": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "lesson": {
+      "type": "object",
+      "required": [
+        "date",
+        "weekday",
+        "period",
+        "subject",
+        "subject_code",
+        "teacher",
+        "room",
+        "start",
+        "end",
+        "substitution",
+        "cancelled",
+        "kind",
+        "before",
+        "after",
+        "note",
+        "minutes_until",
+        "minutes_left"
+      ],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "weekday": {
+          "$ref": "#/$defs/weekday"
+        },
+        "period": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "subject": {
+          "type": "string"
+        },
+        "subject_code": {
+          "type": "string"
+        },
+        "teacher": {
+          "type": "string",
+          "description": "The surname of the teacher when IServ names it, otherwise the label or code."
+        },
+        "room": {
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/$defs/datetime"
+        },
+        "end": {
+          "$ref": "#/$defs/datetime"
+        },
+        "substitution": {
+          "type": "boolean"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/changeKind"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ],
+          "description": "The kind of change, empty for a regular lesson."
+        },
+        "before": {
+          "$ref": "#/$defs/changedFields"
+        },
+        "after": {
+          "$ref": "#/$defs/changedFields"
+        },
+        "note": {
+          "type": "string"
+        },
+        "minutes_until": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minutes until the lesson starts, 0 once it has started."
+        },
+        "minutes_left": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minutes until the lesson ends, 0 once it is over."
+        }
+      },
+      "additionalProperties": false
+    },
+    "lessonOrNull": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/lesson"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "absence": {
+      "type": "object",
+      "required": [
+        "kind",
+        "summary",
+        "start",
+        "end",
+        "status",
+        "days_until"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "days_until": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": [
+        "now_lesson",
+        "next_lesson",
+        "school_end_today",
+        "next_school_day",
+        "changes_today",
+        "unread_letters",
+        "unread_posts",
+        "open_absences",
+        "next_absence",
+        "next_exam",
+        "exams_upcoming",
+        "school_day_today",
+        "timetable_changed_today",
+        "timetable_last_updated",
+        "timetable_last_updated_source"
+      ],
+      "properties": {
+        "now_lesson": {
+          "$ref": "#/$defs/lessonOrNull"
+        },
+        "next_lesson": {
+          "$ref": "#/$defs/lessonOrNull"
+        },
+        "school_end_today": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_school_day": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/schoolDay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changes_today": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lesson"
+          }
+        },
+        "unread_letters": {
+          "$ref": "#/$defs/notices"
+        },
+        "unread_posts": {
+          "$ref": "#/$defs/notices"
+        },
+        "open_absences": {
+          "type": "object",
+          "required": [
+            "count",
+            "items"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/absence"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "next_absence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/absence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_exam": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/exam"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exams_upcoming": {
+          "type": "object",
+          "required": [
+            "count",
+            "items",
+            "days"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/exam"
+              }
+            },
+            "days": {
+              "type": "integer",
+              "const": 30
+            }
+          },
+          "additionalProperties": false
+        },
+        "school_day_today": {
+          "type": "boolean"
+        },
+        "timetable_changed_today": {
+          "type": "boolean"
+        },
+        "timetable_last_updated": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timetable_last_updated_source": {
+          "type": "string",
+          "enum": [
+            "iserv",
+            "app",
+            ""
+          ],
+          "description": "Where the stamp comes from: IServ's own timetable stamp, the app's last successful fetch, or nothing."
+        }
+      },
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "uid",
+        "summary",
+        "description",
+        "location",
+        "start",
+        "end",
+        "all_day",
+        "cancelled",
+        "color",
+        "subject_code",
+        "subject",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/$defs/dateOrDatetime"
+        },
+        "end": {
+          "$ref": "#/$defs/dateOrDatetime"
+        },
+        "all_day": {
+          "type": "boolean"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "subject_code": {
+          "type": "string",
+          "description": "The short code of the subject for lessons and exams, empty otherwise."
+        },
+        "subject": {
+          "type": "string",
+          "description": "The display name of the subject as the app shows it, empty when the event has none."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the mark for exams, empty otherwise."
+        },
+        "kind": {
+          "type": "string",
+          "description": "The kind of absence for absences, own_entries for clubs and appointments, empty otherwise."
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "all_day": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "start": {
+            "$ref": "#/$defs/date"
+          },
+          "end": {
+            "$ref": "#/$defs/date"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "start": {
+            "$ref": "#/$defs/datetime"
+          },
+          "end": {
+            "$ref": "#/$defs/datetime"
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "eventKind": {
+      "type": "string",
+      "enum": [
+        "lessons",
+        "exams",
+        "absences",
+        "holidays",
+        "own_entries"
+      ]
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "calendar",
+        "card"
+      ],
+      "description": "Why /events is asked, calendar when left out. It only matters for kind=own_entries: calendar answers an empty list while the school's own_entries switch is off, card always answers the child's clubs and appointments for the dashboard card. Either way only the child's own school is read, an unknown child answers 404 and breaks never leave the app. Any other value answers 400 bad_purpose."
+    },
+    "school": {
+      "type": "object",
+      "required": [
+        "next_holiday",
+        "next_conference",
+        "region"
+      ],
+      "properties": {
+        "next_holiday": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "name",
+                "start",
+                "end",
+                "days_until"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "start": {
+                  "$ref": "#/$defs/date"
+                },
+                "end": {
+                  "$ref": "#/$defs/date"
+                },
+                "days_until": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "0 while the holiday is running."
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_conference": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "date",
+                "title",
+                "details",
+                "days_until"
+              ],
+              "properties": {
+                "date": {
+                  "$ref": "#/$defs/date"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Every cell of the conference row except the date, in the order IServ shows them."
+                },
+                "days_until": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "region": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "change": {
+      "type": "object",
+      "required": [
+        "child_key",
+        "school_id",
+        "at",
+        "kind",
+        "summary",
+        "date",
+        "period",
+        "new"
+      ],
+      "properties": {
+        "child_key": {
+          "$ref": "#/$defs/childKey"
+        },
+        "school_id": {
+          "$ref": "#/$defs/schoolId"
+        },
+        "at": {
+          "$ref": "#/$defs/datetime"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "substitution",
+            "cancellation",
+            "room_change",
+            "new_lesson"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "period": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "new": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "changes": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/change"
+      }
+    },
+    "weekday": {
+      "type": "string",
+      "enum": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ]
+    },
+    "changeKind": {
+      "type": "string",
+      "enum": [
+        "substitution",
+        "cancellation",
+        "room_change",
+        "new_lesson"
+      ]
+    },
+    "changedFields": {
+      "type": "object",
+      "description": "The changed fields of a lesson with their value before or after the change, empty when nothing changed.",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "room": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "notice": {
+      "type": "object",
+      "required": [
+        "title",
+        "sender",
+        "date",
+        "child"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "sender": {
+          "type": "string"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "child": {
+          "type": "string",
+          "description": "The first name of the child the letter is addressed to, empty for a post."
+        }
+      },
+      "additionalProperties": false
+    },
+    "notices": {
+      "type": "object",
+      "required": [
+        "count",
+        "items"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/notice"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "schoolDay": {
+      "type": "object",
+      "required": [
+        "date",
+        "weekday",
+        "days_until",
+        "start",
+        "end",
+        "lessons",
+        "first_lesson"
+      ],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "weekday": {
+          "$ref": "#/$defs/weekday"
+        },
+        "days_until": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start": {
+          "$ref": "#/$defs/datetime"
+        },
+        "end": {
+          "$ref": "#/$defs/datetime"
+        },
+        "lessons": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "first_lesson": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "exam": {
+      "type": "object",
+      "required": [
+        "date",
+        "weekday",
+        "days_until",
+        "period",
+        "subject",
+        "subject_code",
+        "name",
+        "start",
+        "end",
+        "teacher",
+        "room"
+      ],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "weekday": {
+          "$ref": "#/$defs/weekday"
+        },
+        "days_until": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "period": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "subject": {
+          "type": "string"
+        },
+        "subject_code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name given to the mark in the app, empty when it has none."
+        },
+        "start": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/datetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "teacher": {
+          "type": "string"
+        },
+        "room": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ranzenpost README hero</title>
+<style>
+  :root {
+    --canvas: #e4eae8;
+    --glow-one: rgba(23, 140, 147, 0.30);
+    --glow-two: rgba(224, 164, 92, 0.22);
+    --dots: rgba(14, 107, 112, 0.10);
+    --bezel: #101816;
+    --bezel-edge: #2c3735;
+    --shadow: 0 40px 80px -24px rgba(8, 54, 61, 0.45), 0 12px 28px -12px rgba(8, 54, 61, 0.35);
+    --panel: rgba(255, 255, 255, 0.55);
+    --panel-edge: rgba(14, 107, 112, 0.14);
+  }
+  :root[data-theme="dark"] {
+    --canvas: #0b1412;
+    --glow-one: rgba(62, 189, 186, 0.22);
+    --glow-two: rgba(224, 164, 92, 0.10);
+    --dots: rgba(127, 233, 224, 0.07);
+    --bezel: #040807;
+    --bezel-edge: #34423f;
+    --shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.8), 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+    --panel: rgba(255, 255, 255, 0.035);
+    --panel-edge: rgba(127, 233, 224, 0.12);
+  }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  .stage {
+    position: relative;
+    inline-size: 1200px;
+    block-size: 700px;
+    overflow: hidden;
+    border-radius: 36px;
+    background:
+      radial-gradient(620px 460px at 14% 8%, var(--glow-one), transparent 70%),
+      radial-gradient(520px 420px at 92% 96%, var(--glow-two), transparent 70%),
+      radial-gradient(circle at 1px 1px, var(--dots) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      var(--canvas);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 72px;
+  }
+  .phone {
+    flex: none;
+    padding: 12px;
+    border-radius: 54px;
+    background: var(--bezel);
+    box-shadow: inset 0 0 0 2px var(--bezel-edge), var(--shadow);
+  }
+  .phone img {
+    display: block;
+    block-size: 590px;
+    inline-size: auto;
+    border-radius: 42px;
+  }
+  .panel {
+    flex: none;
+    padding: 22px;
+    border-radius: 34px;
+    background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--panel-edge), var(--shadow);
+    backdrop-filter: blur(8px);
+  }
+  .panel img {
+    display: block;
+    inline-size: 520px;
+    block-size: auto;
+    border-radius: 18px;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone"><img id="phone" alt=""></div>
+  <div class="panel"><img id="card" alt=""></div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const dark = params.get("theme") === "dark";
+  if (dark) document.documentElement.dataset.theme = "dark";
+  const suffix = dark ? "-dark" : "";
+  const images = [
+    [document.getElementById("phone"), `/data-screenshots/hero-phone${suffix}.png`],
+    [document.getElementById("card"), `/data-screenshots/hero-card${suffix}.png`],
+  ];
+  Promise.all(
+    images.map(([node, source]) => new Promise((resolve, reject) => {
+      node.onload = resolve;
+      node.onerror = () => reject(new Error(`missing ${source}`));
+      node.src = source;
+    }))
+  ).then(
+    () => document.body.setAttribute("data-ready", "true"),
+    (error) => document.body.setAttribute("data-error", error.message)
+  );
+</script>
+</body>
+</html>

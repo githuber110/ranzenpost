@@ -22,9 +22,10 @@ def load(name):
 
 
 class FakeResponse:
-    def __init__(self, data, status_code=200):
+    def __init__(self, data, status_code=200, headers=None):
         self._data = data
         self.status_code = status_code
+        self.headers = headers or {}
 
     def json(self):
         return self._data
@@ -271,3 +272,37 @@ def test_leave_request_repeats_the_literal_file_bracket_part_name():
     names = [name for name, _ in session.calls[1]["files"]]
     assert names.count("file[]") == 2
     assert "file[0]" not in names and "file[1]" not in names
+
+
+def test_a_429_on_a_single_dsa_fetch_backs_off_instead_of_returning_an_empty_list():
+    import pytest
+    from app.iserv.errors import OutageError
+
+    class RateLimitedSession(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            if "sickNotes/" in url:
+                return FakeResponse(None, status_code=429, headers={"Retry-After": "120"})
+            return super().get(url, params=params, timeout=timeout)
+
+    client = DieSchulAppClient(BASE, RateLimitedSession())
+    with pytest.raises(OutageError) as excinfo:
+        client.sick_notes()
+    assert excinfo.value.reason == "rate_limited"
+    assert excinfo.value.retry_after == 120
+
+
+def test_a_429_without_retry_after_on_a_single_dsa_fetch_still_backs_off():
+    import pytest
+    from app.iserv.errors import OutageError
+
+    class RateLimitedSession(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            if "sickNotes/" in url:
+                return FakeResponse(None, status_code=429)
+            return super().get(url, params=params, timeout=timeout)
+
+    client = DieSchulAppClient(BASE, RateLimitedSession())
+    with pytest.raises(OutageError) as excinfo:
+        client.sick_notes()
+    assert excinfo.value.reason == "rate_limited"
+    assert excinfo.value.retry_after is None

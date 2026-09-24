@@ -1,0 +1,32 @@
+[
+  {
+    "child_key": "a1b2c3d4:child-1",
+    "school_id": "a1b2c3d4",
+    "at": "2026-09-02T07:30:00+02:00",
+    "kind": "substitution",
+    "summary": "English with Mr Stand-in instead of Mrs Example",
+    "date": "2026-09-02",
+    "period": 2,
+    "new": true
+  },
+  {
+    "child_key": "a1b2c3d4:child-2",
+    "school_id": "a1b2c3d4",
+    "at": "2026-09-02T07:30:00+02:00",
+    "kind": "room_change",
+    "summary": "Physics moves to R505",
+    "date": "2026-09-02",
+    "period": 3,
+    "new": true
+  },
+  {
+    "child_key": "a1b2c3d4:child-1",
+    "school_id": "a1b2c3d4",
+    "at": "2026-09-01T07:30:00+02:00",
+    "kind": "cancellation",
+    "summary": "Art is cancelled",
+    "date": "2026-09-02",
+    "period": 4,
+    "new": false
+  }
+]

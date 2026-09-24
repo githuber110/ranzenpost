@@ -259,7 +259,7 @@ describe("the anchor follows the content, never a page number", () => {
 
 describe("the now anchor and what survives a rerender", () => {
   const SEED = `
-    state.children = [{ child_id: "c1", name: "Alice" }];
+    state.children = [{ key: "c1", name: "Alice" }];
     state.childId = "c1";
     state.weekOffset = 0;
     state.me = { forename: "Alice" };
@@ -328,10 +328,18 @@ describe("the now anchor and what survives a rerender", () => {
   test("without measured heights the overview refuses to snap and stays a plain scroll list", () => {
     const { window } = loadApp();
     const snap = window.eval(`
-      (function () {
+      (function (fixedIso) {
         ${SEED}
+        window.__realDate = Date;
+        function FixedDate(...args) {
+          if (args.length === 0) return new window.__realDate(fixedIso);
+          return new window.__realDate(...args);
+        }
+        FixedDate.prototype = window.__realDate.prototype;
+        Date = FixedDate;
         state.view = "overview";
         render();
+        Date = window.__realDate;
         const screen = document.querySelector(".screen");
         return {
           screen: screen.getAttribute("data-snap"),
@@ -339,7 +347,7 @@ describe("the now anchor and what survives a rerender", () => {
           arrows: screen.querySelectorAll(".panel-arrow-btn").length,
           counters: screen.querySelectorAll(".panel-counter").length,
         };
-      })()
+      })("2026-09-01T09:00:00")
     `);
     expect(snap.screen).toBeNull();
     expect(snap.overview).toBe("off");
