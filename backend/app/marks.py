@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from . import holidays
+from .store import config_for_child
 from .subscriptions import known_child, label_carries_child_name
 
 WINDOW_WEEKS = 8
@@ -107,7 +108,7 @@ def normalize_name(value, config):
 
 def slot_of(entry):
     return (
-        str(entry.get("child_id") or ""),
+        str(entry.get("child_key") or ""),
         str(entry.get("date") or ""),
         int(entry.get("period") or 0),
     )
@@ -116,7 +117,7 @@ def slot_of(entry):
 def public_view(entry, state=STATE_UNKNOWN):
     return {
         "id": entry.get("id", ""),
-        "child_id": entry.get("child_id", ""),
+        "child_key": entry.get("child_key", ""),
         "date": entry.get("date", ""),
         "period": int(entry.get("period") or 0),
         "subject_code": entry.get("subject_code", ""),
@@ -195,7 +196,7 @@ def resolve_state(entry, week, now_epoch):
 
 
 def state_for(snapshot, entry, now_epoch):
-    child = ((snapshot or {}).get("children") or {}).get(entry.get("child_id")) or {}
+    child = ((snapshot or {}).get("children") or {}).get(entry.get("child_key")) or {}
     week = week_for(child, entry.get("date"))
     if week is None:
         return STATE_UNKNOWN
@@ -203,7 +204,7 @@ def state_for(snapshot, entry, now_epoch):
 
 
 def resolved_lesson(snapshot, entry, now_epoch):
-    child = ((snapshot or {}).get("children") or {}).get(entry.get("child_id")) or {}
+    child = ((snapshot or {}).get("children") or {}).get(entry.get("child_key")) or {}
     week = week_for(child, entry.get("date"))
     if not is_fresh(week, now_epoch):
         return None
@@ -229,7 +230,7 @@ class MarkRegistry:
     def __init__(self, store, clock=None):
         self.store = store
         self.clock = clock or time.time
-        self._lock = threading.Lock()
+        self._lock = getattr(store, "lock", None) or threading.Lock()
 
     def _read(self):
         return entries_of(self.store.load_marks())
@@ -248,26 +249,27 @@ class MarkRegistry:
             if slot_of(entry) == taken:
                 raise MarkError(ERROR_DUPLICATE)
 
-    def move_child(self, old_id, new_id):
-        if not old_id or not new_id or old_id == new_id:
+    def move_child(self, old_key, new_key):
+        if not old_key or not new_key or old_key == new_key:
             return 0
-        entries = self._read()
-        moved = 0
-        for entry in entries:
-            if entry.get("child_id") == old_id:
-                entry["child_id"] = new_id
-                moved += 1
-        if moved:
-            self._write(entries)
+        with self._lock:
+            entries = self._read()
+            moved = 0
+            for entry in entries:
+                if entry.get("child_key") == old_key:
+                    entry["child_key"] = new_key
+                    moved += 1
+            if moved:
+                self._write(entries)
         return moved
 
-    def list(self, child_id=""):
+    def list(self, child_key=""):
         start, end = window(self._today())
         snapshot = self.store.load_calendar_snapshot()
         now = int(self.clock())
         result = []
         for entry in self._read():
-            if child_id and entry.get("child_id") != child_id:
+            if child_key and entry.get("child_key") != child_key:
                 continue
             if not in_range(entry, start, end):
                 continue
@@ -275,16 +277,16 @@ class MarkRegistry:
         result.sort(key=lambda item: (item["date"], item["period"], item["id"]))
         return {"marks": result, "window": {"start": start.isoformat(), "end": end.isoformat()}}
 
-    def create(self, child_id, date_value, period, subject_code, name=""):
+    def create(self, child_key, date_value, period, subject_code, name=""):
         config = self.store.load_config()
-        if not known_child(config, child_id):
+        if not known_child(config, child_key):
             raise MarkError(ERROR_CHILD)
         stamp = int(self.clock())
         entry = {
             "id": uuid.uuid4().hex,
-            "child_id": child_id,
+            "child_key": child_key,
             "date": normalize_date(date_value, self._today()),
-            "period": normalize_period(period, config),
+            "period": normalize_period(period, config_for_child(self.store, child_key)),
             "subject_code": normalize_subject(subject_code),
             "name": normalize_name(name, config),
             "created_at": stamp,
@@ -308,7 +310,8 @@ class MarkRegistry:
                 if date_value is not None:
                     entry["date"] = normalize_date(date_value, self._today())
                 if period is not None:
-                    entry["period"] = normalize_period(period, config)
+                    scoped = config_for_child(self.store, entry.get("child_key", ""))
+                    entry["period"] = normalize_period(period, scoped)
                 if subject_code is not None:
                     entry["subject_code"] = normalize_subject(subject_code)
                 if name is not None:
@@ -331,7 +334,7 @@ class MarkRegistry:
 
     def children_with_marks(self):
         return {
-            entry.get("child_id") for entry in self._read() if entry.get("child_id")
+            entry.get("child_key") for entry in self._read() if entry.get("child_key")
         }
 
     def _state_of(self, entry):

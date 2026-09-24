@@ -462,10 +462,13 @@ class FakeService:
 
 def _api(tmp_path):
     store = Store(tmp_path / "data")
-    config = store.load_config()
-    config["holiday_region"] = "DE-NI"
-    config["children"] = [{"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}]
-    store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id="a1b2c3d4",
+        setup_complete=True,
+        holiday_region="DE-NI",
+        children=[{"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}],
+    )
     registry = SubscriptionRegistry(store)
     return TestClient(create_app(FakeService(store), registry=registry)), store
 
@@ -490,7 +493,7 @@ def test_the_subscription_listing_carries_the_resolved_host_and_the_port_state(
     assert body["port"] == FEED_PORT
     assert body["path_template"] == "/calendar/{token}.ics"
     assert body["subscriptions"] == []
-    assert body["holiday_region"] == "DE-NI"
+    assert body["holiday_regions"] == {"a1b2c3d4": "DE-NI"}
     assert body["components"]
 
 

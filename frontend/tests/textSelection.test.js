@@ -21,7 +21,7 @@ function selectNoneRuleFor(css, selector) {
   return selectors.includes(selector);
 }
 
-describe("[P141] chrome/interactive elements are not text-selectable", () => {
+describe("chrome/interactive elements are not text-selectable", () => {
   const css = readCss();
   const chromeSelectors = [
     "button",
@@ -57,7 +57,7 @@ describe("[P141] chrome/interactive elements are not text-selectable", () => {
   }
 });
 
-describe("[P141] content containers stay text-selectable", () => {
+describe("content containers stay text-selectable", () => {
   const css = readCss();
 
   function selectTextRuleFor(selector) {

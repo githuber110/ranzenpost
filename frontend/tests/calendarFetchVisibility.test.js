@@ -14,7 +14,7 @@ function seed(window, subscription) {
   `);
   return window.eval(`(function (s, c) { return calendarSubscriptionBlock(s, c); })`)(
     subscription,
-    { child_id: "c1", name: "Mia", class_name: "5A" }
+    { key: "c1", name: "Mia", class_name: "5A" }
   );
 }
 
@@ -26,7 +26,7 @@ function subscription(extra) {
   return Object.assign(
     {
       id: "s1",
-      child_id: "c1",
+      child_key: "c1",
       label: "5A",
       components: ["timetable"],
       color: "#2486ed",
@@ -41,7 +41,7 @@ function subscription(extra) {
   );
 }
 
-describe("[P255] the fetch line always carries a date", () => {
+describe("the fetch line always carries a date", () => {
   test("a link nobody has fetched says since when that is known", () => {
     const { window } = loadApp();
     const since = NOW_S - 3600;
@@ -66,7 +66,7 @@ describe("[P255] the fetch line always carries a date", () => {
   });
 });
 
-describe("[P255] the screen names the one-time setting that makes changes arrive on their own", () => {
+describe("the screen names the one-time setting that makes changes arrive on their own", () => {
   test("anywhere it names the calendar app's own refresh setting", () => {
     const { window } = loadApp();
     const shown = textOf(seed(window, subscription()));
@@ -82,7 +82,7 @@ describe("[P255] the screen names the one-time setting that makes changes arrive
   });
 });
 
-describe("[P253] relativeSince names the distance in the reader's language", () => {
+describe("relativeSince names the distance in the reader's language", () => {
   function since(window, seconds) {
     window.Date.now = () => NOW_MS;
     return window.eval(`(function (s) { return relativeSince(s); })`)(NOW_S - seconds);

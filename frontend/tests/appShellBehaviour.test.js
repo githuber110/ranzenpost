@@ -81,7 +81,7 @@ const html = readFrontend("index.html");
 const manifest = JSON.parse(readFrontend("manifest.webmanifest"));
 const rules = [...parseRules(styles, "styles.css"), ...parseRules(wizard, "wizard.css")];
 
-describe("[P168] the shell behaves like an app, not a web page", () => {
+describe("the shell behaves like an app, not a web page", () => {
   test("the stylesheets really parse into rules the checks can read", () => {
     expect(rules.length).toBeGreaterThan(100);
     expect(findRule(rules, ".screen")).toBeDefined();

@@ -17,7 +17,7 @@ function spinRules(css) {
   return rules;
 }
 
-describe("[P209] the spinner animates the same way everywhere, not just inside a button", () => {
+describe("the spinner animates the same way everywhere, not just inside a button", () => {
   test("animation: spin is declared exactly once, so a divergent duration cannot creep back in", () => {
     const css = readStylesheet();
     const matches = css.match(/animation:\s*spin\b/g) || [];

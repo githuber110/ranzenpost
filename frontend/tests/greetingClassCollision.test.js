@@ -17,7 +17,7 @@ function renderGreetingHeadline(window, forename, fixedIso) {
   return run(forename, fixedIso);
 }
 
-describe("[P145] Begruessung: Klassenkonflikt behoben, Vorname wieder sichtbar", () => {
+describe("Begruessung: Klassenkonflikt behoben, Vorname wieder sichtbar", () => {
   test("the greeting headline no longer shares its class with the unrelated .card.hero modifier", () => {
     const css = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8");
 

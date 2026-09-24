@@ -99,7 +99,7 @@ function bodyOf(call) {
   return JSON.parse(call.options.body);
 }
 
-describe("[P198] messenger room list", () => {
+describe("messenger room list", () => {
   test("renders every room with preview, stamp and unread badge", () => {
     const { window } = loadApp();
     setRooms(window, ROOMS);
@@ -163,7 +163,7 @@ describe("[P198] messenger room list", () => {
   });
 });
 
-describe("[P198] messenger room view", () => {
+describe("messenger room view", () => {
   test("shows the history oldest first and separates own from foreign posts", () => {
     const { window } = loadApp();
     const room = makeRoom(window, {
@@ -255,7 +255,7 @@ describe("[P198] messenger room view", () => {
   });
 });
 
-describe("[P198] messenger paging", () => {
+describe("messenger paging", () => {
   test("the newest page arrives newest first and is turned around for the screen", () => {
     const { window } = loadApp();
     const room = makeRoom(window, {});
@@ -323,7 +323,7 @@ describe("[P198] messenger paging", () => {
   });
 });
 
-describe("[P198] sending", () => {
+describe("sending", () => {
   test("a click sends once, clears the box and reloads the history", async () => {
     const { window } = loadApp();
     const room = makeRoom(window, { messages: [] });
@@ -337,7 +337,7 @@ describe("[P198] sending", () => {
     await window.eval("(function (node) { return sendMessengerMessage(node); })")(view.querySelector(".composer-input"));
     const sends = calls.filter((call) => call.url.includes("api/messenger/send"));
     expect(sends.length).toBe(1);
-    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag" });
+    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag", connection_id: "" });
     expect(room.draft).toBe("");
     expect(room.sending).toBe(false);
     expect(calls.some((call) => call.url.includes("api/messenger/room?id="))).toBe(true);
@@ -383,7 +383,7 @@ describe("[P198] sending", () => {
   });
 });
 
-describe("[P198] image posts open the existing viewer", () => {
+describe("image posts open the existing viewer", () => {
   test("tapping the thumbnail loads the media proxy and opens the overlay", async () => {
     const { window } = loadApp();
     makeRoom(window, {
@@ -423,7 +423,7 @@ describe("[P198] image posts open the existing viewer", () => {
   });
 });
 
-describe("[P198] the way in", () => {
+describe("the way in", () => {
   test("the chat is a tab of its own and the header carries no entry any more", () => {
     const { window } = loadApp();
     const keys = window.eval("VIEWS.map((item) => item.key)");
@@ -437,7 +437,7 @@ describe("[P198] the way in", () => {
   test("before the rooms are loaded the tab badge comes from the poller state", () => {
     const { window } = loadApp();
     const total = window.eval(
-      "(function (poll) { state.messengerRooms = null; state.config = { poll_state: poll }; return badgeCount('messenger'); })"
+      "(function (poll) { state.messengerRooms = null; state.config = { connections: [{ id: 's1', poll_state: poll }] }; return badgeCount('messenger'); })"
     );
     expect(total({ messenger_unread: 4 })).toBe(4);
     expect(total({ messenger_unread: 0 })).toBe(0);
@@ -447,7 +447,7 @@ describe("[P198] the way in", () => {
   test("the loaded rooms beat the poller state for the tab badge", () => {
     const { window } = loadApp();
     setRooms(window, ROOMS);
-    window.eval("(function () { state.config = { poll_state: { messenger_unread: 99 } }; })")();
+    window.eval("(function () { state.config = { connections: [{ id: 's1', poll_state: { messenger_unread: 99 } }] }; })")();
     expect(window.eval("badgeCount('messenger')")).toBe(3);
   });
 

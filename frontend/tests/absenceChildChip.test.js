@@ -20,7 +20,7 @@ function data(children, extra) {
   );
 }
 
-describe("[C08] >1 child: the child question is a real wizard step, never a sheet", () => {
+describe(">1 child: the child question is a real wizard step, never a sheet", () => {
   test("the type step is first, choosing a type does not navigate on its own", () => {
     const { window } = loadApp();
     const wz = openWizard(window, null, data(twoChildren));
@@ -50,11 +50,11 @@ describe("[C08] >1 child: the child question is a real wizard step, never a shee
     const { window } = loadApp();
     const wz = openWizard(window, "sick", data(twoChildren));
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-    expect(entry.text).toBe("Bitte das Kind auswählen.");
+    expect(entry.text).toBe("Bitte auswählen, wer gemeint ist.");
     expect(entry.step).toBe("child");
     wz.go("review");
     expect(wz.step).toBe("child");
-    expect(wz.status).toBe("Bitte das Kind auswählen.");
+    expect(wz.status).toBe("Bitte auswählen, wer gemeint ist.");
   });
 
   test("the chosen child rides in the progress row and the review facts, not in a dead chip", () => {
@@ -67,13 +67,13 @@ describe("[C08] >1 child: the child question is a real wizard step, never a shee
     lead.click();
     expect(wz.step).toBe("child");
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Kind");
+    expect(facts[0].label).toBe("Person");
     expect(facts[0].value).toBe("Bella");
     expect(facts[0].step).toBe("child");
   });
 });
 
-describe("[C08] exactly 1 child: the child step is skipped entirely", () => {
+describe("exactly 1 child: the child step is skipped entirely", () => {
   test("the path has no child step and the single child is preselected", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", data([{ id: 1, name: "Alice", class_name: "3b" }]));
@@ -81,13 +81,13 @@ describe("[C08] exactly 1 child: the child step is skipped entirely", () => {
     expect(wz.form.student_id).toBe("1");
     expect(wz.node.querySelector(".sw-lead-btn")).toBeNull();
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Kind");
+    expect(facts[0].label).toBe("Person");
     expect(facts[0].value).toBe("Alice");
     expect(facts[0].step).toBe("");
   });
 });
 
-describe("[P245] the summary always names the child", () => {
+describe("the summary always names the child", () => {
   test("one child is named too, and offers no pointless jump", () => {
     const { window } = loadApp();
     window.eval(`

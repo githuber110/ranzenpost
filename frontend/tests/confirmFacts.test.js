@@ -15,13 +15,13 @@ const SICK = {
   day_options: { from: [{ value: "2126-09-02" }], till: [{ value: "2126-09-02" }] },
 };
 
-describe("[C07] review page: structured, tappable facts instead of prose", () => {
+describe("review page: structured, tappable facts instead of prose", () => {
   test("sick: one row per fact, Art is fixed, the range row carries the hours", () => {
     const { window } = loadApp();
     const rows = facts(window, "sick", Object.assign({}, SICK, {
       period_labels: [{ number: 1 }, { number: 2 }, { number: 3 }],
     }));
-    expect(rows.map((row) => row.label)).toEqual(["Kind", "Art", "Zeitraum"]);
+    expect(rows.map((row) => row.label)).toEqual(["Person", "Art", "Zeitraum"]);
     expect(rows[1].step).toBe("");
     expect(rows[2].step).toBe("sickWhen");
     expect(rows[2].value).toBe("02.09.2126, 1. bis 3. Stunde");
@@ -34,7 +34,7 @@ describe("[C07] review page: structured, tappable facts instead of prose", () =>
     }), (form) => {
       form.student_id = "2";
     });
-    expect(rows[0]).toMatchObject({ label: "Kind", value: "Ben", step: "child" });
+    expect(rows[0]).toMatchObject({ label: "Person", value: "Ben", step: "child" });
   });
 
   test("sick: the optional comment shows its real value, never an empty line", () => {

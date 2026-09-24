@@ -1,79 +1,44 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-function order(window, areas, counts) {
-  return window.eval(
-    `orderOverviewAreas(${JSON.stringify(areas)}, ${JSON.stringify(counts)})`
-  );
-}
-
-describe("[P217] orderOverviewAreas is a pure sort: today first, then fresh areas, then the rest", () => {
-  test("everything read leaves the base order unchanged", () => {
+describe("the overview order is the user's, orderOverviewAreas is gone", () => {
+  test("no freshness sort survives in the app", () => {
     const { window } = loadApp();
-    const areas = ["today", "upcoming", "letters", "pinboard", "messenger"];
-    const counts = { upcoming: 0, letters: 0, pinboard: 0, messenger: 0 };
-    expect(order(window, areas, counts)).toEqual(areas);
-  });
-
-  test("one area with new items moves directly behind today", () => {
-    const { window } = loadApp();
-    const areas = ["today", "upcoming", "letters", "pinboard", "messenger"];
-    const counts = { upcoming: 0, letters: 3, pinboard: 0, messenger: 0 };
-    expect(order(window, areas, counts)).toEqual(["today", "letters", "upcoming", "pinboard", "messenger"]);
-  });
-
-  test("several areas with new items keep their base order among themselves", () => {
-    const { window } = loadApp();
-    const areas = ["today", "upcoming", "letters", "pinboard", "messenger"];
-    const counts = { upcoming: 0, letters: 0, pinboard: 2, messenger: 1 };
-    expect(order(window, areas, counts)).toEqual(["today", "pinboard", "messenger", "upcoming", "letters"]);
-  });
-
-  test("today never moves, even if it somehow carried a count", () => {
-    const { window } = loadApp();
-    const areas = ["today", "upcoming", "letters", "pinboard", "messenger"];
-    const counts = { today: 5, upcoming: 0, letters: 0, pinboard: 0, messenger: 0 };
-    expect(order(window, areas, counts)).toEqual(areas);
-  });
-
-  test("an area missing from the counts map is treated as zero", () => {
-    const { window } = loadApp();
-    const areas = ["today", "upcoming", "letters", "pinboard", "messenger"];
-    const counts = { letters: 2 };
-    expect(order(window, areas, counts)).toEqual(["today", "letters", "upcoming", "pinboard", "messenger"]);
+    expect(window.eval("typeof orderOverviewAreas")).toBe("undefined");
+    expect(window.eval("typeof applyOverviewOrder")).toBe("undefined");
   });
 });
 
-describe("[P217] overviewNewCount reuses the same counters as the tab badges", () => {
+describe("overviewNewCount reuses the same counters as the tab badges", () => {
   function seed(window) {
     window.eval(`
-      state.children = [{ child_id: "c1", name: "Alice", class_name: "3b" }];
+      state.children = [{ key: "c1", name: "Alice", class_name: "3b" }];
       state.letters = { tab: "current", letters: [{ letter_id: "1", recipient_id: "r", title: "A", unread: true }] };
       state.pinboard = { folders: [], feed: [{ id: 1, title: "B", text: "", unread: true }] };
       state.messengerRooms = { rooms: [{ room_id: "!a:x", name: "R", unread_count: 4 }] };
     `);
   }
 
-  test("today and upcoming are always zero", () => {
+  test("today and absences are always zero", () => {
     const { window } = loadApp();
     seed(window);
     expect(window.eval('overviewNewCount("today")')).toBe(0);
-    expect(window.eval('overviewNewCount("upcoming")')).toBe(0);
+    expect(window.eval('overviewNewCount("absences")')).toBe(0);
   });
 
   test("letters, pinboard and messenger match their tab badge counters exactly", () => {
     const { window } = loadApp();
     seed(window);
     expect(window.eval('overviewNewCount("letters")')).toBe(window.eval("lettersUnreadCount()"));
-    expect(window.eval('overviewNewCount("pinboard")')).toBe(window.eval("pinboardUnreadCount()"));
-    expect(window.eval('overviewNewCount("messenger")')).toBe(window.eval("messengerUnreadTotal()"));
+    expect(window.eval('overviewNewCount("noticeboard")')).toBe(window.eval("pinboardUnreadCount()"));
+    expect(window.eval('overviewNewCount("chat")')).toBe(window.eval("messengerUnreadTotal()"));
     expect(window.eval('overviewNewCount("letters")')).toBe(1);
-    expect(window.eval('overviewNewCount("pinboard")')).toBe(1);
-    expect(window.eval('overviewNewCount("messenger")')).toBe(4);
+    expect(window.eval('overviewNewCount("noticeboard")')).toBe(1);
+    expect(window.eval('overviewNewCount("chat")')).toBe(4);
   });
 });
 
-describe("[P217] the section peek arrow badge", () => {
+describe("the section peek arrow badge", () => {
   test("no badge when the next section has nothing new", () => {
     const { window } = loadApp();
     const arrow = window.eval(

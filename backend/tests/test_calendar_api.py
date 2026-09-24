@@ -5,11 +5,14 @@ from fastapi.testclient import TestClient
 
 from app import feed, holidays
 from app.poller import Poller
+from app.service import LETTERS_CHILD_PREFIX
 from app.server import create_app
 from app.store import Store
 from app.subscriptions import SubscriptionRegistry
 
-CHILD_ID = "child-uuid-a"
+SCHOOL = "a1b2c3d4"
+RAW_CHILD_ID = "child-uuid-a"
+CHILD_ID = f"{SCHOOL}:{RAW_CHILD_ID}"
 CHILD_NAME = "Zwiebelfisch Quastenflosser"
 NOW_EPOCH = int(datetime(2026, 9, 2, 6, 0).replace(tzinfo=timezone.utc).timestamp())
 
@@ -17,6 +20,7 @@ NOW_EPOCH = int(datetime(2026, 9, 2, 6, 0).replace(tzinfo=timezone.utc).timestam
 class FakeService:
     def __init__(self, store):
         self.store = store
+        self.id = SCHOOL
         self.calls = []
 
     def is_configured(self):
@@ -26,7 +30,7 @@ class FakeService:
         return "ok"
 
     def children(self):
-        return [{"child_id": CHILD_ID, "name": CHILD_NAME}]
+        return [{"child_id": RAW_CHILD_ID, "name": CHILD_NAME}]
 
     def timetable(self, child_id, week_offset=0):
         self.calls.append((child_id, week_offset))
@@ -68,10 +72,13 @@ class CountingHolidays:
 
 def _store(tmp_path):
     store = Store(tmp_path / "data")
-    config = store.load_config()
-    config["holiday_region"] = "DE-NI"
-    config["children"] = [{"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}]
-    store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id=SCHOOL,
+        setup_complete=True,
+        holiday_region="DE-NI",
+        children=[{"child_id": RAW_CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}],
+    )
     return store
 
 
@@ -87,7 +94,7 @@ def test_the_api_creates_lists_updates_rotates_and_revokes(tmp_path):
 
     created = client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "Schule"},
+        json={"child_key": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "Schule"},
     ).json()
     assert created["label"] == "Schule"
     assert created["path"] == f"/calendar/{created['token']}.ics"
@@ -102,6 +109,7 @@ def test_the_api_creates_lists_updates_rotates_and_revokes(tmp_path):
         "public_holidays",
         "marks",
         "absences",
+        "own_entries",
     ]
 
     updated = client.post(
@@ -121,7 +129,7 @@ def test_the_api_refuses_an_empty_selection_with_a_message_key(tmp_path):
     client, _, _ = _api(tmp_path)
 
     response = client.post(
-        "/api/calendar/subscriptions", json={"child_id": CHILD_ID, "components": []}
+        "/api/calendar/subscriptions", json={"child_key": CHILD_ID, "components": []}
     )
 
     assert response.status_code == 400
@@ -134,7 +142,7 @@ def test_the_api_accepts_a_label_that_carries_the_child_name(tmp_path):
 
     response = client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["timetable"], "label": "Quastenflosser"},
+        json={"child_key": CHILD_ID, "components": ["timetable"], "label": "Quastenflosser"},
     )
 
     assert response.status_code == 200
@@ -145,7 +153,7 @@ def test_the_api_refuses_an_unknown_child(tmp_path):
     client, _, _ = _api(tmp_path)
 
     response = client.post(
-        "/api/calendar/subscriptions", json={"child_id": "nope", "components": ["timetable"]}
+        "/api/calendar/subscriptions", json={"child_key": "nope", "components": ["timetable"]}
     )
 
     assert response.json()["message_key"] == "api.calendar.error.child"
@@ -197,7 +205,7 @@ def test_the_poller_leaves_iserv_alone_when_nobody_subscribed(tmp_path):
 
     Poller(service, store=store, registry=SubscriptionRegistry(store)).poll_once()
 
-    assert service.calls == [(CHILD_ID, 0)]
+    assert service.calls == [(RAW_CHILD_ID, 0)]
     assert store.load_calendar_snapshot() == {}
 
 
@@ -239,6 +247,31 @@ def test_a_refresh_that_fails_leaves_the_snapshot_untouched_and_says_so(tmp_path
     assert store.load_calendar_snapshot() == {}
 
 
+def test_a_refresh_asks_for_no_timetable_when_the_school_has_no_timetable_module(tmp_path):
+    store = _store(tmp_path)
+    service = FakeService(store)
+    service.modules = lambda: {"modules": {"timetable": False}}
+
+    done = Poller(service, store=store, clock=lambda: NOW_EPOCH).refresh_child(CHILD_ID)
+
+    assert done is False
+    assert service.calls == []
+    assert store.load_calendar_snapshot() == {}
+
+
+def test_a_refresh_asks_for_no_timetable_for_a_child_that_only_comes_from_the_letters(tmp_path):
+    store = _store(tmp_path)
+    service = FakeService(store)
+
+    done = Poller(service, store=store, clock=lambda: NOW_EPOCH).refresh_child(
+        f"{SCHOOL}:{LETTERS_CHILD_PREFIX}zwiebelfisch"
+    )
+
+    assert done is False
+    assert service.calls == []
+    assert store.load_calendar_snapshot() == {}
+
+
 def _api_with_warmer(tmp_path, warmer):
     store = _store(tmp_path)
     registry = SubscriptionRegistry(store)
@@ -255,7 +288,7 @@ def test_creating_a_subscription_asks_for_the_child_to_be_fetched_right_away(tmp
 
     response = client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "5A"},
+        json={"child_key": CHILD_ID, "components": ["timetable", "school_holidays"], "label": "5A"},
     )
 
     assert response.status_code == 200
@@ -281,7 +314,7 @@ def test_a_subscription_without_lessons_or_marks_fetches_nothing(tmp_path):
 
     client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["school_holidays", "public_holidays"], "label": "5A"},
+        json={"child_key": CHILD_ID, "components": ["school_holidays", "public_holidays"], "label": "5A"},
     )
 
     assert warmed == []
@@ -295,7 +328,7 @@ def test_the_first_feed_request_after_subscribing_already_carries_the_lessons(tm
 
     created = client.post(
         "/api/calendar/subscriptions",
-        json={"child_id": CHILD_ID, "components": ["timetable"], "label": "5A"},
+        json={"child_key": CHILD_ID, "components": ["timetable"], "label": "5A"},
     ).json()
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and not store.load_calendar_snapshot():
@@ -400,7 +433,7 @@ def _legacy_registry(tmp_path):
             "subscriptions": [
                 {
                     "id": "legacy",
-                    "child_id": CHILD_ID,
+                    "child_key": CHILD_ID,
                     "label": "5A",
                     "components": ["timetable"],
                     "color": "",
@@ -550,3 +583,86 @@ def test_a_plain_feed_request_is_never_redirected(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/calendar")
+
+
+LESSON_DAY = "2026-09-02"
+LESSON_PERIOD = 1
+EXAM_TITLE = "SUMMARY:Prüfung: 1. Stunde Deutsch (Behrens)"
+DROPPED_TITLE = "SUMMARY:Fällt aus: 1. Stunde Deutsch (Behrens)"
+
+
+def _freshness_lifetime(response):
+    directives = [part.strip().lower() for part in response.headers.get("cache-control", "").split(",")]
+    if "no-store" in directives or "no-cache" in directives:
+        return 0
+    for directive in directives:
+        name, _, value = directive.partition("=")
+        if name == "max-age":
+            return int(value)
+    return 0
+
+
+def _own_entries_client(tmp_path):
+    from app.calendar_server import create_calendar_app
+    from app.cancellations import CancellationRegistry
+    from app.marks import MarkRegistry
+
+    store = _store(tmp_path)
+    store.update_connection(SCHOOL, period_times={"1": "08:00"})
+    service = FakeService(store)
+    registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
+    Poller(service, registry=registry, holiday_calendar=CountingHolidays()).refresh_child(CHILD_ID)
+    subscription = registry.create(CHILD_ID, ["timetable", "marks"], "5A")
+    tick = {"now": datetime(2026, 9, 2, 6, 0)}
+
+    def build(entry, data, holiday_source):
+        tick["now"] = tick["now"] + timedelta(seconds=5)
+        return feed.build_feed(entry, data, holiday_source, now=tick["now"])
+
+    app = create_calendar_app(store, registry, holiday_calendar=CountingHolidays(), builder=build)
+    client = TestClient(app, raise_server_exceptions=False)
+    fetch = lambda: client.get(subscription["path"])
+    clock = lambda: NOW_EPOCH
+    return fetch, MarkRegistry(store, clock=clock), CancellationRegistry(store, clock=clock)
+
+
+def _assert_change_reaches_a_refreshing_calendar_app(fetch, title, add, remove):
+    plain = fetch()
+    assert plain.status_code == 200
+    assert title not in plain.text
+
+    add()
+    marked = fetch()
+    assert title in marked.text
+    assert marked.headers["etag"] != plain.headers["etag"]
+    assert _freshness_lifetime(marked) == 0
+
+    remove()
+    cleared = fetch()
+    assert title not in cleared.text
+    assert cleared.headers["etag"] != marked.headers["etag"]
+    assert _freshness_lifetime(cleared) == 0
+
+
+def test_removing_an_exam_mark_reaches_a_calendar_app_the_way_adding_it_did(tmp_path):
+    fetch, marks, _ = _own_entries_client(tmp_path)
+    created = {}
+
+    _assert_change_reaches_a_refreshing_calendar_app(
+        fetch,
+        EXAM_TITLE,
+        lambda: created.update(marks.create(CHILD_ID, LESSON_DAY, LESSON_PERIOD, "D")),
+        lambda: marks.delete(created["id"]),
+    )
+
+
+def test_removing_an_own_cancellation_reaches_a_calendar_app_the_way_adding_it_did(tmp_path):
+    fetch, _, cancellations = _own_entries_client(tmp_path)
+    created = {}
+
+    _assert_change_reaches_a_refreshing_calendar_app(
+        fetch,
+        DROPPED_TITLE,
+        lambda: created.update(cancellations.create(CHILD_ID, LESSON_DAY, LESSON_PERIOD)),
+        lambda: cancellations.delete(created["id"]),
+    )

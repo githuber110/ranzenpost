@@ -33,7 +33,7 @@ function wizardAt(childrenAnswer, onSkip) {
   return { window, app };
 }
 
-describe("[P238] wizard: the school server refuses the area the children are listed in", () => {
+describe("wizard: the school server refuses the area the children are listed in", () => {
   test("the reason is named instead of claiming the account has no child", async () => {
     let skipped = false;
     const { window, app } = wizardAt(REFUSED, () => { skipped = true; });
@@ -73,7 +73,7 @@ describe("[P238] wizard: the school server refuses the area the children are lis
 
   test("a child list that arrives is still offered for picking", async () => {
     const { window, app } = wizardAt(
-      [{ child_id: "c1", name: "Kim", class_name: "3b" }],
+      [{ key: "c1", name: "Kim", class_name: "3b" }],
       () => {}
     );
     await flush();

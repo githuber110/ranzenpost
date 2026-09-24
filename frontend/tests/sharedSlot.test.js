@@ -46,7 +46,7 @@ const sharedWeek = {
   period_times: { 1: "08:00", 4: "10:40" },
 };
 
-describe("[P109][C03] shared slots survive the grid and the today card", () => {
+describe("shared slots survive the grid and the today card", () => {
   test("a slot with two lessons renders two chips inside one div container", () => {
     const { window } = loadApp();
     const grid = renderGrid(window, sharedWeek);
@@ -72,7 +72,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(single[0].querySelector(".sub").textContent).toBe("D");
   });
 
-  test("[P140b] the today card renders the shared slot as two full rows (name + teacher each), time shown once", () => {
+  test("the today card renders the shared slot as two full rows (name + teacher each), time shown once", () => {
     const { window } = loadApp();
     const week = {
       lessons: [
@@ -99,7 +99,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(metas[0].textContent).toBe("10:40");
   });
 
-  test("[P140b] .row-pair lays out its two cells side by side with a divider, not stacked", () => {
+  test(".row-pair lays out its two cells side by side with a divider, not stacked", () => {
     const match = /\.row-pair\s*\{[^}]*\}/.exec(stylesCss);
     expect(match).not.toBeNull();
     expect(match[0]).toMatch(/flex-direction:\s*row/);
@@ -111,7 +111,7 @@ describe("[P109][C03] shared slots survive the grid and the today card", () => {
     expect(stylesCss).toMatch(/\.row-pair-item \+ \.row-pair-item\s*\{[^}]*border-inline-start:\s*1px solid var\(--line\)/);
   });
 
-  test("[P140b] each cell of the shared slot is independently tappable and opens its own lesson's detail sheet", () => {
+  test("each cell of the shared slot is independently tappable and opens its own lesson's detail sheet", () => {
     const { window } = loadApp();
     const week = {
       lessons: [

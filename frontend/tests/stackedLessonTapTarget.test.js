@@ -44,7 +44,7 @@ function renderStack(window) {
   return grid.querySelectorAll(".tt-stack button.tt-cell");
 }
 
-describe("[P215] two lessons in one slot are still two real tap targets", () => {
+describe("two lessons in one slot are still two real tap targets", () => {
   test("the minimum tap size lives in one token, not in scattered numbers", () => {
     expect(token("--tap-min")).toBe("44px");
   });

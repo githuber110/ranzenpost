@@ -6,7 +6,7 @@ function renderLetters(window, tab, data) {
   return run(tab, data);
 }
 
-describe("[P112] letters header + toolbar stay sticky", () => {
+describe("letters header + toolbar stay sticky", () => {
   test("current tab: segment and toolbar row sit inside the sticky head, title lives in the compact .header bar", () => {
     const { window } = loadApp();
     const data = { tab: "current", letters: [{ letter_id: "1", recipient_id: "2", title: "Infobrief", unread: true }] };

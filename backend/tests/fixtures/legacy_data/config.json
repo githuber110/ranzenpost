@@ -1,0 +1,65 @@
+{
+  "school_url": "https://school-one.example",
+  "language": "de",
+  "children": [
+    {
+      "child_id": "11111111-aaaa-4bbb-8ccc-000000000001",
+      "name": "Alice Example",
+      "class_name": "3b"
+    },
+    {
+      "child_id": "letters:bob-example",
+      "name": "Bob Example"
+    }
+  ],
+  "subjects": {
+    "D": {
+      "label": "Deutsch",
+      "color": "#84142a"
+    },
+    "M": {
+      "label": "Mathematik"
+    }
+  },
+  "teachers": {
+    "BEH": {
+      "label": "Fr. Behrend"
+    }
+  },
+  "period_times": {
+    "1": "08:00",
+    "2": "08:50"
+  },
+  "phones": [
+    {
+      "label": "Office",
+      "number": "+49 000 0000"
+    }
+  ],
+  "holiday_region": "DE-NI",
+  "notify_services": [
+    "notify.mobile_app_fixture"
+  ],
+  "notify_events": {
+    "timetable": true,
+    "letters": false,
+    "pinboard": true,
+    "conferences": true,
+    "messenger": true
+  },
+  "poll_state": {
+    "11111111-aaaa-4bbb-8ccc-000000000001": {
+      "signature": "abc",
+      "changes_count": 0,
+      "week_anchor": "31.08.2026"
+    },
+    "letter_keys": [
+      "l1:r1"
+    ],
+    "pinboard_ids": [
+      "100"
+    ],
+    "conference_keys": [],
+    "messenger_unread": 0
+  }
+}

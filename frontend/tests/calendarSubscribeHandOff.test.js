@@ -17,7 +17,7 @@ function seed(window) {
 
 const SUBSCRIPTION = {
   id: "s1",
-  child_id: "c1",
+  child_key: "c1",
   label: "5A",
   components: ["timetable"],
   color: "#2486ed",
@@ -31,7 +31,7 @@ const SUBSCRIPTION = {
 function actions(window) {
   seed(window);
   return window.eval(`(function (s, c) { return calendarActions(s, c); })`)(SUBSCRIPTION, {
-    child_id: "c1",
+    key: "c1",
     name: "Mia",
   });
 }
@@ -59,7 +59,7 @@ function trackNavigation(window) {
   return opened;
 }
 
-describe("[P259] the companion app opens the calendar through the browser first", () => {
+describe("the companion app opens the calendar through the browser first", () => {
   test("subscribing leads, copying follows", () => {
     const { window } = loadApp();
     asWebView(window);
@@ -77,7 +77,7 @@ describe("[P259] the companion app opens the calendar through the browser first"
   });
 });
 
-describe("[P254] a hand-off that goes nowhere says what to do instead", () => {
+describe("a hand-off that goes nowhere says what to do instead", () => {
   test("the browser button hands the address over through a link, not a page navigation", () => {
     const { window } = loadApp();
     const opened = trackNavigation(window);

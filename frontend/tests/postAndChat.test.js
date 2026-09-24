@@ -49,7 +49,7 @@ const ROOMS = {
 function seed(window, extra) {
   window.eval(`
     state.config = {};
-    state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+    state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
     state.absence = { data: { children: [], rules: {} } };
     state.letters = ${JSON.stringify(LETTERS)};
     state.pinboard = ${JSON.stringify(PINBOARD)};
@@ -67,8 +67,8 @@ function tabs(window) {
   }));
 }
 
-describe("[P198] the tab bar after the Post merge", () => {
-  test("five tabs in the decided order, letters and pinboard folded into Post", () => {
+describe("the tab bar after the Post merge", () => {
+  test("five entries in the decided order, letters and pinboard folded into Post, chat and conferences under More", () => {
     const { window } = loadApp();
     seed(window);
     const labels = tabs(window).map((tab) => tab.label);
@@ -77,23 +77,24 @@ describe("[P198] the tab bar after the Post merge", () => {
       window.eval("t('nav.timetable')"),
       window.eval("t('nav.absence')"),
       window.eval("t('nav.post')"),
-      window.eval("t('nav.messenger')"),
+      window.eval("t('nav.more')"),
     ]);
   });
 
-  test("the column count follows the number of tabs, so four tabs do not leave a hole", () => {
+  test("the column count follows the number of entries, so four entries do not leave a hole", () => {
     const { window } = loadApp();
     seed(window);
-    const wide = window.eval("(function () { state.timetableAvailable = true; return tabbar(); })")();
+    const wide = window.eval("(function () { state.modules.available.timetable = true; return tabbar(); })")();
     expect(wide.style.getPropertyValue("--tabs")).toBe("5");
     expect(wide.querySelectorAll(".tab").length).toBe(5);
-    const narrow = window.eval("(function () { state.timetableAvailable = false; return tabbar(); })")();
+    const narrow = window.eval("(function () { state.modules.available.timetable = false; state.modules.available.conferences = false; return tabbar(); })")();
     expect(narrow.style.getPropertyValue("--tabs")).toBe("4");
     expect(narrow.querySelectorAll(".tab").length).toBe(4);
+    expect(narrow.querySelector(".tab-more")).toBeNull();
   });
 });
 
-describe("[P198] every badge path", () => {
+describe("every badge path", () => {
   test("the Post tab carries the sum of unread letters and unread posts", () => {
     const { window } = loadApp();
     seed(window);
@@ -166,12 +167,12 @@ describe("[P198] every badge path", () => {
 
   test("a failed room load shows no badge instead of a wrong number", () => {
     const { window } = loadApp();
-    seed(window, "state.messengerRooms = { error: 'network' }; state.config = { poll_state: {} };");
+    seed(window, "state.messengerRooms = { error: 'network' }; state.config = { connections: [{ id: 's1', poll_state: {} }] };");
     expect(window.eval("badgeCount('messenger')")).toBe(0);
   });
 });
 
-describe("[P198] the Post screen", () => {
+describe("the Post screen", () => {
   test("the segment switches the body between letters and pinboard", () => {
     const { window } = loadApp();
     seed(window);
@@ -183,7 +184,7 @@ describe("[P198] the Post screen", () => {
     expect(pinboard.textContent).toContain("Sommerfest");
   });
 
-  test("[P221] inbox and archive stand side by side as chips, no intermediate sheet", () => {
+  test("inbox and archive stand side by side as chips, no intermediate sheet", () => {
     const { window } = loadApp();
     seed(window);
     window.eval("(function () { state.view = 'post'; state.postTab = 'letters'; })")();
@@ -198,7 +199,7 @@ describe("[P198] the Post screen", () => {
     expect(chips[1].getAttribute("aria-selected")).toBe("false");
   });
 
-  test("[P221] one tap on the archive chip switches straight over", () => {
+  test("one tap on the archive chip switches straight over", () => {
     const { window } = loadApp();
     seed(window);
     window.eval("(function () { state.view = 'post'; state.postTab = 'letters'; render(); })")();
@@ -210,7 +211,7 @@ describe("[P198] the Post screen", () => {
     expect(after[1].getAttribute("aria-selected")).toBe("true");
   });
 
-  test("[P220] the post tab always comes back on the letters segment", () => {
+  test("the post tab always comes back on the letters segment", () => {
     const { window } = loadApp();
     seed(window);
     window.eval(`
@@ -223,7 +224,7 @@ describe("[P198] the Post screen", () => {
   });
 });
 
-describe("[P222] the pinboard filter chip names the folder it filters by", () => {
+describe("the pinboard filter chip names the folder it filters by", () => {
   function pinboardHead(window, folderId) {
     return window.eval(`
       (function (folderId) {
@@ -272,7 +273,7 @@ describe("[P222] the pinboard filter chip names the folder it filters by", () =>
   });
 });
 
-describe("[P198] the overview knows about Post and Chat", () => {
+describe("the overview knows about Post and Chat", () => {
   test("a letters row opens the letter in place, a pinboard row opens its post sheet", () => {
     const { window } = loadApp();
     seed(window);
@@ -295,14 +296,14 @@ describe("[P198] the overview knows about Post and Chat", () => {
     expect(window.eval("overviewChapters().map((c) => c.area)")).toEqual([
       "today",
       "letters",
-      "pinboard",
-      "messenger",
+      "noticeboard",
+      "chat",
     ]);
     window.eval("(function () { state.messengerRooms.rooms[0].unread_count = 0; })")();
     expect(window.eval("overviewChapters().map((c) => c.area)")).toEqual([
       "today",
       "letters",
-      "pinboard",
+      "noticeboard",
     ]);
   });
 
@@ -322,7 +323,7 @@ describe("[P198] the overview knows about Post and Chat", () => {
   });
 });
 
-describe("[P198] the deliberate read marker", () => {
+describe("the deliberate read marker", () => {
   function openRoom(window) {
     seed(window);
     window.eval("(function () { setView('messenger'); openMessengerRoom(state.messengerRooms.rooms[0]); })")();
@@ -358,7 +359,7 @@ describe("[P198] the deliberate read marker", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     const reads = sent.filter((call) => call.url.includes("api/messenger/read"));
     expect(reads.length).toBe(1);
-    expect(reads[0].body).toEqual({ room_id: "!a:example.test", event_id: "$two" });
+    expect(reads[0].body).toEqual({ room_id: "!a:example.test", event_id: "$two", connection_id: "" });
   });
 
   test("a room without a single event offers nothing to mark", () => {

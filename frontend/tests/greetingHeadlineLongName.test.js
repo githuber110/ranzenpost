@@ -17,7 +17,7 @@ function renderGreetingHeadline(window, forename, fixedIso) {
   return run(forename, fixedIso);
 }
 
-describe("[P135] greeting headline stays calm and never overflows for long first names", () => {
+describe("greeting headline stays calm and never overflows for long first names", () => {
   test("styles.css caps the headline at two lines and applies overflow-wrap to the name only", () => {
     const css = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8");
     const greetingBlock = /\.greeting\s*\{[^}]*\}/.exec(css)[0];

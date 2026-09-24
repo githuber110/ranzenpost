@@ -27,34 +27,49 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
         return read_endpoint(_logged("rooms", service.messenger_rooms))
 
     @app.get("/api/messenger/room")
-    def messenger_room(id: str, before: str = ""):
-        return read_endpoint(_logged("room", lambda: service.messenger_room_messages(id, before or None)))
+    def messenger_room(id: str, before: str = "", connection: str = ""):
+        return read_endpoint(
+            _logged("room", lambda: service.messenger_room_messages(connection or None, id, before or None))
+        )
 
     @app.post("/api/messenger/send")
     def messenger_send(body: dict = Body(...)):
         return write_endpoint(
-            _logged("send", lambda: service.messenger_send(body.get("room_id", ""), body.get("text", "")))
+            _logged(
+                "send",
+                lambda: service.messenger_send(
+                    body.get("connection_id") or None, body.get("room_id", ""), body.get("text", "")
+                ),
+            )
         )
 
     @app.post("/api/messenger/read")
     def messenger_read(body: dict = Body(...)):
         return write_endpoint(
-            _logged("read", lambda: service.messenger_mark_read(body.get("room_id", ""), body.get("event_id", ""))),
+            _logged(
+                "read",
+                lambda: service.messenger_mark_read(
+                    body.get("connection_id") or None, body.get("room_id", ""), body.get("event_id", "")
+                ),
+            ),
             fallback="read_failed",
         )
 
     @app.get("/api/messenger/teachers")
-    def messenger_teachers(query: str = ""):
-        return read_endpoint(_logged("teachers", lambda: service.messenger_teacher_search(query)))
+    def messenger_teachers(query: str = "", connection: str = ""):
+        return read_endpoint(_logged("teachers", lambda: service.messenger_teacher_search(connection or None, query)))
 
     @app.get("/api/messenger/room/teacher/children")
-    def messenger_teacher_room_children():
-        return read_endpoint(_logged("teacher_room_children", service.messenger_teacher_room_children))
+    def messenger_teacher_room_children(connection: str = ""):
+        return read_endpoint(
+            _logged("teacher_room_children", lambda: service.messenger_teacher_room_children(connection or None))
+        )
 
     @app.post("/api/messenger/room/teacher")
     def messenger_teacher_room(body: dict = Body(...)):
         return write_endpoint(
             _logged("teacher_room", lambda: service.messenger_create_teacher_room(
+                body.get("connection_id") or None,
                 body.get("teacher", ""),
                 body.get("child_ids") or [],
                 bool(body.get("add_other_parents")),
@@ -63,9 +78,9 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
         )
 
     @app.get("/api/messenger/media/{server_name}/{media_id}")
-    def messenger_media(server_name: str, media_id: str):
+    def messenger_media(server_name: str, media_id: str, connection: str = ""):
         try:
-            upstream = service.messenger_media(server_name, media_id)
+            upstream = service.messenger_media(connection or None, server_name, media_id)
         except (
             NotConfiguredError,
             LoginError,

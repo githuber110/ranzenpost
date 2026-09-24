@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   checkTapTargets,
@@ -30,7 +31,7 @@ async function watchForbiddenRoutes(page) {
 }
 
 async function openMessenger(page) {
-  await page.locator(".tabbar .tab").nth(4).click();
+  await openArea(page, "messenger");
   await page.waitForSelector(".rows .row", { timeout: 8000 });
 }
 
@@ -55,7 +56,7 @@ for (const viewport of VIEWPORTS) {
   for (const lang of LANGUAGES) {
     const label = `${viewport.name}/${lang.key}`;
 
-    test.describe(`[P198] messenger ${label}`, () => {
+    test.describe(`messenger ${label}`, () => {
       test.use({ viewport: { width: viewport.width, height: viewport.height }, locale: lang.locale });
 
       test("the room list fits, filters and keeps its hit areas", async ({ page }) => {

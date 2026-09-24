@@ -6,10 +6,10 @@ import { loadApp } from "./loadApp.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-describe("[P155] compact header: screen title sits level with the settings gear", () => {
+describe("compact header: screen title sits level with the settings gear", () => {
   test("timetable with a single child shows the title in the .header bar", () => {
     const { window } = loadApp();
-    window.eval("state.children = [{ child_id: 'c1', name: 'Mia' }]; state.childId = 'c1';");
+    window.eval("state.children = [{ key: 'c1', name: 'Mia' }]; state.childId = 'c1';");
     const bar = window.eval("header('timetable')");
     expect(bar.querySelector(".header-title")).not.toBeNull();
     expect(bar.querySelector(".header-title").textContent).not.toBe("");
@@ -19,7 +19,7 @@ describe("[P155] compact header: screen title sits level with the settings gear"
   test("timetable with several children keeps the child switch and drops the redundant title", () => {
     const { window } = loadApp();
     window.eval(
-      "state.children = [{ child_id: 'c1', name: 'Mia' }, { child_id: 'c2', name: 'Ben' }]; state.childId = 'c1';"
+      "state.children = [{ key: 'c1', name: 'Mia' }, { key: 'c2', name: 'Ben' }]; state.childId = 'c1';"
     );
     const bar = window.eval("header('timetable')");
     expect(bar.querySelector(".header-title-row")).toBeNull();
@@ -55,7 +55,7 @@ describe("[P155] compact header: screen title sits level with the settings gear"
     expect(withoutGear.querySelector(".header-actions .icon-btn")).toBeNull();
   });
 
-  test("[P178] the overview greeting moved into the sticky header, [P188] settings carry theirs there too", () => {
+  test("the overview greeting moved into the sticky header, settings carry theirs there too", () => {
     const { window } = loadApp();
     window.eval("state.me = { forename: 'Mia' };");
     const overviewBar = window.eval("header('overview')");

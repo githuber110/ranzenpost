@@ -3,11 +3,13 @@ from dataclasses import dataclass, field
 
 from .dsa_timetable import course_filter, query_date
 from .absences import ATTACHMENT_FIELD_NAME, BODY_JSON, form_fields
-from .errors import DataError
+from .errors import DataError, RATE_LIMIT_STATUS, rate_limit_outage
 from .html import clean_html
 
 API_ROOT = "/iserv/dieschulapp/api/1.0"
+CURRENT_TIMETABLE_PATH = "current-timetable/"
 SCHOOL_APP_UNREADABLE_KEY = "api.schoolApp.unreadable"
+SCHOOL_APP_EXPIRED_KEY = "api.schoolApp.sessionExpired"
 CHILDREN_FIELDS = ",".join(
     (
         "id", "displayname", "forename", "surname", "roles",
@@ -22,6 +24,16 @@ PINBOARD_FIELDS = (
     "columns,columns.tiles"
 )
 PINBOARD_PARAMS = {"fields": PINBOARD_FIELDS}
+REFUSED_STATUSES = (403,)
+EXPIRED_STATUS = 401
+
+
+def _request_filter(student_id=None):
+    params = {"filterBy": "initiatingRepeatRequest:is(null)"}
+    if student_id:
+        params = {"filterBy": [params["filterBy"], f"student.id:is({student_id})"]}
+    return params
+
 
 @dataclass(frozen=True)
 class Attachment:
@@ -173,6 +185,16 @@ def parse_period_times(slots):
     return times
 
 
+def parse_period_slots(slots):
+    parsed = {}
+    for slot in slots or []:
+        number = slot.get("number")
+        start = slot.get("startTime")
+        if number is not None and start:
+            parsed[str(number)] = {"start": start, "end": slot.get("endTime") or ""}
+    return parsed
+
+
 def _parse_attachments(items):
     result = []
     for item in items or []:
@@ -284,13 +306,26 @@ def _int_setting(settings, key):
 
 
 class DieSchulAppClient:
-    def __init__(self, base_url, session, timeout=30):
+    def __init__(self, base_url, session, timeout=30, on_expired=None, on_answered=None):
         self.base_url = base_url.rstrip("/")
         self.session = session
         self.timeout = timeout
+        self.on_expired = on_expired
+        self.on_answered = on_answered
+        self.last_status = 0
+
+    def _checked(self, response):
+        self.last_status = getattr(response, "status_code", 0)
+        if self.last_status == EXPIRED_STATUS and callable(self.on_expired):
+            self.on_expired()
+        elif self.last_status == 200 and callable(self.on_answered):
+            self.on_answered()
+        return response
 
     def _require(self, path, params=None):
         data = self._get(path, params)
+        if data is None and self.last_status == EXPIRED_STATUS:
+            raise DataError("school app session expired", message_key=SCHOOL_APP_EXPIRED_KEY, detail={"path": path})
         if data is None:
             raise DataError(
                 "school app did not answer with data",
@@ -300,7 +335,9 @@ class DieSchulAppClient:
         return data
 
     def _get(self, path, params=None):
-        response = self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=self.timeout)
+        response = self._checked(self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=self.timeout))
+        if response.status_code == RATE_LIMIT_STATUS:
+            raise rate_limit_outage(response)
         if response.status_code != 200:
             return None
         try:
@@ -323,7 +360,7 @@ class DieSchulAppClient:
         selector = course_filter(course_ids)
         if selector:
             params["filterBy"] = selector
-        return self._get("current-timetable/", params)
+        return self._get(CURRENT_TIMETABLE_PATH, params)
 
     def school(self):
         return parse_school(self._get("schools/"))
@@ -340,6 +377,9 @@ class DieSchulAppClient:
     def period_times(self):
         return parse_period_times(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
 
+    def period_slots(self):
+        return parse_period_slots(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
+
     def lesson_slots(self):
         slots = self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}) or []
         result = []
@@ -353,7 +393,7 @@ class DieSchulAppClient:
     def send_request(self, request):
         url = f"{self.base_url}{API_ROOT}/{request.path}"
         if request.body_mode == BODY_JSON:
-            return self.session.post(url, json=request.payload, timeout=self.timeout)
+            return self._checked(self.session.post(url, json=request.payload, timeout=self.timeout))
         parts = [(name, (None, value)) for name, value in form_fields(request.payload).items()]
         for attachment in request.attachments:
             parts.append(
@@ -366,21 +406,41 @@ class DieSchulAppClient:
                     ),
                 )
             )
-        return self.session.post(
-            url,
-            files=parts,
-            headers=request.headers or None,
-            timeout=self.timeout,
+        return self._checked(
+            self.session.post(
+                url,
+                files=parts,
+                headers=request.headers or None,
+                timeout=self.timeout,
+            )
         )
 
     def delete_entry(self, path):
-        return self.session.delete(f"{self.base_url}{API_ROOT}/{path}", timeout=self.timeout)
+        return self._checked(self.session.delete(f"{self.base_url}{API_ROOT}/{path}", timeout=self.timeout))
 
     def pinboards_or_raise(self):
         return parse_pinboards(self._require("pinboards/", PINBOARD_PARAMS))
 
     def sick_note_children_or_raise(self):
-        return parse_students(self._require("sickNotes/userSelection/"))
+        response = self._checked(
+            self.session.get(f"{self.base_url}{API_ROOT}/sickNotes/userSelection/", timeout=self.timeout)
+        )
+        if response.status_code == RATE_LIMIT_STATUS:
+            raise rate_limit_outage(response)
+        if response.status_code in REFUSED_STATUSES:
+            return []
+        if response.status_code == EXPIRED_STATUS:
+            raise DataError("school app session expired", message_key=SCHOOL_APP_EXPIRED_KEY)
+        if response.status_code != 200:
+            raise DataError(
+                "school app did not answer with data",
+                message_key=SCHOOL_APP_UNREADABLE_KEY,
+                detail={"path": "sickNotes/userSelection/", "status": response.status_code},
+            )
+        try:
+            return parse_students(response.json())
+        except ValueError as error:
+            raise DataError("school app answered no json", message_key=SCHOOL_APP_UNREADABLE_KEY) from error
 
     def pinboards(self):
         return parse_pinboards(self._get("pinboards/", PINBOARD_PARAMS))
@@ -393,7 +453,7 @@ class DieSchulAppClient:
         return self._get("sickNotes/", params) or []
 
     def user_requests(self, path, student_id=None):
-        params = {"filterBy": "initiatingRepeatRequest:is(null)"}
-        if student_id:
-            params = {"filterBy": [params["filterBy"], f"student.id:is({student_id})"]}
-        return self._get(path, params) or []
+        return self._get(path, _request_filter(student_id)) or []
+
+    def user_requests_or_raise(self, path, student_id=None):
+        return self._require(path, _request_filter(student_id))

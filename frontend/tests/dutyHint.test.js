@@ -23,7 +23,7 @@ function openDutySheet(window, wz) {
   return window.eval("state.sheet()");
 }
 
-describe("[P106] duty-to-report hint", () => {
+describe("duty-to-report hint", () => {
   test("uses the school's duty_hint when it is filled", () => {
     const { window } = loadApp();
     const wz = reviewBody(window, { duty_hint: "Schul-spezifischer Hinweistext." });
@@ -37,7 +37,7 @@ describe("[P106] duty-to-report hint", () => {
   });
 });
 
-describe("[E2] the duty-to-report switch is the first thing on the review card", () => {
+describe("the duty-to-report switch is the first thing on the review card", () => {
   test("sick: the switch sits above the fact list and defaults to off", () => {
     const { window } = loadApp();
     const wz = reviewBody(window, {});
@@ -60,7 +60,7 @@ describe("[E2] the duty-to-report switch is the first thing on the review card",
     expect(more.textContent).toBe("Was ist meldepflichtig?");
   });
 
-  test("[P192] the legal text is never clipped: it arrives whole, in a container that scrolls", () => {
+  test("the legal text is never clipped: it arrives whole, in a container that scrolls", () => {
     const { window } = loadApp();
     const long = "Meldepflichtig ist eine ganze Reihe von Krankheiten. ".repeat(12).trim();
     const wz = reviewBody(window, { duty_hint: long });
@@ -73,7 +73,7 @@ describe("[E2] the duty-to-report switch is the first thing on the review card",
     expect(paragraph.getAttribute("dir")).toBe("auto");
   });
 
-  test("[P192] a fact row that cannot be tapped is allowed to wrap instead of clipping", () => {
+  test("a fact row that cannot be tapped is allowed to wrap instead of clipping", () => {
     const css = fs.readFileSync(path.resolve(dirname, "..", "wizard.css"), "utf8");
     const clipped = /\.sw-fact-value\s*\{([^}]*)\}/.exec(css);
     expect(clipped[1]).toMatch(/text-overflow:\s*ellipsis/);

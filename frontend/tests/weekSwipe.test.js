@@ -40,7 +40,7 @@ function shifted(window) {
   return window.eval("state.shifted");
 }
 
-describe("[P205] swiping the grid pages through the weeks", () => {
+describe("swiping the grid pages through the weeks", () => {
   test("a clear swipe towards the past goes back one week", () => {
     const { window } = loadApp();
     const grid = prepare(window, 3);
@@ -84,7 +84,7 @@ describe("[P205] swiping the grid pages through the weeks", () => {
   });
 });
 
-describe("[P205] the edge arrows only promise what is possible", () => {
+describe("the edge arrows only promise what is possible", () => {
   test("the current week offers the future arrow only", () => {
     const { window } = loadApp();
     const arrows = window.eval("state.weekOffset = 0; [!!weekSwipeHint(-1, 'a'), !!weekSwipeHint(1, 'b')]");
@@ -110,7 +110,7 @@ describe("[P205] the edge arrows only promise what is possible", () => {
   });
 });
 
-describe("[R2-20] a nudge of jitter must not kill the swipe", () => {
+describe("a nudge of jitter must not kill the swipe", () => {
   function jitterThenSwipe(window, grid, jitter, to) {
     const start = new window.Event("touchstart", { bubbles: true });
     start.touches = [{ clientX: 200, clientY: 300 }];
@@ -148,7 +148,7 @@ describe("[R2-20] a nudge of jitter must not kill the swipe", () => {
   });
 });
 
-describe("[R2-21] pull-to-refresh keeps out of horizontal gestures", () => {
+describe("pull-to-refresh keeps out of horizontal gestures", () => {
   function pull(window, screen, from, to) {
     const start = new window.Event("touchstart", { bubbles: true });
     start.touches = [{ clientX: from[0], clientY: from[1] }];

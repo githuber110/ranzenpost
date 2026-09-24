@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P137] overview and tab bar with no child assigned", () => {
+describe("overview and tab bar with no child assigned", () => {
   test("overviewToday shows an honest empty state instead of an empty timetable card when no child is available", () => {
     const { window } = loadApp();
     const section = window.eval(`
@@ -9,34 +9,33 @@ describe("[P137] overview and tab bar with no child assigned", () => {
         state.children = [];
         state.childId = null;
         state.timetable = null;
-        state.timetableAvailable = true;
+        state.modules.available.timetable = true;
         return overviewToday();
       })()
     `);
     expect(section.querySelector(".child-today")).toBeNull();
-    expect(section.textContent).toContain("Es ist kein Kind ausgewählt.");
+    expect(section.textContent).toContain("Es ist keine Person ausgewählt.");
   });
 
-  test("overviewToday shows an honest empty state when the school turned the timetable module off", () => {
+  test("the today chapter is simply absent when the school has no timetable module", () => {
     const { window } = loadApp();
-    const section = window.eval(`
+    const chapter = window.eval(`
       (function () {
-        state.children = [{ child_id: "anna", name: "Anna" }];
+        state.children = [{ key: "anna", name: "Anna" }];
         state.childId = "anna";
         state.timetable = { lessons: [], period_times: {} };
-        state.timetableAvailable = false;
-        return overviewToday();
+        state.modules.available.timetable = false;
+        return todayChapter();
       })()
     `);
-    expect(section.querySelector(".child-today")).toBeNull();
-    expect(section.textContent).toContain("Der Stundenplan ist für diese Schule nicht freigeschaltet.");
+    expect(chapter).toBeNull();
   });
 
-  test("tabbar hides the Plan tab when timetableAvailable is false", () => {
+  test("tabbar hides the Plan tab when the timetable module is missing", () => {
     const { window } = loadApp();
     const bar = window.eval(`
       (function () {
-        state.timetableAvailable = false;
+        state.modules.available.timetable = false;
         return tabbar();
       })()
     `);
@@ -44,11 +43,11 @@ describe("[P137] overview and tab bar with no child assigned", () => {
     expect(labels).not.toContain("Plan");
   });
 
-  test("tabbar shows the Plan tab when timetableAvailable is true", () => {
+  test("tabbar shows the Plan tab when the timetable module is available", () => {
     const { window } = loadApp();
     const bar = window.eval(`
       (function () {
-        state.timetableAvailable = true;
+        state.modules.available.timetable = true;
         return tabbar();
       })()
     `);
@@ -60,7 +59,7 @@ describe("[P137] overview and tab bar with no child assigned", () => {
     const { window } = loadApp();
     const view = window.eval(`
       (function () {
-        state.timetableAvailable = false;
+        state.modules.available.timetable = false;
         return timetableView();
       })()
     `);
@@ -68,18 +67,18 @@ describe("[P137] overview and tab bar with no child assigned", () => {
     expect(view.querySelector(".weekbar")).toBeNull();
   });
 
-  test("[P146] timetableView shows an honest empty state instead of a spinner when no child is available", () => {
+  test("timetableView shows an honest empty state instead of a spinner when no child is available", () => {
     const { window } = loadApp();
     const view = window.eval(`
       (function () {
         state.children = [];
         state.childId = null;
         state.timetable = null;
-        state.timetableAvailable = true;
+        state.modules.available.timetable = true;
         return timetableView();
       })()
     `);
-    expect(view.textContent).toContain("Es ist kein Kind ausgewählt.");
+    expect(view.textContent).toContain("Es ist keine Person ausgewählt.");
     expect(view.querySelector(".weekbar")).toBeNull();
     expect(view.querySelector(".loading")).toBeNull();
   });

@@ -30,50 +30,39 @@ def _make_notifier(store, event="timetable"):
     return send
 
 
-def _build_publisher():
-    if not os.environ.get("ISERV_MQTT_HOST"):
-        return None
-    try:
-        from .mqtt_publisher import MqttPublisher, connect_from_env
+NOTIFY_EVENTS = ("timetable", "letters", "pinboard", "conferences", "auth", "messenger", "outage")
+DEFAULT_INTERVAL_SECONDS = 1800
+INTERVAL_ENV = "ISERV_POLL_INTERVAL"
 
-        return MqttPublisher(connect_from_env())
-    except Exception:
-        return None
+
+def poll_interval_from_env():
+    try:
+        return max(60, int(os.environ.get(INTERVAL_ENV, DEFAULT_INTERVAL_SECONDS)))
+    except ValueError:
+        return DEFAULT_INTERVAL_SECONDS
+
+
+def notifiers_for(store):
+    return {event: _make_notifier(store, event) for event in NOTIFY_EVENTS}
+
+
+def make_poller(service, interval_seconds=1800, registry=None, holiday_calendar=None):
+    return Poller(
+        service,
+        notifier=_make_notifier(service.store),
+        notifiers=notifiers_for(service.store),
+        registry=registry,
+        holiday_calendar=holiday_calendar,
+        poll_interval=interval_seconds,
+    )
 
 
 def start_poller(service, interval_seconds=1800, registry=None, holiday_calendar=None):
     def loop():
-        publisher = None
-        discovered = False
         while True:
             try:
                 if service.is_configured():
-                    if publisher is None:
-                        publisher = _build_publisher()
-                    if publisher is not None and not discovered:
-                        try:
-                            publisher.publish_discovery(service.children())
-                            discovered = True
-                        except Exception:
-                            logger.warning("MQTT discovery publish failed", exc_info=True)
-                    Poller(
-                        service,
-                        publisher=publisher,
-                        notifier=_make_notifier(service.store),
-                        notifiers={
-                            event: _make_notifier(service.store, event)
-                            for event in (
-                                "timetable",
-                                "letters",
-                                "pinboard",
-                                "conferences",
-                                "auth",
-                                "messenger",
-                            )
-                        },
-                        registry=registry,
-                        holiday_calendar=holiday_calendar,
-                    ).poll_once()
+                    make_poller(service, interval_seconds, registry, holiday_calendar).poll_once()
             except Exception:
                 logger.warning("poll cycle failed", exc_info=True)
             time.sleep(interval_seconds)

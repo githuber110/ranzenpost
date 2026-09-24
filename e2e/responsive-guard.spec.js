@@ -1,12 +1,15 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   checkTapTargets,
   checkSheetContainment,
   waitForSheetSettled,
 } = require("./helpers");
+
+const BASE_URL = `http://127.0.0.1:${process.env.E2E_PORT || "8199"}`;
 
 const VIEWPORTS = [
   { name: "320", width: 320, height: 800 },
@@ -22,7 +25,8 @@ const VIEWS = [
   { key: "absence", tabIndex: 2 },
   { key: "post-letters", tabIndex: 3 },
   { key: "post-pinboard", tabIndex: 3, segment: 1 },
-  { key: "chat", tabIndex: 4 },
+  { key: "chat", area: "messenger" },
+  { key: "more-sheet", tabIndex: 4 },
   { key: "settings", gear: true },
 ];
 
@@ -34,6 +38,9 @@ async function waitForContentSettled(page) {
 async function openView(page, view) {
   if (view.gear) {
     await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  } else if (view.area) {
+    await openArea(page, view.area);
+    await waitForContentSettled(page);
   } else {
     await page.locator(".tabbar .tab").nth(view.tabIndex).click();
     await waitForContentSettled(page);
@@ -102,7 +109,7 @@ for (const viewport of VIEWPORTS) {
     test("settings notify sheet with many rows stays within the viewport and is fully visible or scrollable", async ({ page }) => {
       await goto(page);
       await openView(page, { key: "settings", gear: true });
-      const notifyRow = page.locator(".setting-row").filter({ has: page.locator(".lbl", { hasText: "Dienst" }) });
+      const notifyRow = page.locator(".setting-row.notify-setting");
       await notifyRow.click();
       await waitForSheetSettled(page);
 
@@ -128,24 +135,78 @@ for (const viewport of VIEWPORTS) {
       assertTapTargets(await checkTapTargets(page), `${viewport.name}/notify-picker`);
     });
 
-    test("technical details sheet stays within the viewport and is fully visible or scrollable", async ({ page }) => {
+    test("technical details page under Help stays within the viewport", async ({ page }) => {
       await goto(page);
       await openView(page, { key: "settings", gear: true });
-      const profileRow = page.locator(".setting-row").filter({ has: page.locator(".lbl", { hasText: "Profil" }) });
-      await profileRow.click();
-      await waitForSheetSettled(page);
+      await page.locator(".setting-row.tech-setting").click();
+      await expect(page.locator(".tech-page .field-group")).toBeVisible();
+      expect(await page.locator(".sheet").count()).toBe(0);
 
       const overflow = await checkHorizontalOverflow(page);
       const elementOffenders = await checkElementsWithinViewport(page);
-      assertNoStructuralOverflow(overflow, elementOffenders, `${viewport.name}/tech-details-sheet`);
-
-      const containment = await checkSheetContainment(page);
-      expect(containment.present).toBe(true);
-      expect(containment.fitsViewport).toBe(true);
-      if (containment.overflows) expect(containment.scrollable).toBe(true);
+      assertNoStructuralOverflow(overflow, elementOffenders, `${viewport.name}/tech-details-page`);
 
       const tapOffenders = await checkTapTargets(page);
-      assertTapTargets(tapOffenders, `${viewport.name}/tech-details-sheet`);
+      assertTapTargets(tapOffenders, `${viewport.name}/tech-details-page`);
     });
   });
+}
+
+const LONG_SUBJECT_VIEWPORTS = [
+  { name: "320", width: 320, height: 800 },
+  { name: "390", width: 390, height: 844 },
+];
+const LONG_SUBJECT_LANGUAGES = [
+  { key: "de", locale: "de-DE" },
+  { key: "ar", locale: "ar" },
+];
+
+for (const viewport of LONG_SUBJECT_VIEWPORTS) {
+  for (const lang of LONG_SUBJECT_LANGUAGES) {
+    test.describe(`timetable with subjects IServ only sent as long names ${viewport.name} ${lang.key}`, () => {
+      test.use({ viewport: { width: viewport.width, height: viewport.height }, locale: lang.locale });
+
+      test(`${viewport.name}/${lang.key} shows the derived codes without overflow or clipping without a way to the full name`, async ({ page }) => {
+        await page.context().addCookies([
+          { name: "e2e_long_subjects", value: "1", url: BASE_URL },
+          { name: "e2e_lang", value: lang.key, url: BASE_URL },
+        ]);
+        await goto(page);
+        await openView(page, { key: "timetable", tabIndex: 1 });
+
+        const label = `${viewport.name}/${lang.key}/timetable-long-subjects`;
+        const overflow = await checkHorizontalOverflow(page);
+        const elementOffenders = await checkElementsWithinViewport(page);
+        assertNoStructuralOverflow(overflow, elementOffenders, label);
+
+        const cells = page.locator(".tt-cell[data-subject]");
+        const cellCount = await cells.count();
+        expect(cellCount).toBeGreaterThan(0);
+
+        const cellTexts = await page.locator(".tt-cell .sub").allTextContents();
+        for (const text of cellTexts) {
+          expect(text.length).toBeLessThanOrEqual(4);
+        }
+
+        for (let index = 0; index < cellCount; index += 1) {
+          const cell = cells.nth(index);
+          const ariaLabel = await cell.getAttribute("aria-label");
+          expect(ariaLabel, `${label}: cell ${index} has no accessible name for the full subject`).toBeTruthy();
+          expect(ariaLabel.length, `${label}: cell ${index} aria-label is as short as the clipped code`).toBeGreaterThan(4);
+
+          const fit = await cell.evaluate((node) => {
+            const sub = node.querySelector(".sub");
+            return { cell: node.scrollWidth - node.clientWidth, sub: sub ? sub.scrollWidth - sub.clientWidth : 0 };
+          });
+          expect(fit.cell, `${label}: cell ${index} content overflows its box`).toBeLessThanOrEqual(0);
+          expect(fit.sub, `${label}: cell ${index} subject code overflows its box`).toBeLessThanOrEqual(0);
+        }
+
+        await cells.first().click();
+        await page.waitForSelector(".sheet .fact", { timeout: 5000 });
+        const subjectFact = await page.locator(".sheet .fact").first().innerText();
+        expect(subjectFact.length, `${label}: the opened lesson sheet does not carry the full subject name`).toBeGreaterThan(4);
+      });
+    });
+  }
 }

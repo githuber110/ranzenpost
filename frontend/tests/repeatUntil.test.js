@@ -5,7 +5,7 @@ import { openWizard } from "./absenceWizard.js";
 const DEREGISTER = { children: [{ id: 1 }], types: ["deregister"], rules: {}, deregister_options: ["bus"] };
 const DAYCARE = { children: [{ id: 1 }], types: ["daycare"], rules: {} };
 
-describe("[P107] weekly repeat asks for an end date", () => {
+describe("weekly repeat asks for an end date", () => {
   test("deregister: weekly adds a 'Wiederholen bis' step with the honest info text", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "deregister", DEREGISTER);

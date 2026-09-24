@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 const READY = `
-  state.children = [{ child_id: "c1", name: "Alice", class_name: "3b" }];
+  state.children = [{ key: "c1", name: "Alice", class_name: "3b" }];
   state.childId = "c1";
   state.weekOffset = 0;
   state.me = { forename: "Alice" };
@@ -34,36 +34,32 @@ function futureAbsence(window) {
   return `state.absence = { data: { entries: [{ id: "a1", from_date: "${iso}", till_date: "${iso}", kind: "sick", status: "accepted" }], children: [] } };`;
 }
 
-describe("[R2-13] the frozen order waits for every chapter that takes part in it", () => {
-  test("upcoming that only resolves after letters/pinboard/chat still lands directly behind Heute", () => {
+describe("the configured order decides, nothing re-sorts by freshness", () => {
+  test("the chapters follow overview_blocks even when a later block has fresh content", () => {
     const { window } = loadApp();
-    renderOverview(window, "state.conferences = null; state.absence = null;");
-    expect(window.eval("state._overviewOrder")).toBe(null);
-
-    const view = renderOverview(window, futureAbsence(window));
-    expect(areas(view)[0]).toBe("today");
-    expect(areas(view)[1]).toBe("upcoming");
+    const view = renderOverview(
+      window,
+      'state.config = { overview_blocks: [{ key: "letters" }, { key: "noticeboard" }, { key: "absences" }] };'
+      + 'state.pinboard = { folders: [], feed: [{ id: "p1", unread: true, title: "Neu" }] };'
+      + 'state.letters = { tab: "current", letters: [{ letter_id: "l1", recipient_id: "r1", title: "Brief", unread: true }] };'
+      + futureAbsence(window)
+    );
+    expect(areas(view)).toEqual(["letters", "noticeboard", "absences"]);
   });
 
-  test("the order does not freeze while the upcoming sources are still unknown", () => {
+  test("a block that is not in the list never renders, even with content", () => {
     const { window } = loadApp();
-    renderOverview(window, "state.conferences = null;");
-    expect(window.eval("state._overviewOrder")).toBe(null);
-    renderOverview(window, "state.absence = null;");
-    expect(window.eval("state._overviewOrder")).toBe(null);
-  });
-
-  test("once everything is loaded the order freezes exactly once", () => {
-    const { window } = loadApp();
-    renderOverview(window);
-    const first = window.eval("JSON.stringify(state._overviewOrder)");
-    expect(first).not.toBe("null");
-    renderOverview(window, 'state.pinboard = { folders: [], feed: [{ id: "p1", unread: true, title: "Neu" }] };');
-    expect(window.eval("JSON.stringify(state._overviewOrder)")).toBe(first);
+    const view = renderOverview(
+      window,
+      'state.config = { overview_blocks: [{ key: "letters" }] };'
+      + 'state.pinboard = { folders: [], feed: [{ id: "p1", unread: true, title: "Neu" }] };'
+      + 'state.letters = { tab: "current", letters: [{ letter_id: "l1", recipient_id: "r1", title: "Brief", unread: true }] };'
+    );
+    expect(areas(view)).toEqual(["letters"]);
   });
 });
 
-describe("[R2-14] leaving the overview into a letter remembers the panel that was left", () => {
+describe("leaving the overview into a letter remembers the panel that was left", () => {
   test("openLetterFromOverview captures the anchor before it navigates away", () => {
     const { window } = loadApp();
     renderOverview(window);
@@ -86,7 +82,7 @@ describe("[R2-14] leaving the overview into a letter remembers the panel that wa
   });
 });
 
-describe("[R2-15] the retry in a letter keeps the way back to the overview", () => {
+describe("the retry in a letter keeps the way back to the overview", () => {
   test("a retry after a failed detail keeps the overview origin", () => {
     const { window } = loadApp();
     window.eval(`
@@ -112,12 +108,12 @@ describe("[R2-15] the retry in a letter keeps the way back to the overview", () 
   });
 });
 
-describe("[R2-16] a failed chat load is shown, not swallowed", () => {
+describe("a failed chat load is shown, not swallowed", () => {
   test("the chat chapter appears with a failure block and a retry", () => {
     const { window } = loadApp();
     const view = renderOverview(window, 'state.messengerRooms = { error: "network" };');
-    expect(areas(view)).toContain("messenger");
-    const panel = view.querySelector('.panel[data-area="messenger"]');
+    expect(areas(view)).toContain("chat");
+    const panel = view.querySelector('.panel[data-area="chat"]');
     expect(panel.querySelector(".overview-failed")).toBeTruthy();
     expect(panel.querySelector(".overview-failed button")).toBeTruthy();
   });
@@ -125,11 +121,11 @@ describe("[R2-16] a failed chat load is shown, not swallowed", () => {
   test("a healthy but empty chat list still hides the chapter", () => {
     const { window } = loadApp();
     const view = renderOverview(window, 'state.messengerRooms = { rooms: [] };');
-    expect(areas(view)).not.toContain("messenger");
+    expect(areas(view)).not.toContain("chat");
   });
 });
 
-describe("[R2-17] the letters chapter never renders a folder the counter does not count", () => {
+describe("the letters chapter never renders a folder the counter does not count", () => {
   test("archive data does not masquerade as the unread current letters", () => {
     const { window } = loadApp();
     const view = renderOverview(
@@ -152,8 +148,8 @@ describe("[R2-17] the letters chapter never renders a folder the counter does no
   });
 });
 
-describe("[R2-18] the noticeboard does not re-sort under the reader's thumb", () => {
-  test("a post that becomes read keeps its place for the rest of the visit", () => {
+describe("the noticeboard does not re-sort under the reader's thumb", () => {
+  test("a post that becomes read leaves the list, the rest keep their frozen order", () => {
     const { window } = loadApp();
     const feed = '[{ id: "p1", unread: true, title: "Eins" }, { id: "p2", unread: true, title: "Zwei" }, { id: "p3", unread: false, title: "Drei" }]';
     renderOverview(window, `state.pinboard = { folders: [], feed: ${feed} };`);
@@ -164,8 +160,8 @@ describe("[R2-18] the noticeboard does not re-sort under the reader's thumb", ()
       window,
       'state.pinboard = { folders: [], feed: [{ id: "p1", unread: false, title: "Eins" }, { id: "p2", unread: true, title: "Zwei" }, { id: "p3", unread: false, title: "Drei" }] };'
     );
-    const keys = [...view.querySelectorAll('.panel[data-area="pinboard"] [data-block]')].map((node) => node.dataset.block);
-    expect(keys.slice(0, 3)).toEqual(["post:p1", "post:p2", "post:p3"]);
+    const keys = [...view.querySelectorAll('.panel[data-area="noticeboard"] [data-block]')].map((node) => node.dataset.block);
+    expect(keys).toEqual(["post:p2", "pinboard:all"]);
   });
 
   test("entering the overview again re-sorts unread first", () => {

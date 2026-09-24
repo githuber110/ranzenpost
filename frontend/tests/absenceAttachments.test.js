@@ -15,7 +15,7 @@ function openAttachments(window) {
   return wz;
 }
 
-describe("[P116] Beurlaubung: attachment picker lives on a branch off the review page", () => {
+describe("Beurlaubung: attachment picker lives on a branch off the review page", () => {
   test("attachments are not a forward step but reachable from the review page", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "leave", DATA);
@@ -107,7 +107,7 @@ describe("[P116] Beurlaubung: attachment picker lives on a branch off the review
   });
 });
 
-describe("[P116] Beurlaubung: multipart submit path", () => {
+describe("Beurlaubung: multipart submit path", () => {
   test("submitting without attachments still posts plain JSON", async () => {
     const { window } = loadApp();
     const wz = openWizard(window, "leave", DATA);

@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 const CONFIRM_TEXT =
-  "Zugangsdaten und 2FA-Token werden aus dieser App gelöscht. Die App versucht außerdem, den Sicherheits-Token in IServ zu entfernen — klappt das nicht, bleibt er dort bestehen und lässt sich unter Einstellungen → Zwei-Faktor selbst löschen.";
+  "Zugangsdaten und Sicherheits-Token werden aus dieser App gelöscht. Die App versucht auch, den Sicherheits-Token in IServ zu entfernen. Klappt das nicht, löschst du ihn in IServ unter Zwei-Faktor selbst.";
 
 function jsonResponse(body) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });

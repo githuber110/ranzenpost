@@ -5,7 +5,7 @@ function renderWeekBar(window) {
   return window.eval("(function () { return weekBar(); })")();
 }
 
-describe("[P95] week navigation has no past weeks", () => {
+describe("week navigation has no past weeks", () => {
   test("WEEK_MIN is 0", () => {
     const { window } = loadApp();
     const min = window.eval("WEEK_MIN");

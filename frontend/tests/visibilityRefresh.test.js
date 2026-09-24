@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[C04] visibility refresh: app does not age in the background", () => {
+describe("visibility refresh: app does not age in the background", () => {
   test("a visibilitychange event is skipped while a sheet is open", () => {
     const { window } = loadApp();
     window.eval(`

@@ -77,7 +77,7 @@ async function openPdfOverlay(page) {
 
 for (const viewport of VIEWPORTS) {
   for (const lang of LANGUAGES) {
-    test.describe(`[P197] file viewer overlay ${viewport.name}/${lang.key}`, () => {
+    test.describe(`file viewer overlay ${viewport.name}/${lang.key}`, () => {
       test.use({ viewport: { width: viewport.width, height: viewport.height }, locale: lang.locale });
 
       test("opens for an image without horizontal overflow or elements outside the viewport", async ({ page }) => {
@@ -98,7 +98,7 @@ for (const viewport of VIEWPORTS) {
         expect(tapOffenders, `${viewport.name}/${lang.key}: ${JSON.stringify(tapOffenders)}`).toEqual([]);
       });
 
-      test("[P216] a pdf renders every page in one scrolling column, fit to the viewport width", async ({ page }) => {
+      test("a pdf renders every page in one scrolling column, fit to the viewport width", async ({ page }) => {
         await goto(page);
         await waitForContentSettled(page);
         await openPdfOverlay(page);

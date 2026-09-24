@@ -33,7 +33,7 @@ async function failWith(window, body) {
   await settle();
 }
 
-describe("[P228] the messenger says what actually went wrong", () => {
+describe("the messenger says what actually went wrong", () => {
   test("a missing module is named as such instead of the generic card", async () => {
     const { window, document } = loadApp();
     await quiet(window);
@@ -87,7 +87,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     expect(sheet.textContent).not.toContain("marker_present");
   });
 
-  test("[P228] the diagnosis reads as words, not as raw backend types", async () => {
+  test("the diagnosis reads as words, not as raw backend types", async () => {
     const { window, document } = loadApp();
     await quiet(window);
     await failWith(window, {
@@ -103,7 +103,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     expect(sheet.textContent).not.toContain("false");
   });
 
-  test("[P228] the retry keeps a visible loading state and owns up to a second failure", async () => {
+  test("the retry keeps a visible loading state and owns up to a second failure", async () => {
     const { window, document } = loadApp();
     await quiet(window);
     await failWith(window, { error: "network", message_key: "api.messenger.error.network" });
@@ -127,7 +127,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     expect(after).toContain(window.eval('t("api.messenger.error.network")'));
   });
 
-  test("[P228] credentials IServ withheld are named, not sold as an unexpected answer", async () => {
+  test("credentials IServ withheld are named, not sold as an unexpected answer", async () => {
     const { window, document } = loadApp();
     await quiet(window);
     await failWith(window, {
@@ -151,7 +151,7 @@ describe("[P228] the messenger says what actually went wrong", () => {
     expect(sheet.textContent).not.toContain("page_privileges");
   });
 
-  test("[P228] a request that runs into the timeout is not sold as a network outage", async () => {
+  test("a request that runs into the timeout is not sold as a network outage", async () => {
     const { window, document } = loadApp();
     await quiet(window);
     window.eval("state.view = 'messenger'; state.messengerRoom = null; state.messengerRooms = null;");

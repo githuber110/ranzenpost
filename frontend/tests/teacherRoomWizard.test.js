@@ -30,7 +30,7 @@ function seed(window, children, rooms) {
   `);
 }
 
-const ONE_CHILD = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+const ONE_CHILD = [{ key: "c1", name: "Mia", class_name: "3b" }];
 const MIA = { id: "11111111-1111-4111-8111-111111111111", name: "Mia Muster" };
 const TOM = { id: "22222222-2222-4222-8222-222222222222", name: "Tom Muster" };
 
@@ -72,7 +72,7 @@ async function openWizard(window, children) {
   await settle();
 }
 
-describe("[P198] the way into the teacher room wizard", () => {
+describe("the way into the teacher room wizard", () => {
   test("no entry without the IServ privilege", () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD, Object.assign({}, ROOMS, { can_write_to_teacher: false }));
@@ -96,7 +96,7 @@ describe("[P198] the way into the teacher room wizard", () => {
   });
 });
 
-describe("[P198] the wizard path", () => {
+describe("the wizard path", () => {
   test("one child skips the child step and presets the id IServ printed", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
@@ -218,7 +218,7 @@ describe("[P198] the wizard path", () => {
   });
 });
 
-describe("[P198] the teacher search", () => {
+describe("the teacher search", () => {
   test("it waits 250 ms, asks once and drops the old request on the next keystroke", async () => {
     vi.useFakeTimers();
     try {
@@ -307,7 +307,7 @@ describe("[P198] the teacher search", () => {
   });
 });
 
-describe("[P198] duplicate defence and the summary", () => {
+describe("duplicate defence and the summary", () => {
   test("a teacher who already has a room adds the duplicate step", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
@@ -348,7 +348,7 @@ describe("[P198] duplicate defence and the summary", () => {
   });
 });
 
-describe("[P198] the one POST", () => {
+describe("the one POST", () => {
   async function atReview(window, offered) {
     seed(window, ONE_CHILD);
     await openWizard(window, offered || [MIA]);
@@ -393,6 +393,7 @@ describe("[P198] the one POST", () => {
     await settle();
     const create = posts.find((call) => call.url.includes("api/messenger/room/teacher"));
     expect(create.body).toEqual({
+      connection_id: "",
       teacher: TEACHER_A.value,
       child_ids: [MIA.id, TOM.id],
       add_other_parents: true,
@@ -505,7 +506,7 @@ describe("[P198] the one POST", () => {
   });
 });
 
-describe("[P198] a late answer never overwrites a newer query", () => {
+describe("a late answer never overwrites a newer query", () => {
   test("an answer that belongs to an older query is dropped", async () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);

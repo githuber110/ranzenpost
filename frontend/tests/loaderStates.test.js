@@ -53,10 +53,10 @@ const LOADERS = [
   },
   {
     name: "timetable",
-    route: "api/timetable?child_id=",
+    route: "api/timetable?child=",
     good: { lessons: [{ day_of_week: 1, period: 1, subject_label: "Mathe" }] },
     view: "timetable",
-    seed: "state.childId = 'c1'; state.children = [{ child_id: 'c1', name: 'Alex' }]; state.timetableAvailable = true;",
+    seed: "state.childId = 'c1'; state.children = [{ key: 'c1', name: 'Alex' }]; state.modules.available.timetable = true;",
     call: "reloadTimetable()",
     stock: "Mathe",
     errorTitle: "timetable.error.title",
@@ -75,7 +75,7 @@ const LOADERS = [
   },
 ];
 
-describe("[W8] every loader tells the truth about first load, refresh and retry", () => {
+describe("every loader tells the truth about first load, refresh and retry", () => {
   for (const loader of LOADERS) {
     test(`${loader.name}: a failed first load shows the error state with a retry button`, async () => {
       const { window, document } = loadApp();
@@ -151,7 +151,7 @@ describe("[W8] every loader tells the truth about first load, refresh and retry"
   }
 });
 
-describe("[W6c] one error switch decides where a failure lands", () => {
+describe("one error switch decides where a failure lands", () => {
   test("auth_failed from any loader shows the reconnect screen, not a network empty state", async () => {
     const { window, document } = loadApp();
     await quiet(window);

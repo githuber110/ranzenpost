@@ -3,6 +3,7 @@ const path = require("path");
 const { defineConfig, devices } = require("@playwright/test");
 
 const PORT = process.env.E2E_PORT || "8199";
+const IDLE_CONNECTION_SECONDS = 3600;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 function resolvePython() {
@@ -27,7 +28,17 @@ module.exports = defineConfig({
     locale: "de-DE",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: devices["iPhone SE"].viewport } },
+    {
+      name: "chromium-wide",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 768 } },
+      testMatch: [/layout-wide\.spec\.js/],
+    },
+    {
+      name: "chromium-desk",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+      testMatch: [/layout-wide\.spec\.js/],
+    },
     {
       name: "webkit-iphone",
       use: { ...devices["iPhone SE"] },
@@ -35,7 +46,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: `"${resolvePython()}" -m uvicorn tests.e2e_fixture_app:app --host 127.0.0.1 --port ${PORT}`,
+    command: `"${resolvePython()}" -m uvicorn tests.e2e_fixture_app:app --host 127.0.0.1 --port ${PORT} --timeout-keep-alive ${IDLE_CONNECTION_SECONDS}`,
     cwd: "./backend",
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

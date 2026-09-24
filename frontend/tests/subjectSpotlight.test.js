@@ -100,7 +100,7 @@ function move(window, node, x, y) {
   node.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientX: x, clientY: y }));
 }
 
-describe("[P223] a tap opens the details, press and hold spotlights", () => {
+describe("a tap opens the details, press and hold spotlights", () => {
   test("every lesson cell carries its subject so the whole week can be addressed", () => {
     const { window } = loadApp();
     const grid = renderGrid(window);
@@ -108,7 +108,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(cellsFor(grid, "M").length).toBe(2);
   });
 
-  test("[P223] a plain tap opens the detail sheet and leaves the spotlight alone", () => {
+  test("a plain tap opens the detail sheet and leaves the spotlight alone", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window);
     tap(window, cellsFor(screen, "D")[0]);
@@ -116,7 +116,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(window.eval("!!state.sheet")).toBe(true);
   });
 
-  test("[P223] press and hold spotlights the subject and opens no sheet", () => {
+  test("press and hold spotlights the subject and opens no sheet", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window);
     pressAndHold(window, cellsFor(screen, "D")[0]);
@@ -124,7 +124,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(window.eval("!!state.sheet")).toBe(false);
   });
 
-  test("[P223] while a spotlight stands the first tap anywhere only clears it", () => {
+  test("while a spotlight stands the first tap anywhere only clears it", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window);
     pressAndHold(window, cellsFor(screen, "D")[0]);
@@ -133,7 +133,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(window.eval("!!state.sheet")).toBe(false);
   });
 
-  test("[P223] the next tap after the marking was cleared works normally again", () => {
+  test("the next tap after the marking was cleared works normally again", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window);
     pressAndHold(window, cellsFor(screen, "D")[0]);
@@ -142,7 +142,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(window.eval("!!state.sheet")).toBe(true);
   });
 
-  test("[P223] a tap below the grid clears the marking just as well", () => {
+  test("a tap below the grid clears the marking just as well", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window);
     pressAndHold(window, cellsFor(screen, "D")[0]);
@@ -150,7 +150,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
     expect(spotlightOf(window)).toBe(null);
   });
 
-  test("[P223] the detail sheet offers the spotlight as a named action", () => {
+  test("the detail sheet offers the spotlight as a named action", () => {
     const { window } = loadApp();
     renderTimetableScreen(window);
     const label = window.eval(`
@@ -200,7 +200,7 @@ describe("[P223] a tap opens the details, press and hold spotlights", () => {
   });
 });
 
-describe("[P212] the detail sheet counts the subject's occurrences in the week", () => {
+describe("the detail sheet counts the subject's occurrences in the week", () => {
   test("the first of three says so, the last says so", () => {
     const { window } = loadApp();
     renderGrid(window);
@@ -239,8 +239,8 @@ describe("[P212] the detail sheet counts the subject's occurrences in the week",
   });
 });
 
-describe("[R2-19/23] the week count uses the right child, week and school days", () => {
-  test("[P223] press and hold on a subject-less lesson spotlights nothing", () => {
+describe("the week count uses the right child, week and school days", () => {
+  test("press and hold on a subject-less lesson spotlights nothing", () => {
     const { window } = loadApp();
     const screen = renderTimetableScreen(window, {
       lessons: [
@@ -296,7 +296,7 @@ describe("[R2-19/23] the week count uses the right child, week and school days",
   });
 });
 
-describe("[R2-24] the spotlight can be cleared from the keyboard", () => {
+describe("the spotlight can be cleared from the keyboard", () => {
   test("Escape inside the grid clears an active spotlight", () => {
     const { window } = loadApp();
     const grid = renderGrid(window);
@@ -316,7 +316,7 @@ describe("[R2-24] the spotlight can be cleared from the keyboard", () => {
   });
 });
 
-describe("[P223] the hold is a real hold, measured on the clock", () => {
+describe("the hold is a real hold, measured on the clock", () => {
   test("the spotlight waits for the full hold and only then appears", () => {
     const { window } = loadApp();
     const grid = renderGrid(window);

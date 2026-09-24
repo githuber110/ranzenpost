@@ -81,7 +81,7 @@ function ui(window) {
   };
 }
 
-describe("[P180] step scaffold: conditional steps", () => {
+describe("step scaffold: conditional steps", () => {
   test("a conditional step appears and disappears with the answer that decides it", () => {
     const { window } = loadApp();
     const flow = makeFlow(window);
@@ -124,7 +124,7 @@ describe("[P180] step scaffold: conditional steps", () => {
   });
 });
 
-describe("[P180] step scaffold: nothing is lost going back", () => {
+describe("step scaffold: nothing is lost going back", () => {
   test("back and forward keep what was typed into caller state", () => {
     const { window } = loadApp();
     const flow = makeFlow(window);
@@ -149,7 +149,7 @@ describe("[P180] step scaffold: nothing is lost going back", () => {
   });
 });
 
-describe("[P180] step scaffold: the forward lock says why", () => {
+describe("step scaffold: the forward lock says why", () => {
   test("an incomplete mandatory field keeps the button on the step and explains itself", () => {
     const { window } = loadApp();
     const flow = makeFlow(window);
@@ -179,7 +179,7 @@ describe("[P180] step scaffold: the forward lock says why", () => {
   });
 });
 
-describe("[P180] step scaffold: a network step keeps the step and its input", () => {
+describe("step scaffold: a network step keeps the step and its input", () => {
   test("a rejected request shows the reason and leaves the typed value untouched", async () => {
     const { window } = loadApp();
     const flow = makeFlow(window);
@@ -219,7 +219,7 @@ describe("[P180] step scaffold: a network step keeps the step and its input", ()
   });
 });
 
-describe("[P180] setup wizard on the shared scaffold: password and 2FA code are never carried along", () => {
+describe("setup wizard on the shared scaffold: password and 2FA code are never carried along", () => {
   function setupWizard(window, document, states) {
     const posts = [];
     window.fetch = (path, opts) => {

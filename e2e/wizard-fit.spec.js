@@ -125,7 +125,7 @@ const WALKS = {
 
 async function installPayload(page, data) {
   const body = JSON.stringify(payload(data));
-  await page.route("**/api/absences", (route) => {
+  await page.route((url) => url.pathname.endsWith("/api/absences"), (route) => {
     if (route.request().method() !== "GET") return route.continue();
     return route.fulfill({ status: 200, contentType: "application/json", body });
   });
@@ -402,7 +402,7 @@ async function clippedTexts(page, selector) {
   }, selector);
 }
 
-test.describe("[P192] no text on the review page is cut off without a way to the whole of it", () => {
+test.describe("no text on the review page is cut off without a way to the whole of it", () => {
   test.use({ viewport: { width: 320, height: 568 } });
 
   for (const language of LANGUAGES) {

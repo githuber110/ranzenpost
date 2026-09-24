@@ -57,7 +57,7 @@ describe("absence view current/past split", () => {
   });
 });
 
-describe("[P122] absence history-sourced entries", () => {
+describe("absence history-sourced entries", () => {
   test("a history-sourced past entry is tagged distinct from a live one", () => {
     const { window } = loadApp();
     const today = new Date();
@@ -90,13 +90,13 @@ describe("[P122] absence history-sourced entries", () => {
   });
 });
 
-describe("[P96] absence empty state honesty", () => {
+describe("absence empty state honesty", () => {
   test("no entries at all shows the honest empty block", () => {
     const { window } = loadApp();
     const box = { data: { entries: [], phones: [] } };
     const view = renderAbsenceView(window, box);
     expect(view.textContent).toContain("Nichts Aktuelles gemeldet");
-    expect(view.textContent).toContain("blendet IServ für Eltern automatisch aus");
+    expect(view.textContent).toContain("blendet IServ automatisch aus");
     expect(view.textContent).not.toContain("erscheinen hier, sobald du sie eingereicht hast");
   });
 

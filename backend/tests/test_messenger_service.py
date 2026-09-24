@@ -66,9 +66,10 @@ class FakeIServClient:
         self.fetched_params.append(params)
         return self.pages.get(path, self.page)
 
-    def post_absolute(self, url, data, timeout=30, follow_redirects=True):
+    def post_absolute(self, url, data, timeout=30, follow_redirects=True, headers=None):
         self.posts.append((url, data))
         self.followed.append(follow_redirects)
+        self.post_headers = getattr(self, "post_headers", []) + [dict(headers or {})]
         return self.posted or FakePage(200, "")
 
 
@@ -353,6 +354,36 @@ def test_unread_pulse_returns_the_total_across_rooms():
     }
     service = MessengerService(iserv, matrix_client_factory=make_factory(plan))
     assert service.unread_pulse() == 4
+
+
+def test_unread_pulse_treats_a_genuinely_empty_sync_body_as_zero():
+    store = DictStore({"messenger_access_token": "tok-1"})
+    iserv = FakeIServ(store)
+    plan = {"sync": FakeMatrixResponse(json_data={})}
+    service = MessengerService(iserv, matrix_client_factory=make_factory(plan))
+    assert service.unread_pulse() == 0
+
+
+def test_unread_pulse_rejects_a_sync_body_whose_rooms_are_not_a_mapping():
+    from app.iserv.messenger import MessengerStageError
+
+    store = DictStore({"messenger_access_token": "tok-1"})
+    iserv = FakeIServ(store)
+    plan = {"sync": FakeMatrixResponse(json_data={"rooms": "unexpected"})}
+    service = MessengerService(iserv, matrix_client_factory=make_factory(plan))
+    with pytest.raises(MessengerStageError):
+        service.unread_pulse()
+
+
+def test_unread_pulse_rejects_a_sync_body_whose_join_rooms_are_not_a_mapping():
+    from app.iserv.messenger import MessengerStageError
+
+    store = DictStore({"messenger_access_token": "tok-1"})
+    iserv = FakeIServ(store)
+    plan = {"sync": FakeMatrixResponse(json_data={"rooms": {"join": "unexpected"}})}
+    service = MessengerService(iserv, matrix_client_factory=make_factory(plan))
+    with pytest.raises(MessengerStageError):
+        service.unread_pulse()
 
 
 def test_media_rejects_a_malformed_server_name_or_media_id():
@@ -690,3 +721,21 @@ def test_the_room_list_still_offers_the_way_in_when_the_credentials_are_withheld
     assert payload["can_write_to_teacher"] is True
     assert payload["rooms"] == []
     assert payload["messages_unavailable"]["message_key"] == "api.messenger.error.noCredentials"
+
+
+def test_a_password_repaired_while_the_bootstrap_runs_is_never_undone():
+    store = DictStore({"username": "parent1", "password": "old"})
+
+    class RepairingClient(FakeIServClient):
+        def fetch(self, path, params=None):
+            store.save_secrets(dict(store.load_secrets(), password=f"repaired-{len(self.fetched_paths)}"))
+            return super().fetch(path, params)
+
+    client = RepairingClient()
+    service = MessengerService(FakeIServ(store, client), matrix_client_factory=make_factory({}))
+    service.rooms()
+    secrets = store.load_secrets()
+    assert len(client.fetched_paths) >= 2
+    assert secrets["password"] == f"repaired-{len(client.fetched_paths) - 1}"
+    assert secrets["messenger_access_token"] == "tok-1"
+    assert secrets["messenger_privileges_known"] == "1"

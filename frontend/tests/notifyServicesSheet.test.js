@@ -48,7 +48,7 @@ function chipsOf(document) {
   return [...document.querySelectorAll(".notify-chip")];
 }
 
-describe("[P208] notification sheet: chip list + nested picker replace the old free-form form", () => {
+describe("notification sheet: chip list + nested picker replace the old free-form form", () => {
   test("the deleted persistent-notification default row, free-text field and manual group are gone", () => {
     const { document } = openNotifySheet(ENRICHED);
 
@@ -73,7 +73,7 @@ describe("[P208] notification sheet: chip list + nested picker replace the old f
 
     expect(chipsOf(document).length).toBe(0);
     expect(document.querySelector(".notify-empty").textContent).toBe(
-      "Noch kein Ziel gewählt – ohne Ziel wird nichts gesendet."
+      "Noch kein Gerät gewählt. Ohne Gerät wird nichts gesendet."
     );
   });
 
@@ -109,7 +109,7 @@ describe("[P208] notification sheet: chip list + nested picker replace the old f
     const heads = overlines(document);
     expect(heads).toContain("Push aufs Handy");
     expect(heads).toContain("An alle Geräte");
-    expect(heads).toContain("Weitere Dienste");
+    expect(heads).toContain("Weitere Geräte");
 
     expect(rowsOf(document, "mobile").length).toBe(3);
     expect(rowsOf(document, "group").length).toBe(1);
@@ -141,7 +141,7 @@ describe("[P208] notification sheet: chip list + nested picker replace the old f
     expect(app.window.eval("state.sheetForm.services")).toEqual(["notify.mobile_app_test_tablet"]);
   });
 
-  test("[P208 follow-up] closing the picker is a plain go-back, not a discard-changes prompt", () => {
+  test("closing the picker is a plain go-back, not a discard-changes prompt", () => {
     const app = openNotifySheet(ENRICHED);
     openPicker(app);
 
@@ -241,13 +241,13 @@ describe("[P208] notification sheet: chip list + nested picker replace the old f
     expect(hint).not.toBeUndefined();
   });
 
-  test("the event section keeps all four events switched on by default", () => {
+  test("the event section keeps all five events switched on by default", () => {
     const { window, document } = openNotifySheet(ENRICHED);
     const groups = [...document.querySelectorAll(".field-group")];
     const eventGroup = groups[groups.length - 1];
     const checks = [...eventGroup.querySelectorAll("input[type=checkbox]")];
 
-    expect(checks.length).toBe(4);
+    expect(checks.length).toBe(5);
     expect(checks.every((check) => check.checked)).toBe(true);
     expect(eventGroup.textContent).toContain("Stundenplan-Änderungen");
     expect(window.eval("state.sheetForm.events")).toEqual({});
@@ -278,7 +278,7 @@ describe("[P208] notification sheet: chip list + nested picker replace the old f
   });
 });
 
-describe("[P154] the settings row names the device instead of counting services", () => {
+describe("the settings row names the device instead of counting services", () => {
   test("a single target shows its friendly name", () => {
     const { window } = openNotifySheet(ENRICHED);
     const label = window.eval(
@@ -300,8 +300,21 @@ describe("[P154] the settings row names the device instead of counting services"
     expect(window.eval('notifyServicesSummaryLabel(["notify.something_else"])')).toBe("notify.something_else");
   });
 
-  test("[P208] no target at all now names the absence of a target, not the old Home Assistant default", () => {
+  test("no target at all now names the absence of a target, not the old Home Assistant default", () => {
     const { window } = openNotifySheet(ENRICHED);
-    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Kein Ziel");
+    expect(window.eval("notifyServicesSummaryLabel([])")).toBe("Kein Gerät");
+  });
+});
+
+describe("the notification sheet is named like its settings section", () => {
+  test("its title is the first word of the section in every language", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { document } = openNotifySheet(ENRICHED);
+    expect(document.querySelector(".sheet-title").textContent).toBe("Mitteilungen");
+    for (const lang of ["de", "en", "ar", "tr", "ru", "uk"]) {
+      const bundle = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "i18n", `${lang}.json`), "utf8"));
+      expect(bundle["settings.section.notifications"].startsWith(bundle["settings.notify.sheet"]), lang).toBe(true);
+    }
   });
 });

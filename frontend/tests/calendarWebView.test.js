@@ -3,7 +3,7 @@ import { loadApp } from "./loadApp.js";
 
 const SUBSCRIPTION = {
   id: "sub-1",
-  child_id: "c1",
+  child_key: "c1",
   label: "3b",
   components: ["timetable"],
   color: "#135859",
@@ -25,7 +25,7 @@ function actionsFor(agent) {
   const { window } = loadApp();
   Object.defineProperty(window.navigator, "userAgent", { value: agent, configurable: true });
   window.eval(`
-    state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+    state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
     state.childId = "c1";
     state.calendar = { data: {
       subscriptions: [],
@@ -45,7 +45,7 @@ function actionsFor(agent) {
   return { window, host };
 }
 
-describe("[P225] the subscription path fits the device it is shown on", () => {
+describe("the subscription path fits the device it is shown on", () => {
   test("a real browser keeps the direct webcal button", () => {
     const { window, host } = actionsFor(SAFARI_UA);
     const add = host.querySelector(".cal-add");
@@ -56,7 +56,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(host.querySelector(".cal-copy")).not.toBeNull();
   });
 
-  test("[P259] the companion web view leads with opening the calendar in the browser", () => {
+  test("the companion web view leads with opening the calendar in the browser", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const open = host.querySelector(".cal-open-browser");
     expect(open).not.toBeNull();
@@ -73,7 +73,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.importHint")'));
   });
 
-  test("[P259] the web view hands the calendar to the browser, never to webcal inside itself", () => {
+  test("the web view hands the calendar to the browser, never to webcal inside itself", () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const opened = [];
     window.HTMLAnchorElement.prototype.click = function click() {
@@ -85,7 +85,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     ]);
   });
 
-  test("[P259] copying in the web view hands over the link that subscribes, not the one that imports", async () => {
+  test("copying in the web view hands over the link that subscribes, not the one that imports", async () => {
     const { window, host } = actionsFor(COMPANION_UA);
     const copied = [];
     Object.defineProperty(window.navigator, "clipboard", {
@@ -115,7 +115,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
     const { window } = loadApp();
     Object.defineProperty(window.navigator, "userAgent", { value: COMPANION_UA, configurable: true });
     window.eval(`
-      state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }];
+      state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
       state.childId = "c1";
       state.calendar = { data: {
         subscriptions: [],
@@ -156,7 +156,7 @@ describe("[P225] the subscription path fits the device it is shown on", () => {
   });
 });
 
-describe("[P255] one loud button per subscription", () => {
+describe("one loud button per subscription", () => {
   for (const [name, agent] of [
     ["browser", SAFARI_UA],
     ["companion app", COMPANION_UA],

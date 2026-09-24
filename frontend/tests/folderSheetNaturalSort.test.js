@@ -15,7 +15,7 @@ function pinboardData() {
   };
 }
 
-describe("[P131] folder sheet: natural sort", () => {
+describe("folder sheet: natural sort", () => {
   test("orders folders 01, 02, 10 instead of string order 01, 10, 02", () => {
     const { window } = loadApp();
     window.eval(`state.pinboard = ${JSON.stringify(pinboardData())};`);

@@ -53,7 +53,7 @@ function mark(overrides) {
   return Object.assign(
     {
       id: "m1",
-      child_id: "c1",
+      child_key: "c1",
       date: "2026-09-02",
       period: 3,
       subject_code: "MA",
@@ -68,7 +68,7 @@ function prepare(window, marks) {
   window.eval(`
     (function (marks) {
       state.config = { subjects: { MA: { label: "Mathe" }, D: { label: "Deutsch" } }, period_times: { "1": "07:00", "3": "09:45", "5": "11:30" } };
-      state.children = [{ child_id: "c1", name: "Kind", class_name: "3b" }];
+      state.children = [{ key: "c1", name: "Kind", class_name: "3b" }];
       state.childId = "c1";
       state.view = "timetable";
       state.marks = { data: { marks: marks } };
@@ -85,7 +85,7 @@ function label(window, key) {
   return window.eval(`t(${JSON.stringify(key)})`);
 }
 
-describe("[P179] marking a lesson as an exam", () => {
+describe("marking a lesson as an exam", () => {
   test("the lesson sheet offers the mark action and the round trip posts the anchor", async () => {
     const { window, document } = await ready();
     prepare(window);
@@ -111,7 +111,7 @@ describe("[P179] marking a lesson as an exam", () => {
 
     const created = posts.find((call) => call.options.method === "POST");
     expect(JSON.parse(created.options.body)).toEqual({
-      child_id: "c1",
+      child_key: "c1",
       date: "2026-09-02",
       period: 3,
       subject_code: "MA",
@@ -165,7 +165,7 @@ describe("[P179] marking a lesson as an exam", () => {
   });
 });
 
-describe("[P179] the name chips learn from what was used", () => {
+describe("the name chips learn from what was used", () => {
   test("saving a name remembers it, the next form offers it, and a chip fills the field", async () => {
     const { window, document } = await ready();
     prepare(window);
@@ -194,12 +194,82 @@ describe("[P179] the name chips learn from what was used", () => {
     expect(window.eval("state.sheetForm.name")).toBe("Diktat");
   });
 
-  test("at most four names are kept, newest first, without duplicates", async () => {
+  test("at most twelve names are kept, newest first, without duplicates", async () => {
     const { window } = await ready();
     window.eval(`
-      ["A", "B", "C", "D", "E", "B"].forEach((name) => rememberMarkName(name));
+      ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "B"].forEach((name) => rememberMarkName(name));
     `);
-    expect(JSON.parse(window.localStorage.getItem("markNames"))).toEqual(["B", "E", "D", "C"]);
+    expect(JSON.parse(window.localStorage.getItem("markNames"))).toEqual([
+      "B", "N", "M", "L", "K", "J", "I", "H", "G", "F", "E", "D",
+    ]);
+  });
+
+  function openForm(window, document) {
+    window.eval(`openLessonSheet(${JSON.stringify(lesson({ period: 5 }))}, "11:30", "c1")`);
+    document.querySelector(".sheet-foot .mark-add").click();
+  }
+
+  function recentEntries(document) {
+    return [...document.querySelectorAll(".mark-chips .mark-recent")];
+  }
+
+  test("each recent name is a chip with its own remove control that names the entry", async () => {
+    const { window, document } = await ready();
+    prepare(window);
+    window.eval(`["Diktat", "Vokabeltest"].forEach((name) => rememberMarkName(name))`);
+    openForm(window, document);
+
+    const entries = recentEntries(document);
+    expect(entries.map((entry) => entry.querySelector(".mark-chip").textContent)).toEqual(["Vokabeltest", "Diktat"]);
+    for (const entry of entries) {
+      const name = entry.querySelector(".mark-chip").textContent;
+      const remove = entry.querySelector("button.mark-chip-remove");
+      expect(remove).not.toBeNull();
+      expect(remove.getAttribute("type")).toBe("button");
+      expect(remove.getAttribute("aria-label")).toBe(window.eval(`t("marks.form.recentRemove", { name: ${JSON.stringify(name)} })`));
+      expect(remove.getAttribute("aria-label")).toContain(name);
+    }
+  });
+
+  test("removing a name drops it from the list and the store, keeps the rest and moves focus on", async () => {
+    const { window, document } = await ready();
+    prepare(window);
+    window.eval(`["Diktat", "Vokabeltest", "Klassenarbeit"].forEach((name) => rememberMarkName(name))`);
+    openForm(window, document);
+
+    recentEntries(document)[0].querySelector(".mark-chip-remove").click();
+    expect(JSON.parse(window.localStorage.getItem("markNames"))).toEqual(["Vokabeltest", "Diktat"]);
+    expect(recentEntries(document).map((entry) => entry.querySelector(".mark-chip").textContent)).toEqual(["Vokabeltest", "Diktat"]);
+    expect(document.activeElement).toBe(recentEntries(document)[0].querySelector(".mark-chip-remove"));
+    expect(document.querySelector(".sheet-body .inp").value).toBe("");
+
+    recentEntries(document)[1].querySelector(".mark-chip-remove").click();
+    recentEntries(document)[0].querySelector(".mark-chip-remove").click();
+    expect(window.localStorage.getItem("markNames")).toBeNull();
+    expect(document.querySelector(".mark-chips")).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector(".sheet-body .inp"));
+  });
+
+  test("a removed name is not offered by the next form either", async () => {
+    const { window, document } = await ready();
+    prepare(window);
+    window.eval(`["Diktat", "Vokabeltest"].forEach((name) => rememberMarkName(name))`);
+    openForm(window, document);
+    recentEntries(document)[1].querySelector(".mark-chip-remove").click();
+    window.eval("discardSheet()");
+
+    openForm(window, document);
+    expect(recentEntries(document).map((entry) => entry.querySelector(".mark-chip").textContent)).toEqual(["Vokabeltest"]);
+  });
+
+  test("the chips wrap over lines and the remove control fills a tap target in the stylesheet", async () => {
+    const css = await import("node:fs").then((fs) => fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8"));
+    const row = /\.chip-row \{[^}]*flex-wrap: wrap/.exec(css);
+    expect(row).not.toBeNull();
+    const remove = /\.mark-chip-remove \{[^}]*\}/.exec(css);
+    expect(remove).not.toBeNull();
+    expect(remove[0]).toMatch(/min-inline-size: 44px/);
+    expect(remove[0]).toMatch(/min-block-size: 44px/);
   });
 
   test("an empty name is never learned", async () => {
@@ -209,7 +279,7 @@ describe("[P179] the name chips learn from what was used", () => {
   });
 });
 
-describe("[P179] the clarification tile, one anchor state at a time", () => {
+describe("the clarification tile, one anchor state at a time", () => {
   const ways = ["marks.clarify.keep", "marks.clarify.move", "marks.clarify.remove"];
 
   for (const state of ["cancelled", "foreign", "orphaned"]) {
@@ -265,7 +335,7 @@ describe("[P179] the clarification tile, one anchor state at a time", () => {
   });
 });
 
-describe("[P179] moving a mark offers only lessons the day really has", () => {
+describe("moving a mark offers only lessons the day really has", () => {
   function dayWeek(window, lessons) {
     window.eval(`(function (lessons) { state.timetable = { lessons: lessons, period_times: {} }; })`)(lessons);
   }
@@ -314,7 +384,7 @@ describe("[P179] moving a mark offers only lessons the day really has", () => {
   });
 });
 
-describe("[P179] the mark is visible where the lesson is", () => {
+describe("the mark is visible where the lesson is", () => {
   test("the grid cell carries the marked class, a shape and the spoken label", async () => {
     const { window } = await ready();
     prepare(window, [mark()]);
@@ -346,8 +416,8 @@ function renderTodayChapter(window, fixedIso, lessons, marks, absence) {
       FixedDate.prototype = RealDate.prototype;
       Date = FixedDate;
       state.weekOffset = 0;
-      state.timetableAvailable = true;
-      state.children = [{ child_id: "c1", name: "Kind", class_name: "3b" }];
+      state.modules.available.timetable = true;
+      state.children = [{ key: "c1", name: "Kind", class_name: "3b" }];
       state.childId = "c1";
       state.overviewChildId = "c1";
       state.config = { subjects: { MA: { label: "Mathe" } }, period_times: {} };
@@ -362,7 +432,7 @@ function renderTodayChapter(window, fixedIso, lessons, marks, absence) {
   return run(fixedIso, lessons, marks, absence);
 }
 
-describe("[P179] the today chapter shows marks and approved absences", () => {
+describe("the today chapter shows marks and approved absences", () => {
   const WEDNESDAY = "2026-09-02T06:00:00";
   const todayLessons = [
     lesson({ day_of_week: 3, period: 1, subject_code: "D", subject_label: "Deutsch", start_time: "07:00" }),

@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from .. import requestlog
 from .forms import affirmative_submit, find_client_redirect
 from .pages import base_shape
 
@@ -186,6 +187,45 @@ def auth_complete(cleaned):
     return bool(cleaned["access_token"] and cleaned["home_server"] and cleaned["user_id"])
 
 
+def parse_posted_authentication(payload):
+    if not isinstance(payload, dict):
+        raise BootstrapNotFoundError("messenger authentication answer is not an object")
+    found = _find_marked(payload, BOOTSTRAP_MARKER)
+    cleaned = clean_auth(found if isinstance(found, dict) else payload)
+    user_id = cleaned["user_id"]
+    if not cleaned["home_server"] and user_id.startswith("@") and ":" in user_id:
+        cleaned["home_server"] = user_id.split(":", 1)[1]
+    if auth_complete(cleaned):
+        return cleaned
+    raise BootstrapNotFoundError("messenger authentication answer is incomplete")
+
+
+def authenticate_by_post(post, html):
+    attempts = []
+    shapes = []
+    for path in parse_authenticate_paths(html):
+        try:
+            answer = post(path)
+        except (requests.RequestException, OSError):
+            logger.debug("messenger authenticate post failed at %s", path, exc_info=True)
+            attempts.append((path, 0))
+            continue
+        status = int(getattr(answer, "status_code", 0) or 0)
+        attempts.append((path, status))
+        if status != 200:
+            continue
+        body = _json_body(answer)
+        if body is None:
+            shapes.append(_no_json_shape(path, answer))
+            continue
+        try:
+            return XhrOutcome(XHR_CREDENTIALS, parse_posted_authentication(body), attempts, shapes)
+        except BootstrapNotFoundError:
+            shapes.append("%s: %s" % (path, shape_of(body)))
+            return XhrOutcome(XHR_REFUSED, None, attempts, shapes)
+    return XhrOutcome(XHR_REFUSED, None, attempts, shapes)
+
+
 def shape_of(source):
     if not isinstance(source, dict):
         return type(source).__name__
@@ -311,6 +351,78 @@ def parse_authentication(payload):
     if auth_complete(cleaned):
         return cleaned
     raise BootstrapNotFoundError("messenger authentication payload is incomplete")
+
+
+XHR_CREDENTIALS = "credentials"
+XHR_REFUSED = "refused"
+XHR_UNREACHABLE = "unreachable"
+SERVER_ERROR_STATUS = 500
+
+
+class XhrOutcome:
+    def __init__(self, verdict, auth, attempts, shapes):
+        self.verdict = verdict
+        self.auth = auth
+        self.attempts = attempts
+        self.shapes = shapes
+
+    def attempts_note(self):
+        return ", ".join(f"{path} {status}" for path, status in self.attempts)
+
+    def shapes_note(self):
+        return " | ".join(self.shapes)
+
+
+def _json_body(answer):
+    reader = getattr(answer, "json", None)
+    if not callable(reader):
+        return None
+    try:
+        return reader()
+    except ValueError:
+        return None
+
+
+def _no_json_shape(path, answer):
+    headers = getattr(answer, "headers", None) or {}
+    body = getattr(answer, "text", "") or ""
+    return "%s: no json, type=%s, len=%d, starts=%s" % (
+        path,
+        str(headers.get("content-type") or "?").split(";")[0].strip(),
+        len(body),
+        _shape_only(body.strip()[:8]),
+    )
+
+
+def authenticate_over_xhr(fetch, html):
+    attempts = []
+    shapes = []
+    unreachable = False
+    for path in parse_authenticate_paths(html):
+        try:
+            answer = fetch(path)
+        except (requests.RequestException, OSError):
+            logger.debug("messenger authenticate call failed at %s", path, exc_info=True)
+            attempts.append((path, 0))
+            unreachable = True
+            continue
+        status = int(getattr(answer, "status_code", 0) or 0)
+        attempts.append((path, status))
+        if status >= SERVER_ERROR_STATUS:
+            unreachable = True
+            continue
+        if status != 200:
+            continue
+        body = _json_body(answer)
+        if body is None:
+            shapes.append(_no_json_shape(path, answer))
+            continue
+        try:
+            return XhrOutcome(XHR_CREDENTIALS, parse_authentication(body), attempts, shapes)
+        except BootstrapNotFoundError:
+            marked = body.get(BOOTSTRAP_MARKER) if isinstance(body, dict) else None
+            shapes.append("%s: %s" % (path, shape_of(marked if isinstance(marked, dict) else body)))
+    return XhrOutcome(XHR_UNREACHABLE if unreachable else XHR_REFUSED, None, attempts, shapes)
 
 
 def parse_authenticate_paths(html):
@@ -521,7 +633,7 @@ class MatrixClient:
     def __init__(self, base_url, access_token, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.access_token = access_token
-        self.session = session or requests.Session()
+        self.session = requestlog.install(session or requests.Session())
         self.timeout = timeout
 
     def _headers(self):

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P121] timetable 'Stand' line shows the time when IServ sends one", () => {
+describe("timetable 'Stand' line shows the time when IServ sends one", () => {
   test("a last_updated with a time component renders date and time", () => {
     const { window } = loadApp();
     window.eval(

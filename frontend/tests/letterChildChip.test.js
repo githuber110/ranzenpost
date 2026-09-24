@@ -13,7 +13,7 @@ function lettersList(window, children) {
       state.postTab = "letters";
       state.lettersTab = "current";
       state.children = kids;
-      state.childId = kids.length ? kids[0].child_id : "";
+      state.childId = kids.length ? kids[0].key : "";
       state.letters = { tab: "current", letters: letters };
       return lettersView(null);
     })
@@ -36,10 +36,10 @@ function tagTexts(node) {
   return [...node.querySelectorAll(".row-tags .tag")].map((t) => t.textContent.trim());
 }
 
-describe("[P234] every letter says which child it is about", () => {
+describe("every letter says which child it is about", () => {
   test("the list shows the child's first name as a chip beside the class", () => {
     const { window } = loadApp();
-    const view = lettersList(window, [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }]);
+    const view = lettersList(window, [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }]);
     const rows = [...view.querySelectorAll(".rows .row")];
     expect(rows.length).toBe(2);
     expect(tagTexts(rows[0])).toContain("Nena");
@@ -48,21 +48,21 @@ describe("[P234] every letter says which child it is about", () => {
 
   test("a single-child household sees it too", () => {
     const { window } = loadApp();
-    const view = lettersList(window, [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }]);
+    const view = lettersList(window, [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }]);
     const first = view.querySelector(".rows .row");
     expect(tagTexts(first)).toContain("Nena");
   });
 
   test("only the first name is shown, never the surname", () => {
     const { window } = loadApp();
-    const view = lettersList(window, [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }]);
+    const view = lettersList(window, [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }]);
     const texts = [...view.querySelectorAll(".row-tags .tag")].map((t) => t.textContent);
     expect(texts.join(" ")).not.toContain("Beispiel");
   });
 
   test("a surname-first spelling still yields the given name", () => {
     const { window } = loadApp();
-    const view = lettersList(window, [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }]);
+    const view = lettersList(window, [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }]);
     const rows = [...view.querySelectorAll(".rows .row")];
     expect(tagTexts(rows[1])).toContain("Toko");
     expect(tagTexts(rows[1]).join(" ")).not.toContain("Beispiel");
@@ -86,12 +86,12 @@ describe("[P234] every letter says which child it is about", () => {
   });
 });
 
-describe("[P234] the overview says which child a new letter is about", () => {
+describe("the overview says which child a new letter is about", () => {
   test("an unread letter in the overview carries the child chip", () => {
     const { window } = loadApp();
     const html = window.eval(`
       (function (letters) {
-        state.children = [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }];
+        state.children = [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }];
         state.childId = "c1";
         state.letters = { tab: "current", letters: letters };
         const chapter = lettersChapter();
@@ -129,12 +129,12 @@ describe("[P234] the overview says which child a new letter is about", () => {
   });
 });
 
-describe("[P234] the overview letter row carries the same facts as the list", () => {
+describe("the overview letter row carries the same facts as the list", () => {
   test("class, child and the pending-confirmation badge all appear in the overview", () => {
     const { window } = loadApp();
     const html = window.eval(`
       (function (letters) {
-        state.children = [{ child_id: "c1", name: "Nena Beispiel", class_name: "3b" }];
+        state.children = [{ key: "c1", name: "Nena Beispiel", class_name: "3b" }];
         state.childId = "c1";
         state.letters = { tab: "current", letters: letters };
         const chapter = lettersChapter();

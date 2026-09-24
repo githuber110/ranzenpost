@@ -11,8 +11,9 @@ from app.subscriptions import SubscriptionRegistry
 
 ADDON = Path(__file__).resolve().parents[2] / "iserv_connector"
 LANGUAGES = ("de", "en", "ar", "tr", "ru", "uk")
-CHILD_ID = "child-uuid-a"
-SECOND_CHILD_ID = "child-uuid-b"
+SCHOOL = "a1b2c3d4"
+CHILD_ID = f"{SCHOOL}:child-uuid-a"
+SECOND_CHILD_ID = f"{SCHOOL}:child-uuid-b"
 CHILD_NAME = "Zwiebelfisch Quastenflosser"
 
 
@@ -37,13 +38,16 @@ class StubHolidays:
 
 def _store(tmp_path):
     store = Store(tmp_path / "data")
-    config = store.load_config()
-    config["holiday_region"] = "DE-NI"
-    config["children"] = [
-        {"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"},
-        {"child_id": SECOND_CHILD_ID, "name": "Kraakebolle", "class_name": "7B"},
-    ]
-    store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id=SCHOOL,
+        setup_complete=True,
+        holiday_region="DE-NI",
+        children=[
+            {"child_id": CHILD_ID.split(":", 1)[-1], "name": CHILD_NAME, "class_name": "5A"},
+            {"child_id": SECOND_CHILD_ID.split(":", 1)[-1], "name": "Kraakebolle", "class_name": "7B"},
+        ],
+    )
     return store
 
 
@@ -62,7 +66,7 @@ def test_a_valid_token_serves_the_feed(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/calendar")
-    assert response.headers["cache-control"] == "private, max-age=600, must-revalidate"
+    assert response.headers["cache-control"] == "private, no-cache"
     assert response.text.startswith("BEGIN:VCALENDAR")
 
 
@@ -199,8 +203,65 @@ def test_a_full_token_never_lands_in_the_log(tmp_path, caplog):
     client.get("/calendar/abcdefghijklmnopqrstuvwxyz012345.ics")
 
     logged = "\n".join(record.getMessage() for record in caplog.records)
-    assert "abcdef" in logged
+    assert "abcd" in logged
+    assert "abcde" not in logged
     assert "abcdefghijklmnopqrstuvwxyz012345" not in logged
+
+
+def test_the_feed_itself_logs_status_200_and_kind_feed(tmp_path, caplog):
+    client, store, registry = _client(tmp_path)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+
+    client.get(created["path"], headers={"User-Agent": "TestClient/1.0"})
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "status=200" in logged
+    assert "kind=feed" in logged
+    assert "user_agent=TestClient/1.0" in logged
+
+
+def test_the_subscribe_hand_off_logs_status_302_and_kind_subscribe(tmp_path, caplog):
+    client, store, registry = _client(tmp_path)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+
+    client.get(
+        created["path"],
+        params={"subscribe": "1", "secret": "should-not-be-logged"},
+        headers={"Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "status=302" in logged
+    assert "kind=subscribe" in logged
+    assert "should-not-be-logged" not in logged
+
+
+def test_a_rejected_token_logs_status_404_without_the_token(tmp_path, caplog):
+    client, store, registry = _client(tmp_path)
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+
+    client.get("/calendar/abcdefghijklmnopqrstuvwxyz012345.ics")
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "status=404" in logged
+    assert "kind=rejected" in logged
+    assert "abcdefghijklmnopqrstuvwxyz012345" not in logged
+
+
+def test_a_long_user_agent_is_trimmed_in_the_log(tmp_path, caplog):
+    client, store, registry = _client(tmp_path)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+    long_agent = "A" * 400
+
+    client.get(created["path"], headers={"User-Agent": long_agent})
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "A" * 400 not in logged
+    assert "A" * 120 in logged
 
 
 def test_the_app_port_is_never_published(tmp_path):
@@ -235,3 +296,42 @@ def test_the_calendar_listener_runs_on_its_own_port():
     assert DEFAULT_PORT == 8100
     assert "--port 8099" in run_sh
     assert "ISERV_CALENDAR_PORT" in run_sh
+
+
+def test_rate_limited_hits_log_one_line_and_then_one_summary_a_minute(tmp_path, caplog):
+    clock = {"now": 0.0}
+    store = _store(tmp_path)
+    registry = SubscriptionRegistry(store)
+    app = create_calendar_app(
+        store,
+        registry,
+        holiday_calendar=StubHolidays(),
+        limiter=RateLimiter(limit=1, window=3600, clock=lambda: clock["now"]),
+        rate_log=calendar_server.RateLimitLog(clock=lambda: clock["now"]),
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+
+    codes = [client.get(created["path"]).status_code for _ in range(5)]
+    clock["now"] = 61.0
+    codes.append(client.get(created["path"]).status_code)
+
+    assert codes == [200, 429, 429, 429, 429, 429]
+    logged = [record.getMessage() for record in caplog.records]
+    assert sum("status=429" in line for line in logged) == 2
+    summaries = [line for line in logged if "rate limit refused" in line]
+    assert len(summaries) == 1
+    assert " 3 " in summaries[0]
+
+
+def test_a_long_accept_header_is_trimmed_in_the_log(tmp_path, caplog):
+    client, store, registry = _client(tmp_path)
+    created = registry.create(CHILD_ID, ["timetable"], "5A")
+    caplog.set_level("INFO", logger=calendar_server.logger.name)
+
+    client.get(created["path"], headers={"Accept": "b" * 400})
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "b" * 121 not in logged
+    assert "b" * 120 in logged

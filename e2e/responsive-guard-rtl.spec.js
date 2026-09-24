@@ -14,7 +14,7 @@ const VIEWS = [
   { key: "timetable", tab: 1 },
   { key: "absence", tab: 2 },
   { key: "letters", tab: 3 },
-  { key: "pinboard", tab: 4 },
+  { key: "more-sheet", tab: 4 },
 ];
 
 async function waitForContentSettled(page) {

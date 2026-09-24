@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
+import { shippedScriptText } from "./shippedSources.js";
 
 function mockBlobResponse(window, { ok = true, disposition = "", type = "" } = {}) {
   window.URL.createObjectURL = () => "blob:mock-url";
@@ -35,7 +36,7 @@ async function settle(window, ticks = 8) {
   for (let tick = 0; tick < ticks; tick += 1) await new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
-describe("[P111-B8] attachmentRows never renders a clickable link for an empty url", () => {
+describe("attachmentRows never renders a clickable link for an empty url", () => {
   test("a file with a url renders a button, not a same-tab-breaking link", () => {
     const { window } = loadApp();
     const rows = window.eval(`attachmentRows([{ filename: "Elternbrief.pdf", url: "api/letters/attachment/x" }])`);
@@ -55,7 +56,7 @@ describe("[P111-B8] attachmentRows never renders a clickable link for an empty u
   });
 });
 
-describe("[P150] attachment click fetches in the current document context", () => {
+describe("attachment click fetches in the current document context", () => {
   test("clicking triggers fetch on the relative api path, not a new-tab navigation", async () => {
     const { window } = loadApp();
     const requestedUrls = [];
@@ -95,7 +96,7 @@ describe("[P150] attachment click fetches in the current document context", () =
   });
 });
 
-describe("[P197] an in-app overlay opens for images and PDFs, everything else downloads", () => {
+describe("an in-app overlay opens for images and PDFs, everything else downloads", () => {
   test("an image opens in the overlay as an <img>, no download happens", async () => {
     const { window } = loadApp();
     mockBlobResponse(window, { type: "image/jpeg" });
@@ -159,7 +160,7 @@ describe("[P197] an in-app overlay opens for images and PDFs, everything else do
   });
 });
 
-describe("[P216] the pdf overlay renders every page in one scrolling column", () => {
+describe("the pdf overlay renders every page in one scrolling column", () => {
   test("the overlay hands the pdf to the vendored viewer instead of an iframe", async () => {
     const { window } = loadApp();
     const created = [];
@@ -217,7 +218,7 @@ describe("[P216] the pdf overlay renders every page in one scrolling column", ()
   });
 });
 
-describe("[P197] the overlay closes cleanly and gives focus back", () => {
+describe("the overlay closes cleanly and gives focus back", () => {
   test("clicking the close button frees the object URL and returns focus to the trigger", async () => {
     const { window } = loadApp();
     mockBlobResponse(window, { type: "image/png" });
@@ -274,13 +275,9 @@ describe("[P197] the overlay closes cleanly and gives focus back", () => {
   });
 });
 
-describe("[P150/P191] structural tripwire: no target=_blank on our own api paths, no window bypass", () => {
-  test("app.js never opens a relative api/... path in a new top-level tab", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+describe("structural tripwire: no target=_blank on our own api paths, no window bypass", () => {
+  test("no shipped script opens a relative api/... path in a new top-level tab", async () => {
+    const source = shippedScriptText();
     const attrBlocks = source.match(/\{[^{}]*target:\s*"_blank"[^{}]*\}/g) || [];
     expect(attrBlocks.length).toBeGreaterThan(0);
     for (const block of attrBlocks) {
@@ -289,28 +286,20 @@ describe("[P150/P191] structural tripwire: no target=_blank on our own api paths
     }
   });
 
-  test("[P197] the old 401-window path is gone for good: window.open is never called from app.js", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+  test("the old 401-window path is gone for good: window.open is never called from a shipped script", async () => {
+    const source = shippedScriptText();
     expect(source.includes("window.open(")).toBe(false);
     expect(source.includes(".location.replace(")).toBe(false);
   });
 
-  test("[P197] blob: urls only ever come from our own fetch response, never from a remote src", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const dirname = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
+  test("blob: urls only ever come from our own fetch response, never from a remote src", async () => {
+    const source = shippedScriptText();
     expect(source).toContain("URL.createObjectURL(blob)");
     expect(source).not.toMatch(/src:\s*["'`]https?:/);
   });
 });
 
-describe("[R2-5/6] the pdf overlay survives rerenders and cleans up when it fails", () => {
+describe("the pdf overlay survives rerenders and cleans up when it fails", () => {
   function stubViewer(window, record) {
     window.PdfViewer.create = () => {
       const node = window.document.createElement("div");

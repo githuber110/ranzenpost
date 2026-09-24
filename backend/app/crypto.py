@@ -7,6 +7,8 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from . import atomic_write
 
 SALT_BYTES = 16
+TOKEN_VERSION = 0x80
+TOKEN_MIN_BYTES = 73
 
 
 def generate_key():
@@ -37,6 +39,14 @@ def derive_key(passphrase, salt_b64):
     kdf = Scrypt(salt=salt, length=32, n=2 ** 14, r=8, p=1)
     raw = kdf.derive(passphrase.encode("utf-8"))
     return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def is_token_like(value):
+    try:
+        raw = base64.b64decode(str(value or "").encode("ascii"), altchars=b"-_", validate=True)
+    except (ValueError, TypeError):
+        return False
+    return len(raw) >= TOKEN_MIN_BYTES and raw[0] == TOKEN_VERSION
 
 
 def _fernet(key):

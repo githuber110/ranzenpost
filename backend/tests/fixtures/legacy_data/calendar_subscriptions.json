@@ -1,0 +1,17 @@
+{
+  "subscriptions": [
+    {
+      "id": "s1",
+      "child_id": "11111111-aaaa-4bbb-8ccc-000000000001",
+      "label": "",
+      "components": [
+        "timetable",
+        "school_holidays"
+      ],
+      "color": "",
+      "token": "fixture-token-000000000000000000000000000000",
+      "created_at": 1,
+      "rotated_at": 0
+    }
+  ]
+}

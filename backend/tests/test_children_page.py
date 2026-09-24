@@ -69,11 +69,21 @@ def test_a_page_without_the_child_select_is_a_failure_instead_of_an_empty_list()
     assert caught.value.detail["final_path"] == "/iserv/auth/login"
 
 
-@pytest.mark.parametrize("status", [302, 403, 500, 503])
+@pytest.mark.parametrize("status", [302, 403])
 def test_a_page_the_server_refused_is_never_read_as_an_empty_family(status):
     with pytest.raises(DataError) as caught:
         _client(FakePage(status, SELECT_PAGE)).get_children()
     assert caught.value.detail["status"] == status
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_a_page_the_server_could_not_serve_is_an_outage_not_an_empty_family(status):
+    from app.iserv.errors import OutageError
+
+    with pytest.raises(OutageError) as caught:
+        _client(FakePage(status, SELECT_PAGE)).get_children()
+    assert caught.value.detail["status"] == status
+    assert caught.value.reason == f"status:{status}"
 
 
 def test_the_diagnosis_describes_the_page_without_repeating_its_content():
@@ -102,7 +112,7 @@ class FailingService:
     def check_connection(self):
         return "ok"
 
-    def children(self):
+    def children(self, connection_id=None):
         raise DataError(
             "child list page was not readable",
             message_key=CHILD_PAGE_MESSAGE_KEY,
@@ -149,7 +159,7 @@ def test_a_module_iserv_refuses_is_named_as_refused_not_as_unreadable(status):
     assert caught.value.detail["login_form"] is False
 
 
-@pytest.mark.parametrize("status", [404, 500, 503])
+@pytest.mark.parametrize("status", [404, 410])
 def test_a_page_that_broke_for_another_reason_keeps_the_general_wording(status):
     with pytest.raises(DataError) as caught:
         _client(FakePage(status, "<html><body>Fehler</body></html>")).get_children()
@@ -203,7 +213,7 @@ def test_a_very_long_refusal_is_cut_to_a_readable_length():
 
 def test_the_refusal_reaches_the_reader_through_the_route():
     class Refusing(FailingService):
-        def children(self):
+        def children(self, connection_id=None):
             raise DataError(
                 "child list page was not readable",
                 message_key=CHILD_PAGE_MESSAGE_KEY,

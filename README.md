@@ -1,267 +1,374 @@
-<img src="assets/ranzenpost-icon-small.svg" width="88" alt="Ranzenpost">
+[English](README.md) | [Deutsch](README.de.md)
 
-# Ranzenpost — an unofficial IServ client for parents
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+    <img src="assets/banner-light.svg" width="1280" height="400" alt="Ranzenpost. Your IServ school, in Home Assistant. Timetable, letters, noticeboard, absences.">
+  </picture>
+</p>
 
-[![build](https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg)](https://github.com/githuber110/ranzenpost/actions/workflows/build.yml)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5.svg)](#install)
+<p align="center"><b>Your children's school day in Home Assistant.</b><br>Timetable, substitutions, parent letters, the noticeboard and sick notes from your school's <a href="https://iserv.de">IServ</a>, as an app in the sidebar, a dashboard card and entities for your automations.</p>
 
-A [Home Assistant](https://www.home-assistant.io) add-on that signs in with your own parent
-account on an [IServ](https://iserv.de) school server and puts the parts parents actually use —
-timetable, parent letters, noticeboards and absences — into one mobile-first UI.
+<p align="center">
+  <a href="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml"><img src="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/githuber110/ranzenpost/releases"><img src="https://img.shields.io/github/v/release/githuber110/ranzenpost?label=release" alt="Release"></a>
+  <a href="https://www.home-assistant.io"><img src="https://img.shields.io/badge/Home%20Assistant-2025.6%2B-41BDF5.svg" alt="Home Assistant 2025.6 or newer"></a>
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-custom-41BDF5.svg" alt="HACS custom repository"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
-It reads *and* writes: report a sick note, archive a letter, mark a test, or subscribe your phone's
-calendar app to your child's lessons, without opening the IServ website. Everything runs on your own
-Home Assistant instance; there is no service of ours in between.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.png">
+    <img src="docs/screenshots/hero.png" width="900" alt="The Ranzenpost app on a phone with a colourful school week, a break line and a chess club entry, next to the dashboard card with today's lessons of two children, unread letters and the next holidays">
+  </picture>
+</p>
 
-Not affiliated with IServ GmbH.
-
-## Install
-
-[![Add the Ranzenpost repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgithuber110%2Franzenpost)
-
-1. Click the button above — Home Assistant opens and asks you to confirm the repository. Or add it
-   by hand: **Settings → Add-ons → Add-on Store → ⋮ → Repositories** and paste
-   `https://github.com/githuber110/ranzenpost`.
-2. **Ranzenpost (IServ)** now appears in the store. Open it, click **Install**, then **Start**.
-3. Open **Ranzenpost** from the Home Assistant sidebar. The setup wizard asks for your school's
-   address, your parent login and — if your school uses it — one code from your authenticator app.
-   No YAML, no tokens to copy by hand.
-
-**Requirements:** Home Assistant OS or Supervised (the add-on store needs the Supervisor) on
-`amd64` or `aarch64`, and an IServ parent account at a school that has the parent modules enabled.
-
-**Updating:** new versions show up under **Settings → Add-ons → Ranzenpost (IServ)** like any other
-add-on. Settings and the school connection survive an update.
-
-[`iserv_connector/DOCS.md`](iserv_connector/DOCS.md) is the documentation shown inside Home
-Assistant and goes into more detail on options, notifications and MQTT.
-
-## Contents
-
-- [Install](#install)
-- [Why Ranzenpost](#why-ranzenpost)
-- [Screens](#screens)
-- [Features](#features)
-  - [Timetable](#timetable)
-  - [Absences — view and report](#absences--view-and-report)
-  - [Letters and noticeboards](#letters-and-noticeboards)
-  - [Overview](#overview)
-  - [Calendar subscription](#calendar-subscription)
-  - [Notifications](#notifications)
-  - [Setup, languages, themes](#setup-languages-themes)
-- [Calendar port](#calendar-port)
-- [Privacy](#privacy)
-- [Getting help](#getting-help)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support the project](#support-the-project)
-
-## Why Ranzenpost
-
-- **One app, not a website in a frame.** A UI built for a phone in a parent's hand: today's lessons
-  first, four taps for a sick note, swipe to mark a letter read.
-- **Reads and writes.** Absences, archiving, read confirmations and exam marks go back to IServ —
-  always after an explicit confirmation, never on their own.
-- **Your Home Assistant, nobody else's server.** The only outbound connections are your school's
-  IServ and a public-holiday API that learns nothing but a federal state and a year.
-- **Six languages, right-to-left included.** German, English, Arabic, Turkish, Russian, Ukrainian.
-- **Made for families.** Several children per account, a calendar feed per child, push messages
-  for every timetable change, and school holidays for all 16 federal states.
-- **Tested against a fixture server.** Backend, frontend and end-to-end suites run in CI on every
-  push; the release image is built from a tagged commit whose version is checked against the tag.
-
-## Screens
-
-All data below comes from the test fixture server — **the children, teachers, subjects, letters,
-notices and calendar tokens are invented**, not from a real school.
+<p align="center"><sub>Every screenshot comes from the test fixture server. Children, teachers, schools and letters are invented.</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="docs/screenshots/overview-today.png" width="250" alt="Overview showing today's lessons"></td>
-    <td width="50%" align="center"><img src="docs/screenshots/timetable-week.png" width="250" alt="Weekly timetable grid"></td>
+    <td width="33%" valign="top"><b>A card for every dashboard</b><br>Today, the next lesson, the week, letters, holidays and more. Pick the blocks, the size and the children in the visual editor.</td>
+    <td width="33%" valign="top"><b>Every child is a device</b><br>Calendars, sensors and an event per child: the next lesson, the end of school, the next exam, unread letters, open absences.</td>
+    <td width="33%" valign="top"><b>Automations without YAML</b><br>Device triggers such as "lesson cancelled" or "new letter" and conditions such as "is a school day", right in the automation editor.</td>
   </tr>
   <tr>
-    <td align="center"><b>Today</b><br><sub>Opens on the current day and marks the running lesson.</sub></td>
-    <td align="center"><b>Timetable</b><br><sub>The week per child. Cancellations and cover lessons are marked, never hidden.</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/absence-wizard-review.png" width="250" alt="Last step of the sick-note wizard"></td>
-    <td align="center"><img src="docs/screenshots/letters.png" width="250" alt="List of parent letters"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Reporting an absence</b><br><sub>A guided wizard. The last step restates everything before anything is sent.</sub></td>
-    <td align="center"><b>Parent letters</b><br><sub>Current and archived, with a read state the app keeps itself.</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/pinboard.png" width="250" alt="Merged noticeboard feed"></td>
-    <td align="center"><img src="docs/screenshots/calendar-subscribe.png" width="250" alt="Calendar subscription sheet with QR code"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Noticeboard</b><br><sub>All boards merged into one newest-first feed, each post badged with its source.</sub></td>
-    <td align="center"><b>Calendar subscription</b><br><sub>A token-protected feed per child, as a link or a QR code.</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/timetable-holiday-week.png" width="250" alt="Holiday card replacing the timetable grid"></td>
-    <td align="center"><img src="docs/screenshots/overview-arabic-rtl.png" width="250" alt="The overview in Arabic, right to left"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>School holidays</b><br><sub>A full holiday week replaces the grid instead of showing five empty days.</sub></td>
-    <td align="center"><b>Six languages</b><br><sub>Arabic turns the whole layout right-to-left; school content keeps its own direction.</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/overview-today-dark.png" width="250" alt="The overview in the dark theme"></td>
-    <td align="center"><img src="docs/screenshots/timetable-week-dark.png" width="250" alt="The timetable in the dark theme"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Dark theme</b><br><sub>Follows the device, or is pinned in Settings.</sub></td>
-    <td align="center"><b>Dark theme, timetable</b><br><sub>Text contrast is checked against WCAG in both themes.</sub></td>
+    <td valign="top"><b>Sick notes in a few steps</b><br>Report an absence the way your school wants it, with a review step before anything is sent.</td>
+    <td valign="top"><b>Several schools, one app</b><br>Two children at two schools, or two accounts. One feed, one overview, each school on its own login.</td>
+    <td valign="top"><b>Stays at home</b><br>Runs on your Home Assistant. No cloud, no account, no server in between. Logins are encrypted at rest.</td>
   </tr>
 </table>
 
-## Features
+> [!NOTE]
+> Ranzenpost is a hobby project by one parent and not affiliated with IServ GmbH. It started with one parent account at one school and reads the IServ modules listed further down. If your school runs a module that is missing, the settings page opens a prefilled issue for it.
+
+## Install
+
+You want both parts. The add-on signs in to IServ and serves the app in the sidebar. The integration turns the same data into entities and the dashboard card.
+
+### 1. Add the repository
+
+[![Add the Ranzenpost repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fgithuber110%2Franzenpost)
+
+Home Assistant opens and asks you to confirm the repository.
+
+### 2. Install the add-on and run the setup
+
+**Ranzenpost (IServ)** now appears in the add-on store. Open it, click **Install**, then **Start**. Open **Ranzenpost** from the sidebar. The setup asks for your school's address, your parent login and, if your school uses it, one code from the authenticator app you already have. Your authenticator keeps working. Then pick your children. Done.
+
+### 3. Add the integration
+
+[![Add the Ranzenpost integration through HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=githuber110&repository=ranzenpost&category=integration)
+
+Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings, Devices & services, Add integration** and search for **Ranzenpost**. The running add-on is found on its own. If you start with the integration instead, it offers to install the add-on for you.
+
+### Requirements
+
+- Home Assistant 2025.6 or newer, as Home Assistant OS or Supervised. The add-on store needs the Supervisor.
+- A machine with `amd64` or `aarch64`, for example a Raspberry Pi 4 or 5, a Home Assistant Green or Yellow, or an x86 box.
+- An IServ parent account at a school that has switched on the parent modules.
+- Two-factor login is what Ranzenpost was built and tested with. A login without two-factor is built in but has not been verified at a real school yet.
+- HACS for the integration.
+
+<details>
+<summary>Install by hand, update, and Home Assistant without a Supervisor</summary>
+
+**Add-on by hand:** **Settings, Add-ons, Add-on Store**, the menu in the top right, **Repositories**, paste `https://github.com/githuber110/ranzenpost`.
+
+**Integration by hand:** **HACS**, the menu in the top right, **Custom repositories**, paste `https://github.com/githuber110/ranzenpost`, pick **Integration**.
+
+**Without a Supervisor:** the integration asks for the add-on's host, port and token. The token is in the app under **Settings, Home Assistant**, with a copy button.
+
+**Updating:** the add-on updates under **Settings, Add-ons, Ranzenpost (IServ)**, the integration under HACS. Install the add-on and the integration of the same release, then restart Home Assistant and reload the page. A repair tells you when one of them is a release behind. Settings and the school connection survive an update.
+
+The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](iserv_connector/DOCS.md).
+
+</details>
+
+## Home Assistant
+
+### Dashboard card
+
+The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences` and `holidays`. Only blocks of modules your school has are offered. A block without content is not drawn, and every block opens the app with "Show all". With several children the day blocks sit side by side and the family blocks come once.
+
+```yaml
+type: custom:ranzenpost-card
+title: School
+blocks:
+  - key: today
+    size: compact
+  - letters
+  - holidays
+children:
+  - mia
+  - tom
+```
+
+<details>
+<summary>More card examples</summary>
+
+A wall tablet in the hallway, one child, the week at a glance:
+
+```yaml
+type: custom:ranzenpost-card
+blocks:
+  - next_lesson
+  - key: week
+    size: compact
+children:
+  - mia
+```
+
+Without day blocks, for a phone dashboard:
+
+```yaml
+type: custom:ranzenpost-card
+blocks:
+  - changes
+  - letters
+  - absences
+  - conferences
+```
+
+`children` takes first names, first names with the school in brackets, or the children's keys from the add-on. Leave it out for every child. Each block is a key or a key with a `size`, `compact` or `normal`. The older `view` and `child` keys still work.
+
+</details>
+
+### What each child brings
+
+The integration creates one device per school and one per child. Entity IDs use the first name, for example `sensor.ranzenpost_mia_next_lesson`. When two children at different schools share a first name, the school is added. Entities exist only for the modules your school has.
+
+| Entity | What it holds | Attributes |
+| --- | --- | --- |
+| `calendar.ranzenpost_mia_lessons` | Lessons, with substitutions and cancellations | The next lesson: `summary`, `start`, `end`, `subject`, `subject_code` |
+| `calendar.ranzenpost_mia_exams` | Marked exams | The next exam: `summary`, `start`, `end`, `subject`, `subject_code`, `name` |
+| `calendar.ranzenpost_mia_absences` | Approved absences | The next absence: `summary`, `start`, `end`, `kind` |
+| `calendar.ranzenpost_mia_own_entries` | Own clubs and appointments, while the school's switch on the lesson times page is on. Breaks never | The next entry: `summary`, `start`, `end`, `kind` |
+| `sensor.ranzenpost_mia_current_lesson` | The subject of the lesson running now, `none` outside lessons | `date`, `weekday`, `period`, `subject`, `subject_code`, `teacher`, `room`, `start`, `end`, `substitution`, `cancelled`, `kind`, `before`, `after`, `note`, `minutes_until`, `minutes_left` |
+| `sensor.ranzenpost_mia_next_lesson` | The subject of the next lesson, also across the weekend and the holidays | The same fields as the current lesson |
+| `sensor.ranzenpost_mia_school_end_today` | When the last lesson ends today, unknown on a free day | `school_day` |
+| `sensor.ranzenpost_mia_next_school_day` | When the first lesson of the next school day starts | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
+| `sensor.ranzenpost_mia_changes_today` | Number of timetable changes today | `changes`, a list of lessons with the fields above |
+| `sensor.ranzenpost_mia_next_exam` | The subject of the next marked exam, `none` without one | `date`, `weekday`, `days_until`, `period`, `subject`, `subject_code`, `name`, `start`, `end`, `teacher`, `room` |
+| `sensor.ranzenpost_mia_exams_upcoming` | Number of marked exams in the next 30 days | `exams`, a list with the fields above, and `days` |
+| `sensor.ranzenpost_mia_unread_letters` | Number of unread parent letters | `letters`, up to ten with `title`, `sender`, `date`, `child` |
+| `sensor.ranzenpost_mia_unread_posts` | Number of unread noticeboard posts | `posts`, up to ten with `title`, `sender`, `date`, `child` |
+| `sensor.ranzenpost_mia_open_absences` | Number of absences waiting for a decision | `absences`, each with `kind`, `summary`, `start`, `end`, `status`, `days_until` |
+| `sensor.ranzenpost_mia_next_absence` | The date of the next open or upcoming absence, `none` without one | `kind`, `summary`, `start`, `end`, `status`, `days_until` |
+| `sensor.ranzenpost_mia_timetable_last_updated` | When the timetable was last updated | `source`: `iserv` for the stamp IServ shows, `app` for the last successful fetch |
+| `binary_sensor.ranzenpost_mia_school_day_today` | Whether today is a school day | |
+| `binary_sensor.ranzenpost_mia_timetable_changed_today` | Whether today's timetable changed | |
+| `event.ranzenpost_mia_timetable_changed` | Fires on a substitution, cancellation, room change or new lesson | `child`, `summary`, `date`, `period` |
+
+Each school adds its own device. With several schools, the school's name joins the ID, for example `sensor.ranzenpost_school_riverside_primary_next_holiday`.
+
+| Entity | What it holds | Attributes |
+| --- | --- | --- |
+| `calendar.ranzenpost_school_holidays` | School holidays and public holidays | The next holiday: `summary`, `start`, `end` |
+| `sensor.ranzenpost_school_next_holiday` | The name of the next holiday | `start`, `end`, `days_until` |
+| `sensor.ranzenpost_school_next_conference` | The date of the next parent-teacher conference | `date`, `title`, `details`, `days_until` |
+| `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` or `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
+
+A counter reads `0` and an empty list when there is nothing, a text sensor reads `none`, and a timestamp sensor stays `unknown` only while no such moment exists. Times are ISO 8601 in the school's time zone, dates are `YYYY-MM-DD`, weekdays are English names such as `monday`. The integration asks the add-on every 60 seconds and never talks to IServ itself. The calendars also show up in Home Assistant's calendar panel.
+
+### Automations
+
+In the automation editor, pick a child's device and choose a trigger: **Timetable changed**, **Lesson cancelled**, **Substitution**, **New letter**, **New noticeboard post** or **Absence status changed**. A school's device offers **School unreachable**, **School reachable again** and **Login needed**. Two conditions check a child: **Is a school day** and **A lesson is running**. No YAML needed.
+
+The sensors carry enough for the rest. Four ideas to copy:
+
+<details>
+<summary>Light up the kids' room on school days only</summary>
+
+```yaml
+triggers:
+  - trigger: time
+    at: "06:30:00"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.ranzenpost_mia_school_day_today
+    state: "on"
+actions:
+  - action: light.turn_on
+    target:
+      area_id: kids_room
+    data:
+      brightness_pct: 60
+```
+
+</details>
+
+<details>
+<summary>Morning briefing on the kitchen speaker</summary>
+
+```yaml
+triggers:
+  - trigger: time
+    at: "07:00:00"
+conditions:
+  - condition: template
+    value_template: "{{ states('sensor.ranzenpost_mia_school_end_today') not in ['unknown', 'unavailable'] }}"
+actions:
+  - action: tts.speak
+    target:
+      entity_id: tts.home_assistant_cloud
+    data:
+      media_player_entity_id: media_player.kitchen
+      message: >
+        Mia starts with {{ states('sensor.ranzenpost_mia_next_lesson') }}
+        and school ends at {{ as_timestamp(states('sensor.ranzenpost_mia_school_end_today')) | timestamp_custom('%H:%M') }}.
+```
+
+</details>
+
+<details>
+<summary>Push the change when the timetable moves</summary>
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: event.ranzenpost_mia_timetable_changed
+    not_from:
+      - unavailable
+      - unknown
+actions:
+  - action: notify.mobile_app_my_phone
+    data:
+      title: Timetable change
+      message: "{{ trigger.to_state.attributes.summary }}"
+```
+
+</details>
+
+<details>
+<summary>Remind the evening before an exam</summary>
+
+```yaml
+triggers:
+  - trigger: time
+    at: "18:00:00"
+conditions:
+  - condition: template
+    value_template: "{{ state_attr('sensor.ranzenpost_mia_next_exam', 'days_until') == 1 }}"
+actions:
+  - action: notify.mobile_app_my_phone
+    data:
+      title: Exam tomorrow
+      message: "{{ states('sensor.ranzenpost_mia_next_exam') }}: {{ state_attr('sensor.ranzenpost_mia_next_exam', 'name') }}"
+```
+
+</details>
+
+### Push messages and repairs
+
+The add-on sends a message for every timetable change, new letter, new post and new conference day to the notify services you pick, for example the Home Assistant app on your phone. Each target has a test button, and the texts come in all six languages. When a school's login needs you, Home Assistant shows a repair that names the school and says what to do. It clears on its own once the login works.
+
+## The app
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-today-dark.png">
+    <img src="docs/screenshots/overview-today.png" width="250" alt="The overview on a phone: today's lessons for one child, the running lesson marked, one substitution and one cancelled lesson">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/two-schools-post-dark.png">
+    <img src="docs/screenshots/two-schools-post.png" width="250" alt="The mail tab with letters from two schools, a school chip on every row, a filter row and a search field">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/absence-wizard-review-dark.png">
+    <img src="docs/screenshots/absence-wizard-review.png" width="250" alt="The last step of the sick-note wizard: child, type, date range and comment are restated above the send button">
+  </picture>
+</p>
+
+<p align="center"><b>Today</b> opens on the current day and marks the running lesson. <b>Mail</b> merges the letters of both schools. <b>A sick note</b> is a few taps, and the last step restates everything before anything is sent.</p>
 
 ### Timetable
 
-- The week per child, with substitutions and cancellations marked rather than dropped.
-- Week navigation; lesson times are read from IServ, not guessed.
-- Subject and teacher display names, subject colours (14-colour palette) and lesson times are all
-  editable; unknown subject codes are picked up automatically.
-- **Exam marks:** tap a lesson to mark it as a test with a free-form name. Marks show up in the grid
-  and in the today view. If the marked lesson is later cancelled, moved or covered, a clarification
-  panel asks what should happen instead of guessing.
-- **Holidays** for all 16 German federal states, with a suggestion derived from the school's postal
-  code where one is available. A full holiday week replaces the grid; single free days are shown by
-  name. Lessons are only ever overridden when the source proves the day is school-free.
+The week per child, with substitutions and cancellations marked, never dropped. Tap a lesson to mark an exam. Each school has a lesson times page: every period gets a start and a duration, from IServ or set by hand. Your own breaks, clubs and appointments repeat daily, weekly or every few weeks up to the summer holidays, for one child or all. Lessons come first: an entry that a lesson covers is shortened, never deleted. Subjects get one of 24 colours or your own, in light and dark. A class timetable with parallel courses shows one cell for the group; pick once which courses each child attends, and only those show up.
 
-### Absences — view and report
+### Absences
 
-- All four IServ types: sick note, leave request, deregistration (bus, lunch, kindergarten) and
-  day-care deregistration.
-- A step-by-step wizard: four taps for the common sick note, no scrolling on any step, and a review
-  step that restates the whole report before it goes out.
-- Your school's own rules are honoured — cut-off time for same-day sick notes, minimum notice for
-  leave requests, whether comments or reasons are mandatory, whether single lessons can be reported.
-- Notifiable-illness hint, and the school's phone numbers one tap away.
-- Leave requests can carry attachments, with a per-file and a total limit enforced in the UI *and*
-  on the server.
-- A sick note can be saved or printed as a confirmation PDF.
-- Every write action to IServ needs an explicit confirmation. Nothing is sent on your behalf.
+All four IServ types: sick note, leave request, deregistration from bus, lunch or kindergarten, and day-care deregistration. Your school's rules are honoured: the cut-off time for a same-day sick note, the minimum notice for a leave request, the mandatory fields, and whether single lessons can be reported. Leave requests can carry attachments. A sick note can be saved or printed as a PDF, and the school's phone numbers are one tap away.
 
-### Letters and noticeboards
+### Letters, noticeboard and chat
 
-- Parent letters, current and archived, with attachments and archiving. IServ exposes no per-letter
-  read state, so the app keeps its own — including swipe to mark read.
-- Noticeboards merged into one newest-first feed with a source badge per post, jump navigation into
-  a single board with its swimlanes, full-text search, attachments and an app-side read state.
-- Parent-teacher conference days.
+Parent letters, current and archived, with attachments. When a letter asks for a read confirmation, the app sends it the way the IServ website would, with an optional message to the school if the letter has a field for one. Noticeboards merge into one feed with full-text search. Chat runs through the IServ messenger where the school opens it to parents.
 
-### Overview
+### Several schools
 
-- Four fixed chapters — today, letters, noticeboard, what is coming up — as snapping pages, with a
-  pill per child and an anchor on the current lesson.
-- At large system font sizes the paging switches itself off and the overview scrolls freely, so
-  nothing is ever cut off.
+Each school or account keeps its own login, children, names and lesson times. Letters and posts merge into one feed with a school chip on every row and a filter per school. Children are ordered by first name across schools. A school whose login fails is flagged on its own while the others keep working.
 
-### Calendar subscription
+### The lessons in your phone's calendar
 
-- A feed per child that your calendar app subscribes to: lessons, school holidays, public holidays,
-  exam marks and approved absences, each switchable.
-- Link or QR code; the token can be rotated or the subscription deleted at any time.
-- Cancelled lessons stay in the feed and are labelled as cancelled — they are never silently removed.
-- The child's name appears neither in the feed nor in its address; the subscription is labelled with
-  the class by default.
-- Served on a **separate port that is switched off out of the box** — see [Calendar port](#calendar-port).
+A feed per child that your calendar app subscribes to: lessons, school holidays, public holidays, marked exams, approved absences and your own entries, each switchable. Link or QR code. The link can be renewed or deleted at any time.
 
-### Notifications
+The feed is served on a second port, 8100, which is **off by default**. Switch it on under **Settings, Add-ons, Ranzenpost (IServ), Configuration, Network**. Whoever has the link sees that child's timetable, so treat the link as the secret. Nabu Casa remote access does not forward add-on ports, so outside your home network the feed needs your own remote access or a VPN.
 
-- A push message for every timetable change, to a Home Assistant notify service of your choice.
-  Targets are grouped by category with readable device names and a per-target test button.
-- Notification texts are localised into all six languages, with correct plural forms.
-- Optionally, MQTT discovery sensors per child for dashboards outside this app (experimental,
-  off unless you fill in an MQTT host).
+### Languages and themes
 
-### Setup, languages, themes
+German, English, Arabic, Turkish, Russian and Ukrainian. Arabic runs right to left. Dates, times and numbers follow the language. Light and dark theme, following the device or pinned. Large system font sizes are respected. If your school switches on mandatory two-factor later, Ranzenpost says so plainly and walks you through it.
 
-- A guided wizard: school address, parent login, two-factor, child selection, school phone numbers.
-  If your school uses two-factor authentication you type **one** current code from the authenticator
-  app you already use; Ranzenpost registers its own token invisibly and your existing app keeps
-  working. Every step has *Back* and *Start over*.
-- The app re-checks its access on every launch and offers to set up again if it was revoked in IServ.
-- Six languages: German, English, Arabic (right-to-left), Turkish, Russian and Ukrainian. Dates,
-  times and numbers follow the active language; the school timezone stays Europe/Berlin.
-- Light and dark themes, with text contrast checked against WCAG in both.
-- Settings writes are atomic; a file that was corrupted by a power cut is quarantined instead of
-  taking your configuration down with it.
+## Tablet and laptop
 
-## Calendar port
+From 900 pixels wide, a navigation rail replaces the tab bar. From 1280 pixels, letters, posts, absences, chats and settings open in a pane beside their list, and the timetable shows every child side by side.
 
-Calendar feeds are served on a second port (8100) so calendar apps can reach them directly, separate
-from the Ingress UI. It is **off by default**. To switch it on: Home Assistant →
-**Settings → Add-ons → Ranzenpost (IServ) → Configuration → Network**, enable *Show disabled ports*,
-map port 8100, save and restart the add-on.
+<p align="center"><img src="docs/screenshots/desktop-timetable.png" width="900" alt="The timetable at laptop width: a navigation rail on the left and the week of two children side by side"></p>
 
-Two things worth knowing before you do:
+## Supported IServ modules
 
-- A subscription link shows that child's timetable to anyone who has it, with no password prompt.
-  Treat the link itself as the secret; rotate or revoke it in Settings if it leaks.
-- Nabu Casa remote access does **not** forward add-on ports. Reaching port 8100 from outside your
-  home network needs your own remote access or a VPN. Short-notice changes still reach you away from
-  home through the app's push messages.
+IServ ships some modules in an old and a new edition. Ranzenpost reads the editions listed here. The settings page lists the modules your account offers and hides the areas of the ones it does not. The name in brackets is the module's address behind `/iserv/` on your school's server; open it there to check whether your school has the module.
+
+| Module | IServ edition Ranzenpost reads | Reads | Writes |
+| --- | --- | --- | --- |
+| Timetable (`dsa-timetable`, `time-table`) | The Schul-App timetable | Lessons, substitutions, cancellations, lesson times | Nothing. Exam marks stay in the app |
+| Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message |
+| Noticeboards (`dieschulapp`) | Pinboards (Schul-App) | All boards, posts, attachments | Nothing. Read state stays in the app |
+| Absences (`dieschulapp`) | Absences (Schul-App). The older absences module is unverified | Reported absences and their status, the school's rules | Sick note, leave request with attachments, deregistration, day-care deregistration |
+| Parent-teacher conference days (`parentconference`) | Parent conferences | Dates and titles | Nothing |
+| Chat (`messenger`) | Messenger, where the school opens it to parents | Rooms and messages | Send a message, mark as read, open a room with a teacher |
+
+A school that only offers the older timetable module, at `/iserv/timetable/`, shows it in the settings as present, not supported yet, instead of showing the timetable as missing. Modules Ranzenpost does not know yet appear in the settings by their IServ name, with a button that opens a prefilled issue.
 
 ## Privacy
 
-- Everything runs on your Home Assistant. There is no account with us, and no server of ours.
-- Two outbound destinations: your school's IServ, and `openholidaysapi.org` for holiday dates. The
-  holiday request sends nothing but a federal state and a year.
-- Your school URL, login and the app's own two-factor key stay in the add-on's `/data`. Login and
-  two-factor key are encrypted at rest (Fernet). Set a **passphrase** in the add-on options and the
-  encryption key is derived from it at runtime (scrypt) and never written to disk — only a salt is
-  stored, so a copy of `/data` alone can no longer be decrypted. A *full* Home Assistant backup also
-  contains the add-on options, so treat full backups as trusted either way.
-- Only your own authorized children are read. The app never probes other child IDs.
-- **Disconnect** (Settings) tries to remove the app's two-factor token from IServ, then deletes the
-  school URL, children, phone numbers and secrets locally, leaving you back at the setup wizard.
-- The repository itself contains no personal data.
+- Everything runs on your Home Assistant. There is no account with us and no server of ours.
+- Three outbound destinations: your school's IServ server, `openholidaysapi.org` for holiday dates, and `openplzapi.org` once to turn the school's postal code into a federal state. Those two requests carry a federal state and a year, or a postal code, nothing else.
+- Your school address, login and the app's own two-factor key stay in the add-on's `/data` folder. Login and two-factor key are encrypted at rest. With a **passphrase** in the add-on options the key is derived from it at start and never written to disk.
+- Only children your account lists are read. The app never tries other IDs.
+- Every write to IServ asks for confirmation. Nothing is sent on your behalf.
+- **Disconnect** tries to remove the app's two-factor token from IServ, then deletes the school's data locally.
+- The repository contains no personal data. All test data is invented.
 
 ## Getting help
 
-- Something looks wrong? Check the add-on log first: **Settings → Add-ons → Ranzenpost (IServ) →
-  Log**.
-- Then open an [issue](https://github.com/githuber110/ranzenpost/issues) with the add-on version
-  (shown on that same page) and the relevant log lines. Names of children, teachers and your school
-  may appear in the log — please strip them before pasting.
-- Found a security problem? Do not open a public issue — see [SECURITY.md](SECURITY.md).
+1. In the app, open **Settings, Help, Report a problem** and tap **Save report**. It bundles versions, the state of every module and the add-on log into `ranzenpost-report.zip`, with names, addresses and secrets removed. Nothing is sent on its own.
+2. Open an [issue](https://github.com/githuber110/ranzenpost/issues) and attach that file. German is welcome.
+3. For a security problem, do not open a public issue. See [SECURITY.md](SECURITY.md).
+
+The [changelog](iserv_connector/CHANGELOG.md) lists what changed in each release.
 
 ## Contributing
 
-Bug reports, translations and pull requests are welcome. The development setup, the test suites
-and the code conventions (English identifiers, no comments, every user-visible string in
-`frontend/i18n/`) are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Bug reports, translations and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the development setup, the test suites and the code conventions. The release notes credit everyone who contributes.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The bundled fonts are licensed under the SIL Open Font License 1.1.
 
-The MIT license covers only the code. The bundled fonts are licensed under the
-[SIL Open Font License 1.1](frontend/fonts/OFL.txt):
+<details>
+<summary>Fonts</summary>
 
-- `archivo-600-700.woff2` — **Archivo**, © The Archivo Project Authors
-  ([github.com/Omnibus-Type/Archivo](https://github.com/Omnibus-Type/Archivo)).
-- `schibsted-grotesk-400-700.woff2` — **Schibsted Grotesk**, © Schibsted Media
-  ([github.com/schibsted/schibsted-grotesk](https://github.com/schibsted/schibsted-grotesk)).
-- `inter-cyrillic-400-700.woff2` — **Inter**, © The Inter Project Authors
-  ([github.com/rsms/inter](https://github.com/rsms/inter)),
-  [licence](frontend/fonts/OFL-Inter.txt).
-- `noto-sans-arabic-400-700.woff2` — **Noto Sans Arabic**, © The Noto Project Authors
-  ([github.com/notofonts/arabic](https://github.com/notofonts/arabic)),
-  [licence](frontend/fonts/OFL-NotoSansArabic.txt).
+- **Archivo**, The Archivo Project Authors, [github.com/Omnibus-Type/Archivo](https://github.com/Omnibus-Type/Archivo)
+- **Schibsted Grotesk**, Schibsted Media, [github.com/schibsted/schibsted-grotesk](https://github.com/schibsted/schibsted-grotesk)
+- **Inter**, The Inter Project Authors, [github.com/rsms/inter](https://github.com/rsms/inter)
+- **Noto Sans Arabic**, The Noto Project Authors, [github.com/notofonts/arabic](https://github.com/notofonts/arabic)
 
-All four live in `frontend/fonts/`.
+The licence texts are in [`frontend/fonts/`](frontend/fonts/).
+
+</details>
 
 ## Support the project
 
-Ranzenpost is built in the evenings by one parent, for free, and stays that way. If it saves you a
-few trips to the IServ website and you feel like saying thanks:
+Ranzenpost is built in the evenings by one parent and stays free. If it saves you a few trips to the IServ website:
 
-<a href="https://buymeacoffee.com/githuber110"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00.svg?style=for-the-badge&logoColor=black" alt="Buy me a coffee"></a>
+<a href="https://buymeacoffee.com/githuber110"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00.svg?style=for-the-badge&logoColor=black" alt="Buy me a coffee"></a>

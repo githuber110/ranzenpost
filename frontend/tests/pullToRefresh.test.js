@@ -23,8 +23,8 @@ function makeScreen(window) {
   `);
 }
 
-describe("[P121] pull-to-refresh: shared touch mechanism on .screen", () => {
-  test("[P230] pulling past the 70px threshold refreshes the whole app, not just the open tab", async () => {
+describe("pull-to-refresh: shared touch mechanism on .screen", () => {
+  test("pulling past the 70px threshold refreshes the whole app, not just the open tab", async () => {
     const { window } = loadApp();
     window.eval(`
       window.__calls = 0;

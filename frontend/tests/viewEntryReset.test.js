@@ -6,7 +6,7 @@ function prepare(window) {
     state.config = {};
     state.children = [];
     state.absence = { data: { children: [], rules: {} } };
-    state.timetableAvailable = true;
+    state.modules.available.timetable = true;
   `);
 }
 
@@ -57,7 +57,7 @@ function screenScroll(window) {
   return window.eval("document.querySelector('.screen').scrollTop");
 }
 
-describe("[P220] every view is entered in a defined state", () => {
+describe("every view is entered in a defined state", () => {
   test("every view the app can show declares its entry defaults", () => {
     const { window } = loadApp();
     const declared = window.eval("Object.keys(VIEW_ENTRY_DEFAULTS)").sort();
@@ -135,7 +135,7 @@ describe("[P220] every view is entered in a defined state", () => {
     expect(window.eval("state.postTab")).toBe("pinboard");
   });
 
-  test("[P204] the return from the overview keeps its anchor", () => {
+  test("the return from the overview keeps its anchor", () => {
     const { window } = loadApp();
     prepare(window);
     window.eval('state.view = "post"; state._overviewAnchor = "pin:9"; state._overviewNow = false;');
@@ -144,7 +144,7 @@ describe("[P220] every view is entered in a defined state", () => {
     expect(window.eval("state._overviewNow")).toBe(false);
   });
 
-  test("[P214] a caller that asks to keep its state is left alone", () => {
+  test("a caller that asks to keep its state is left alone", () => {
     const { window } = loadApp();
     prepare(window);
     window.eval('state.view = "overview"; state.postTab = "pinboard";');

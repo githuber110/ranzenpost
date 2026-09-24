@@ -111,7 +111,7 @@ for (const device of DEVICES) {
           }
         });
 
-        test(`[P193] every wizard step with a date or time field stays inside the screen (${lang.key})`, async ({ page }) => {
+        test(`every wizard step with a date or time field stays inside the screen (${lang.key})`, async ({ page }) => {
           const failures = [];
           await goto(page);
           await page.locator(".tabbar .tab").nth(2).click();

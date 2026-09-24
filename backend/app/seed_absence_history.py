@@ -49,9 +49,16 @@ def main(argv=None):
     parser.add_argument("kind", choices=KINDS)
     parser.add_argument("from_date", help="YYYY-MM-DD")
     parser.add_argument("till_date", help="YYYY-MM-DD")
+    parser.add_argument("--connection", default="", help="the id of the school connection, the first one by default")
     args = parser.parse_args(argv)
     store = Store(os.environ.get("ISERV_DATA_DIR", "/data"))
-    seed(store, args.id, args.kind, args.from_date, args.till_date)
+    connections = store.connections()
+    if not connections:
+        parser.error("no school is connected yet")
+    chosen = args.connection or connections[0]["id"]
+    if store.connection(chosen) is None:
+        parser.error(f"unknown connection {chosen}")
+    seed(store.connection_store(chosen), args.id, args.kind, args.from_date, args.till_date)
 
 
 if __name__ == "__main__":

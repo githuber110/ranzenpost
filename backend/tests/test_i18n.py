@@ -114,6 +114,79 @@ def test_base_bundle_placeholders_survive_in_every_translation():
             )
 
 
+GERMAN_ROLE_WORDS = re.compile(r"\b(Kind|Kinder|Kindes|Kindern|Eltern)\b")
+ENGLISH_ROLE_WORDS = re.compile(r"\b(child|children|parent|parents)\b", re.IGNORECASE)
+
+ROLE_WORD_ALLOWED_KEYS = {
+    "conferences.error.text": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "conferences.title": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "letters.detail.title": "IServ module name (Elternbriefe / Parent letters)",
+    "letters.empty.title": "IServ module name (Elternbriefe / Parent letters)",
+    "letters.error.text": "IServ module name (Elternbriefe / Parent letters)",
+    "letters.title": "IServ module name (Elternbriefe / Parent letters)",
+    "modules.catalogue.parentconference": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "blocks.conferences.title": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "blocks.conferences.target": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "blocks.absences.row": "placeholder name {child} is a variable, the rendered text is the first name",
+    "modules.catalogue.parentletter": "IServ module name (Elternbriefe / Parent letters)",
+    "notify.conferences.new.one": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "notify.conferences.new.other": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "notify.letters.new.one": "IServ module name (Elternbriefe / Parent letters)",
+    "notify.letters.new.other": "IServ module name (Elternbriefe / Parent letters)",
+    "notify.letters.newConfirm.one": "IServ module name (Elternbriefe / Parent letters)",
+    "notify.letters.newConfirm.other": "IServ module name (Elternbriefe / Parent letters)",
+    "overview.all.letters": "IServ module name (Elternbriefe / Parent letters)",
+    "overview.chapter.letters": "IServ module name (Elternbriefe / Parent letters)",
+    "overview.letters.none": "IServ module name (Elternbriefe / Parent letters)",
+    "settings.modules.name.conferences": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "settings.modules.name.letters": "IServ module name (Elternbriefe / Parent letters)",
+    "settings.notify.event.conferences": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "settings.notify.event.letters": "IServ module name (Elternbriefe / Parent letters)",
+    "wizard.child.none.modules": "names the Elternbriefe/Elternsprechtage modules by name",
+    "wizard.url.text": "names the Elternbriefe module as a place to find the school URL",
+    "messenger.create.parents.label": "mirrors IServ's own wording for inviting a room's other parents",
+    "messenger.create.parents.origin": "mirrors IServ's own wording for inviting a room's other parents",
+    "messenger.create.review.parents": "mirrors IServ's own wording for inviting a room's other parents",
+    "pinboard.tech.studentsCanCreate": "mirrors IServ's own pinboard permission category label",
+}
+
+
+def role_word_offenders(language, pattern):
+    bundle = load_bundle(language)
+    offenders = []
+    for key, value in bundle.items():
+        if key in ROLE_WORD_ALLOWED_KEYS:
+            continue
+        if pattern.search(value):
+            offenders.append(f"{language}.json:{key} {value!r}")
+    return offenders
+
+
+def test_german_bundle_speaks_of_people_not_of_the_parent_or_child_role():
+    assert role_word_offenders("de", GERMAN_ROLE_WORDS) == []
+
+
+def test_english_bundle_speaks_of_people_not_of_the_parent_or_child_role():
+    assert role_word_offenders("en", ENGLISH_ROLE_WORDS) == []
+
+
+def test_the_role_word_allowlist_stays_short():
+    assert len(ROLE_WORD_ALLOWED_KEYS) <= 30, (
+        "the role-word allowlist grew past its expected size; re-check whether "
+        "new entries are really exceptions and not missed wording-sweep spots"
+    )
+
+
+def test_the_role_word_tripwire_still_catches_a_planted_string():
+    assert GERMAN_ROLE_WORDS.search("Bitte das Kind auswählen.")
+    assert GERMAN_ROLE_WORDS.search("Dein Eltern-Zugang.")
+    assert not GERMAN_ROLE_WORDS.search("Kindergarten")
+    assert not GERMAN_ROLE_WORDS.search("Elternbriefe")
+    assert ENGLISH_ROLE_WORDS.search("Please choose a child.")
+    assert ENGLISH_ROLE_WORDS.search("your parent account")
+    assert ENGLISH_ROLE_WORDS.search("Parent letters")
+
+
 def hardcoded_german(text):
     offenders = []
     for match in STRING_LITERAL.finditer(text):
@@ -181,6 +254,53 @@ def test_every_translation_key_used_in_the_frontend_exists_in_the_base_bundle():
                 continue
             missing.append(f"{name}: {key}")
     assert missing == []
+
+
+DASH_CONNECTOR = re.compile(r"\s[–—]\s")
+RANGE_DASH = re.compile(r"(?:\{\w+\}|\d+)\s*[–—]\s*(?:\{\w+\}|\d+)")
+
+DASH_ALLOWED_KEYS = {
+    "calendar.name": 'fixed product-name separator "Ranzenpost – {name}", not a sentence join',
+}
+
+
+def dash_sentence_offenders(language, bundle):
+    offenders = []
+    for key, value in bundle.items():
+        if key in DASH_ALLOWED_KEYS:
+            continue
+        remainder = RANGE_DASH.sub("", value)
+        if DASH_CONNECTOR.search(remainder):
+            offenders.append(f"{language}.json:{key} {value!r}")
+    return offenders
+
+
+def test_no_bundle_glues_two_sentences_with_a_dash():
+    offenders = []
+    for language, bundle in available_bundles().items():
+        offenders.extend(dash_sentence_offenders(language, bundle))
+    assert offenders == []
+
+
+def test_the_dash_allowlist_stays_tiny():
+    assert len(DASH_ALLOWED_KEYS) <= 5, (
+        "the dash allowlist grew past its expected size; re-check whether new "
+        "entries are really ranges/fixed names and not missed sentence joins"
+    )
+
+
+def test_the_dash_sentence_tripwire_still_catches_a_planted_violation():
+    planted = {"some.key": "Gespeichert — bitte prüfen."}
+    assert dash_sentence_offenders("de", planted) != []
+
+    range_only = {"calendar.detail.dateRange": "{start} – {end}"}
+    assert dash_sentence_offenders("de", range_only) == []
+
+    number_range = {"common.imageSize": "12 – 24"}
+    assert dash_sentence_offenders("de", number_range) == []
+
+    fixed_name = {"calendar.name": "Ranzenpost – {name}"}
+    assert dash_sentence_offenders("de", fixed_name) == []
 
 
 def test_index_html_static_translation_hooks_resolve():

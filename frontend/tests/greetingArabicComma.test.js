@@ -7,7 +7,7 @@ import { loadApp } from "./loadApp.js";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(dirname, "..");
 
-describe("[P146] Begruessung: arabisches Komma statt lateinischem Komma", () => {
+describe("Begruessung: arabisches Komma statt lateinischem Komma", () => {
   test("ar.json uses the Arabic comma for the greeting separator, not a Latin comma", () => {
     const ar = JSON.parse(fs.readFileSync(path.join(frontendDir, "i18n", "ar.json"), "utf8"));
     expect(ar["overview.greeting.separator"]).toBe("، ");

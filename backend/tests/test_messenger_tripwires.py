@@ -26,8 +26,6 @@ BACKGROUND_FILES = (
     "poller.py",
     "scheduler.py",
     "calendar_listener.py",
-    "mqtt_bridge.py",
-    "mqtt_publisher.py",
     "hanotify.py",
 )
 

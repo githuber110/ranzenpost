@@ -1,0 +1,17 @@
+[
+  {
+    "uid": "holiday-20261012@sample",
+    "summary": "Autumn holidays",
+    "description": "",
+    "location": "",
+    "start": "2026-10-12",
+    "end": "2026-10-24",
+    "all_day": true,
+    "cancelled": false,
+    "color": "",
+    "subject_code": "",
+    "subject": "",
+    "name": "",
+    "kind": ""
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "uid": "absence-20260904@sample",
+    "summary": "Sick note",
+    "description": "Reported by a parent",
+    "location": "",
+    "start": "2026-09-04",
+    "end": "2026-09-05",
+    "all_day": true,
+    "cancelled": false,
+    "color": "",
+    "subject_code": "",
+    "subject": "",
+    "name": "",
+    "kind": "sick"
+  }
+]

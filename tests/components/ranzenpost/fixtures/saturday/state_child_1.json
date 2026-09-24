@@ -1,0 +1,89 @@
+{
+  "now_lesson": null,
+  "next_lesson": {
+    "date": "2026-09-07",
+    "weekday": "monday",
+    "period": 1,
+    "subject": "Maths",
+    "subject_code": "MA",
+    "teacher": "Mrs Example",
+    "room": "R101",
+    "start": "2026-09-07T08:00:00+02:00",
+    "end": "2026-09-07T08:45:00+02:00",
+    "substitution": false,
+    "cancelled": false,
+    "kind": "",
+    "before": {},
+    "after": {},
+    "note": "",
+    "minutes_until": 3130,
+    "minutes_left": 3175
+  },
+  "school_end_today": null,
+  "next_school_day": {
+    "date": "2026-09-07",
+    "weekday": "monday",
+    "days_until": 2,
+    "start": "2026-09-07T08:00:00+02:00",
+    "end": "2026-09-07T12:25:00+02:00",
+    "lessons": 5,
+    "first_lesson": "Maths"
+  },
+  "changes_today": [],
+  "unread_letters": {
+    "count": 1,
+    "items": [
+      {
+        "title": "Field trip",
+        "sender": "Mrs Example",
+        "date": "2026-09-04",
+        "child": "Alex"
+      }
+    ]
+  },
+  "unread_posts": {
+    "count": 0,
+    "items": []
+  },
+  "open_absences": {
+    "count": 0,
+    "items": []
+  },
+  "next_absence": null,
+  "next_exam": {
+    "date": "2026-09-09",
+    "weekday": "wednesday",
+    "days_until": 4,
+    "period": 2,
+    "subject": "Biology",
+    "subject_code": "BI",
+    "name": "Chapter 3",
+    "start": "2026-09-09T08:50:00+02:00",
+    "end": "2026-09-09T09:35:00+02:00",
+    "teacher": "Dr Leaf",
+    "room": "R404"
+  },
+  "exams_upcoming": {
+    "count": 1,
+    "items": [
+      {
+        "date": "2026-09-09",
+        "weekday": "wednesday",
+        "days_until": 4,
+        "period": 2,
+        "subject": "Biology",
+        "subject_code": "BI",
+        "name": "Chapter 3",
+        "start": "2026-09-09T08:50:00+02:00",
+        "end": "2026-09-09T09:35:00+02:00",
+        "teacher": "Dr Leaf",
+        "room": "R404"
+      }
+    ],
+    "days": 30
+  },
+  "school_day_today": false,
+  "timetable_changed_today": false,
+  "timetable_last_updated": "2026-09-04T16:05:00+02:00",
+  "timetable_last_updated_source": "app"
+}

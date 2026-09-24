@@ -1,0 +1,15 @@
+{
+  "children": {
+    "11111111-aaaa-4bbb-8ccc-000000000001": {
+      "weeks": {
+        "2026-08-31": {
+          "start_date": "2026-08-31",
+          "end_date": "2026-09-06",
+          "lessons": [],
+          "fetched_at": 1
+        }
+      },
+      "last_success": 1
+    }
+  }
+}

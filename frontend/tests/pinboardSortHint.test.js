@@ -6,7 +6,7 @@ function renderPinboard(window, data) {
   return run(data);
 }
 
-describe("[P98] pinboard sort hint", () => {
+describe("pinboard sort hint", () => {
   test("shows a 'Neueste zuerst' overline above the feed", () => {
     const { window } = loadApp();
     const data = {

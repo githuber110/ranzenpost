@@ -1,10 +1,13 @@
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 
 TEMP_SUFFIX = ".tmp"
 PRIVATE_MODE = 0o600
+REPLACE_ATTEMPTS = 8
+REPLACE_BACKOFF_SECONDS = 0.02
 
 
 def temp_path_for(path):
@@ -35,6 +38,17 @@ def _discard(temp):
         pass
 
 
+def _replace(temp, target):
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            os.replace(str(temp), str(target))
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(REPLACE_BACKOFF_SECONDS * (attempt + 1))
+
+
 def write_bytes(path, payload, mode=PRIVATE_MODE):
     target = Path(path)
     temp = temp_path_for(target)
@@ -44,7 +58,7 @@ def write_bytes(path, payload, mode=PRIVATE_MODE):
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(str(temp), str(target))
+        _replace(temp, target)
     except BaseException:
         _discard(temp)
         raise

@@ -12,7 +12,7 @@ function rows(heights, bracket) {
 
 const MEASURED = [70.5, 111.1, 151.7, 192.2];
 
-describe("[P178] the page cut never splits a block and never loses one", () => {
+describe("the page cut never splits a block and never loses one", () => {
   test("every block lands on exactly one page, in the original order", () => {
     const { window } = loadApp();
     const blocks = rows([70.5, 70.5, 111.1, 70.5, 192.2, 70.5, 151.7, 70.5]);
@@ -76,7 +76,7 @@ describe("[P178] the page cut never splits a block and never loses one", () => {
   });
 });
 
-describe("[P178] the double-lesson bracket", () => {
+describe("the double-lesson bracket", () => {
   test("a bracket that would be split moves to the next page as a whole", () => {
     const { window } = loadApp();
     const blocks = rows([100, 100, 100, 100], [null, null, "b", "b"]);
@@ -107,7 +107,7 @@ describe("[P178] the double-lesson bracket", () => {
   });
 });
 
-describe("[P178] a lonely last page is filled from the page before it", () => {
+describe("a lonely last page is filled from the page before it", () => {
   test("eight rows over two pages end up split, not seven against one", () => {
     const { window } = loadApp();
     const heights = [70.5, 90.8, 70.5, 70.5, 70.5, 70.5, 90.8, 74.6];
@@ -140,7 +140,7 @@ describe("[P178] a lonely last page is filled from the page before it", () => {
   });
 });
 
-describe("[P178] brackets are derived from the timetable, not guessed", () => {
+describe("brackets are derived from the timetable, not guessed", () => {
   function brackets(window, groups) {
     const run = window.eval("(function (groups) { return overviewBrackets(groups); })");
     return run(groups);
@@ -179,7 +179,7 @@ describe("[P178] brackets are derived from the timetable, not guessed", () => {
   });
 });
 
-describe("[P178] the anchor follows the content, never a page number", () => {
+describe("the anchor follows the content, never a page number", () => {
   function buildScreen(window, layout) {
     return window.eval(`
       (function (layout) {
@@ -257,9 +257,9 @@ describe("[P178] the anchor follows the content, never a page number", () => {
   });
 });
 
-describe("[P178] the now anchor and what survives a rerender", () => {
+describe("the now anchor and what survives a rerender", () => {
   const SEED = `
-    state.children = [{ child_id: "c1", name: "Alice" }];
+    state.children = [{ key: "c1", name: "Alice" }];
     state.childId = "c1";
     state.weekOffset = 0;
     state.me = { forename: "Alice" };
@@ -328,10 +328,18 @@ describe("[P178] the now anchor and what survives a rerender", () => {
   test("without measured heights the overview refuses to snap and stays a plain scroll list", () => {
     const { window } = loadApp();
     const snap = window.eval(`
-      (function () {
+      (function (fixedIso) {
         ${SEED}
+        window.__realDate = Date;
+        function FixedDate(...args) {
+          if (args.length === 0) return new window.__realDate(fixedIso);
+          return new window.__realDate(...args);
+        }
+        FixedDate.prototype = window.__realDate.prototype;
+        Date = FixedDate;
         state.view = "overview";
         render();
+        Date = window.__realDate;
         const screen = document.querySelector(".screen");
         return {
           screen: screen.getAttribute("data-snap"),
@@ -339,7 +347,7 @@ describe("[P178] the now anchor and what survives a rerender", () => {
           arrows: screen.querySelectorAll(".panel-arrow-btn").length,
           counters: screen.querySelectorAll(".panel-counter").length,
         };
-      })()
+      })("2026-09-01T09:00:00")
     `);
     expect(snap.screen).toBeNull();
     expect(snap.overview).toBe("off");

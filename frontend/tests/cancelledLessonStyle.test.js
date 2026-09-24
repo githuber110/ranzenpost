@@ -6,7 +6,7 @@ function renderCell(window, lesson, compact) {
   return run(lesson, !!compact);
 }
 
-describe("[C11] cancelled lessons get the neutral 'empty' look, substitution stays amber", () => {
+describe("cancelled lessons get the neutral 'empty' look, substitution stays amber", () => {
   test("a cancelled lesson does not carry the .subbed amber class, only .out", () => {
     const { window } = loadApp();
     const cell = renderCell(window, { subject_code: "MA", change_kind: "cancelled" });

@@ -8,10 +8,10 @@ function renderLetterRow(window, letter, children) {
   return run(letter, children);
 }
 
-describe("[P99] letter list shows recipients + child badges", () => {
+describe("letter list shows recipients + child badges", () => {
   test("row carries a Verteiler badge and a child badge (>1 child, C15 gate)", () => {
     const { window } = loadApp();
-    const children = [{ child_id: "c1", name: "Mia" }, { child_id: "c2", name: "Leo" }];
+    const children = [{ key: "c1", name: "Mia" }, { key: "c2", name: "Leo" }];
     const letter = {
       letter_id: "1",
       recipient_id: "2",
@@ -27,9 +27,9 @@ describe("[P99] letter list shows recipients + child badges", () => {
     expect(texts).toContain("Mia");
   });
 
-  test("[P234] the child badge is shown with exactly one child too", () => {
+  test("the child badge is shown with exactly one child too", () => {
     const { window } = loadApp();
-    const children = [{ child_id: "c1", name: "Mia" }];
+    const children = [{ key: "c1", name: "Mia" }];
     const letter = { letter_id: "1", recipient_id: "2", title: "Infobrief", child: "Mia", recipients: "Klasse 2B", unread: true };
     const row = renderLetterRow(window, letter, children);
     const tags = row.querySelectorAll(".row-tags .tag");
@@ -46,7 +46,7 @@ describe("[P99] letter list shows recipients + child badges", () => {
   });
 });
 
-describe("[P115] letter list shows a clip indicator for attachments", () => {
+describe("letter list shows a clip indicator for attachments", () => {
   test("clip indicator appears when the letter has attachments", () => {
     const { window } = loadApp();
     const letter = {

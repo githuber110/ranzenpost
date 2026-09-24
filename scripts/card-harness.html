@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ranzenpost card harness</title>
+<style>
+  html, body { margin: 0; padding: 16px; background: #e4eae8; font-family: system-ui, sans-serif; }
+  ranzenpost-card { display: block; }
+</style>
+</head>
+<body>
+<script type="module">
+import "/custom_components/ranzenpost/frontend/ranzenpost-card.js";
+
+const params = new URLSearchParams(location.search);
+if (params.get("theme") === "dark") document.body.style.background = "#0e1412";
+
+const ENTRY_ID = "0123456789abcdef0123456789abcdef";
+const SCHOOL_ID = "school.example";
+const NAMES = (params.get("names") || "Alex,Kim").split(",");
+const CHILDREN = NAMES.map((name, index) => ({
+  id: `${SCHOOL_ID}:child-${index + 1}`,
+  deviceId: `device-${index + 1}`,
+  name,
+  slug: name.toLowerCase(),
+}));
+
+const OWN_ENTRIES = {
+  "device-1": [
+    {
+      uid: "own-20260902-chess@sample",
+      summary: "Chess club",
+      description: null,
+      location: "Room 12",
+      start: { dateTime: "2026-09-02T15:00:00+02:00" },
+      end: { dateTime: "2026-09-02T16:00:00+02:00" },
+    },
+  ],
+  "device-2": [
+    {
+      uid: "own-20260903-dentist@sample",
+      summary: "Dentist appointment",
+      description: null,
+      location: null,
+      start: { dateTime: "2026-09-03T14:30:00+02:00" },
+      end: { dateTime: "2026-09-03T15:15:00+02:00" },
+    },
+  ],
+};
+
+const FIXTURE_DAY = "2026-09-02";
+const DAY_MS = 86400000;
+const DAY_SHIFT = params.get("today") ? Math.round((Date.parse(`${params.get("today")}T00:00:00Z`) - Date.parse(`${FIXTURE_DAY}T00:00:00Z`)) / DAY_MS) : 0;
+
+function shiftStamp(value) {
+  if (!DAY_SHIFT || typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) return value;
+  return new Date(Date.parse(`${value.slice(0, 10)}T00:00:00Z`) + DAY_SHIFT * DAY_MS).toISOString().slice(0, 10) + value.slice(10);
+}
+
+function shiftEvent(event) {
+  return { ...event, start: shiftStamp(event.start), end: shiftStamp(event.end) };
+}
+
+
+function ownEntriesOf(deviceId, start, end) {
+  const entries = (SCENE === "showcase" ? sceneOwnEntries(deviceId) : OWN_ENTRIES[deviceId] || []).map((entry) => ({
+    ...entry,
+    start: { dateTime: shiftStamp(entry.start.dateTime) },
+    end: { dateTime: shiftStamp(entry.end.dateTime) },
+  }));
+  return entries.filter((entry) => entry.start.dateTime.slice(0, 10) >= start && entry.start.dateTime.slice(0, 10) <= end);
+}
+
+async function fixture(name) {
+  const response = await fetch(`/tests/components/ranzenpost/fixtures/${name}.json`);
+  return response.json();
+}
+
+function lessonState(lesson) {
+  return lesson ? lesson.subject : "none";
+}
+
+function shiftDeep(value) {
+  if (Array.isArray(value)) return value.map(shiftDeep);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, shiftDeep(item)]));
+  return shiftStamp(value);
+}
+
+function childStates(child, raw) {
+  const state = shiftDeep(raw);
+  const prefix = `ranzenpost_${child.slug}`;
+  return {
+    [`sensor.${prefix}_current_lesson`]: { state: lessonState(state.now_lesson), attributes: state.now_lesson || {} },
+    [`sensor.${prefix}_next_lesson`]: { state: lessonState(state.next_lesson), attributes: state.next_lesson || {} },
+    [`sensor.${prefix}_school_end_today`]: { state: state.school_end_today || "unknown", attributes: {} },
+    [`sensor.${prefix}_school_start_tomorrow`]: { state: state.school_start_tomorrow || "unknown", attributes: {} },
+    [`sensor.${prefix}_changes_today`]: {
+      state: String(state.changes_today.length),
+      attributes: { changes: state.changes_today },
+    },
+    [`sensor.${prefix}_unread_letters`]: {
+      state: String(state.unread_letters.count),
+      attributes: { letters: state.unread_letters.items },
+    },
+    [`sensor.${prefix}_unread_posts`]: {
+      state: String(state.unread_posts.count),
+      attributes: { posts: state.unread_posts.items },
+    },
+    [`sensor.${prefix}_open_absences`]: {
+      state: String(state.open_absences.count),
+      attributes: { absences: state.open_absences.items },
+    },
+    [`sensor.${prefix}_timetable_last_updated`]: { state: state.timetable_last_updated || "unknown", attributes: {} },
+    [`binary_sensor.${prefix}_school_day_today`]: { state: state.school_day_today ? "on" : "off", attributes: {} },
+    [`binary_sensor.${prefix}_timetable_changed_today`]: {
+      state: state.timetable_changed_today ? "on" : "off",
+      attributes: {},
+    },
+    [`calendar.${prefix}_lessons`]: { state: "off", attributes: {} },
+    [`calendar.${prefix}_exams`]: { state: "off", attributes: {} },
+    [`calendar.${prefix}_absences`]: { state: "off", attributes: {} },
+  };
+}
+
+function schoolStates(school) {
+  const holiday = school.next_holiday;
+  return {
+    "sensor.ranzenpost_school_next_holiday": {
+      state: holiday ? holiday.name : "none",
+      attributes: holiday ? { start: holiday.start, end: holiday.end, days_until: holiday.days_until } : {},
+    },
+    "sensor.ranzenpost_school_next_conference": { state: "2026-11-05T00:00:00+01:00", attributes: {} },
+    "sensor.ranzenpost_school_connection": { state: "ok", attributes: {} },
+    "calendar.ranzenpost_school_holidays": { state: "off", attributes: {} },
+  };
+}
+
+function registryEntries() {
+  const CHILD_KEYS = {
+    sensor: [
+      "current_lesson", "next_lesson", "school_end_today", "school_start_tomorrow",
+      "changes_today", "unread_letters", "unread_posts", "open_absences", "timetable_last_updated",
+    ],
+    binary_sensor: ["school_day_today", "timetable_changed_today"],
+    calendar: ["lessons", "exams", "absences"],
+  };
+  const SCHOOL_KEYS = { sensor: ["next_holiday", "next_conference", "connection"], calendar: ["holidays"] };
+  const entries = [];
+  for (const child of CHILDREN) {
+    for (const [platform, keys] of Object.entries(CHILD_KEYS)) {
+      for (const key of keys) {
+        entries.push({
+          entity_id: `${platform}.ranzenpost_${child.slug}_${key}`,
+          unique_id: `ranzenpost_${ENTRY_ID}_${child.id}_${key}`,
+          platform: "ranzenpost",
+          device_id: child.deviceId,
+          translation_key: key,
+        });
+      }
+    }
+  }
+  for (const [platform, keys] of Object.entries(SCHOOL_KEYS)) {
+    for (const key of keys) {
+      entries.push({
+        entity_id: `${platform}.ranzenpost_school_${key}`,
+        unique_id: `ranzenpost_${ENTRY_ID}_school_${SCHOOL_ID}_${key}`,
+        platform: "ranzenpost",
+        device_id: "device-school",
+        translation_key: key,
+      });
+    }
+  }
+  return entries;
+}
+
+function devices() {
+  return [
+    ...CHILDREN.map((child) => ({
+      id: child.deviceId,
+      name: `Ranzenpost ${child.name}`,
+      name_by_user: null,
+      via_device_id: "device-school",
+      identifiers: [["ranzenpost", `child:${ENTRY_ID}:${child.id}`]],
+    })),
+    {
+      id: "device-school",
+      name: "Ranzenpost Sample School",
+      name_by_user: null,
+      identifiers: [["ranzenpost", `school:${ENTRY_ID}:${SCHOOL_ID}`]],
+    },
+  ];
+}
+
+function toApiEvent(event) {
+  const bound = (value) => (event.all_day ? { date: value } : { dateTime: value });
+  return {
+    summary: event.summary,
+    description: event.description || null,
+    location: event.location || null,
+    uid: event.uid,
+    recurrence_id: null,
+    rrule: null,
+    start: bound(event.start),
+    end: bound(event.end),
+    color: event.color,
+    cancelled: event.cancelled,
+  };
+}
+
+function instant(value) {
+  return new Date(value.length === 10 ? `${value}T00:00:00+02:00` : value).getTime();
+}
+
+const EXTRA_LESSONS = [
+  {
+    uid: "lesson-20260902-p2@sample",
+    summary: "English",
+    description: "Mr Stand-in, R202",
+    location: "R202",
+    start: "2026-09-02T09:50:00+02:00",
+    end: "2026-09-02T10:35:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#cc9933",
+  },
+  {
+    uid: "lesson-20260904-p1@sample",
+    summary: "Sport",
+    description: "Mr Whistle, Gym",
+    location: "Gym",
+    start: "2026-09-04T08:00:00+02:00",
+    end: "2026-09-04T09:30:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#9933cc",
+  },
+];
+
+const SECOND_CHILD_LESSONS = [
+  {
+    uid: "lesson-20260902-k1@sample",
+    summary: "German",
+    description: "Ms Reader, R12",
+    location: "R12",
+    start: "2026-09-02T08:00:00+02:00",
+    end: "2026-09-02T08:45:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#d42020",
+  },
+  {
+    uid: "lesson-20260902-k2@sample",
+    summary: "Music",
+    description: "Mr Tune, R7",
+    location: "R7",
+    start: "2026-09-02T08:50:00+02:00",
+    end: "2026-09-02T09:35:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#9b7de8",
+  },
+  {
+    uid: "lesson-20260902-k3@sample",
+    summary: "Science",
+    description: "Dr Leaf, Lab 2",
+    location: "Lab 2",
+    start: "2026-09-02T09:50:00+02:00",
+    end: "2026-09-02T10:35:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#2fa83c",
+  },
+  {
+    uid: "lesson-20260903-k1@sample",
+    summary: "Maths",
+    description: "Mrs Example, R12",
+    location: "R12",
+    start: "2026-09-03T08:00:00+02:00",
+    end: "2026-09-03T08:45:00+02:00",
+    all_day: false,
+    cancelled: false,
+    color: "#2a66d6",
+  },
+];
+
+const SCENE = params.get("scene") || "";
+const SCENE_SUBJECTS = {
+  MAT: ["Mathematics", "#2a66d6", "Ms Northfield"],
+  GER: ["German", "#7a1236", "Mr Lindqvist"],
+  ENG: ["English", "#9b7de8", "Ms Carter"],
+  SPO: ["Sport", "#2fa83c", "Mr Hughes"],
+  MUS: ["Music", "#c9a45c", "Ms Rivera"],
+  SCI: ["Science", "#2ec48a", "Dr Patel"],
+  ART: ["Art", "#c2187a", "Ms Brooks"],
+};
+const SCENE_DAYS = [
+  [["MAT"], ["GER"], ["ENG", "substitution"], ["SPO"], ["MUS", "cancelled"]],
+  [["SPO"], ["MUS", "cancelled"], ["SCI"], ["ART", "substitution"], ["MAT"]],
+];
+const SCENE_SUBSTITUTE = "Mr Ashby";
+const SCENE_OWN_ENTRIES = [
+  ["Chess club", "13:00", "14:00"],
+  ["Dentist appointment", "15:00", "15:45"],
+];
+
+function sceneStamp(clock) {
+  return `${FIXTURE_DAY}T${clock}:00+02:00`;
+}
+
+function scenePeriod(period) {
+  const hour = String(7 + period).padStart(2, "0");
+  return [sceneStamp(`${hour}:00`), sceneStamp(`${hour}:45`)];
+}
+
+function sceneLessons(index) {
+  return (SCENE_DAYS[index] || []).map(([code, change], offset) => {
+    const [subject, color, teacher] = SCENE_SUBJECTS[code];
+    const [start, end] = scenePeriod(offset + 1);
+    const room = `R${10 + index * 3}`;
+    return {
+      uid: `scene-${index}-${offset}@sample`,
+      summary: subject,
+      description: `${teacher}, ${room}`,
+      location: room,
+      start,
+      end,
+      all_day: false,
+      cancelled: change === "cancelled",
+      color,
+    };
+  });
+}
+
+function sceneChanges(index) {
+  return (SCENE_DAYS[index] || []).flatMap(([code, change], offset) => {
+    if (change !== "substitution") return [];
+    const [start, end] = scenePeriod(offset + 1);
+    return [{
+      date: FIXTURE_DAY,
+      period: offset + 1,
+      subject: SCENE_SUBJECTS[code][0],
+      subject_code: code,
+      teacher: SCENE_SUBSTITUTE,
+      room: `R${20 + offset + 1}`,
+      start,
+      end,
+      substitution: true,
+      cancelled: false,
+      kind: "substitution",
+    }];
+  });
+}
+
+function sceneState(raw, index) {
+  if (SCENE !== "showcase") return raw;
+  return { ...raw, changes_today: sceneChanges(index), school_day_today: true };
+}
+
+function sceneOwnEntries(deviceId) {
+  const index = CHILDREN.findIndex((child) => child.deviceId === deviceId);
+  const entry = SCENE_OWN_ENTRIES[index];
+  if (!entry) return [];
+  const [summary, from, until] = entry;
+  return [{ uid: `scene-own-${index}@sample`, summary, description: null, location: null, start: { dateTime: sceneStamp(from) }, end: { dateTime: sceneStamp(until) } }];
+}
+
+async function eventsOf(kind, childId) {
+  const index = CHILDREN.findIndex((child) => child.id === childId);
+  if (SCENE === "showcase" && kind === "lessons") return sceneLessons(index).map(shiftEvent);
+  if (SCENE === "showcase" && kind === "exams") return [];
+  return (await rawEventsOf(kind, childId)).map(shiftEvent);
+}
+
+async function rawEventsOf(kind, childId) {
+  if (kind === "holidays") return fixture("events_holidays");
+  if (childId === CHILDREN[1].id) return kind === "lessons" && params.get("second") === "lessons" ? SECOND_CHILD_LESSONS : [];
+  if (kind === "lessons") return [...(await fixture("events_lessons")), ...EXTRA_LESSONS];
+  return fixture(`events_${kind}`);
+}
+
+async function makeHass(language) {
+  const states = {
+    ...childStates(CHILDREN[0], sceneState(await fixture("state_child_1"), 0)),
+    ...childStates(CHILDREN[1], sceneState(await fixture("state_child_2"), 1)),
+    ...schoolStates(await fixture("school")),
+  };
+  for (const [entityId, entry] of Object.entries(states)) {
+    entry.entity_id = entityId;
+    entry.last_updated = "2026-09-02T07:00:00+00:00";
+  }
+  return {
+    language,
+    locale: { language },
+    config: { time_zone: "Europe/Berlin" },
+    themes: params.get("theme") ? { darkMode: params.get("theme") === "dark" } : {},
+    states,
+    async callWS(message) {
+      if (message.type === "config/entity_registry/list") return registryEntries();
+      if (message.type === "config/device_registry/list") return devices();
+      if (message.type === "ranzenpost/own_entries") return ownEntriesOf(message.device_id, message.start, message.end);
+      throw new Error(`unexpected websocket call ${message.type}`);
+    },
+    async callApi(method, path) {
+      const match = /^calendars\/([^?]+)\?start=([^&]+)&end=(.+)$/.exec(path);
+      if (!match) return [];
+      const entityId = match[1];
+      const start = new Date(decodeURIComponent(match[2])).getTime();
+      const end = new Date(decodeURIComponent(match[3])).getTime();
+      const parts = /^calendar\.ranzenpost_([a-z0-9_]+)_(lessons|exams|absences)$/.exec(entityId);
+      const holiday = /^calendar\.ranzenpost_school_holidays$/.test(entityId);
+      const childSlug = holiday ? null : parts && parts[1];
+      const kind = holiday ? "holidays" : parts && parts[2];
+      const child = CHILDREN.find((item) => item.slug === childSlug);
+      const events = await eventsOf(kind, child ? child.id : "");
+      return events
+        .filter((event) => instant(event.start) < end && instant(event.end) > start)
+        .map(toApiEvent);
+    },
+  };
+}
+
+const blockOf = (item) => (item.includes(":") ? { key: item.split(":")[0], size: item.split(":")[1] } : item);
+const config = params.get("blocks") ? { blocks: params.get("blocks").split(",").map(blockOf) } : { view: params.get("view") || "family" };
+if (params.get("child")) config.child = params.get("child");
+if (params.get("children")) config.children = params.get("children").split(",");
+if (params.get("title")) config.title = params.get("title");
+const language = params.get("lang") || "en";
+if (params.get("dir")) document.documentElement.dir = params.get("dir");
+
+const card = document.createElement("ranzenpost-card");
+card.setConfig(config);
+document.body.appendChild(card);
+
+makeHass(language).then(async (hass) => {
+  card.hass = hass;
+  await card.settled;
+  document.body.setAttribute("data-ready", "true");
+});
+</script>
+</body>
+</html>

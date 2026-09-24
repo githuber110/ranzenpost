@@ -2,12 +2,10 @@ import pytest
 
 from app.iserv.dsa import SCHOOL_APP_UNREADABLE_KEY
 from app.iserv.errors import DataError
-from app.service import (
-    LETTER_ARCHIVE_FAILED_KEY,
-    LETTER_RESTORE_FAILED_KEY,
-    IServService,
-)
+from app.letter_service import LETTER_ARCHIVE_FAILED_KEY, LETTER_RESTORE_FAILED_KEY
+from app.service import IServService
 from app.store import Store
+from tests.support import add_school, connection_service
 
 LETTER_ID = "11111111"
 RECIPIENT_ID = "22222222"
@@ -83,10 +81,9 @@ class Client:
 
 def make(tmp_path, client):
     store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-    service = IServService(store, client_factory=lambda url: client)
-    return service, store
+    connection_id = add_school(store, "https://school.example")
+    service = connection_service(store, connection_id, lambda url: client)
+    return service, service.store
 
 
 def _archive_client(post_status=200):
@@ -240,23 +237,23 @@ def test_marks_follow_the_child_to_its_new_id(tmp_path):
 
     store = Store(tmp_path / "data")
     store.save_marks({"marks": [
-        {"id": "m1", "child_id": "uuid-old", "date": "07.09.2026", "period": 1, "subject_code": "D"},
-        {"id": "m2", "child_id": "uuid-other", "date": "07.09.2026", "period": 2, "subject_code": "M"},
+        {"id": "m1", "child_key": "s1:uuid-old", "date": "07.09.2026", "period": 1, "subject_code": "D"},
+        {"id": "m2", "child_key": "s1:uuid-other", "date": "07.09.2026", "period": 2, "subject_code": "M"},
     ]})
-    assert MarkRegistry(store).move_child("uuid-old", "500001") == 1
+    assert MarkRegistry(store).move_child("s1:uuid-old", "s1:500001") == 1
     stored = store.load_marks()["marks"]
-    assert [entry["child_id"] for entry in stored] == ["500001", "uuid-other"]
+    assert [entry["child_key"] for entry in stored] == ["s1:500001", "s1:uuid-other"]
 
 
 def test_moving_a_child_nowhere_changes_nothing(tmp_path):
     from app.marks import MarkRegistry
 
     store = Store(tmp_path / "data")
-    store.save_marks({"marks": [{"id": "m1", "child_id": "a"}]})
+    store.save_marks({"marks": [{"id": "m1", "child_key": "a"}]})
     registry = MarkRegistry(store)
     assert registry.move_child("", "b") == 0
     assert registry.move_child("a", "a") == 0
-    assert store.load_marks()["marks"][0]["child_id"] == "a"
+    assert store.load_marks()["marks"][0]["child_key"] == "a"
 
 
 class SchoolAccount:
@@ -272,21 +269,47 @@ def test_a_setup_finished_without_a_chosen_child_still_knows_the_children(tmp_pa
 
     service, store = make(tmp_path, Client("https://school.example"))
     assert store.load_config().get("children") in (None, [])
-    service._children_from_school_account = lambda: [
+    service._child_service._children_from_school_account = lambda: [
         {"child_id": "500001", "name": "Mia Muster", "class_name": "3b"}
     ]
     assert service.children()[0]["child_id"] == "500001"
     stored = store.load_config()["children"]
     assert [child["child_id"] for child in stored] == ["500001"]
-    assert known_child(store.load_config(), "500001") is True
-    assert SubscriptionRegistry(store).create("500001", ["timetable"], require_region=False)["child_id"] == "500001"
+    key = service.child_key("500001")
+    assert known_child(store.load_config(), key) is True
+    assert SubscriptionRegistry(store).create(key, ["timetable"], require_region=False)["child_key"] == key
 
 
 def test_a_child_the_app_already_knows_is_not_stored_twice(tmp_path):
     service, store = make(tmp_path, Client("https://school.example"))
     store.save_config(dict(store.load_config(), children=[{"child_id": "500001", "name": "Mia"}]))
-    service._children_from_school_account = lambda: [
+    service._child_service._children_from_school_account = lambda: [
         {"child_id": "500001", "name": "Mia Muster", "class_name": "3b"}
     ]
     service.children()
     assert len(store.load_config()["children"]) == 1
+
+
+def test_a_refused_student_selection_means_no_children_to_choose():
+    from app.iserv.dsa import DieSchulAppClient
+
+    client = DieSchulAppClient("https://school.example", RefusingSession(403))
+    assert client.sick_note_children_or_raise() == []
+
+
+def test_an_expired_session_is_not_taken_for_no_children():
+    from app.iserv.dsa import DieSchulAppClient
+
+    client = DieSchulAppClient("https://school.example", RefusingSession(401))
+    with pytest.raises(DataError):
+        client.sick_note_children_or_raise()
+
+
+@pytest.mark.parametrize("status, expected", [(401, 1), (503, 0), (403, 0)])
+def test_only_an_expired_session_is_handed_back(status, expected):
+    from app.iserv.dsa import DieSchulAppClient
+
+    expired = []
+    client = DieSchulAppClient("https://school.example", RefusingSession(status), on_expired=lambda: expired.append(True))
+    client.pinboards()
+    assert len(expired) == expected

@@ -80,7 +80,7 @@ async function pickWeek(page, offset) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`[P153] holiday display stays inside the screen @ ${viewport.name}`, () => {
+  test.describe(`holiday display stays inside the screen @ ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     for (const lang of LANGUAGES) {

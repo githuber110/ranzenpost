@@ -1,17 +1,18 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P124] subject color dialog updates one row in place", () => {
-  test("picking a color leaves the sheet body node untouched and preserves its scroll position", () => {
+describe("subject color dialog updates one row in place", () => {
+  test("picking a color leaves the names page node untouched and preserves its scroll position", () => {
     const { window, document } = loadApp();
     window.eval(`
-      state.config = { subjects: { D: { label: "Deutsch", color: "" }, M: { label: "Mathe", color: "" } } };
-      openSheet(namesSheet);
+      state.config = { connections: [{ id: "s1", subjects: { D: { label: "Deutsch", color: "" }, M: { label: "Mathe", color: "" } } }] };
+      openNamesPage();
     `);
 
-    const sheetBody = document.querySelector(".sheet-body");
-    expect(sheetBody).not.toBeNull();
-    sheetBody.scrollTop = 123;
+    const pageNode = document.querySelector(".names-page");
+    const screen = document.querySelector(".screen");
+    expect(pageNode).not.toBeNull();
+    screen.scrollTop = 123;
 
     const rows = document.querySelectorAll(".field-group .cell");
     const firstSwatch = rows[0].querySelector(".swatch-trigger");
@@ -20,16 +21,33 @@ describe("[P124] subject color dialog updates one row in place", () => {
 
     firstSwatch.click();
     const dialog = document.querySelector(".color-dialog");
-    const paletteButton = dialog.querySelectorAll(".swatch-row .swatch-btn")[1];
+    const paletteButton = dialog.querySelectorAll(".swatch-grid .swatch-btn")[1];
     const pickedBackground = paletteButton.style.background;
-    const swatchColors = window.eval("SUBJECT_COLORS");
+    const names = window.eval("SUBJECT_COLOR_NAMES");
     paletteButton.click();
 
-    expect(document.querySelector(".sheet-body")).toBe(sheetBody);
-    expect(sheetBody.scrollTop).toBe(123);
+    expect(document.querySelector(".names-page")).toBe(pageNode);
+    expect(document.querySelector(".screen").scrollTop).toBe(123);
     expect(firstSwatch.style.background).toBe(pickedBackground);
     expect(secondSwatch.style.background).toBe(secondSwatchBackgroundBefore);
-    expect(window.eval("state.sheetForm.subjects.D.color")).toBe(swatchColors[1]);
-    expect(window.eval("state.sheetForm.subjects.M.color")).toBe("");
+    expect(window.eval("state.pageForm.subjects.D.color")).toBe(names[1]);
+    expect(window.eval("state.pageForm.subjects.M.color")).toBe("");
+  });
+
+  test("the dialog is a nested sheet over the names page and its close button dismisses it", () => {
+    const { document } = loadApp();
+    const { window } = { window: document.defaultView };
+    window.eval(`
+      state.config = { connections: [{ id: "s1", subjects: { D: { label: "Deutsch", color: "green" } } }] };
+      openNamesPage();
+    `);
+    document.querySelector(".swatch-trigger").click();
+    const dialog = document.querySelector(".color-dialog-scrim .sheet.color-dialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute("role")).toBe("dialog");
+    expect(dialog.querySelector(".sheet-title").textContent).toContain("D");
+    dialog.querySelector(".sheet-close").click();
+    expect(document.querySelector(".color-dialog")).toBeNull();
+    expect(document.querySelector(".names-page")).not.toBeNull();
   });
 });

@@ -1,0 +1,238 @@
+{
+  "config": {
+    "flow_title": "Ranzenpost",
+    "create_entry": {
+      "default": "Tamam. Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
+    },
+    "step": {
+      "hassio_confirm": {
+        "title": "Ranzenpost eklentisini bağla",
+        "description": "{addon} eklentisi bulundu. Home Assistant buna bağlansın mı?"
+      },
+      "install_addon": {
+        "title": "Ranzenpost eklentisini kur",
+        "description": "Ranzenpost eklentisi henüz kurulu değil. {repository} deposu eklensin, ardından eklenti kurulup başlatılsın mı?"
+      },
+      "addon_no_discovery": {
+        "title": "Eklenti kendini bildirmedi",
+        "description": "{addon} eklentisi kurulu ancak bağlantı bilgilerini henüz bildirmedi. Eklentiyi açın, çalıştığını kontrol edin ve ayarlarındaki Home Assistant bölümünden ana bilgisayar, port ve belirteci girin.",
+        "data": {
+          "host": "Ana bilgisayar",
+          "port": "Port",
+          "token": "Belirteç"
+        },
+        "data_description": {
+          "host": "Eklenti kapsayıcısının ana bilgisayar adı, genellikle ayarlarında gösterilir.",
+          "port": "Entegrasyon API portu, varsayılan 8099.",
+          "token": "Eklenti ayarlarında gösterilen erişim belirteci."
+        }
+      },
+      "manual": {
+        "title": "Ranzenpost'u elle bağla",
+        "description": "Çalışan Ranzenpost kapsayıcısının ana bilgisayarını, portunu ve belirtecini girin. Belirteç Ranzenpost ayarlarında gösterilir.",
+        "data": {
+          "host": "Ana bilgisayar",
+          "port": "Port",
+          "token": "Belirteç"
+        },
+        "data_description": {
+          "host": "Ranzenpost kapsayıcısının ana bilgisayar adı veya IP adresi.",
+          "port": "Entegrasyon API portu, varsayılan 8099.",
+          "token": "Ranzenpost ayarlarında gösterilen erişim belirteci."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ranzenpost belirtecini yenile",
+        "description": "{host} için belirteç reddedildi. Ranzenpost ayarlarındaki güncel belirteci girin.",
+        "data": {
+          "token": "Belirteç"
+        }
+      }
+    },
+    "progress": {
+      "install_addon": "Ranzenpost eklentisi kuruluyor. Bu birkaç dakika sürebilir.",
+      "start_addon": "Ranzenpost eklentisi başlatılıyor.",
+      "wait_discovery": "Eklentinin bağlantı bilgilerini bildirmesi bekleniyor."
+    },
+    "error": {
+      "cannot_connect": "Eklentiye ulaşılamadı. Çalıştığını kontrol edin.",
+      "invalid_auth": "Belirteç reddedildi. Ranzenpost ayarlarından yeniden kopyalayın.",
+      "unknown": "Eklenti beklenmedik bir yanıt verdi."
+    },
+    "abort": {
+      "already_configured": "Bu Ranzenpost eklentisi zaten bağlı. Her eklenti ana bilgisayarı bir kez bağlanabilir.",
+      "already_in_progress": "Bir Ranzenpost kurulumu zaten sürüyor.",
+      "addon_install_failed": "Ranzenpost eklentisi kurulamadı. Supervisor günlüğünü kontrol edin.",
+      "addon_start_failed": "Ranzenpost eklentisi başlatılamadı. Eklenti günlüğünü kontrol edin.",
+      "not_ranzenpost_addon": "Bu keşif mesajı Ranzenpost eklentisine ait değil.",
+      "reauth_successful": "Belirteç yenilendi."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ranzenpost seçenekleri",
+        "description": "Entegrasyonun eklentiyi ne sıklıkla sorgulayacağı ve hangi profiller için varlık oluşturulacağı.",
+        "data": {
+          "scan_interval": "Sorgulama aralığı",
+          "children": "Profiller"
+        },
+        "data_description": {
+          "scan_interval": "Eklentiye iki istek arasındaki saniye, en az 30.",
+          "children": "Tüm profiller için varlık oluşturmak üzere boş bırakın."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": {
+        "name": "Bugün okul günü"
+      },
+      "timetable_changed_today": {
+        "name": "Ders programı bugün değişti"
+      }
+    },
+    "calendar": {
+      "lessons": {
+        "name": "Dersler"
+      },
+      "exams": {
+        "name": "Sınavlar"
+      },
+      "absences": {
+        "name": "Devamsızlıklar"
+      },
+      "own_entries": {
+        "name": "Kendi kayıtlar"
+      },
+      "holidays": {
+        "name": "Tatiller"
+      }
+    },
+    "event": {
+      "timetable_changed": {
+        "name": "Ders programı değişikliği",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "substitution": "Vekil öğretmen",
+              "cancellation": "İptal",
+              "room_change": "Derslik değişikliği",
+              "new_lesson": "Yeni ders"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_lesson": {
+        "name": "Şu anki ders"
+      },
+      "next_lesson": {
+        "name": "Sonraki ders"
+      },
+      "school_end_today": {
+        "name": "Bugün okul bitişi"
+      },
+      "next_school_day": {
+        "name": "Sonraki okul günü"
+      },
+      "changes_today": {
+        "name": "Bugünkü değişiklikler"
+      },
+      "next_exam": {
+        "name": "Sonraki sınav"
+      },
+      "exams_upcoming": {
+        "name": "Yaklaşan sınavlar"
+      },
+      "unread_letters": {
+        "name": "Okunmamış veli mektupları"
+      },
+      "unread_posts": {
+        "name": "Okunmamış pano gönderileri"
+      },
+      "open_absences": {
+        "name": "Açık devamsızlıklar"
+      },
+      "next_absence": {
+        "name": "Sonraki devamsızlık"
+      },
+      "timetable_last_updated": {
+        "name": "Ders programı son güncelleme"
+      },
+      "next_holiday": {
+        "name": "Sonraki tatil"
+      },
+      "next_conference": {
+        "name": "Sonraki veli görüşme günü"
+      },
+      "connection": {
+        "name": "Bağlantı",
+        "state": {
+          "ok": "Bağlı",
+          "error": "Hata",
+          "unconfigured": "Kurulmadı",
+          "unreachable": "Erişilemiyor",
+          "auth_failed": "Giriş gerekli"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "timetable_changed": "Ders programı değişti",
+      "lesson_cancelled": "Ders iptal edildi",
+      "substitution": "Vekil öğretmen",
+      "new_letter": "Yeni veli mektubu",
+      "new_noticeboard_post": "Yeni pano gönderisi",
+      "absence_status_changed": "Devamsızlık durumu değişti",
+      "school_unreachable": "Okula erişilemiyor",
+      "school_reachable": "Okula yeniden erişilebiliyor",
+      "login_needed": "Giriş gerekli"
+    },
+    "condition_type": {
+      "is_school_day": "Okul günü",
+      "lesson_running": "Bir ders sürüyor"
+    }
+  },
+  "issues": {
+    "login_needed": {
+      "title": "{school} için giriş gerekli",
+      "description": "Ranzenpost artık {school} okuluna giriş yapamıyor. Kenar çubuğundan Ranzenpost'u aç, ayarlara git, bu okulu seç ve tekrar giriş yap."
+    },
+    "login_twofactor_setup": {
+      "title": "{school} için iki faktör gerekli",
+      "description": "IServ artık {school} okulundaki bu hesap için iki faktör istiyor. Kenar çubuğundan Ranzenpost'u açın ve kurulumu tamamlayın."
+    },
+    "login_unknown_account": {
+      "title": "{school} hesabı tanımıyor",
+      "description": "{school} okulundaki IServ kayıtlı hesap adını artık tanımıyor. Kenar çubuğundan Ranzenpost'u açın ve okulu yeniden bağlayın."
+    },
+    "login_default_password": {
+      "title": "{school} varsayılan şifreyi engelliyor",
+      "description": "{school} okulundaki IServ varsayılan şifreyi internetten kabul etmiyor. Şifreyi okul ağında ya da tarayıcıda değiştirin, sonra Ranzenpost'ta yeniden bağlanın."
+    },
+    "login_locked": {
+      "title": "{school} hesabı kilitli",
+      "description": "{school} IServ hesabı geçici olarak kilitledi. Tekrar giriş yapma, bu kilidi uzatır. Biraz bekle ya da okula sor, sonra Ranzenpost'u aç."
+    },
+    "login_code_refused": {
+      "title": "{school} kodu reddetti",
+      "description": "{school} okulundaki IServ uygulamanın doğrulama kodunu tekrar tekrar reddediyor. Uygulamanın erişimi yeniden kurulmalı. Kenar çubuğundan Ranzenpost'u açın ve okulu baştan kurun."
+    },
+    "addon_too_old": {
+      "title": "Ranzenpost eklentisini güncelleyin",
+      "description": "Ranzenpost eklentisi {addon_version} sürümünde çalışıyor, ancak bu entegrasyon ({integration_version}) en az {required_version} sürümünü gerektiriyor. Eklentiyi eklenti mağazasından güncelleyin. Okullarını yeniden bildirdiğinde cihazlar ve varlıklar kendiliğinden görünür."
+    },
+    "integration_too_old": {
+      "title": "Ranzenpost entegrasyonunu güncelleyin",
+      "description": "Ranzenpost eklentisi {addon_version} sürümünde çalışıyor, bu entegrasyondan ({integration_version}) bir genel sürüm ileride. İkisinin eşleşmesi için entegrasyonu HACS üzerinden güncelleyin; o zamana kadar bazı veriler eksik olabilir."
+    },
+    "no_school_yet": {
+      "title": "Henüz giriş yapılmış okul yok",
+      "description": "Tamam. Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
+    }
+  }
+}

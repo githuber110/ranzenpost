@@ -63,8 +63,9 @@ def test_captcha_marker_takes_priority_over_password_expired_marker():
     assert classify_login_response(CAPTCHA_AND_PASSWORD_EXPIRED_EXAMPLE_HTML) == "captcha"
 
 
-def test_rate_limit_status_code_classifies_as_locked_without_marker_text():
-    assert classify_login_response(NORMAL_PORTAL_EXAMPLE_HTML, status_code=429) == "locked"
+def test_only_the_page_text_tells_a_lock():
+    assert classify_login_response(NORMAL_PORTAL_EXAMPLE_HTML) == "normal"
+    assert classify_login_response("<html><head><title>Zugriff verweigert</title></head><body></body></html>") == "normal"
 
 
 def test_human_message_is_distinct_actionable_text_per_kind():

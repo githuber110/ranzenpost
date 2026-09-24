@@ -5,6 +5,7 @@ from app.iserv.errors import DataError
 from app.iserv.models import Child
 from app.service import IServService
 from app.store import Store
+from tests.support import add_school, connection_service
 
 SCHOOL_APP_CHILDREN = [
     {"id": 99, "name": "Mia Muster", "class_name": "2b", "class_full": "Klasse 02B", "class_code": "klasse.02b"},
@@ -45,6 +46,9 @@ class SchoolApp:
             raise RuntimeError("school app down")
         return list(self._children)
 
+    def sick_note_children_or_raise(self):
+        return self.sick_note_children()
+
     def students(self):
         return list(self._children)
 
@@ -54,9 +58,8 @@ class SchoolApp:
 
 def make(tmp_path, client_class=RefusingClient, school_app=None, **client_kwargs):
     store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
-    service = IServService(store, client_factory=lambda url: client_class(url, **client_kwargs))
+    connection_id = add_school(store, "https://school.example")
+    service = connection_service(store, connection_id, lambda url: client_class(url, **client_kwargs))
     service._dsa = lambda: school_app if school_app is not None else SchoolApp()
     return service
 
@@ -97,10 +100,9 @@ def test_while_the_timetable_page_is_refused_the_timetable_is_reported_unavailab
 
 def test_a_later_working_read_lifts_the_unavailable_mark_again(tmp_path):
     store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
-    store.save_secrets({"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"})
+    connection_id = add_school(store, "https://school.example")
     clients = [RefusingClient("https://school.example"), WorkingClient("https://school.example")]
-    service = IServService(store, client_factory=lambda url: clients.pop(0))
+    service = connection_service(store, connection_id, lambda url: clients.pop(0))
     service._dsa = lambda: SchoolApp(SCHOOL_APP_CHILDREN)
     service.children()
     assert service.timetable_available() is False

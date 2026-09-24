@@ -34,13 +34,13 @@ function overviewWithMark(window) {
       FixedDate.prototype = RealDate.prototype;
       Date = FixedDate;
       state.childId = "c1";
-      state.children = [{ child_id: "c1", name: "Kind" }];
+      state.children = [{ key: "c1", name: "Kind" }];
       state.weekOffset = 0;
       state.timetable = week;
       state.config = { period_times: week.period_times };
       state.marks = { data: { marks: [
-        { id: "m1", child_id: "c1", date: "2026-09-02", period: 2, kind: "exam", label: "" },
-        { id: "m2", child_id: "c1", date: "2026-09-02", period: 3, kind: "exam", label: "" }
+        { id: "m1", child_key: "c1", date: "2026-09-02", period: 2, kind: "exam", label: "" },
+        { id: "m2", child_key: "c1", date: "2026-09-02", period: 3, kind: "exam", label: "" }
       ] } };
       const result = overviewToday();
       Date = RealDate;
@@ -50,7 +50,7 @@ function overviewWithMark(window) {
   return run(MARKED_WEEK);
 }
 
-describe("[P232] every selected state is loud enough to see", () => {
+describe("every selected state is loud enough to see", () => {
   test("a marked lesson inside a double period is reachable by the ring rule", () => {
     const { window } = loadApp();
     const section = overviewWithMark(window);
@@ -113,7 +113,7 @@ describe("[P232] every selected state is loud enough to see", () => {
   });
 });
 
-describe("[P233] the translucent bar never runs against a white canvas", () => {
+describe("the translucent bar never runs against a white canvas", () => {
   test("the document canvas carries the app background, not the host's", () => {
     const canvas = rule(stylesCss, "html, body");
     expect(canvas).toMatch(/background:\s*var\(--bg\)/);
@@ -126,7 +126,7 @@ describe("[P233] the translucent bar never runs against a white canvas", () => {
   });
 });
 
-describe("[P233] the safe area under the tab bar is opaque, never frosted over nothing", () => {
+describe("the safe area under the tab bar is opaque, never frosted over nothing", () => {
   test("the bar reserves the safe area and paints it with a solid colour", () => {
     const under = rule(stylesCss, ".tabbar::before");
     expect(under).not.toBe("");
@@ -143,7 +143,7 @@ describe("[P233] the safe area under the tab bar is opaque, never frosted over n
   });
 });
 
-describe("[P233] inside the Home Assistant frame the app claims no screen edge", () => {
+describe("inside the Home Assistant frame the app claims no screen edge", () => {
   test("an embedded document is marked as such", () => {
     const { window } = loadApp();
     const marked = window.eval(`

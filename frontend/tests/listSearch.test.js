@@ -16,7 +16,7 @@ function typeInto(window, input, value) {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 }
 
-describe("[P114] pinboard full-text search", () => {
+describe("pinboard full-text search", () => {
   test("typing filters the feed by title+text, clearing restores it, matching is case-insensitive", () => {
     const { window } = loadApp();
     const data = {
@@ -57,7 +57,7 @@ describe("[P114] pinboard full-text search", () => {
   });
 });
 
-describe("[P114] letters full-text search", () => {
+describe("letters full-text search", () => {
   test("typing filters by title+sender+child, clearing restores it, matching is case-insensitive", () => {
     const { window } = loadApp();
     const data = {
@@ -80,7 +80,7 @@ describe("[P114] letters full-text search", () => {
   });
 });
 
-describe("[P115] letters search matches body text and attachment filenames", () => {
+describe("letters search matches body text and attachment filenames", () => {
   test("matches on body text that is not in title/sender/badges", () => {
     const { window } = loadApp();
     const data = {

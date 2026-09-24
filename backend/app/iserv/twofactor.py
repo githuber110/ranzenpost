@@ -100,6 +100,27 @@ def parse_registration(html, base_url):
     return None
 
 
+SETUP_TOPIC_MARKERS = ("zwei-faktor", "2fa", "two-factor")
+SETUP_BLOCKING_MARKERS = (
+    "bevor sie fortfahren",
+    "um fortzufahren",
+    "before you can continue",
+    "in order to continue",
+)
+SETUP_ACTION_MARKERS = ("einrichten", "set up two-factor", "set up 2fa")
+
+
+def setup_required(html, url="", authenticated=False):
+    if parse_registration(html, url) is not None:
+        return True
+    text = _normalize(html)
+    if not any(marker in text for marker in SETUP_TOPIC_MARKERS):
+        return False
+    if any(marker in text for marker in SETUP_BLOCKING_MARKERS):
+        return True
+    return not authenticated and any(marker in text for marker in SETUP_ACTION_MARKERS)
+
+
 def build_confirm_payload(registration, name, verification_code, activation_code):
     payload = dict(registration.fields)
     payload.update(affirmative_submit(getattr(registration, "submits", {}) or {}))

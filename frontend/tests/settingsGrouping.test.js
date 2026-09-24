@@ -4,7 +4,7 @@ import { loadApp } from "./loadApp.js";
 function settingsView(window, config) {
   return window.eval(`
     (function (config) {
-      state.config = config;
+      state.config = { connections: [Object.assign({ id: "s1" }, config)] };
       return settingsView();
     })
   `)(config || {});
@@ -21,16 +21,18 @@ const CONFIG = {
   period_times: { 1: "07:00" },
 };
 
-describe("[P181] the top level of the settings is grouped, not longer", () => {
-  test("four named groups in a fixed order", () => {
+describe("the top level of the settings is grouped by use, not longer", () => {
+  test("six named groups in a fixed order", () => {
     const { window } = loadApp();
     const view = settingsView(window, CONFIG);
     const heads = [...view.querySelectorAll(".settings-group .section-head .overline")].map((n) => n.textContent);
     expect(heads).toEqual([
-      label(window, "settings.section.school"),
       label(window, "settings.section.display"),
       label(window, "settings.section.notifications"),
+      label(window, "settings.section.school"),
+      label(window, "settings.section.modules"),
       label(window, "settings.section.account"),
+      label(window, "settings.section.help"),
     ]);
   });
 
@@ -40,15 +42,17 @@ describe("[P181] the top level of the settings is grouped, not longer", () => {
       [...group.querySelectorAll(".setting-row .lbl")].map((node) => node.textContent)
     );
     expect(groups).toEqual([
+      [label(window, "settings.language"), label(window, "settings.theme"), label(window, "settings.layout.title")],
+      [label(window, "settings.notify.service"), label(window, "schools.calendar.access"), label(window, "settings.ha.integration")],
       [
         label(window, "holidays.settings.title"),
-        label(window, "settings.phones"),
-        label(window, "settings.names"),
         label(window, "settings.periods.sheet"),
+        label(window, "settings.names"),
+        label(window, "settings.phones"),
       ],
-      [label(window, "settings.language"), label(window, "settings.theme")],
-      [label(window, "settings.notify.service")],
-      [label(window, "settings.profile"), label(window, "settings.password"), label(window, "settings.disconnect")],
+      [],
+      [label(window, "settings.password"), label(window, "schools.add"), label(window, "settings.disconnect")],
+      [label(window, "help.row"), label(window, "common.techDetails")],
     ]);
   });
 
@@ -56,7 +60,7 @@ describe("[P181] the top level of the settings is grouped, not longer", () => {
     const { window } = loadApp();
     const view = settingsView(window, CONFIG);
     const rows = [...view.querySelectorAll(".setting-row .lbl")].map((node) => node.textContent);
-    expect(rows.length).toBe(10);
+    expect(rows.length).toBe(15);
     for (const key of [
       "settings.language",
       "settings.theme",
@@ -64,7 +68,7 @@ describe("[P181] the top level of the settings is grouped, not longer", () => {
       "holidays.settings.title",
       "settings.phones",
       "settings.notify.service",
-      "settings.profile",
+      "common.techDetails",
       "settings.password",
       "settings.disconnect",
     ]) {
@@ -74,18 +78,18 @@ describe("[P181] the top level of the settings is grouped, not longer", () => {
   });
 });
 
-describe("[P181] subjects and teachers share one sheet", () => {
+describe("subjects and teachers share one sheet", () => {
   test("both lists are in the sheet, each under its own heading with its count", () => {
     const { window } = loadApp();
     const node = window.eval(`
       (function (config) {
-        state.config = config;
-        state.sheetForm = null;
-        return namesSheet();
+        state.config = { connections: [Object.assign({ id: "s1" }, config)] };
+        state.pageForm = null;
+        return namesPageView();
       })
     `)(CONFIG);
 
-    expect(node.querySelector(".sheet-title").textContent).toBe(label(window, "settings.names.sheet"));
+    expect(window.eval('settingsPageTitle("names")')).toBe(label(window, "settings.names.sheet"));
     const blocks = [...node.querySelectorAll(".names-block")];
     expect(blocks.length).toBe(2);
     expect(blocks[0].querySelector(".overline").textContent).toBe(label(window, "settings.subjects"));
@@ -104,30 +108,29 @@ describe("[P181] subjects and teachers share one sheet", () => {
     const { window, document } = loadApp();
     window.eval(`
       (function (config) {
-        state.config = config;
-        state.sheetForm = null;
-        openSheet(namesSheet);
+        state.config = { connections: [Object.assign({ id: "s1" }, config)] };
+        openNamesPage();
       })
     `)(JSON.parse(JSON.stringify(CONFIG)));
 
-    const inputs = document.querySelectorAll(".sheet-body .names-block .inp");
+    const inputs = document.querySelectorAll(".names-page .names-block .inp");
     inputs[0].value = "Deutsch LK";
     inputs[0].dispatchEvent(new window.Event("input"));
-    const teacherInput = document.querySelectorAll(".sheet-body .names-block")[1].querySelector(".inp");
+    const teacherInput = document.querySelectorAll(".names-page .names-block")[1].querySelector(".inp");
     teacherInput.value = "Frau Behrend";
     teacherInput.dispatchEvent(new window.Event("input"));
 
-    expect(window.eval("state.sheetForm.subjects.D.label")).toBe("Deutsch LK");
-    expect(window.eval("state.sheetForm.teachers.BEH.label")).toBe("Frau Behrend");
+    expect(window.eval("state.pageForm.subjects.D.label")).toBe("Deutsch LK");
+    expect(window.eval("state.pageForm.teachers.BEH.label")).toBe("Frau Behrend");
   });
 
   test("an empty side says so instead of showing an empty group", () => {
     const { window } = loadApp();
     const node = window.eval(`
       (function () {
-        state.config = { subjects: {}, teachers: {} };
-        state.sheetForm = null;
-        return namesSheet();
+        state.config = { connections: [{ id: "s1", subjects: {}, teachers: {} }] };
+        state.pageForm = null;
+        return namesPageView();
       })()
     `);
     const blocks = [...node.querySelectorAll(".names-block")];

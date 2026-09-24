@@ -1,9 +1,16 @@
 import json
 from datetime import date
 
+import pytest
+
+from app.iserv.errors import DataError
 from app.iserv.timetable import (
+    TIMETABLE_SHAPE_KEY,
     build_filter,
+    change_key,
+    crowded_keys,
     detect_changes,
+    display_rows,
     lesson_key,
     parse_timetable,
     slot_key,
@@ -190,10 +197,17 @@ def test_change_entry_with_unparsable_period_is_ignored():
     assert week.lesson_changes == {}
 
 
-def test_duplicate_plain_slots_yield_one_cancelled_entry():
-    week = parse_timetable(payload(combined=[], plain=[raw(5), raw(5, teacher="BBB")]))
+def test_exact_duplicate_plain_entries_yield_one_cancelled_entry():
+    week = parse_timetable(payload(combined=[], plain=[raw(5), raw(5)]))
     assert len(week.cancelled) == 1
-    assert week.lesson_changes["31.08.2026|5|D"]["kind"] == "cancelled"
+    assert week.lesson_changes["31.08.2026|5|D|AAA"]["kind"] == "cancelled"
+
+
+def test_parallel_groups_of_one_subject_are_each_cancelled():
+    week = parse_timetable(payload(combined=[], plain=[raw(5), raw(5, teacher="BBB")]))
+    assert sorted(lesson.teacher for lesson in week.cancelled) == ["AAA", "BBB"]
+    assert week.lesson_changes["31.08.2026|5|D|AAA"]["kind"] == "cancelled"
+    assert week.lesson_changes["31.08.2026|5|D|BBB"]["kind"] == "cancelled"
 
 
 def test_changes_are_scoped_per_day():
@@ -209,6 +223,53 @@ def test_changes_are_scoped_per_day():
 
 def test_lesson_key_joins_date_period_and_subject():
     assert lesson_key("01.09.2026", 4, "TEAM") == "01.09.2026|4|TEAM"
+
+
+def test_parse_timetable_keeps_a_genuinely_empty_week():
+    week = parse_timetable(payload(combined=[], plain=[]))
+    assert week.combined == []
+    assert week.plain == []
+
+
+def test_parse_timetable_rejects_a_payload_with_no_data_key():
+    broken = payload()
+    del broken["data"]
+    with pytest.raises(DataError) as caught:
+        parse_timetable(broken)
+    assert caught.value.message_key == TIMETABLE_SHAPE_KEY
+
+
+def test_parse_timetable_rejects_a_payload_with_no_timetable_key():
+    broken = payload()
+    del broken["data"]["timetable"]
+    with pytest.raises(DataError) as caught:
+        parse_timetable(broken)
+    assert caught.value.message_key == TIMETABLE_SHAPE_KEY
+
+
+def test_parse_timetable_reads_a_missing_plain_timetable_as_empty():
+    week_payload = payload(combined=[raw(1)])
+    del week_payload["plain-timetable"]
+    week = parse_timetable(week_payload)
+    assert [lesson.subject for lesson in week.combined] == ["D"]
+    assert week.plain == []
+    assert week.lesson_changes == {}
+    assert week.cancelled == []
+
+
+def test_parse_timetable_reads_a_null_plain_timetable_as_empty():
+    week_payload = payload()
+    week_payload["plain-timetable"] = None
+    week = parse_timetable(week_payload)
+    assert week.plain == []
+
+
+def test_parse_timetable_rejects_a_payload_with_no_meta_key():
+    broken = payload()
+    del broken["meta"]
+    with pytest.raises(DataError) as caught:
+        parse_timetable(broken)
+    assert caught.value.message_key == TIMETABLE_SHAPE_KEY
 
 
 def test_double_slot_survives_parse_timetable(fixture):
@@ -294,3 +355,188 @@ def test_change_with_unmatched_subject_still_refines_the_whole_slot():
         )
     )
     assert set(week.lesson_changes) == {"31.08.2026|4|M", "31.08.2026|4|TEAM"}
+
+
+def parse_parallel(fixture):
+    return parse_timetable(json.loads(fixture("timetable_parallel_courses.json")))
+
+
+def test_lesson_key_with_teacher_appends_the_teacher():
+    assert lesson_key("01.09.2026", 4, "SP", "GGG") == "01.09.2026|4|SP|GGG"
+
+
+def test_crowded_keys_name_slots_with_one_subject_twice():
+    week = parse_timetable(payload(combined=[raw(1), raw(1, teacher="BBB"), raw(2, subject="M")]))
+    assert crowded_keys(week.combined) == {"31.08.2026|1|D"}
+    assert change_key(week.combined[0], {"31.08.2026|1|D"}) == "31.08.2026|1|D|AAA"
+    assert change_key(week.combined[2], {"31.08.2026|1|D"}) == "31.08.2026|2|M"
+
+
+def test_parallel_fixture_keeps_every_lesson_of_a_period(fixture):
+    week = parse_parallel(fixture)
+    third = [lesson for lesson in week.combined if lesson.date == "31.08.2026" and lesson.period == 3]
+    assert len(third) == 6
+    assert sorted((lesson.subject, lesson.teacher) for lesson in third) == [
+        ("E1", "CCC"),
+        ("E2", "DDD"),
+        ("F1", "EEE"),
+        ("L1", "FFF"),
+        ("SP", "GGG"),
+        ("SP", "HHH"),
+    ]
+    assert not any(key.startswith("31.08.2026|") for key in week.lesson_changes)
+
+
+def test_parallel_fixture_substitution_hits_only_its_course(fixture):
+    week = parse_parallel(fixture)
+    changed = {key: entry for key, entry in week.lesson_changes.items() if key.startswith("01.09.2026|1|")}
+    assert list(changed) == ["01.09.2026|1|E2"]
+    assert changed["01.09.2026|1|E2"]["kind"] == "changed"
+    assert changed["01.09.2026|1|E2"]["fields"] == ["teacher"]
+    assert changed["01.09.2026|1|E2"]["previous"]["teacher"] == "DDD"
+
+
+def test_parallel_fixture_cancellation_hits_only_the_missing_group(fixture):
+    week = parse_parallel(fixture)
+    assert [(lesson.subject, lesson.teacher) for lesson in week.cancelled] == [("SP", "HHH")]
+    assert week.lesson_changes["01.09.2026|2|SP|HHH"]["kind"] == "cancelled"
+    assert "01.09.2026|2|SP|GGG" not in week.lesson_changes
+
+
+def test_parallel_groups_pair_by_teacher_before_subject():
+    week = parse_timetable(
+        payload(
+            combined=[raw(4, subject="SP", teacher="HHH"), raw(4, subject="SP", teacher="ZZZ")],
+            plain=[raw(4, subject="SP", teacher="GGG"), raw(4, subject="SP", teacher="HHH")],
+        )
+    )
+    assert list(week.lesson_changes) == ["31.08.2026|4|SP|ZZZ"]
+    assert week.lesson_changes["31.08.2026|4|SP|ZZZ"]["previous"]["teacher"] == "GGG"
+    assert week.cancelled == []
+
+
+def test_change_type_on_a_crowded_subject_needs_the_teacher():
+    week = parse_timetable(
+        payload(
+            combined=[raw(4, subject="SP", teacher="GGG"), raw(4, subject="SP", teacher="HHH")],
+            plain=[raw(4, subject="SP", teacher="GGG"), raw(4, subject="SP", teacher="HHH")],
+            changes=[raw(4, subject="SP", teacher="HHH", type="Entfall"), raw(4, subject="SP", teacher="QQQ", type="Vertretung")],
+        )
+    )
+    assert week.lesson_changes == {"31.08.2026|4|SP|HHH": {"kind": "cancelled", "fields": [], "previous": {"subject": "", "teacher": "", "room": ""}}}
+
+
+def sport(teacher, room, **extra):
+    return raw(3, subject="SP", teacher=teacher, room=room, date_value="01.09.2026", **extra)
+
+
+def filtered_view(week, chosen, known):
+    from app import courses
+    from app.mapping import to_display
+
+    lessons = [
+        dict(to_display(lesson, {}, change), course_key=courses.regular_course_key(lesson, change))
+        for lesson, change in display_rows(week)
+    ]
+    active = courses.normalize_filter({"chosen": chosen, "known": known})
+    return courses.apply({"lessons": lessons, "changes": week.changes}, active)
+
+
+def shown(view):
+    return sorted((lesson["teacher_code"], lesson["room"], lesson["change_kind"], lesson["course_key"]) for lesson in view["lessons"])
+
+
+def test_one_substitute_for_two_groups_keeps_both_groups_apart():
+    week = parse_timetable(
+        payload(
+            combined=[sport("SCH", "GYM1"), sport("SCH", "GYM2")],
+            plain=[sport("MUE", "GYM1"), sport("SCH", "GYM2")],
+            changes=[sport("SCH", "GYM1", type="Vertretung")],
+        )
+    )
+    view = filtered_view(week, ["SP|MUE"], ["SP|MUE", "SP|SCH"])
+    assert shown(view) == [("SCH", "GYM1", "changed", "SP|MUE")]
+    assert view["lessons"][0]["previous"]["teacher"] == "MUE"
+    assert view["change_count"] == 1
+    assert len(view["changes"]) == 1
+    both = filtered_view(week, ["SP|MUE", "SP|SCH"], ["SP|MUE", "SP|SCH"])
+    assert shown(both) == [("SCH", "GYM1", "changed", "SP|MUE"), ("SCH", "GYM2", "", "SP|SCH")]
+
+
+def test_a_substitute_taking_both_groups_does_not_cancel_the_other_group():
+    week = parse_timetable(
+        payload(
+            combined=[sport("SCH", "GYM2")],
+            plain=[sport("MUE", "GYM1"), sport("SCH", "GYM2")],
+            changes=[sport("SCH", "GYM2", type="Vertretung")],
+        )
+    )
+    view = filtered_view(week, ["SP|MUE"], ["SP|MUE", "SP|SCH"])
+    assert shown(view) == [("SCH", "GYM2", "changed", "SP|MUE")]
+    assert view["lessons"][0]["previous"]["teacher"] == "MUE"
+    assert view["lessons"][0]["previous"]["room"] == "GYM1"
+    assert len(view["changes"]) == 1
+    assert week.cancelled == []
+    other = filtered_view(week, ["SP|SCH"], ["SP|MUE", "SP|SCH"])
+    assert shown(other) == [("SCH", "GYM2", "", "SP|SCH")]
+
+
+def test_a_missing_group_without_a_substitution_note_stays_cancelled():
+    week = parse_timetable(
+        payload(combined=[sport("SCH", "GYM2")], plain=[sport("MUE", "GYM1"), sport("SCH", "GYM2")])
+    )
+    view = filtered_view(week, ["SP|MUE"], ["SP|MUE", "SP|SCH"])
+    assert shown(view) == [("MUE", "GYM1", "cancelled", "SP|MUE")]
+
+
+def test_a_change_of_a_hidden_group_named_by_its_regular_teacher_stays_hidden():
+    week = parse_timetable(
+        payload(
+            combined=[sport("MUE", "GYM1"), sport("ZZZ", "GYM2")],
+            plain=[sport("MUE", "GYM1"), sport("SCH", "GYM2")],
+            changes=[sport("SCH", "GYM2", type="Vertretung")],
+        )
+    )
+    view = filtered_view(week, ["SP|MUE"], ["SP|MUE", "SP|SCH"])
+    assert shown(view) == [("MUE", "GYM1", "", "SP|MUE")]
+    assert view["changes"] == []
+    assert view["change_count"] == 0
+
+
+def test_groups_of_one_teacher_pair_by_room():
+    week = parse_timetable(
+        payload(
+            combined=[sport("ZZZ", "GYM1"), sport("YYY", "GYM2")],
+            plain=[sport("GGG", "GYM2"), sport("HHH", "GYM1")],
+        )
+    )
+    previous = sorted((lesson.teacher, change["previous"]["teacher"]) for lesson, change in display_rows(week))
+    assert previous == [("YYY", "GGG"), ("ZZZ", "HHH")]
+
+
+def test_twin_lessons_keep_their_own_change_entries():
+    week = parse_timetable(
+        payload(
+            combined=[sport("SCH", "GYM1"), sport("SCH", "GYM1")],
+            plain=[sport("MUE", "GYM1"), sport("SCH", "GYM1")],
+        )
+    )
+    kinds = sorted((change or {}).get("kind", "") for _, change in display_rows(week))
+    assert kinds == ["", "changed"]
+
+
+def test_display_rows_fall_back_to_keys_for_a_hand_built_week():
+    from app.iserv.models import TimetableWeek
+
+    week = parse_timetable(payload(combined=[raw(1, teacher="ZZZ")], plain=[raw(1), raw(2)]))
+    bare = TimetableWeek(start_date="", end_date="", last_updated=None, combined=week.combined, plain=week.plain)
+    bare.lesson_changes, bare.cancelled = detect_changes(week.combined, week.plain, [])
+    rows = display_rows(bare)
+    assert [(lesson.period, change["kind"]) for lesson, change in rows] == [(1, "changed"), (2, "cancelled")]
+
+
+def test_crowded_keys_add_the_room_when_one_teacher_has_two_groups():
+    week = parse_timetable(payload(combined=[sport("SCH", "GYM1"), sport("SCH", "GYM2")]))
+    crowded = crowded_keys(week.combined)
+    assert change_key(week.combined[0], crowded) == "01.09.2026|3|SP|SCH|GYM1"
+    assert change_key(week.combined[1], crowded) == "01.09.2026|3|SP|SCH|GYM2"

@@ -13,7 +13,7 @@ function rule(selector) {
   return match ? match[0] : "";
 }
 
-describe("[P222] a long filter label is cut, not wrapped", () => {
+describe("a long filter label is cut, not wrapped", () => {
   test("the chip label clips with an ellipsis on one line", () => {
     const label = rule(".chip-label");
     expect(label).toMatch(/text-overflow:\s*ellipsis/);

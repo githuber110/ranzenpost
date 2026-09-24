@@ -3,6 +3,7 @@ import time
 import uuid
 
 from . import marks
+from .store import config_for_child
 from .subscriptions import known_child
 
 ERROR_CHILD = "api.cancellations.error.child"
@@ -26,7 +27,7 @@ def entries_of(data):
 
 def slot_of(entry):
     return (
-        str(entry.get("child_id") or ""),
+        str(entry.get("child_key") or ""),
         str(entry.get("date") or ""),
         int(entry.get("period") or 0),
     )
@@ -35,7 +36,7 @@ def slot_of(entry):
 def public_view(entry):
     return {
         "id": entry.get("id", ""),
-        "child_id": entry.get("child_id", ""),
+        "child_key": entry.get("child_key", ""),
         "date": entry.get("date", ""),
         "period": int(entry.get("period") or 0),
         "created_at": int(entry.get("created_at") or 0),
@@ -46,7 +47,7 @@ class CancellationRegistry:
     def __init__(self, store, clock=None):
         self.store = store
         self.clock = clock or time.time
-        self._lock = threading.Lock()
+        self._lock = getattr(store, "lock", None) or threading.Lock()
 
     def _read(self):
         return entries_of(self.store.load_cancellations())
@@ -57,11 +58,11 @@ class CancellationRegistry:
     def _today(self):
         return marks.today_for(self.clock)
 
-    def list(self, child_id=""):
+    def list(self, child_key=""):
         start, end = marks.window(self._today())
         result = []
         for entry in self._read():
-            if child_id and entry.get("child_id") != child_id:
+            if child_key and entry.get("child_key") != child_key:
                 continue
             if not marks.in_range(entry, start, end):
                 continue
@@ -72,21 +73,21 @@ class CancellationRegistry:
             "window": {"start": start.isoformat(), "end": end.isoformat()},
         }
 
-    def create(self, child_id, date_value, period):
+    def create(self, child_key, date_value, period):
         config = self.store.load_config()
-        if not known_child(config, child_id):
+        if not known_child(config, child_key):
             raise CancellationError(ERROR_CHILD)
         try:
             date = marks.normalize_date(date_value, self._today())
         except marks.MarkError:
             raise CancellationError(ERROR_DATE)
         try:
-            number = marks.normalize_period(period, config)
+            number = marks.normalize_period(period, config_for_child(self.store, child_key))
         except marks.MarkError:
             raise CancellationError(ERROR_PERIOD)
         entry = {
             "id": uuid.uuid4().hex,
-            "child_id": child_id,
+            "child_key": child_key,
             "date": date,
             "period": number,
             "created_at": int(self.clock()),

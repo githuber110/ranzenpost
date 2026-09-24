@@ -21,7 +21,7 @@ async function tick(window) {
   await new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
-describe("[P256] reload records when a piece of data was last fetched", () => {
+describe("reload records when a piece of data was last fetched", () => {
   test("a successful load writes the moment down", async () => {
     const { window } = loadApp();
     await window.eval(`reload("probe", () => Promise.resolve({ ok: true }), false)`);
@@ -36,7 +36,7 @@ describe("[P256] reload records when a piece of data was last fetched", () => {
   });
 });
 
-describe("[P256] opening a view fetches it fresh when what it shows is old", () => {
+describe("opening a view fetches it fresh when what it shows is old", () => {
   test("a pinboard fetched long ago is fetched again", async () => {
     const window = prepared(`
       state.view = "post";
@@ -100,7 +100,7 @@ describe("[P256] opening a view fetches it fresh when what it shows is old", () 
   });
 });
 
-describe("[P256] a refresh held back by an open sheet is not lost", () => {
+describe("a refresh held back by an open sheet is not lost", () => {
   test("coming back with a sheet open remembers the refresh and runs it once the sheet is gone", async () => {
     const window = prepared(`
       state.view = "post";
@@ -126,7 +126,7 @@ describe("[P256] a refresh held back by an open sheet is not lost", () => {
   });
 });
 
-describe("[P256] the window inside Home Assistant getting the focus counts as coming back", () => {
+describe("the window inside Home Assistant getting the focus counts as coming back", () => {
   test("a focus event past the threshold refreshes the open view", async () => {
     const window = prepared(`
       state.view = "conferences";

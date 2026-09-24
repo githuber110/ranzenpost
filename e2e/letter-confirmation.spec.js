@@ -42,7 +42,7 @@ async function openLetters(page) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`[P195] letter confirmation @ ${viewport.name}`, () => {
+  test.describe(`letter confirmation @ ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     for (const lang of LANGUAGES) {

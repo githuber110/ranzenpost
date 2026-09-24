@@ -10,8 +10,9 @@ from app.server import create_app
 from app.store import Store
 from app.subscriptions import SubscriptionRegistry
 
-CHILD_ID = "child-uuid-a"
-SECOND_CHILD_ID = "child-uuid-b"
+CONNECTION_ID = "a1b2c3d4"
+CHILD_ID = f"{CONNECTION_ID}:child-uuid-a"
+SECOND_CHILD_ID = f"{CONNECTION_ID}:child-uuid-b"
 CHILD_NAME = "Zwiebelfisch Quastenflosser"
 SECOND_CHILD_NAME = "Kraakebolle Nebelkrähe"
 STUDENT_ID = 4711
@@ -87,21 +88,30 @@ def _snapshot(lessons, fetched_at=NOW_EPOCH, child_id=CHILD_ID, absences=None):
     return {"children": {child_id: child}}
 
 
+def _raw(child_key):
+    return child_key.split(":", 1)[-1]
+
+
 def _store(tmp_path, language="de"):
     store = Store(tmp_path / "data")
     config = store.load_config()
     config["language"] = language
-    config["holiday_region"] = "DE-NI"
-    config["children"] = [
-        {"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"},
-        {"child_id": SECOND_CHILD_ID, "name": SECOND_CHILD_NAME, "class_name": "7B"},
-    ]
-    config["subjects"] = {
-        "MA": {"label": "Mathe", "color": "#2486ed"},
-        "D": {"label": "Deutsch", "color": "#0e6b70"},
-    }
-    config["period_times"] = dict(PERIOD_TIMES)
     store.save_config(config)
+    store.add_connection(
+        "https://school-one.example",
+        connection_id=CONNECTION_ID,
+        setup_complete=True,
+        holiday_region="DE-NI",
+        children=[
+            {"child_id": _raw(CHILD_ID), "name": CHILD_NAME, "class_name": "5A"},
+            {"child_id": _raw(SECOND_CHILD_ID), "name": SECOND_CHILD_NAME, "class_name": "7B"},
+        ],
+        subjects={
+            "MA": {"label": "Mathe", "color": "#2486ed"},
+            "D": {"label": "Deutsch", "color": "#0e6b70"},
+        },
+        period_times=dict(PERIOD_TIMES),
+    )
     return store
 
 
@@ -212,7 +222,7 @@ def test_the_same_slot_is_refused_twice_but_stays_free_for_the_sibling(tmp_path)
     assert error.value.message_key == marks.ERROR_DUPLICATE
 
     sibling = registry.create(SECOND_CHILD_ID, WEDNESDAY_ISO, 3, "MA", "Test")
-    assert sibling["child_id"] == SECOND_CHILD_ID
+    assert sibling["child_key"] == SECOND_CHILD_ID
     assert len(marks.entries_of(store.load_marks())) == 2
 
 
@@ -621,9 +631,7 @@ def test_the_new_components_are_accepted_and_nonsense_is_still_refused(tmp_path)
 
 def test_the_new_components_need_no_holiday_region(tmp_path):
     store = _store(tmp_path)
-    config = store.load_config()
-    config["holiday_region"] = ""
-    store.save_config(config)
+    store.update_connection(CONNECTION_ID, holiday_region="")
 
     created = SubscriptionRegistry(store).create(CHILD_ID, ["marks", "absences"], "5A")
 
@@ -644,6 +652,7 @@ def test_an_existing_subscription_keeps_working_and_can_gain_the_new_parts(tmp_p
 class FakeService:
     def __init__(self, store, overview=None):
         self.store = store
+        self.id = CONNECTION_ID
         self.overview = overview
         self.calls = []
 
@@ -655,8 +664,8 @@ class FakeService:
 
     def children(self):
         return [
-            {"child_id": CHILD_ID, "name": CHILD_NAME, "student_id": STUDENT_ID},
-            {"child_id": SECOND_CHILD_ID, "name": SECOND_CHILD_NAME, "student_id": None},
+            {"child_id": _raw(CHILD_ID), "name": CHILD_NAME, "student_id": STUDENT_ID},
+            {"child_id": _raw(SECOND_CHILD_ID), "name": SECOND_CHILD_NAME, "student_id": None},
         ]
 
     def timetable(self, child_id, week_offset=0):
@@ -781,7 +790,7 @@ def test_the_api_creates_lists_updates_and_deletes_a_mark(tmp_path):
     created = client.post(
         "/api/marks",
         json={
-            "child_id": CHILD_ID,
+            "child_key": CHILD_ID,
             "date": WEDNESDAY_ISO,
             "period": 3,
             "subject_code": "MA",
@@ -790,7 +799,7 @@ def test_the_api_creates_lists_updates_and_deletes_a_mark(tmp_path):
     ).json()
     assert created["state"] == marks.STATE_CONFIRMED
 
-    listing = client.get("/api/marks", params={"child_id": CHILD_ID}).json()
+    listing = client.get("/api/marks", params={"child": CHILD_ID}).json()
     assert [entry["id"] for entry in listing["marks"]] == [created["id"]]
     assert listing["window"]["start"] < listing["window"]["end"]
 
@@ -804,10 +813,10 @@ def test_the_api_creates_lists_updates_and_deletes_a_mark(tmp_path):
 
 def test_the_api_answers_every_refusal_with_a_message_key(tmp_path):
     client, _, _ = _api(tmp_path)
-    base = {"child_id": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"}
+    base = {"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"}
 
     for payload, key in (
-        (dict(base, child_id="nope"), marks.ERROR_CHILD),
+        (dict(base, child_key="nope"), marks.ERROR_CHILD),
         (dict(base, date="2001-01-01"), marks.ERROR_DATE),
         (dict(base, period=99), marks.ERROR_PERIOD),
         (dict(base, subject_code=""), marks.ERROR_SUBJECT),
@@ -831,7 +840,7 @@ def test_the_mark_endpoints_never_speak_to_iserv(tmp_path):
 
     created = client.post(
         "/api/marks",
-        json={"child_id": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"},
+        json={"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"},
     ).json()
     client.get("/api/marks")
     client.post(f"/api/marks/{created['id']}", json={"name": "Test"})

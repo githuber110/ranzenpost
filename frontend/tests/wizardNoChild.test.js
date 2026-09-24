@@ -9,7 +9,7 @@ function flush() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-describe("[P137] wizard: child step with 0 children", () => {
+describe("wizard: child step with 0 children", () => {
   test("shows the explanation screen instead of hanging, and finishes setup", async () => {
     const { window, document } = loadApp();
     let skipCalled = false;
@@ -31,7 +31,7 @@ describe("[P137] wizard: child step with 0 children", () => {
     await flush();
     await flush();
 
-    expect(app.textContent).toContain("Deinem Konto ist kein Kind zugeordnet — bitte wende dich an die Schule.");
+    expect(app.textContent).toContain("Deinem Konto ist kein Profil zugeordnet. Bitte wende dich an die Schule.");
 
     const finishButton = [...app.querySelectorAll("button")].find((b) => b.textContent === "Einrichtung abschließen");
     expect(finishButton).toBeTruthy();

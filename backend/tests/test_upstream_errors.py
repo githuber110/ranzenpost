@@ -5,7 +5,7 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from app import server
+from app import upstream
 from app.iserv.errors import LoginError, TwoFactorError
 from app.server import create_app
 from app.service import NotConfiguredError
@@ -18,16 +18,17 @@ BUNDLE = json.loads(
 )
 
 UPSTREAM_FAILURES = (
-    (NotConfiguredError("not set up"), server.NOT_CONFIGURED),
-    (LoginError("password changed"), server.AUTH_FAILED),
-    (TwoFactorError("no stored token"), server.AUTH_FAILED),
-    (requests.RequestException("boom"), server.NETWORK),
+    (NotConfiguredError("not set up"), upstream.NOT_CONFIGURED),
+    (LoginError("password changed"), upstream.AUTH_FAILED),
+    (TwoFactorError("no stored token"), upstream.AUTH_FAILED),
+    (requests.RequestException("boom"), upstream.NETWORK),
 )
 
 READ_ENDPOINTS = (
     ("/api/me", "GET", None),
     ("/api/children", "GET", None),
     ("/api/timetable", "GET", None),
+    ("/api/timetable/courses", "GET", None),
     ("/api/pinboard", "GET", None),
     ("/api/letters", "GET", None),
     ("/api/letters/detail", "GET", None),
@@ -66,7 +67,8 @@ BINARY_ENDPOINTS = (
 )
 
 QUERY = {
-    "/api/timetable": {"child_id": "c1"},
+    "/api/timetable": {"child": "a1b2c3d4:c1"},
+    "/api/timetable/courses": {"child": "a1b2c3d4:c1"},
     "/api/letters/detail": {"letter_id": "l1", "recipient_id": "r1"},
     "/api/absences/sick-note-pdf": {"id": "42"},
     "/api/messenger/room": {"id": "!r:school.example"},
@@ -77,6 +79,7 @@ COVERED_ROUTES = {
     "/api/me",
     "/api/children",
     "/api/timetable",
+    "/api/timetable/courses",
     "/api/pinboard",
     "/api/letters",
     "/api/letters/detail",
@@ -106,7 +109,11 @@ COVERED_ROUTES = {
 ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/health": "reports the connection state itself, including auth_failed",
     "/api/config": "local store only",
-    "/api/timetable-availability": "swallows every failure and falls back to available",
+    "/api/timetable-availability": "alias of the stored module registry, never reaches IServ",
+    "/api/modules": "stored module registry, never reaches IServ",
+    "/api/modules/recheck": "goes through write_endpoint, refusals carry their own message keys",
+    "/api/diagnostics": "builds the report itself, a school that cannot log in becomes a line in the report",
+    "/api/diagnostics/report.zip": "packs the same self-built report, a failing school is a line in it",
     "/api/holidays": "local calendar",
     "/api/holidays/regions": "static table",
     "/api/holidays/region-suggestion": "own suggestion vocabulary, never raises",
@@ -114,6 +121,14 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/notify-test": "Home Assistant, not IServ",
     "/api/account/disconnect": "service.disconnect classifies its own outcome",
     "/api/password": "richer vocabulary, already separates auth_failed from rejected",
+    "/api/connections/{connection_id}/periods": "lesson grid and own entries from the local store, holidays from the local calendar",
+    "/api/connections/{connection_id}/periods/lessons": "edits the stored lesson grid only",
+    "/api/connections/{connection_id}/periods/lessons/{number}": "edits the stored lesson grid only",
+    "/api/connections/{connection_id}/periods/lessons/{number}/reset": "edits the stored lesson grid only",
+    "/api/connections/{connection_id}/periods/reset": "edits the stored lesson grid only",
+    "/api/connections/{connection_id}/own-entries": "own entries live in the local store only",
+    "/api/connections/{connection_id}/own-entries/rollover": "own entries live in the local store only",
+    "/api/connections/{connection_id}/own-entries/{entry_id}": "own entries live in the local store only",
     "/api/calendar/subscriptions": "local subscription registry",
     "/api/calendar/subscriptions/{subscription_id}": "local subscription registry",
     "/api/calendar/subscriptions/{subscription_id}/rotate": "local subscription registry",
@@ -123,6 +138,13 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/marks/{mark_id}": "local mark registry",
     "/api/cancellations": "local cancellation registry",
     "/api/cancellations/{cancellation_id}": "local cancellation registry",
+    "/api/integration/info": "local store and Supervisor only, own 401/403/429 vocabulary",
+    "/api/integration/state": "local snapshot only, own 401/403/429 vocabulary",
+    "/api/integration/events": "local snapshot only, own 401/403/429 vocabulary",
+    "/api/integration/school": "local snapshot only, own 401/403/429 vocabulary",
+    "/api/integration/changes": "local snapshot only, own 401/403/429 vocabulary",
+    "/api/integration-status": "local token file, never reaches IServ",
+    "/api/integration-status/rotate": "local token file and Supervisor, never reaches IServ",
     "/api/wizard": "wizard state machine with its own error object",
     "/api/wizard/url": "wizard state machine with its own error object",
     "/api/wizard/login": "wizard state machine with its own error object",
@@ -131,6 +153,14 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/wizard/skip-child": "wizard state machine with its own error object",
     "/api/wizard/back": "wizard state machine with its own error object",
     "/api/wizard/reset": "wizard state machine with its own error object",
+    "/api/wizard/start": "wizard state machine with its own error object",
+    "/api/wizard/cancel": "wizard state machine with its own error object",
+    "/api/connections": "local store only",
+    "/api/connections/{connection_id}": "local store only, unknown ids answer through read_endpoint",
+    "/api/connections/{connection_id}/disconnect": "service.disconnect classifies its own outcome",
+    "/api/connections/{connection_id}/modules": "stored module registry, never reaches IServ",
+    "/api/connections/{connection_id}/modules/recheck": "goes through write_endpoint, refusals carry their own message keys",
+    "/api/connections/{connection_id}/retry": "runs one poll whose outcome the poller classifies itself, answers with the school status",
 }
 
 
@@ -182,7 +212,7 @@ def _call(api, path, method, body):
 
 def _assert_uniform(body, expected_code):
     assert body["error"] == expected_code
-    assert body["message_key"] == server.UPSTREAM_ERROR_MESSAGE_KEYS[expected_code]
+    assert body["message_key"] == upstream.UPSTREAM_ERROR_MESSAGE_KEYS[expected_code]
     assert body["message"] == BUNDLE[body["message_key"]]
 
 
@@ -212,7 +242,7 @@ def test_every_write_endpoint_answers_upstream_failure_in_one_shape(
 @pytest.mark.parametrize("error,expected_code", UPSTREAM_FAILURES)
 def test_every_binary_endpoint_separates_auth_from_network(tmp_path, path, error, expected_code):
     response = _call(_client(tmp_path, error), path, "GET", None)
-    expected_body, expected_status = server.BINARY_UPSTREAM_RESPONSES[expected_code]
+    expected_body, expected_status = upstream.BINARY_UPSTREAM_RESPONSES[expected_code]
     assert response.status_code == expected_status, f"{path} answered {response.text!r}"
     assert response.text == expected_body
 
@@ -235,8 +265,8 @@ def test_the_error_shape_stays_backward_compatible(tmp_path):
 
 
 def test_every_upstream_message_key_resolves_in_the_base_bundle():
-    for code in server.UPSTREAM_ERROR_CODES:
-        key = server.UPSTREAM_ERROR_MESSAGE_KEYS[code]
+    for code in upstream.UPSTREAM_ERROR_CODES:
+        key = upstream.UPSTREAM_ERROR_MESSAGE_KEYS[code]
         assert key in BUNDLE, f"{key} is not in frontend/i18n/de.json"
         assert BUNDLE[key].strip()
 

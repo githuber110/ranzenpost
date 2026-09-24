@@ -8,7 +8,7 @@ function renderPostRow(window, tile, insideFolder) {
   return run(tile, insideFolder);
 }
 
-describe("[P144] pinboard rows show the column/area with visible contrast", () => {
+describe("pinboard rows show the column/area with visible contrast", () => {
   test("two same-titled tiles in different columns are distinguishable at a glance", () => {
     const { window } = loadApp();
     const tileA = { id: 1, title: "September 2025", column_title: "Einladungen", unread: false };

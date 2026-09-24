@@ -8,13 +8,13 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const base = JSON.parse(fs.readFileSync(path.join(path.resolve(dirname, ".."), "i18n", "de.json"), "utf8"));
 
 function draftForm(window) {
-  window.eval('state.children = [{ child_id: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
-  window.eval('state.calendar = { data: { subscriptions: [], holiday_region: "DE-NI", port: 8100 }, error: false };');
+  window.eval('state.children = [{ key: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
+  window.eval('state.calendar = { data: { subscriptions: [], holiday_regions: { s1: "DE-NI" }, port: 8100 }, error: false };');
   window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");
   return window.eval("calendarForm(state.calendarDraft)");
 }
 
-describe("[P179] the subscription offers the two new parts", () => {
+describe("the subscription offers the two new parts", () => {
   test("marks and absences stand next to the three existing parts, in backend order", () => {
     const { window } = loadApp();
     const form = draftForm(window);
@@ -27,6 +27,7 @@ describe("[P179] the subscription offers the two new parts", () => {
       base["calendar.subscribe.component.public_holidays"],
       base["calendar.subscribe.component.marks"],
       base["calendar.subscribe.component.absences"],
+      base["calendar.subscribe.component.own_entries"],
     ]);
     expect(window.eval("CALENDAR_COMPONENTS")).toEqual([
       "timetable",
@@ -34,6 +35,7 @@ describe("[P179] the subscription offers the two new parts", () => {
       "public_holidays",
       "marks",
       "absences",
+      "own_entries",
     ]);
   });
 
@@ -53,6 +55,6 @@ describe("[P179] the subscription offers the two new parts", () => {
     boxes[4].dispatchEvent(new window.Event("change", { bubbles: true }));
     boxes[3].checked = true;
     boxes[3].dispatchEvent(new window.Event("change", { bubbles: true }));
-    expect(window.eval("state.calendarDraft.components")).toEqual(["timetable", "marks", "absences"]);
+    expect(window.eval("state.calendarDraft.components")).toEqual(["timetable", "marks", "absences", "own_entries"]);
   });
 });

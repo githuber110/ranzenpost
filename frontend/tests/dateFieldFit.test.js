@@ -15,7 +15,7 @@ function ruleFor(selector) {
   return open < 0 || close < 0 ? "" : css.slice(open + 1, close);
 }
 
-describe("[P193] native date and time fields are clamped to their container", () => {
+describe("native date and time fields are clamped to their container", () => {
   test("the wizard builds them as .inp with a native type, so the stylesheet reaches them", () => {
     const { window } = loadApp();
     const date = window.eval('dateField("Von", "2026-09-03", "2026-09-01", function () {})').querySelector("input");

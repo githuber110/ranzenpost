@@ -21,7 +21,7 @@ function baseFetch(mePromise) {
   };
 }
 
-describe("[P145] Begruessung: Vorname aus Cache, kein Nachflackern", () => {
+describe("Begruessung: Vorname aus Cache, kein Nachflackern", () => {
   test("cached forename is already in the first render, before /api/me responds", async () => {
     const { window, document } = loadApp();
     window.localStorage.setItem("meForename", "Alex");

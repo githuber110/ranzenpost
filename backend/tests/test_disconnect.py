@@ -1,5 +1,8 @@
-from app.service import IServService
+import pytest
+
+from app.service import IServService, NotConfiguredError
 from app.store import Store
+from tests.support import add_school, connection_service
 
 
 class FakeResponse:
@@ -37,20 +40,20 @@ class DisconnectClient:
 
 def make(tmp_path, uuid="uuid-1", delete_result=True, list_page=None):
     store = Store(tmp_path / "data")
-    store.save_config({"school_url": "https://school.example"})
     secrets = {"username": "u", "password": "p", "totp_secret": "JBSWY3DPEHPK3PXP"}
     if uuid:
         secrets["twofactor_uuid"] = uuid
-    store.save_secrets(secrets)
-    store.save_seen({"pinboard": [1, 2, 3]})
-    store.save_absence_history({"a": {}})
-    store.save_letters_search_cache({"b": {}})
+    connection_id = add_school(store, "https://school.example", secrets)
+    scoped = store.connection_store(connection_id)
+    scoped.save_seen({"pinboard": [1, 2, 3]})
+    scoped.save_absence_history({"a": {}})
+    scoped.save_letters_search_cache({"b": {}})
     client = DisconnectClient("https://school.example")
     client.delete_result = delete_result
     if list_page is not None:
         client.list_page = list_page
-    service = IServService(store, client_factory=lambda url: client)
-    return service, store, client
+    service = connection_service(store, connection_id, lambda url: client)
+    return service, scoped, client
 
 
 def test_disconnect_with_stored_uuid_generates_a_fresh_code_and_deletes_by_uuid(tmp_path):
@@ -114,18 +117,43 @@ def test_disconnect_always_does_local_cleanup_when_skipped(tmp_path):
     assert store.load_letters_search_cache() == {}
 
 
+def test_disconnect_forgets_the_module_registry_and_the_integration_state(tmp_path):
+    service, store, client = make(tmp_path, uuid=None)
+    store.save_modules({"modules": {"timetable": False}, "checked_at": 1})
+    store.save_integration_state({"last_request": 1, "last_poll": {"changes": ["x"]}})
+
+    service.disconnect()
+
+    assert store.load_modules() == {}
+    assert store.load_integration_state() == {}
+
+
 def test_disconnect_clears_config_and_secrets_as_the_ui_promises(tmp_path):
     service, store, client = make(tmp_path, uuid="uuid-1", delete_result=True)
-    store.save_config(
-        {
-            "school_url": "https://school.example",
-            "children": [{"child_id": "1", "name": "Mia"}],
-            "phones": [{"label": "Sekretariat", "number": "0123"}],
-        }
+    store.base.update_connection(
+        service.id,
+        children=[{"child_id": "1", "name": "Mia"}],
+        phones=[{"label": "Sekretariat", "number": "0123"}],
     )
     service.disconnect()
+    assert store.base.connection(service.id) is None
+    assert store.base.connections() == []
     assert store.load_config()["school_url"] == ""
     assert store.load_config()["children"] == []
     assert store.load_config()["phones"] == []
     assert store.load_secrets() == {}
     assert service.is_configured() is False
+
+
+def test_disconnect_forgets_the_children_the_school_listed(tmp_path):
+    service, store, client = make(tmp_path, uuid=None)
+    children = service._child_service
+    children._remember_children([{"child_id": "500001", "name": "Mia"}])
+    children._listed_ids = (service.clock(), {"500001"})
+    assert service.authorized_child("500001") == "500001"
+
+    service.disconnect()
+
+    assert service._cached_child("500001") is None
+    with pytest.raises(NotConfiguredError):
+        service.authorized_child("500001")

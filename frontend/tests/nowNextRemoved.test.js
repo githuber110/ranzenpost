@@ -22,8 +22,8 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
   return run(fixedDate, week, configPeriodTimes);
 }
 
-describe("[P206] the today card no longer paints the running or the next lesson", () => {
-  test("[P224] during a lesson the row carries a word mark but never the highlight class", () => {
+describe("the today card no longer paints the running or the next lesson", () => {
+  test("during a lesson the row carries a word mark but never the highlight class", () => {
     const { window } = loadApp();
     const week = {
       lessons: [{ day_of_week: 2, period: 1, start_time: "08:00", subject_code: "D" }],
@@ -35,7 +35,7 @@ describe("[P206] the today card no longer paints the running or the next lesson"
     expect(section.querySelector(".row-when.now")).not.toBeNull();
   });
 
-  test("[P224] before the first lesson the next one is named in words, not painted", () => {
+  test("before the first lesson the next one is named in words, not painted", () => {
     const { window } = loadApp();
     const week = {
       lessons: [{ day_of_week: 2, period: 1, start_time: "10:00", subject_code: "D" }],

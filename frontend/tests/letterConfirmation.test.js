@@ -30,7 +30,7 @@ function stubFetch(window, payload, calls) {
   };
 }
 
-describe("[P195] letter list marks an open read confirmation", () => {
+describe("letter list marks an open read confirmation", () => {
   test("a letter with an open confirmation carries the marker tag", () => {
     const { window } = loadApp();
     const row = renderRow(window, letterWith(OPEN_SEEN, { recipients: "Klasse 2B" }));
@@ -68,7 +68,7 @@ describe("[P195] letter list marks an open read confirmation", () => {
   });
 });
 
-describe("[P195] letter detail shows the confirmation block", () => {
+describe("letter detail shows the confirmation block", () => {
   test("an open read confirmation offers the confirm button", () => {
     const { window } = loadApp();
     const block = renderBlock(window, letterWith(null), { confirmation: OPEN_SEEN });
@@ -113,7 +113,7 @@ describe("[P195] letter detail shows the confirmation block", () => {
   });
 });
 
-describe("[P195] confirming asks first and never fires on its own", () => {
+describe("confirming asks first and never fires on its own", () => {
   test("cancelling the question sends nothing", async () => {
     const { window } = loadApp();
     const calls = [];
@@ -139,7 +139,7 @@ describe("[P195] confirming asks first and never fires on its own", () => {
     await pending;
     expect(calls.length).toBe(1);
     expect(calls[0].url).toContain("api/letters/confirm");
-    expect(calls[0].body).toEqual({ letter_id: "1", recipient_id: "2" });
+    expect(calls[0].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2" });
     expect(letter.confirmation).toEqual({
       type: "seen",
       open: false,
@@ -167,7 +167,7 @@ describe("[P195] confirming asks first and never fires on its own", () => {
   });
 });
 
-describe("[P196] marking read stops lying about letters that still need a confirmation", () => {
+describe("marking read stops lying about letters that still need a confirmation", () => {
   function seenReply(window, body) {
     window.fetch = () =>
       Promise.resolve({
@@ -236,3 +236,97 @@ describe("[P196] marking read stops lying about letters that still need a confir
   });
 });
 
+
+describe("a message to the school with the confirmation", () => {
+  const REPLYABLE = Object.assign({}, OPEN_SEEN, { can_reply: true });
+
+  test("only a letter whose form has a message field offers the field", () => {
+    const { window } = loadApp();
+    expect(renderBlock(window, letterWith(REPLYABLE)).querySelector("textarea.confirm-message")).not.toBeNull();
+    expect(renderBlock(window, letterWith(OPEN_SEEN)).querySelector("textarea.confirm-message")).toBeNull();
+    expect(renderBlock(window, letterWith(DONE_SEEN)).querySelector("textarea.confirm-message")).toBeNull();
+  });
+
+  test("the question shows the message and the post carries it", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true, confirmed_at: "2026-09-03T14:05:00" }, calls);
+    const letter = letterWith(REPLYABLE);
+    const field = renderBlock(window, letter).querySelector("textarea.confirm-message");
+    field.value = "  Danke, wir kommen.  ";
+    field.dispatchEvent(new window.Event("input"));
+    const pending = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    const sheet = window.eval("state.sheet()");
+    expect(sheet.textContent).toContain("Danke, wir kommen.");
+    sheet.querySelectorAll(".btn-stack button")[0].click();
+    await pending;
+    expect(calls[0].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2", text: "Danke, wir kommen." });
+    expect(letter.replyDraft).toBe("");
+  });
+
+  test("an empty message sends the confirmation exactly as before", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true }, calls);
+    const letter = letterWith(REPLYABLE, { replyDraft: "   " });
+    const pending = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    window.eval("state.sheet()").querySelectorAll(".btn-stack button")[0].click();
+    await pending;
+    expect(calls[0].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2" });
+  });
+});
+
+describe("a message to the school is sent once and only where the letter takes one", () => {
+  test("a second tap while sending does nothing", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true }, calls);
+    const letter = letterWith(Object.assign({}, OPEN_SEEN, { can_reply: true }), { replyDraft: "Hallo" });
+    const first = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    window.eval("state.sheet()").querySelectorAll(".btn-stack button")[0].click();
+    await Promise.resolve();
+    expect(letter.confirming).toBe(true);
+    const second = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    expect(window.eval("!!state.sheet")).toBe(false);
+    await Promise.all([first, second]);
+    expect(calls.length).toBe(1);
+    expect(letter.confirming).toBe(false);
+  });
+
+  test("a draft is not sent when the letter no longer takes a message", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true }, calls);
+    const letter = letterWith(OPEN_SEEN, { replyDraft: "Hallo" });
+    const pending = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    expect(window.eval("state.sheet()").querySelector(".dlg-quote")).toBeNull();
+    window.eval("state.sheet()").querySelectorAll(".btn-stack button")[0].click();
+    await pending;
+    expect(calls[0].body.text).toBeUndefined();
+  });
+
+  test("the message is quoted on its own, direction taken from the text", () => {
+    const { window } = loadApp();
+    const letter = letterWith(Object.assign({}, OPEN_SEEN, { can_reply: true }), { replyDraft: "شكرا\nسنحضر" });
+    window.eval("(function (letter) { confirmLetterRead(letter); })")(letter);
+    const quote = window.eval("state.sheet()").querySelector(".dlg-quote");
+    expect(quote.getAttribute("dir")).toBe("auto");
+    expect(quote.textContent).toBe("شكرا\nسنحضر");
+  });
+});
+
+describe("the open letter decides whether a message goes along", () => {
+  test("a reply field known only from the opened letter still sends the message", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true }, calls);
+    const letter = letterWith(OPEN_SEEN, { replyDraft: "Danke" });
+    const detail = { confirmation: Object.assign({}, OPEN_SEEN, { can_reply: true }) };
+    window.eval("(function (letter, detail) { state.letterDetail = { letter, detail }; })")(letter, detail);
+    const pending = window.eval("(function (letter) { return confirmLetterRead(letter); })")(letter);
+    expect(window.eval("state.sheet()").querySelector(".dlg-quote").textContent).toBe("Danke");
+    window.eval("state.sheet()").querySelectorAll(".btn-stack button")[0].click();
+    await pending;
+    expect(calls[0].body.text).toBe("Danke");
+  });
+});

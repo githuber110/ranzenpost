@@ -19,7 +19,7 @@ async function quiet(window) {
 }
 
 const CHILD = {
-  child_id: "c1",
+  key: "c1",
   name: "Kim",
   class_name: "3b",
   student_id: "s1",
@@ -54,7 +54,7 @@ async function bootWith(reply) {
   return app;
 }
 
-describe("[P236] a child list that could not be loaded is not sold as an empty selection", () => {
+describe("a child list that could not be loaded is not sold as an empty selection", () => {
   test("the overview names the upstream reason instead of saying no child is selected", async () => {
     const { window, document } = await bootWith(() => jsonResponse(UPSTREAM_FAILURE));
     window.eval("state.view = 'overview'; rerender();");

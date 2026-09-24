@@ -62,7 +62,7 @@ const MIN_RAMP_SEPARATION = 1.35;
 const css = fs.readFileSync(path.resolve(__dirname, "..", "styles.css"), "utf8");
 const sources = themeSources(css);
 
-describe("[P167][P170] every --ink-* keeps >= 4.5:1 against every surface tone the stylesheet defines", () => {
+describe("every --ink-* keeps >= 4.5:1 against every surface tone the stylesheet defines", () => {
   for (const { name, vars } of Object.values(sources)) {
     const inkNames = Object.keys(vars).filter((varName) => INK_RE.test(varName)).sort();
     const surfaceNames = Object.keys(vars).filter((varName) => SURFACE_RE.test(varName)).sort();

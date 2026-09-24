@@ -13,7 +13,7 @@ const SICK_DATA = {
   ],
 };
 
-describe("[C06] sick wizard: Ganztaegig/Stundenweise is its own step", () => {
+describe("sick wizard: Ganztaegig/Stundenweise is its own step", () => {
   test("defaults to Ganztaegig, the periods step is not in the path, from_period stays empty", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
@@ -26,7 +26,7 @@ describe("[C06] sick wizard: Ganztaegig/Stundenweise is its own step", () => {
     expect(wz.form.from_period).toBe("");
   });
 
-  test("[P194] choosing Stundenweise unfolds the lesson pickers right below, in the same step", () => {
+  test("choosing Stundenweise unfolds the lesson pickers right below, in the same step", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
     wz.go("sickHours");
@@ -69,7 +69,7 @@ describe("[C06] sick wizard: Ganztaegig/Stundenweise is its own step", () => {
   });
 });
 
-describe("[C06] leave wizard: prefilled subject and the reasoning hint", () => {
+describe("leave wizard: prefilled subject and the reasoning hint", () => {
   test("the subject step carries the date-specific text as a real value, not a placeholder", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "leave", { children: [{ id: 1 }], types: ["leave"], rules: {} });
@@ -87,7 +87,7 @@ describe("[C06] leave wizard: prefilled subject and the reasoning hint", () => {
   });
 });
 
-describe("[C06] daycare wizard: weekly repeat is a segment on the date step", () => {
+describe("daycare wizard: weekly repeat is a segment on the date step", () => {
   test("defaults to once and offers exactly two repeat options", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "daycare", { children: [{ id: 1 }], types: ["daycare"], rules: {} });
@@ -111,7 +111,7 @@ describe("[C06] daycare wizard: weekly repeat is a segment on the date step", ()
   });
 });
 
-describe("[C06] the footer status line replaces the validation toast", () => {
+describe("the footer status line replaces the validation toast", () => {
   test("a missing mandatory answer explains itself in the status line, no toast", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "deregister", {

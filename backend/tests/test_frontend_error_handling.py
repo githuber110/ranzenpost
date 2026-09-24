@@ -7,14 +7,14 @@ EMPTY_CATCH = re.compile(
     r"|\.catch\(\s*(?:\([^()]*\)|[\w\$]+)\s*=>\s*\{\s*\}\s*\)"
 )
 FUNCTION_DECLARATION = re.compile(
-    r"^\s*(?:async\s+)?function\s+([A-Za-z_\$][\w\$]*)"
-    r"|^\s*(?:const|let|var)\s+([A-Za-z_\$][\w\$]*)\s*=\s*(?:async\s+)?"
+    r"^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Za-z_\$][\w\$]*)"
+    r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_\$][\w\$]*)\s*=\s*(?:async\s+)?"
     r"(?:function\b|\([^;]*\)\s*=>|[\w\$]+\s*=>)"
 )
 MODULE_SCOPE = "<module>"
 
 DELIBERATE_EMPTY_CATCH = {
-    ("app.js", "loadBaseLanguage"): (
+    ("lib/language.js", "loadBaseLanguage"): (
         1,
         "the base bundle is the only source of every label - without it the app boots "
         "with raw keys and the very next request paints the service error screen, so "
@@ -65,7 +65,7 @@ def scan():
     found = {}
     for path in sources():
         for function_name, line in empty_catches_in(path.read_text(encoding="utf-8")):
-            found.setdefault((path.name, function_name), []).append(line)
+            found.setdefault((path.relative_to(FRONTEND).as_posix(), function_name), []).append(line)
     return found
 
 
@@ -133,7 +133,16 @@ def test_the_scanner_names_the_function_the_swallowed_error_lives_in():
     assert empty_catches_in(source) == [("inner", 6)]
 
 
+def test_the_scanner_names_a_function_a_module_exports():
+    assert empty_catches_in("export function a() {\n  try { x(); } catch (error) {}\n}") == [("a", 2)]
+    assert empty_catches_in("export async function b() {\n  try { x(); } catch {}\n}") == [("b", 2)]
+    assert empty_catches_in("export default function c() {\n  send().catch(() => {});\n}") == [("c", 2)]
+    assert empty_catches_in("export default async function d() {\n  send().catch(() => {});\n}") == [("d", 2)]
+    assert empty_catches_in("export const e = () => {\n  send().catch(() => {});\n};") == [("e", 2)]
+    assert empty_catches_in("export const f = async (x) => {\n  send().catch(() => {});\n};") == [("f", 2)]
+
+
 def test_every_scanned_source_file_is_a_shipped_frontend_script():
-    names = {path.name for path in sources()}
+    names = {path.relative_to(FRONTEND).as_posix() for path in sources()}
     assert names, "the frontend ships at least one script"
     assert all(not name.endswith(".test.js") for name in names)

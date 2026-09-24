@@ -18,9 +18,9 @@ const TIMES = { 1: "08:00", 2: "08:50", 3: "09:50" };
 function withCancellations(window, periods) {
   window.eval(`
     state.childId = ${JSON.stringify(CHILD)};
-    state.children = [{ child_id: ${JSON.stringify(CHILD)}, name: "Kind" }];
+    state.children = [{ key: ${JSON.stringify(CHILD)}, name: "Kind" }];
     state.cancellations = { data: { cancellations: ${JSON.stringify(
-      periods.map((period) => ({ id: `x${period}`, child_id: CHILD, date: WEDNESDAY, period }))
+      periods.map((period) => ({ id: `x${period}`, child_key: CHILD, date: WEDNESDAY, period }))
     )} } };
   `);
 }
@@ -59,7 +59,7 @@ function noteTexts(section) {
   return [...section.querySelectorAll(".row-note")].map((node) => node.textContent).join(" | ");
 }
 
-describe("[P227] a lesson the user marked counts exactly like a school cancellation", () => {
+describe("a lesson the user marked counts exactly like a school cancellation", () => {
   test("the grid draws an own marker as cancelled, just as the school's own", () => {
     const { window } = loadApp();
     withCancellations(window, [2]);

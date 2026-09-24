@@ -14,7 +14,7 @@ function spacingScale(css) {
   return scale;
 }
 
-describe("[P132] pinboard header: chip row / search field spacing", () => {
+describe("pinboard header: chip row / search field spacing", () => {
   test("search field keeps a spacing-scale gap above it in the sticky list head", () => {
     const match = /\.list-head \.search-field\s*\{([^}]*)\}/.exec(stylesCss);
     expect(match).not.toBeNull();

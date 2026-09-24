@@ -11,7 +11,7 @@ function typeInto(window, input, value) {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 }
 
-describe("[C10] pinboard search: filenames + folder/column badges are in the haystack", () => {
+describe("pinboard search: filenames + folder/column badges are in the haystack", () => {
   test("a search hitting only the attachment filename still finds the post (real Busplan case)", () => {
     const { window } = loadApp();
     const data = {

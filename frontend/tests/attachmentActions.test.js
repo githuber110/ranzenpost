@@ -39,7 +39,7 @@ async function settle(window, ticks = 8) {
 
 const FILE = { filename: "Elternbrief.pdf", url: "api/letters/attachment/x" };
 
-describe("[P249] a tap on an attachment asks what to do with it", () => {
+describe("a tap on an attachment asks what to do with it", () => {
   test("the sheet offers open, save and print, titled with the file name", () => {
     const { window } = loadApp();
     tapAttachment(window, FILE);
@@ -158,7 +158,7 @@ describe("[P249] a tap on an attachment asks what to do with it", () => {
   });
 });
 
-describe("[P249] the viewer carries save and print of its own", () => {
+describe("the viewer carries save and print of its own", () => {
   function openViewer(window) {
     window.eval(`openFileViewer("image", "blob:mock-url", "Foto.jpg", null, new Blob(["x"], { type: "image/jpeg" }))`);
     return window.eval("(function () { return fileViewerNode(); })")();

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
+import { shippedScriptText } from "./shippedSources.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const i18nDir = path.join(dirname, "..", "i18n");
@@ -23,7 +24,7 @@ function jsonResponse(body) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
 }
 
-describe("[P134] t() lookup layer", () => {
+describe("t() lookup layer", () => {
   test("resolves a key from the active bundle", () => {
     const { window } = loadApp();
     expect(window.t("absence.title")).toBe("Abwesenheit");
@@ -48,7 +49,7 @@ describe("[P134] t() lookup layer", () => {
   });
 });
 
-describe("[P134] plural selection", () => {
+describe("plural selection", () => {
   test("picks the singular and plural forms through Intl.PluralRules", () => {
     const { window } = loadApp();
     expect(window.tCount("letters.count", 1)).toBe("1 Brief");
@@ -62,7 +63,7 @@ describe("[P134] plural selection", () => {
   });
 });
 
-describe("[P134] language resolution", () => {
+describe("language resolution", () => {
   test("system follows navigator.language and falls back to the base language", () => {
     const { window } = loadApp();
     expect(window.resolveLanguage("system")).toBe("de");
@@ -103,12 +104,12 @@ describe("[P134] language resolution", () => {
   });
 });
 
-describe("[P134] formats follow the active language", () => {
+describe("formats follow the active language", () => {
   test("dates render in the active locale", () => {
     const { window } = loadApp();
-    expect(window.showDate("2026-09-07")).toBe("07.09.2026");
+    expect(window.eval('showDate("2026-09-07")')).toBe("07.09.2026");
     window.setLanguageBundle("en", base, base);
-    expect(window.showDate("2026-09-07")).toBe("09/07/2026");
+    expect(window.eval('showDate("2026-09-07")')).toBe("09/07/2026");
   });
 
   test("numbers render in the active locale", () => {
@@ -119,7 +120,7 @@ describe("[P134] formats follow the active language", () => {
   });
 });
 
-describe("[P134] backend messages arrive as keys", () => {
+describe("backend messages arrive as keys", () => {
   test("message_key wins over the transitional german message", () => {
     const { window } = loadApp();
     const result = { ok: false, message_key: "api.notConfigured", message: "irgendwas" };
@@ -137,7 +138,7 @@ describe("[P134] backend messages arrive as keys", () => {
   });
 });
 
-describe("[P134] language choice is reachable from settings", () => {
+describe("language choice is reachable from settings", () => {
   test("the display section opens a language sheet with every choice", () => {
     const { window } = loadApp();
     const view = window.eval("(function () { state.config = {}; return settingsView(); })()");
@@ -148,7 +149,7 @@ describe("[P134] language choice is reachable from settings", () => {
   });
 });
 
-describe("[P134] switching the language re-renders the visible text", () => {
+describe("switching the language re-renders the visible text", () => {
   const settingLabels = (window) =>
     [...window.eval("(function () { state.config = {}; return settingsView(); })()").querySelectorAll(".setting-row .lbl")]
       .map((node) => node.textContent);
@@ -188,7 +189,7 @@ describe("[P134] switching the language re-renders the visible text", () => {
   });
 });
 
-describe("[P134] every shipped language is reachable and complete", () => {
+describe("every shipped language is reachable and complete", () => {
   test("each bundle loads and answers with its own words, not with keys", async () => {
     for (const language of LANGUAGES) {
       const { window } = loadApp();
@@ -251,7 +252,7 @@ describe("[P134] every shipped language is reachable and complete", () => {
   });
 });
 
-describe("[P134] right-to-left is switched on for arabic and off again for everyone else", () => {
+describe("right-to-left is switched on for arabic and off again for everyone else", () => {
   test("arabic sets rtl and any following choice resets it", async () => {
     const { window, document } = loadApp();
     window.fetch = bundleFetch("ar");
@@ -274,8 +275,7 @@ describe("[P134] right-to-left is switched on for arabic and off again for every
   });
 
   test("content that comes from iserv keeps its own direction", () => {
-    const css = fs.readFileSync(path.join(dirname, "..", "app.js"), "utf8");
-    const bodyBlocks = css.match(/class: "body-html"[^)]*/g) || [];
+    const bodyBlocks = shippedScriptText().match(/class: "body-html"[^)]*/g) || [];
     expect(bodyBlocks.length).toBeGreaterThan(0);
     for (const block of bodyBlocks) expect(block).toContain('dir: "auto"');
   });

@@ -454,6 +454,9 @@ class HolidayCalendar:
 
     def region(self, config=None):
         source = config if config is not None else self.store.load_config()
+        listed = source.get("connections")
+        if CONFIG_KEY not in source and isinstance(listed, list) and listed:
+            source = listed[0]
         return clean_region(source.get(CONFIG_KEY))
 
     def _try_fetch(self, region, year):

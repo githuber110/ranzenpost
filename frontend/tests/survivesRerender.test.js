@@ -8,18 +8,26 @@ async function quiet(window) {
   window.clearTimeout(window.eval("bootWatchdog"));
 }
 
-function openSubjectsSheet(window) {
+function openPhonesSheet(window) {
   window.eval(`
-    state.config = { subjects: { D: { label: "Deutsch", color: "" }, M: { label: "Mathe", color: "" } } };
-    openSheet(namesSheet);
+    state.config = { connections: [{ id: "s1", phones: [{ label: "Oma", number: "123" }, { label: "Opa", number: "456" }], subjects: { D: { label: "Deutsch", color: "" } } }] };
+    state.sheetForm = null;
+    openSheet(phonesSheet);
   `);
 }
 
-describe("[W7] state that a rerender must not lose", () => {
+function openNames(window) {
+  window.eval(`
+    state.config = { connections: [{ id: "s1", subjects: { D: { label: "Deutsch", color: "" }, M: { label: "Mathe", color: "" } } }] };
+    openNamesPage();
+  `);
+}
+
+describe("state that a rerender must not lose", () => {
   test("the sheet body keeps its scroll position when a toast repaints the screen", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    openSubjectsSheet(window);
+    openPhonesSheet(window);
 
     const body = document.querySelector(".sheet-body");
     expect(body).not.toBeNull();
@@ -35,7 +43,7 @@ describe("[W7] state that a rerender must not lose", () => {
   test("the sheet title takes focus once, not again on every repaint", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    openSubjectsSheet(window);
+    openPhonesSheet(window);
     await settle();
     expect(window.eval("state.sheetFocused")).toBe(true);
 
@@ -48,15 +56,15 @@ describe("[W7] state that a rerender must not lose", () => {
     expect(document.activeElement.classList.contains("sheet-title")).toBe(false);
   });
 
-  test("the colour dialog hangs inside the sheet scrim and is closed by a repaint", async () => {
+  test("the colour dialog over the names page is closed by a repaint", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    openSubjectsSheet(window);
+    openNames(window);
 
     document.querySelector(".swatch-trigger").click();
     const dialog = document.querySelector(".color-dialog-scrim");
     expect(dialog).not.toBeNull();
-    expect(dialog.closest(".scrim")).not.toBeNull();
+    expect(dialog.closest(".scrim")).toBeNull();
     expect(window.eval("typeof state.colorDialogClose")).toBe("function");
 
     window.eval("rerender()");
@@ -67,17 +75,17 @@ describe("[W7] state that a rerender must not lose", () => {
   test("a dirty settings draft survives a tap next to the sheet", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    openSubjectsSheet(window);
+    openPhonesSheet(window);
 
     const input = document.querySelector(".sheet-body input");
-    input.value = "Deutsch LK";
+    input.value = "Tante";
     input.dispatchEvent(new window.Event("input"));
     expect(window.eval("isSheetFormDirty()")).toBe(true);
 
     document.querySelector(".scrim").click();
 
     expect(window.eval("state.sheet")).not.toBeNull();
-    expect(window.eval("state.sheetForm.subjects.D.label")).toBe("Deutsch LK");
+    expect(window.eval("state.sheetForm[0].label")).toBe("Tante");
     expect(document.querySelector(".sheet-confirm")).not.toBeNull();
 
     const keep = [...document.querySelectorAll(".sheet-confirm button")].find(
@@ -85,13 +93,13 @@ describe("[W7] state that a rerender must not lose", () => {
     );
     keep.click();
     expect(document.querySelector(".sheet-confirm")).toBeNull();
-    expect(window.eval("state.sheetForm.subjects.D.label")).toBe("Deutsch LK");
+    expect(window.eval("state.sheetForm[0].label")).toBe("Tante");
   });
 
   test("a clean settings draft still closes on the first tap", async () => {
     const { window, document } = loadApp();
     await quiet(window);
-    openSubjectsSheet(window);
+    openPhonesSheet(window);
 
     document.querySelector(".scrim").click();
 
@@ -128,7 +136,7 @@ describe("[W7] state that a rerender must not lose", () => {
     const { window, document } = loadApp();
     await quiet(window);
     window.eval(`
-      state.children = [{ child_id: "c1", name: "Alex", class_name: "4a" }];
+      state.children = [{ key: "c1", name: "Alex", class_name: "4a" }];
       state.childId = "c1";
       openSheet(childSheet);
     `);

@@ -72,7 +72,7 @@ function weekRow(start, coverage, overrides, freeDays, primary) {
 }
 
 function apply(window, payload) {
-  window.eval(`state.holidays = ${JSON.stringify(payload)};`);
+  window.eval(`state.holidays = { s1: ${JSON.stringify(payload)} };`);
 }
 
 function fullLessons() {
@@ -87,14 +87,14 @@ function fullLessons() {
 
 function renderGrid(window, lessons) {
   const run = window.eval(
-    "(function (data) { state.childId = 'c1'; state.children = [{ child_id: 'c1' }]; return timetableGrid(data); })"
+    "(function (data) { state.childId = 'c1'; state.children = [{ key: 'c1' }]; return timetableGrid(data); })"
   );
   return run({ lessons, period_times: {} });
 }
 
 function renderView(window, data) {
   const run = window.eval(
-    "(function (data) { state.childId = 'c1'; state.children = [{ child_id: 'c1' }]; state.timetable = data; return timetableView(); })"
+    "(function (data) { state.childId = 'c1'; state.children = [{ key: 'c1' }]; state.timetable = data; return timetableView(); })"
   );
   return run(data);
 }
@@ -119,7 +119,7 @@ function fullHolidayWeek(window, { overrides = true, stale = false, status = "ok
   };
 }
 
-describe("[P153] holiday display: the calendar replaces lessons only where it may", () => {
+describe("holiday display: the calendar replaces lessons only where it may", () => {
   test("a fully covered week with overrides_lessons replaces the grid with one quiet holiday field", () => {
     const { window } = loadApp();
     const payload = fullHolidayWeek(window);
@@ -201,7 +201,7 @@ describe("[P153] holiday display: the calendar replaces lessons only where it ma
   });
 });
 
-describe("[P153] holiday display: partial weeks write the name out", () => {
+describe("holiday display: partial weeks write the name out", () => {
   function partialWeek(window, { overrides = true, spanDays = 1 } = {}) {
     const iso = calendarDays(window);
     const days = {};
@@ -277,7 +277,7 @@ describe("[P153] holiday display: partial weeks write the name out", () => {
   });
 });
 
-describe("[P153] holiday display: week picker and today card", () => {
+describe("holiday display: week picker and today card", () => {
   test("the week list marks holiday weeks and puts the date range first", () => {
     const { window } = loadApp();
     apply(window, fullHolidayWeek(window));
@@ -307,7 +307,7 @@ describe("[P153] holiday display: week picker and today card", () => {
     apply(window, fullHolidayWeek(window));
     window.eval("state.timetable = { lessons: [] }; setWeek(3);");
     expect(window.eval("state.timetable")).toBe(null);
-    expect(window.eval("state.holidays && state.holidays.status")).toBe("ok");
+    expect(window.eval("holidayBox() && holidayBox().status")).toBe("ok");
   });
 
   test("today's card names the holiday instead of saying there is no school", () => {
@@ -342,10 +342,10 @@ describe("[P153] holiday display: week picker and today card", () => {
   });
 });
 
-describe("[P153] holiday settings: a suggestion is shown, never stored", () => {
+describe("holiday settings: a suggestion is shown, never stored", () => {
   function prepare(window, region) {
     window.eval(`
-      state.config = { holiday_region: ${JSON.stringify(region)} };
+      state.config = { connections: [{ id: "s1", holiday_region: ${JSON.stringify(region)} }] };
       state.holidayRegions = [
         { code: "DE-NI", name_key: "holidays.region.ni" },
         { code: "DE-BY", name_key: "holidays.region.by" },
@@ -371,7 +371,7 @@ describe("[P153] holiday settings: a suggestion is shown, never stored", () => {
     expect(rows[1].querySelector(".opt-badge").textContent).toBe("Vorschlag");
     expect(rows[1].getAttribute("aria-pressed")).toBe("false");
     expect(rows[1].querySelector("small").textContent).toContain("Postleitzahl");
-    expect(window.eval("state.config.holiday_region")).toBe("");
+    expect(window.eval("state.config.connections[0].holiday_region")).toBe("");
   });
 
   test("the settings row keeps saying 'off' while a suggestion is only offered", () => {
@@ -393,7 +393,7 @@ describe("[P153] holiday settings: a suggestion is shown, never stored", () => {
   test("a stored state without usable data says so in the settings row", () => {
     const { window } = loadApp();
     prepare(window, "DE-NI");
-    window.eval('state.holidays = { status: "unknown", stale: false, days: {}, weeks: [], periods: [] };');
+    window.eval('state.holidays = { s1: { status: "unknown", stale: false, days: {}, weeks: [], periods: [] } };');
     expect(window.eval("holidayRegionValueLabel()")).toBe("Niedersachsen · keine Daten");
   });
 });

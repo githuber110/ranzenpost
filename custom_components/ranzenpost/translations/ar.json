@@ -1,0 +1,238 @@
+{
+  "config": {
+    "flow_title": "Ranzenpost",
+    "create_entry": {
+      "default": "تم. افتح Ranzenpost من الشريط الجانبي وسجّل الدخول إلى مدرستك. تظهر الأجهزة والكيانات من تلقاء نفسها."
+    },
+    "step": {
+      "hassio_confirm": {
+        "title": "ربط إضافة Ranzenpost",
+        "description": "تم العثور على الإضافة {addon}. هل تريد ربط Home Assistant بها؟"
+      },
+      "install_addon": {
+        "title": "تثبيت إضافة Ranzenpost",
+        "description": "إضافة Ranzenpost غير مثبتة بعد. هل تريد إضافة المستودع {repository} ثم تثبيت الإضافة وتشغيلها؟"
+      },
+      "addon_no_discovery": {
+        "title": "لم تعلن الإضافة عن نفسها بعد",
+        "description": "الإضافة {addon} مثبتة لكنها لم تعلن بيانات الاتصال بعد. افتح الإضافة وتأكد من أنها تعمل، ثم أدخل المضيف والمنفذ والرمز من قسم Home Assistant في إعداداتها.",
+        "data": {
+          "host": "المضيف",
+          "port": "المنفذ",
+          "token": "الرمز"
+        },
+        "data_description": {
+          "host": "اسم مضيف حاوية الإضافة، يظهر عادةً في إعداداتها.",
+          "port": "منفذ واجهة برمجة التكامل، الافتراضي 8099.",
+          "token": "رمز الوصول المعروض في إعدادات الإضافة."
+        }
+      },
+      "manual": {
+        "title": "ربط Ranzenpost يدويًا",
+        "description": "أدخل المضيف والمنفذ والرمز لحاوية Ranzenpost العاملة. يظهر الرمز في إعدادات Ranzenpost.",
+        "data": {
+          "host": "المضيف",
+          "port": "المنفذ",
+          "token": "الرمز"
+        },
+        "data_description": {
+          "host": "اسم المضيف أو عنوان IP لحاوية Ranzenpost.",
+          "port": "منفذ واجهة برمجة التكامل، الافتراضي 8099.",
+          "token": "رمز الوصول المعروض في إعدادات Ranzenpost."
+        }
+      },
+      "reauth_confirm": {
+        "title": "تجديد رمز Ranzenpost",
+        "description": "تم رفض الرمز الخاص بـ {host}. أدخل الرمز الحالي من إعدادات Ranzenpost.",
+        "data": {
+          "token": "الرمز"
+        }
+      }
+    },
+    "progress": {
+      "install_addon": "يجري تثبيت إضافة Ranzenpost. قد يستغرق ذلك بضع دقائق.",
+      "start_addon": "إضافة Ranzenpost قيد التشغيل.",
+      "wait_discovery": "في انتظار أن تعلن الإضافة بيانات الاتصال."
+    },
+    "error": {
+      "cannot_connect": "تعذر الوصول إلى الإضافة. تأكد من أنها تعمل.",
+      "invalid_auth": "تم رفض الرمز. انسخه مجددًا من إعدادات Ranzenpost.",
+      "unknown": "أجابت الإضافة بشكل غير متوقع."
+    },
+    "abort": {
+      "already_configured": "إضافة Ranzenpost هذه مرتبطة بالفعل. يمكن ربط كل مضيف إضافة مرة واحدة.",
+      "already_in_progress": "إعداد Ranzenpost قيد التنفيذ بالفعل.",
+      "addon_install_failed": "تعذر تثبيت إضافة Ranzenpost. راجع سجل Supervisor.",
+      "addon_start_failed": "تعذر تشغيل إضافة Ranzenpost. راجع سجل الإضافة.",
+      "not_ranzenpost_addon": "رسالة الاكتشاف هذه لا تخص إضافة Ranzenpost.",
+      "reauth_successful": "تم تجديد الرمز."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "خيارات Ranzenpost",
+        "description": "كم مرة يستعلم التكامل من الإضافة، ولأي الملفات الشخصية تُنشأ الكيانات.",
+        "data": {
+          "scan_interval": "فترة الاستعلام",
+          "children": "الملفات الشخصية"
+        },
+        "data_description": {
+          "scan_interval": "الثواني بين طلبين إلى الإضافة، 30 على الأقل.",
+          "children": "اتركه فارغًا لإنشاء كيانات لجميع الملفات الشخصية."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": {
+        "name": "يوم دراسي اليوم"
+      },
+      "timetable_changed_today": {
+        "name": "تغيّر الجدول اليوم"
+      }
+    },
+    "calendar": {
+      "lessons": {
+        "name": "الحصص"
+      },
+      "exams": {
+        "name": "الاختبارات"
+      },
+      "absences": {
+        "name": "الغيابات"
+      },
+      "own_entries": {
+        "name": "إدخالاتك"
+      },
+      "holidays": {
+        "name": "العطل"
+      }
+    },
+    "event": {
+      "timetable_changed": {
+        "name": "تغيير في الجدول",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "substitution": "حصة بديلة",
+              "cancellation": "إلغاء",
+              "room_change": "تغيير الغرفة",
+              "new_lesson": "حصة جديدة"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_lesson": {
+        "name": "الحصة الحالية"
+      },
+      "next_lesson": {
+        "name": "الحصة التالية"
+      },
+      "school_end_today": {
+        "name": "انتهاء المدرسة اليوم"
+      },
+      "next_school_day": {
+        "name": "اليوم الدراسي القادم"
+      },
+      "changes_today": {
+        "name": "تغييرات اليوم"
+      },
+      "next_exam": {
+        "name": "الاختبار القادم"
+      },
+      "exams_upcoming": {
+        "name": "الاختبارات القادمة"
+      },
+      "unread_letters": {
+        "name": "رسائل غير مقروءة"
+      },
+      "unread_posts": {
+        "name": "منشورات غير مقروءة"
+      },
+      "open_absences": {
+        "name": "غيابات مفتوحة"
+      },
+      "next_absence": {
+        "name": "الغياب القادم"
+      },
+      "timetable_last_updated": {
+        "name": "آخر تحديث للجدول"
+      },
+      "next_holiday": {
+        "name": "العطلة القادمة"
+      },
+      "next_conference": {
+        "name": "يوم أولياء الأمور القادم"
+      },
+      "connection": {
+        "name": "الاتصال",
+        "state": {
+          "ok": "متصل",
+          "error": "خطأ",
+          "unconfigured": "غير مُعدّ",
+          "unreachable": "غير قابل للوصول",
+          "auth_failed": "يلزم تسجيل الدخول"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "timetable_changed": "تغيّر الجدول",
+      "lesson_cancelled": "أُلغيت حصة",
+      "substitution": "حصة بديلة",
+      "new_letter": "رسالة جديدة",
+      "new_noticeboard_post": "منشور جديد على اللوحة",
+      "absence_status_changed": "تغيّرت حالة غياب",
+      "school_unreachable": "المدرسة غير قابلة للوصول",
+      "school_reachable": "المدرسة قابلة للوصول مجددًا",
+      "login_needed": "يلزم تسجيل الدخول"
+    },
+    "condition_type": {
+      "is_school_day": "يوم دراسي",
+      "lesson_running": "حصة جارية"
+    }
+  },
+  "issues": {
+    "login_needed": {
+      "title": "يلزم تسجيل الدخول لـ {school}",
+      "description": "لم يعد بإمكان Ranzenpost تسجيل الدخول إلى {school}. افتح Ranzenpost من الشريط الجانبي، اذهب إلى الإعدادات، اختر هذه المدرسة وسجّل الدخول مرة أخرى."
+    },
+    "login_twofactor_setup": {
+      "title": "المصادقة الثنائية مطلوبة لـ {school}",
+      "description": "يطلب IServ الآن المصادقة الثنائية لهذا الحساب في {school}. افتح Ranzenpost من الشريط الجانبي وأكمل الإعداد."
+    },
+    "login_unknown_account": {
+      "title": "الحساب غير معروف في {school}",
+      "description": "لم يعد IServ في {school} يعرف اسم الحساب المحفوظ. افتح Ranzenpost من الشريط الجانبي واربط المدرسة من جديد."
+    },
+    "login_default_password": {
+      "title": "كلمة المرور الافتراضية محظورة في {school}",
+      "description": "لا يقبل IServ في {school} كلمة المرور الافتراضية من الإنترنت. غيّر كلمة المرور داخل شبكة المدرسة أو في المتصفح، ثم أعد الربط في Ranzenpost."
+    },
+    "login_locked": {
+      "title": "الحساب موقوف لدى {school}",
+      "description": "أوقف IServ لدى {school} الحساب مؤقتًا. لا تسجّل الدخول مجددًا، فهذا يطيل الإيقاف. انتظر قليلًا أو اسأل المدرسة، ثم افتح Ranzenpost."
+    },
+    "login_code_refused": {
+      "title": "تم رفض الرمز في {school}",
+      "description": "يرفض IServ في {school} رمز التأكيد الخاص بالتطبيق مرارًا. يجب إعداد وصول التطبيق من جديد. افتح Ranzenpost من الشريط الجانبي وأعد إعداد المدرسة بالكامل."
+    },
+    "addon_too_old": {
+      "title": "حدّث إضافة Ranzenpost",
+      "description": "تعمل إضافة Ranzenpost بالإصدار {addon_version}، بينما يحتاج هذا التكامل ({integration_version}) إلى {required_version} على الأقل. حدّث الإضافة من متجر الإضافات. تظهر الأجهزة والكيانات من تلقاء نفسها بمجرد أن تبلّغ عن مدارسها مجددًا."
+    },
+    "integration_too_old": {
+      "title": "حدّث تكامل Ranzenpost",
+      "description": "تعمل إضافة Ranzenpost بالإصدار {addon_version}، وهو إصدار عام أحدث من هذا التكامل ({integration_version}). حدّث التكامل عبر HACS حتى يتطابق الاثنان؛ حتى ذلك الحين قد تنقص بعض البيانات."
+    },
+    "no_school_yet": {
+      "title": "لم يتم تسجيل الدخول إلى أي مدرسة بعد",
+      "description": "تم. افتح Ranzenpost من الشريط الجانبي وسجّل الدخول إلى مدرستك. تظهر الأجهزة والكيانات من تلقاء نفسها."
+    }
+  }
+}

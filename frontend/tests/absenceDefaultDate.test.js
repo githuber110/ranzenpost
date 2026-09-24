@@ -17,7 +17,7 @@ function startForm(window, type, data) {
   return run(type, data);
 }
 
-describe("[P105] absence forms default to today, not tomorrow", () => {
+describe("absence forms default to today, not tomorrow", () => {
   test("deregister (bus/lunch/kindergarten) defaults to today", () => {
     const { window } = loadApp();
     const data = { children: [{ id: 1 }], rules: {}, deregister_options: ["bus"] };

@@ -95,3 +95,31 @@ def test_a_missing_messenger_pulse_method_is_tolerated():
     poller = Poller(NoMessengerService(store), store=store)
     events = poller.poll_once()
     assert not any(event.get("module") == "messenger" for event in events)
+
+
+class WithheldService(StubService):
+    def __init__(self, store, error):
+        super().__init__(store, [])
+        self.error = error
+
+    def messenger_unread_pulse(self):
+        raise self.error
+
+
+def test_withheld_chat_credentials_do_not_count_as_a_failed_poll():
+    from app.iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
+
+    store = StubStore()
+    poller = Poller(WithheldService(store, MessengerStageError(STAGE_NO_CREDENTIALS)), store=store)
+    events = poller.poll_once()
+    assert not [event for event in events if isinstance(event, dict) and event.get("error")]
+    assert {"module": "messenger", "skipped": True} in events
+
+
+def test_a_broken_chat_still_counts_as_a_failed_poll():
+    from app.iserv.messenger import STAGE_MATRIX, MessengerStageError
+
+    store = StubStore()
+    poller = Poller(WithheldService(store, MessengerStageError(STAGE_MATRIX)), store=store)
+    events = poller.poll_once()
+    assert [event for event in events if isinstance(event, dict) and event.get("error")]

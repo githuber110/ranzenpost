@@ -3,12 +3,12 @@ import { loadApp } from "./loadApp.js";
 
 function renderGrid(window, lessons) {
   const run = window.eval(
-    "(function (data) { state.childId = 'c1'; state.children = [{ child_id: 'c1' }]; return timetableGrid(data); })"
+    "(function (data) { state.childId = 'c1'; state.children = [{ key: 'c1' }]; return timetableGrid(data); })"
   );
   return run({ lessons, period_times: {} });
 }
 
-describe("[C13] timetable: trailing empty rows are capped, legend drops 'frei'", () => {
+describe("timetable: trailing empty rows are capped, legend drops 'frei'", () => {
   test("a week with lessons only up to period 3 renders exactly 3 hour rows", () => {
     const { window } = loadApp();
     const lessons = [

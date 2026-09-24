@@ -36,24 +36,57 @@ PASSWORD_EXPIRED_MARKERS = (
     "neues passwort vergeben",
 )
 
-LOCKED_STATUS_CODES = (403, 429)
+BAD_CREDENTIALS = "bad_credentials"
+LOCKED = "locked"
+CAPTCHA = "captcha"
+UNKNOWN_ACCOUNT = "unknown_account"
+DEFAULT_PASSWORD_BLOCKED = "default_password_blocked"
+TWOFACTOR_REQUIRED_SETUP = "twofactor_required_setup"
+
+BAD_CREDENTIALS_MARKERS = ("anmeldung fehlgeschlagen",)
+
+UNKNOWN_ACCOUNT_MARKERS = ("account existiert nicht",)
+
+DEFAULT_PASSWORD_MARKERS = (
+    "mit dem standardpasswort",
+    "standardpasswort, welches dem accountnamen entspricht",
+)
 
 HUMAN_MESSAGE_KEYS = {
     "locked": "api.lockout.locked",
     "captcha": "api.lockout.captcha",
     "password_expired": "api.lockout.passwordExpired",
+    UNKNOWN_ACCOUNT: "api.lockout.unknownAccount",
+    DEFAULT_PASSWORD_BLOCKED: "api.lockout.defaultPassword",
     "normal": "api.lockout.normal",
 }
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-def classify_login_response(html, status_code=200):
+def login_refusal(html):
     text = _normalize(html)
-    if _matches_any(text, LOCKED_MARKERS) or status_code in LOCKED_STATUS_CODES:
-        return "locked"
+    if _matches_any(text, DEFAULT_PASSWORD_MARKERS):
+        return DEFAULT_PASSWORD_BLOCKED
+    if _matches_any(text, UNKNOWN_ACCOUNT_MARKERS):
+        return UNKNOWN_ACCOUNT
+    if _matches_any(text, LOCKED_MARKERS):
+        return None
+    if _matches_any(text, BAD_CREDENTIALS_MARKERS):
+        return BAD_CREDENTIALS
+    return None
+
+
+def classify_login_response(html):
+    text = _normalize(html)
+    if _matches_any(text, DEFAULT_PASSWORD_MARKERS):
+        return DEFAULT_PASSWORD_BLOCKED
+    if _matches_any(text, UNKNOWN_ACCOUNT_MARKERS):
+        return UNKNOWN_ACCOUNT
+    if _matches_any(text, LOCKED_MARKERS):
+        return LOCKED
     if _matches_any(text, CAPTCHA_MARKERS):
-        return "captcha"
+        return CAPTCHA
     if _matches_any(text, PASSWORD_EXPIRED_MARKERS):
         return "password_expired"
     return "normal"

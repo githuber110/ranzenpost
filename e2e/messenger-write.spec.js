@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   checkTapTargets,
@@ -45,7 +46,7 @@ async function settled(page) {
 }
 
 async function openChat(page) {
-  await page.locator(".tabbar .tab").nth(CHAT_TAB).click();
+  await openArea(page, "messenger");
   await page.waitForSelector(".rows .row", { timeout: 8000 });
 }
 
@@ -62,7 +63,7 @@ async function expectClean(page, label) {
   expect(small, `${label}: ${JSON.stringify(small)}`).toEqual([]);
 }
 
-test.describe("[P198] the deliberate read marker", () => {
+test.describe("the deliberate read marker", () => {
   test.use({ viewport: { width: 390, height: 844 }, locale: "de-DE" });
 
   test("nothing is marked until the button is tapped, and then exactly once", async ({ page }) => {
@@ -100,7 +101,7 @@ for (const viewport of VIEWPORTS) {
   for (const lang of LANGUAGES) {
     const label = `${viewport.name}/${lang.key}`;
 
-    test.describe(`[P198] the teacher room wizard ${label}`, () => {
+    test.describe(`the teacher room wizard ${label}`, () => {
       test.use({ viewport: { width: viewport.width, height: viewport.height }, locale: lang.locale });
 
       test("search, summary and creation land in the new room without a second POST", async ({ page }) => {

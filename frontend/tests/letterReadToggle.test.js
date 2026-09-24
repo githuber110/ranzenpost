@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[C01] letters: opening marks read", () => {
+describe("letters: opening marks read", () => {
   test("openLetter marks the letter read optimistically before the fetch settles", () => {
     const { window } = loadApp();
     const letter = { letter_id: "1", recipient_id: "2", title: "Infobrief", unread: true };
@@ -19,7 +19,7 @@ describe("[C01] letters: opening marks read", () => {
   });
 });
 
-describe("[P126] letters: unread mirrors IServ exactly, no mark-unread UI", () => {
+describe("letters: unread mirrors IServ exactly, no mark-unread UI", () => {
   test("there is no markLetterUnread function left in the app", () => {
     const { window } = loadApp();
     expect(window.eval("typeof markLetterUnread")).toBe("undefined");
@@ -58,13 +58,13 @@ describe("[P126] letters: unread mirrors IServ exactly, no mark-unread UI", () =
   });
 });
 
-describe("[P126] letters: Auswählen/Fertig toggle in the sticky toolbar", () => {
+describe("letters: Auswählen/Fertig toggle in the sticky toolbar", () => {
   function renderLetters(window, tab, data) {
     const run = window.eval("(function (tab, data) { state.lettersTab = tab; state.letters = data; return lettersView(); })");
     return run(tab, data);
   }
 
-  test("[P156] Auswählen button is present, disappears in multi-select, and the sticky bar's round button ends selection", () => {
+  test("Auswählen button is present, disappears in multi-select, and the sticky bar's round button ends selection", () => {
     const { window } = loadApp();
     const data = { tab: "current", letters: [{ letter_id: "1", recipient_id: "2", title: "Infobrief", unread: true }] };
     const view = renderLetters(window, "current", data);

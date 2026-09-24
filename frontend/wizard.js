@@ -64,9 +64,7 @@
     if (window.applyLanguageChoice) await window.applyLanguageChoice(choice);
     let saved = false;
     try {
-      const config = (await api("GET", "api/config")) || {};
-      config.language = choice;
-      await api("POST", "api/config", config);
+      await api("POST", "api/config", { language: choice });
       saved = true;
     } catch (error) {
       saved = false;
@@ -101,26 +99,38 @@
     return (err && err.message) || "";
   }
 
-  function renderWizard(container, onDone) {
+  function renderWizard(container, onDone, options) {
+    const onCancel = options && typeof options.onCancel === "function" ? options.onCancel : null;
     phonesDone = false;
     let wzState = {};
+    let pauseEnd = 0;
+    let pauseTimer = null;
     let flow = null;
     let fields = {};
     let draft = { url: "", username: "" };
     let children = { status: "idle", list: [], picked: "" };
+    let modules = null;
     let school = { status: "idle", phones: [], regions: [], region: "", suggestion: null, rows: [], select: null, typed: null };
 
     const mount = (node) => container.replaceChildren(node);
 
     let bannerSerial = 0;
 
+    function reportBlock() {
+      const err = wzState && wzState.error;
+      if (!err || err.code === "paused" || typeof window.reportSaveBlock !== "function") return null;
+      return window.reportSaveBlock();
+    }
+
     function errorBanner() {
       const err = wzState && wzState.error;
-      if (!err || err.code === "paused" || err.code === "locked") return null;
+      if (!err) return null;
+      const paused = err.code === "paused";
+      if (paused && !pauseLeft()) return null;
       const text = errorText(err);
       if (!text) return null;
       bannerSerial += 1;
-      return el("div", { class: "wz-error", role: "alert", "data-attempt": String(bannerSerial) }, text);
+      return el("div", { class: paused ? "wz-error wz-error-pause" : "wz-error", role: "alert", "data-attempt": String(bannerSerial) }, text);
     }
 
     function loadingCard() {
@@ -137,17 +147,35 @@
       ]);
     }
 
-    function waitCard() {
-      const message = errorText(wzState.error) || label("wizard.wait.text");
-      return el("div", { class: "wz" }, [
-        el("div", { class: "card wz-card" }, [
-          el("div", { class: "wz-wait" }, [
-            el("span", { class: "wz-wait-icon" }, "⏳"),
-            el("div", {}, [el("b", {}, label("wizard.wait.title")), el("p", { class: "wz-sub" }, message)]),
-          ]),
-          el("button", { class: "btn-primary", type: "button", onclick: load }, label("common.retry")),
-        ]),
-      ]);
+    function waitClock(seconds) {
+      const digits = new Intl.NumberFormat(document.documentElement.lang || undefined, { useGrouping: false });
+      const pad = new Intl.NumberFormat(document.documentElement.lang || undefined, { minimumIntegerDigits: 2, useGrouping: false });
+      return `${digits.format(Math.floor(seconds / 60))}:${pad.format(seconds % 60)}`;
+    }
+
+    function pauseLeft() {
+      return Math.max(0, Math.ceil((pauseEnd - Date.now()) / 1000));
+    }
+
+    function pauseBlock() {
+      const left = pauseLeft();
+      return left ? label("wizard.wait.countdown", { time: waitClock(left) }) : "";
+    }
+
+    function tickPausedForm() {
+      clearInterval(pauseTimer);
+      pauseTimer = setInterval(() => {
+        if (!flow) {
+          clearInterval(pauseTimer);
+          return;
+        }
+        if (!pauseLeft()) {
+          clearInterval(pauseTimer);
+          const banner = container.querySelector(".wz-error-pause");
+          if (banner) banner.remove();
+        }
+        flow.sync();
+      }, 1000);
     }
 
     function resetPanel() {
@@ -174,7 +202,27 @@
     }
 
     function trailing() {
+      if (onCancel) {
+        return el("button", { class: "wz-nav reset", type: "button", onclick: cancelAdding }, label("common.cancel"));
+      }
       return el("button", { class: "wz-nav reset", type: "button", onclick: resetPanel }, label("wizard.nav.restart"));
+    }
+
+    function cancelAdding() {
+      if (flow) flow.destroy();
+      flow = null;
+      mount(loadingCard());
+      onCancel();
+    }
+
+    function connectionQuery() {
+      const id = wzState && wzState.connection_id ? wzState.connection_id : "";
+      return id ? `?connection=${encodeURIComponent(id)}` : "";
+    }
+
+    function connectionPath() {
+      const id = wzState && wzState.connection_id ? wzState.connection_id : "";
+      return `api/connections/${encodeURIComponent(id)}`;
     }
 
     function textInput(attrs) {
@@ -201,6 +249,7 @@
       return [
         el("p", { class: "wz-sub" }, label("wizard.url.text")),
         errorBanner(),
+        reportBlock(),
         languageRow(() => flow.render()),
         el("label", { class: "wz-label" }, label("wizard.url.label")),
         fields.url,
@@ -235,6 +284,7 @@
       return [
         el("p", { class: "wz-sub" }, label("wizard.login.text")),
         errorBanner(),
+        reportBlock(),
         el("label", { class: "wz-label" }, label("wizard.login.username.label")),
         fields.username,
         el("label", { class: "wz-label" }, label("common.password")),
@@ -258,16 +308,36 @@
         "aria-label": label("wizard.connect.code.aria"),
       });
       fields.code.addEventListener("input", () => flow.sync());
+      const introKey = second
+        ? "wizard.connect.second.text"
+        : wzState.needs_2fa_setup
+          ? "wizard.connect.setupRequired"
+          : "wizard.connect.text";
       return [
-        el("p", { class: "wz-sub" }, label(second ? "wizard.connect.second.text" : "wizard.connect.text")),
+        el("p", { class: "wz-sub" }, label(introKey)),
         second && wzState.stale_tokens
           ? el("div", { class: "wz-warn" }, countLabel("wizard.connect.staleTokens", wzState.stale_tokens))
           : null,
         errorBanner(),
+        reportBlock(),
         el("label", { class: "wz-label" }, label(second ? "wizard.connect.code.labelNext" : "wizard.connect.code.label")),
         fields.code,
         el("div", { class: "wz-hint-line" }, label(second ? "wizard.connect.hintNext" : "wizard.connect.hint")),
       ];
+    }
+
+    function moduleOn(name) {
+      return !modules || modules[name] !== false;
+    }
+
+    function childlessTextKey() {
+      if (modules && !Object.values(modules).some(Boolean)) return "modules.empty.text";
+      if (!moduleOn("timetable") && !moduleOn("absences")) return "wizard.child.none.modules";
+      return "wizard.child.none.text";
+    }
+
+    function childlessTitleKey() {
+      return childlessTextKey() === "wizard.child.none.text" ? "wizard.child.none.title" : "wizard.child.none.modulesTitle";
     }
 
     function childrenFailureText() {
@@ -293,7 +363,7 @@
       }
       if (!children.list.length) {
         return [
-          el("p", { class: "wz-sub" }, label("wizard.child.none.text")),
+          el("p", { class: "wz-sub" }, label(childlessTextKey())),
           el("button", { class: "wz-skip", type: "button", onclick: loadChildren }, label("common.reload")),
         ];
       }
@@ -421,6 +491,7 @@
           question: label("wizard.login.title"),
           body: loginBody,
           block: () => {
+            if (pauseLeft()) return pauseBlock();
             if (!fields.username || !fields.username.value.trim()) return need("wizard.login.username.label");
             if (!fields.password || !fields.password.value) return need("common.password");
             return "";
@@ -440,8 +511,8 @@
         return {
           question: label(second ? "wizard.connect.second.title" : "wizard.connect.title"),
           body: connectBody,
-          hint: label("wizard.connect.privacy"),
-          block: () => (fields.code && fields.code.value.trim() ? "" : need("wizard.connect.code.label")),
+          hint: wzState.needs_2fa_setup ? "" : label("wizard.connect.privacy"),
+          block: () => pauseBlock() || (fields.code && fields.code.value.trim() ? "" : need("wizard.connect.code.label")),
           blockFocus: () => fields.code,
           nextLabel: label(second ? "wizard.connect.finish" : "common.next"),
           busyLabel: label("common.pleaseWait"),
@@ -456,7 +527,7 @@
           list: true,
           scroll: true,
           question: label(
-            failed ? "wizard.child.failed.title" : empty ? "wizard.child.none.title" : "wizard.child.title"
+            failed ? "wizard.child.failed.title" : empty ? childlessTitleKey() : "wizard.child.title"
           ),
           body: childBody,
           hint: without ? "" : label("wizard.child.text"),
@@ -493,15 +564,12 @@
         finishPhones();
         return Promise.resolve({});
       }
-      return api("GET", "api/config")
-        .then((config) => {
-          const next = config || {};
-          next.phones = school.rows
-            .map((row) => ({ label: row.label.value.trim(), number: row.number.value.trim() }))
-            .filter((entry) => entry.number);
-          next.holiday_region = school.select ? school.select.value : "";
-          return api("POST", "api/config", next);
-        })
+      return api("POST", connectionPath(), {
+        phones: school.rows
+          .map((row) => ({ label: row.label.value.trim(), number: row.number.value.trim() }))
+          .filter((entry) => entry.number),
+        holiday_region: school.select ? school.select.value : "",
+      })
         .then(() => {
           finishPhones();
           return {};
@@ -566,7 +634,7 @@
     function loadChildren() {
       children = { status: "loading", list: [], picked: children.picked };
       refresh();
-      api("GET", "api/children")
+      api("GET", `api/children${connectionQuery()}`)
         .then((list) => {
           if (!Array.isArray(list)) {
             children = { status: "failed", list: [], picked: "", failure: list || {} };
@@ -576,6 +644,8 @@
           const keep = list.some((entry) => entry.child_id === children.picked) ? children.picked : "";
           children = { status: "ready", list, picked: keep || (list.length === 1 ? list[0].child_id : "") };
           refresh();
+          if (!list.length) return loadModules();
+          return undefined;
         })
         .catch(() => {
           children = { status: "error", list: [], picked: children.picked };
@@ -583,15 +653,26 @@
         });
     }
 
+    function loadModules() {
+      return api("GET", `api/modules${connectionQuery()}`)
+        .then((registry) => {
+          modules = registry && registry.modules && typeof registry.modules === "object" ? registry.modules : null;
+          refresh();
+        })
+        .catch(() => {
+          modules = null;
+        });
+    }
+
     function loadSchool() {
       school = Object.assign({}, school, { status: "loading" });
       refresh();
-      api("GET", "api/config")
+      api("GET", connectionPath())
         .then(async (config) => {
           const regions = await api("GET", "api/holidays/regions")
             .then((data) => (data && data.regions) || [])
             .catch(() => []);
-          const suggestion = await api("GET", "api/holidays/region-suggestion").catch(() => null);
+          const suggestion = await api("GET", `api/holidays/region-suggestion${connectionQuery()}`).catch(() => null);
           school = {
             status: "ready",
             phones: config && Array.isArray(config.phones) ? config.phones : [],
@@ -610,11 +691,12 @@
         });
     }
 
-    function route(state, ignoreBlock) {
+    function route(state) {
       if (!state) {
         finishPhones();
         return;
       }
+      if (state !== wzState) pauseEnd = state.retry_in ? Date.now() + Number(state.retry_in) * 1000 : 0;
       wzState = state;
       if (state.step === "done") {
         if (phonesDone) {
@@ -625,15 +707,9 @@
         if (school.status === "idle" || school.status === "error") loadSchool();
         return;
       }
-      const code = state.error && state.error.code;
-      if (!ignoreBlock && (code === "paused" || code === "locked")) {
-        if (flow) flow.destroy();
-        flow = null;
-        mount(waitCard());
-        return;
-      }
       ensureFlow(state.step === "child" ? "child" : state.step);
       if (state.step === "child" && children.status !== "ready") loadChildren();
+      if (pauseLeft()) tickPausedForm();
     }
 
     async function load() {

@@ -7,7 +7,7 @@ import { loadApp } from "./loadApp.js";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const e2eDir = path.resolve(dirname, "..", "..", "e2e");
 
-describe("[C19] search keyboard hints", () => {
+describe("search keyboard hints", () => {
   test("searchField input carries enterkeyhint=search", () => {
     const { window } = loadApp();
     const run = window.eval("(function () { return searchField('', 'Suchen', () => {}, null); })");
@@ -29,7 +29,7 @@ describe("[C19] search keyboard hints", () => {
   });
 });
 
-describe("[W1d] real tap-target geometry moved to e2e", () => {
+describe("real tap-target geometry moved to e2e", () => {
   test("checkTapTargets and checkTapTargetOverlaps exist and measure rendered rectangles, not CSS source text", () => {
     const helpersSource = fs.readFileSync(path.join(e2eDir, "helpers.js"), "utf8");
     expect(helpersSource).toMatch(/async function checkTapTargets\(page\)/);

@@ -133,11 +133,73 @@ for (const viewport of VIEWPORTS) {
             if (markingToday) {
               await expect(page.locator(".rows.flat .tag.exam").first()).toBeVisible();
             } else {
-              const noSchool = await text(page, "overview.noSchool");
-              await expect(page.locator(".panel-rest", { hasText: noSchool })).toBeVisible();
+              await expect(page.locator('.panel[data-area="today"] .tag.exam')).toHaveCount(0);
             }
             await assertNoOverflow(page, `${tag}/overview-marked`);
           } finally {
+            await clearMarks(page);
+          }
+        });
+
+        test(`recent exam names wrap as removable chips and a removed one stays gone (${language.key})`, async ({ page }) => {
+          const tag = `${viewport.name}/${language.key}`;
+          const names = [
+            "Klassenarbeit Mathematik Bruchrechnung",
+            "Vokabeltest",
+            "Diktat",
+            "Lernzielkontrolle Sachunterricht Wasser",
+            "Test",
+            "Referat",
+            "Probe",
+            "Schulaufgabe Deutsch Aufsatz",
+            "Kurzarbeit",
+            "Abfrage",
+            "Präsentation",
+            "Klausur",
+          ];
+          await goto(page);
+          await clearMarks(page);
+          await page.evaluate((list) => {
+            [...list].reverse().forEach((name) => window.rememberMarkName(name));
+          }, names);
+
+          try {
+            await openTimetable(page);
+            const marking = (await todayCell(page)) || page.locator(".tt-cell:not(.free)").first();
+            await marking.click();
+            await waitForSheetSettled(page);
+            await page.locator(".sheet-foot .mark-add").click();
+            await waitForSheetSettled(page);
+
+            const entries = page.locator(".mark-chips .mark-recent");
+            await expect(entries).toHaveCount(names.length);
+            await expect(entries.first().locator(".mark-chip")).toHaveText(names[0]);
+            const rows = new Set(
+              (await entries.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().top))))
+            );
+            expect(rows.size).toBeGreaterThan(1);
+            await assertNoOverflow(page, `${tag}/recent-names`);
+            await assertTapTargets(page, `${tag}/recent-names`);
+            const removeLabel = await page.evaluate((name) => window.t("marks.form.recentRemove", { name }), names[1]);
+            await expect(page.getByRole("button", { name: removeLabel, exact: true })).toBeVisible();
+
+            await entries.nth(1).locator(".mark-chip-remove").click();
+            await expect(entries).toHaveCount(names.length - 1);
+            await expect(entries.locator(".mark-chip", { hasText: names[1] })).toHaveCount(0);
+            await assertNoOverflow(page, `${tag}/recent-names-removed`);
+
+            await page.reload();
+            await settled(page);
+            await openTimetable(page);
+            const again = (await todayCell(page)) || page.locator(".tt-cell:not(.free)").first();
+            await again.click();
+            await waitForSheetSettled(page);
+            await page.locator(".sheet-foot .mark-add").click();
+            await waitForSheetSettled(page);
+            const kept = await page.locator(".mark-chips .mark-recent .mark-chip").allTextContents();
+            expect(kept).toEqual(names.filter((name) => name !== names[1]));
+          } finally {
+            await page.evaluate(() => window.localStorage.removeItem("markNames"));
             await clearMarks(page);
           }
         });
@@ -148,16 +210,15 @@ for (const viewport of VIEWPORTS) {
           await page.locator(".header-actions .settings-entry").click();
           await settled(page);
 
-          await expect(page.locator(".settings-group")).toHaveCount(4);
-          await expect(page.locator(".setting-row")).toHaveCount(10);
+          await expect(page.locator(".settings-group")).toHaveCount(6);
+          await expect(page.locator(".setting-row")).toHaveCount(15);
           await assertNoOverflow(page, `${tag}/settings`);
           await assertTapTargets(page, `${tag}/settings`);
 
           await (await settingRow(page, "settings.names")).click();
-          await waitForSheetSettled(page);
-          await expect(page.locator(".names-block")).toHaveCount(2);
-          await assertNoOverflow(page, `${tag}/names-sheet`);
-          await assertTapTargets(page, `${tag}/names-sheet`);
+          await expect(page.locator(".names-page .names-block")).toHaveCount(2);
+          await assertNoOverflow(page, `${tag}/names-page`);
+          await assertTapTargets(page, `${tag}/names-page`);
         });
       });
     }

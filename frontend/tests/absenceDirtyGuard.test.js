@@ -8,7 +8,7 @@ function startForm(window, type, data) {
   return run(type, data);
 }
 
-describe("[C05] dirty-guard: leaving an absence form without changes never prompts", () => {
+describe("dirty-guard: leaving an absence form without changes never prompts", () => {
   test("back-tap with untouched defaults calls after() immediately, no confirm sheet", () => {
     const { window } = loadApp();
     startForm(window, "deregister", { children: [{ id: 1 }], rules: {}, deregister_options: ["bus"] });
@@ -73,7 +73,7 @@ describe("[C05] dirty-guard: leaving an absence form without changes never promp
   });
 });
 
-describe("[C05] the wizard replaces the screen shell: no tab bar, own header", () => {
+describe("the wizard replaces the screen shell: no tab bar, own header", () => {
   test("render() mounts the wizard node alone, without .screen and without .tabbar", () => {
     const { window, document } = loadApp();
     startForm(window, "deregister", { children: [{ id: 1 }], types: ["deregister"], rules: {}, deregister_options: ["bus"] });
@@ -106,15 +106,16 @@ describe("[C05] the wizard replaces the screen shell: no tab bar, own header", (
     expect(view.querySelector(".icon-btn[aria-label='Zurück']")).toBeNull();
   });
 
-  test("header('conferences') wraps back + title for the conferences view", () => {
+  test("header('conferences') carries the title without a back button, conferences is an area of its own now", () => {
     const { window } = loadApp();
     const bar = window.eval("(function () { state.conferences = { items: [] }; return header('conferences'); })()");
     const row = bar.querySelector(".header-title-row");
     expect(row).not.toBeNull();
-    expect(row.querySelector(".icon-btn.header-back[aria-label='Zurück']")).not.toBeNull();
+    expect(row.querySelector(".header-title").textContent).toBe("Elternsprechtage");
+    expect(row.querySelector(".icon-btn.header-back")).toBeNull();
   });
 
-  test("[P188] header('settings') wraps back + title, the view itself carries no head", () => {
+  test("header('settings') wraps back + title, the view itself carries no head", () => {
     const { window } = loadApp();
     const bar = window.eval("header('settings')");
     const row = bar.querySelector(".header-title-row");

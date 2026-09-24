@@ -17,7 +17,7 @@ const LEAVE_ENTRY = { id: 7, kind: "leave", student_id: 1, label: "Beurlaubungsa
 const DEREGISTER_ENTRY = { id: 8, kind: "deregister", student_id: 1, label: "Abmeldung", deletable: true };
 const DAYCARE_ENTRY = { id: 9, kind: "daycare", student_id: 1, label: "Ganztagsbetreuung", deletable: true };
 
-describe("[P139] sick-note PDF action", () => {
+describe("sick-note PDF action", () => {
   test("shows the exact label and a button, not a same-tab-breaking link", () => {
     const { window } = loadApp();
     const scrim = buildSheet(window, SICK_ENTRY, {});
@@ -65,7 +65,7 @@ describe("[P139] sick-note PDF action", () => {
   });
 });
 
-describe("[P150] sick-note PDF fetches in the current document context", () => {
+describe("sick-note PDF fetches in the current document context", () => {
   test("clicking the button fetches the relative sick-note-pdf path and downloads it", async () => {
     const { window } = loadApp();
     window.URL.createObjectURL = () => "blob:mock-url";
@@ -101,7 +101,7 @@ describe("[P150] sick-note PDF fetches in the current document context", () => {
   });
 });
 
-describe("[P160] a backend refusal reaches the parent as a real explanation", () => {
+describe("a backend refusal reaches the parent as a real explanation", () => {
   test("an unsupported name shows the backend message instead of the generic failure", async () => {
     const { window } = loadApp({ url: "http://localhost/" });
     window.setLanguageBundle("de", { "api.sickNote.error.unsupportedCharacters": "Diese Zeichen können wir nicht drucken: {characters}" }, {});

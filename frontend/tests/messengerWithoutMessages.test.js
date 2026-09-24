@@ -35,7 +35,7 @@ function buttonLabels(view) {
   return Array.from(view.querySelectorAll(".empty .btn")).map((node) => node.textContent);
 }
 
-describe("[P228-A] the messenger stays usable while the messages are locked away", () => {
+describe("the messenger stays usable while the messages are locked away", () => {
   test("a real failure names its reason instead of a room list that claims to be empty", () => {
     const { window } = loadApp();
     const view = seed(window, BROKEN);
@@ -74,7 +74,7 @@ describe("[P228-A] the messenger stays usable while the messages are locked away
   });
 });
 
-describe("[P252] withheld messages are an empty state, not an error", () => {
+describe("withheld messages are an empty state, not an error", () => {
   test("no retry, no warning icon, the calm title and the reason in plain words", () => {
     const { window } = loadApp();
     const view = seed(window, WITHHELD);
@@ -84,7 +84,7 @@ describe("[P252] withheld messages are an empty state, not an error", () => {
     expect(empty.querySelector("p").textContent).toBe(window.eval("t('messenger.empty.withheld')"));
     expect(buttonLabels(view).join(" ")).not.toContain(window.eval("t('common.retry')"));
     expect(view.textContent).not.toContain(window.eval("t('messenger.unavailable.title')"));
-    expect(empty.querySelector(".ico-slot").innerHTML).toBe(window.eval("icon('messages', 40)").innerHTML);
+    expect(empty.querySelector(".ico-slot").innerHTML).toBe(window.eval("icon('messages')").innerHTML);
   });
 
   test("the teacher room button is the only action left", () => {
@@ -94,7 +94,7 @@ describe("[P252] withheld messages are an empty state, not an error", () => {
   });
 });
 
-describe("[P247] the buttons say which one is the point", () => {
+describe("the buttons say which one is the point", () => {
   function buttons(window, data) {
     const view = seed(window, data);
     return Array.from(view.querySelectorAll(".empty .btn"));

@@ -7,7 +7,7 @@ import { loadApp } from "./loadApp.js";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const stylesCss = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8");
 
-describe("[C20] sheets: no grip attrappe", () => {
+describe("sheets: no grip attrappe", () => {
   test("the sheet() factory no longer renders a .grip element", () => {
     const { window } = loadApp();
     const run = window.eval("(function () { return sheet('Titel', [document.createElement('div')]); })");

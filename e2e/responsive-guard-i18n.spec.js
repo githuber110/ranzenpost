@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
   goto,
+  openArea,
   checkHorizontalOverflow,
   checkElementsWithinViewport,
   waitForSheetSettled,
@@ -160,7 +161,7 @@ async function headerFits(page, label, failures) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`[P155] compact header @ ${viewport.name}`, () => {
+  test.describe(`compact header @ ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     for (const lang of LANGUAGES) {
@@ -208,14 +209,15 @@ for (const viewport of VIEWPORTS) {
           await waitForContentSettled(page);
           await headerFits(page, `${viewport.name}/${lang.key}/pinboard`, failures);
 
-          await page.locator(".tabbar .tab").nth(4).click();
+          await openArea(page, "messenger");
           await waitForContentSettled(page);
           await headerFits(page, `${viewport.name}/${lang.key}/chat`, failures);
 
-          await page.evaluate(() => window.setView("conferences"));
+          await openArea(page, "conferences");
           await waitForContentSettled(page);
           await headerFits(page, `${viewport.name}/${lang.key}/conferences`, failures);
-          await expect(page.locator(".header-back")).toBeVisible();
+          await expect(page.locator(".header-back")).toHaveCount(0);
+          await expect(page.locator(".tabbar .tab-more[aria-current='page']")).toHaveCount(1);
 
           await page.locator(".header-actions .settings-entry").click();
           await waitForContentSettled(page);

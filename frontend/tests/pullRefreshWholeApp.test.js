@@ -42,9 +42,9 @@ function armApp(window, failing) {
     return reply({});
   };
   window.eval(`
-    state.children = [{ child_id: "c1", name: "Kind" }];
+    state.children = [{ key: "c1", name: "Kind" }];
     state.childId = "c1";
-    state.timetableAvailable = true;
+    state.modules.available.timetable = true;
     state.view = "absence";
     state.pinboard = { posts: [] };
     state.refreshFailed = { timetable: "network", pinboard: "network", absence: "network", marks: "network" };
@@ -57,7 +57,7 @@ async function pull(window) {
   await quiet(window);
 }
 
-describe("[P230] one pull refreshes the whole app, not just the tab you pulled in", () => {
+describe("one pull refreshes the whole app, not just the tab you pulled in", () => {
   test("it asks every area, even though only the absence tab is open", async () => {
     const { window } = loadApp();
     await quiet(window);

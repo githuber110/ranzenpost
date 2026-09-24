@@ -176,7 +176,7 @@ function pageWidths(view) {
   );
 }
 
-describe("[P216] fit-to-width is a pure scale, not a CSS transform", () => {
+describe("fit-to-width is a pure scale, not a CSS transform", () => {
   test("a page fills the container width exactly", () => {
     const window = loadViewer();
     const { fitToWidthScale } = window.PdfViewer;
@@ -219,7 +219,7 @@ describe("[P216] fit-to-width is a pure scale, not a CSS transform", () => {
   });
 });
 
-describe("[P216] the canvas backing store follows the device pixel ratio", () => {
+describe("the canvas backing store follows the device pixel ratio", () => {
   test("a retina phone gets a denser backing store than the CSS box", () => {
     const window = loadViewer();
     const ratio = window.PdfViewer.canvasPixelRatio(320, 452, 3, 8388608);
@@ -239,7 +239,7 @@ describe("[P216] the canvas backing store follows the device pixel ratio", () =>
   });
 });
 
-describe("[P216] every page of a multi-page document reaches the DOM", () => {
+describe("every page of a multi-page document reaches the DOM", () => {
   test("a twelve page letter renders twelve page nodes, not just page one", async () => {
     const window = loadViewer();
     const pdfjs = stubPdfjs({ pages: 12 });
@@ -287,7 +287,7 @@ describe("[P216] every page of a multi-page document reaches the DOM", () => {
   });
 });
 
-describe("[P216] long documents render lazily", () => {
+describe("long documents render lazily", () => {
   test("with an IntersectionObserver every page gets a node but only visible pages get a canvas", async () => {
     const window = loadViewer();
     const observers = installObservers(window);
@@ -332,7 +332,7 @@ describe("[P216] long documents render lazily", () => {
     expect(counter.textContent).toBe('viewer.pdf.position:{"current":"7","total":"40"}');
   });
 
-  test("the counter reports the page actually on screen, not a prefetched one [P216]", async () => {
+  test("the counter reports the page actually on screen, not a prefetched one", async () => {
     const window = loadViewer();
     const observers = installObservers(window);
     const pdfjs = stubPdfjs({ pages: 40 });
@@ -363,7 +363,7 @@ describe("[P216] long documents render lazily", () => {
   });
 });
 
-describe("[P216] a broken payload lands in a visible error state", () => {
+describe("a broken payload lands in a visible error state", () => {
   test("a rejected document shows the error text and reports it", async () => {
     const window = loadViewer();
     const seen = [];
@@ -424,7 +424,7 @@ describe("[P216] a broken payload lands in a visible error state", () => {
     expect(view.node.querySelector(".pdfv-banner").textContent).toBe("viewer.pdf.error");
   });
 
-  test("a failed load destroys the loading task and the document, and releases the app shell [P216]", async () => {
+  test("a failed load destroys the loading task and the document, and releases the app shell", async () => {
     const window = loadViewer();
     const app = window.document.createElement("div");
     app.id = "app";
@@ -471,7 +471,7 @@ describe("[P216] a broken payload lands in a visible error state", () => {
   });
 });
 
-describe("[P216] a slot that scrolls away mid-render never leaks a stale canvas or a false failure", () => {
+describe("a slot that scrolls away mid-render never leaks a stale canvas or a false failure", () => {
   test("a page that leaves the keep-window during its getPage await never gets a canvas appended", async () => {
     const window = loadViewer();
     const observers = installObservers(window);
@@ -531,7 +531,7 @@ describe("[P216] a slot that scrolls away mid-render never leaks a stale canvas 
   });
 });
 
-describe("[P216] a 320 px phone never gains a horizontal scroll", () => {
+describe("a 320 px phone never gains a horizontal scroll", () => {
   test("no page box is ever wider than the container", async () => {
     const window = loadViewer();
     const pdfjs = stubPdfjs({ pages: 6 });
@@ -568,7 +568,7 @@ describe("[P216] a 320 px phone never gains a horizontal scroll", () => {
   });
 });
 
-describe("[P216] pinch zoom stays with the browser and is handed back on close", () => {
+describe("pinch zoom stays with the browser and is handed back on close", () => {
   test("the ancestors of the viewer allow pinch zoom while a pdf is open", async () => {
     const window = loadViewer();
     const pdfjs = stubPdfjs({ pages: 2 });
@@ -598,7 +598,7 @@ describe("[P216] pinch zoom stays with the browser and is handed back on close",
   });
 });
 
-describe("[P216] a width change re-renders instead of stretching a bitmap", () => {
+describe("a width change re-renders instead of stretching a bitmap", () => {
   test("a wider container repaints the pages at a larger render scale", async () => {
     const window = loadViewer();
     const pdfjs = stubPdfjs({ pages: 2 });
@@ -625,10 +625,10 @@ describe("[P216] a width change re-renders instead of stretching a bitmap", () =
   });
 });
 
-describe("[P216] the viewer is wired into the shell", () => {
+describe("the viewer is wired into the shell", () => {
   test("index.html loads the module and its stylesheet", () => {
     expect(indexHtml).toMatch(/<link rel="stylesheet" href="\.\/pdfviewer\.css\?v=\d+">/);
-    expect(indexHtml).toMatch(/<script src="\.\/pdfviewer\.js\?v=\d+"><\/script>/);
+    expect(indexHtml).toMatch(/<script src="\.\/pdfviewer\.js\?v=\d+" defer><\/script>/);
     expect(indexHtml.indexOf("pdfviewer.js")).toBeLessThan(indexHtml.indexOf("app.js"));
   });
 

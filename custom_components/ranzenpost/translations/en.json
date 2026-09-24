@@ -1,0 +1,238 @@
+{
+  "config": {
+    "flow_title": "Ranzenpost",
+    "create_entry": {
+      "default": "Done. Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+    },
+    "step": {
+      "hassio_confirm": {
+        "title": "Connect the Ranzenpost add-on",
+        "description": "The add-on {addon} was found. Connect Home Assistant to it?"
+      },
+      "install_addon": {
+        "title": "Install the Ranzenpost add-on",
+        "description": "The Ranzenpost add-on is not installed yet. Add the repository {repository}, then install and start the add-on?"
+      },
+      "addon_no_discovery": {
+        "title": "The add-on has not announced itself",
+        "description": "The add-on {addon} is installed but has not announced its connection details yet. Open the add-on, check that it is running, and enter the host, port and token from its Home Assistant settings block.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Host name of the add-on container, usually shown in its settings.",
+          "port": "Port of the integration API, 8099 by default.",
+          "token": "Access token shown in the add-on settings."
+        }
+      },
+      "manual": {
+        "title": "Connect Ranzenpost manually",
+        "description": "Enter the host, port and token of the running Ranzenpost container. The token is shown in the Ranzenpost settings.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Host name or IP address of the Ranzenpost container.",
+          "port": "Port of the integration API, 8099 by default.",
+          "token": "Access token shown in the Ranzenpost settings."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew the Ranzenpost token",
+        "description": "The token for {host} was rejected. Enter the current token from the Ranzenpost settings.",
+        "data": {
+          "token": "Token"
+        }
+      }
+    },
+    "progress": {
+      "install_addon": "The Ranzenpost add-on is being installed. This can take a few minutes.",
+      "start_addon": "The Ranzenpost add-on is starting.",
+      "wait_discovery": "Waiting for the add-on to announce its connection details."
+    },
+    "error": {
+      "cannot_connect": "The add-on could not be reached. Check that it is running.",
+      "invalid_auth": "The token was rejected. Copy it again from the Ranzenpost settings.",
+      "unknown": "The add-on answered in an unexpected way."
+    },
+    "abort": {
+      "already_configured": "This Ranzenpost add-on is already connected. Every add-on host can be connected once.",
+      "already_in_progress": "A Ranzenpost setup is already in progress.",
+      "addon_install_failed": "The Ranzenpost add-on could not be installed. Check the Supervisor log.",
+      "addon_start_failed": "The Ranzenpost add-on could not be started. Check the add-on log.",
+      "not_ranzenpost_addon": "This discovery message does not belong to the Ranzenpost add-on.",
+      "reauth_successful": "The token was renewed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ranzenpost options",
+        "description": "How often the integration asks the add-on, and which profiles get entities.",
+        "data": {
+          "scan_interval": "Polling interval",
+          "children": "Profiles"
+        },
+        "data_description": {
+          "scan_interval": "Seconds between two requests to the add-on, at least 30.",
+          "children": "Leave empty to create entities for every profile."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": {
+        "name": "School day today"
+      },
+      "timetable_changed_today": {
+        "name": "Timetable changed today"
+      }
+    },
+    "calendar": {
+      "lessons": {
+        "name": "Lessons"
+      },
+      "exams": {
+        "name": "Exams"
+      },
+      "absences": {
+        "name": "Absences"
+      },
+      "own_entries": {
+        "name": "Own entries"
+      },
+      "holidays": {
+        "name": "Holidays"
+      }
+    },
+    "event": {
+      "timetable_changed": {
+        "name": "Timetable change",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "substitution": "Substitution",
+              "cancellation": "Cancellation",
+              "room_change": "Room change",
+              "new_lesson": "New lesson"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_lesson": {
+        "name": "Current lesson"
+      },
+      "next_lesson": {
+        "name": "Next lesson"
+      },
+      "school_end_today": {
+        "name": "School ends today"
+      },
+      "next_school_day": {
+        "name": "Next school day"
+      },
+      "changes_today": {
+        "name": "Changes today"
+      },
+      "next_exam": {
+        "name": "Next exam"
+      },
+      "exams_upcoming": {
+        "name": "Upcoming exams"
+      },
+      "unread_letters": {
+        "name": "Unread letters"
+      },
+      "unread_posts": {
+        "name": "Unread posts"
+      },
+      "open_absences": {
+        "name": "Open absences"
+      },
+      "next_absence": {
+        "name": "Next absence"
+      },
+      "timetable_last_updated": {
+        "name": "Timetable last updated"
+      },
+      "next_holiday": {
+        "name": "Next holiday"
+      },
+      "next_conference": {
+        "name": "Next parent-teacher conference"
+      },
+      "connection": {
+        "name": "Connection",
+        "state": {
+          "ok": "Connected",
+          "error": "Error",
+          "unconfigured": "Not set up",
+          "unreachable": "Unreachable",
+          "auth_failed": "Login needed"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "timetable_changed": "Timetable changed",
+      "lesson_cancelled": "Lesson cancelled",
+      "substitution": "Substitution",
+      "new_letter": "New letter",
+      "new_noticeboard_post": "New noticeboard post",
+      "absence_status_changed": "Absence status changed",
+      "school_unreachable": "School unreachable",
+      "school_reachable": "School reachable again",
+      "login_needed": "Login needed"
+    },
+    "condition_type": {
+      "is_school_day": "Is a school day",
+      "lesson_running": "A lesson is running"
+    }
+  },
+  "issues": {
+    "login_needed": {
+      "title": "Sign-in needed for {school}",
+      "description": "Ranzenpost could not sign in to {school} anymore. Open Ranzenpost in the sidebar, go to settings, select this school and sign in again."
+    },
+    "login_twofactor_setup": {
+      "title": "Two-factor needed for {school}",
+      "description": "IServ now requires two-factor for this account at {school}. Open Ranzenpost in the sidebar and finish the setup."
+    },
+    "login_unknown_account": {
+      "title": "Account unknown at {school}",
+      "description": "IServ at {school} no longer knows the saved account name. Open Ranzenpost in the sidebar and connect the school again."
+    },
+    "login_default_password": {
+      "title": "Default password blocked at {school}",
+      "description": "IServ at {school} does not accept the default password from the internet. Change the password inside the school network or in the browser, then reconnect in Ranzenpost."
+    },
+    "login_locked": {
+      "title": "Account locked at {school}",
+      "description": "IServ at {school} has locked the account for now. Do not sign in again, that makes the lock last longer. Wait a while or ask the school, then open Ranzenpost."
+    },
+    "login_code_refused": {
+      "title": "Code refused at {school}",
+      "description": "IServ at {school} keeps turning down the app's confirmation code. The app's access has to be set up again. Open Ranzenpost in the sidebar and set up the school from scratch."
+    },
+    "addon_too_old": {
+      "title": "Update the Ranzenpost add-on",
+      "description": "The Ranzenpost add-on runs version {addon_version}, but this integration ({integration_version}) needs at least {required_version}. Update the add-on in the add-on store. Devices and entities appear on their own once it reports its schools again."
+    },
+    "integration_too_old": {
+      "title": "Update the Ranzenpost integration",
+      "description": "The Ranzenpost add-on runs version {addon_version}, a public release ahead of this integration ({integration_version}). Update the integration through HACS so both match; until then some data may be missing."
+    },
+    "no_school_yet": {
+      "title": "No school signed in yet",
+      "description": "Done. Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+    }
+  }
+}

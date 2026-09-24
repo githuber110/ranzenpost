@@ -6,7 +6,7 @@ function renderPinboard(window, data) {
   return run(data);
 }
 
-describe("[P113] pinboard header stays sticky", () => {
+describe("pinboard header stays sticky", () => {
   test("chips sit inside the sticky head, title lives in the compact .header bar", () => {
     const { window } = loadApp();
     const data = {

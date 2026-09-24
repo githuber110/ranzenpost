@@ -19,8 +19,9 @@ spike/
 test-results/
 playwright-report/
 data-e2e-measure/
+data-screenshots/
 .playwright-mcp/
-.vitest-run.json
+.vitest-run-*.json
 CLAUDE.md
 AGENTS.md
 GEMINI.md

@@ -5,10 +5,10 @@ function renderHeaderFor(window, view, childCount) {
   const run = window.eval(`
     (function (view, childCount) {
       state.children = childCount === 1
-        ? [{ child_id: "c1", name: "Alice", class_name: "3b" }]
+        ? [{ key: "c1", name: "Alice", class_name: "3b" }]
         : [
-            { child_id: "c1", name: "Alice", class_name: "3b" },
-            { child_id: "c2", name: "Bella", class_name: "1a" },
+            { key: "c1", name: "Alice", class_name: "3b" },
+            { key: "c2", name: "Bella", class_name: "1a" },
           ];
       state.childId = "c1";
       return header(view).outerHTML;
@@ -17,7 +17,7 @@ function renderHeaderFor(window, view, childCount) {
   return run(view, childCount);
 }
 
-describe("[C15] [P92] child chip only where child context acts", () => {
+describe("child chip only where child context acts", () => {
   test("timetable view with >1 child renders the child-switch chip", () => {
     const { window } = loadApp();
     const html = renderHeaderFor(window, "timetable", 2);
@@ -46,12 +46,12 @@ describe("[C15] [P92] child chip only where child context acts", () => {
   });
 });
 
-describe("[C15] letter card child tag gated on >1 child", () => {
-  test("[P234] the child tag is shown even with a single child", () => {
+describe("letter card child tag gated on >1 child", () => {
+  test("the child tag is shown even with a single child", () => {
     const { window } = loadApp();
     const run = window.eval(`
       (function () {
-        state.children = [{ child_id: "c1", name: "Alice" }];
+        state.children = [{ key: "c1", name: "Alice" }];
         return letterRow({ title: "Test", sender: "Frau X", child: "Alice", recipients: null, unread: false }).outerHTML;
       })
     `);
@@ -64,7 +64,7 @@ describe("[C15] letter card child tag gated on >1 child", () => {
     const { window } = loadApp();
     const run = window.eval(`
       (function () {
-        state.children = [{ child_id: "c1", name: "Alice" }, { child_id: "c2", name: "Bella" }];
+        state.children = [{ key: "c1", name: "Alice" }, { key: "c2", name: "Bella" }];
         return letterRow({ title: "Test", sender: "Frau X", child: "Alice", recipients: null, unread: false }).outerHTML;
       })
     `);

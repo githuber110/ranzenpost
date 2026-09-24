@@ -17,7 +17,7 @@ function seed(window, entered) {
     state.config = { subjects: {}, teachers: {}, period_times: ${JSON.stringify(entered)} };
     state.timetable = { lessons: [], period_times: ${JSON.stringify(entered)} };
     state.childId = "c1";
-    state.children = [{ child_id: "c1", name: "Mia" }];
+    state.children = [{ key: "c1", name: "Mia" }];
   `);
 }
 
@@ -28,7 +28,7 @@ function resolve(window, lesson, times) {
   );
 }
 
-describe("[P246] only the entered lesson times count", () => {
+describe("only the entered lesson times count", () => {
   test("an entered time beats the one the school sent", () => {
     const { window } = loadApp();
     seed(window, { 1: "07:40" });
@@ -60,7 +60,7 @@ describe("[P246] only the entered lesson times count", () => {
   });
 });
 
-describe("[P246] the overview follows the entered times", () => {
+describe("the overview follows the entered times", () => {
   function overviewRow(window, entered) {
     seed(window, entered);
     return window.eval(`(function (entry) { return compactLesson(entry, false); })`)({

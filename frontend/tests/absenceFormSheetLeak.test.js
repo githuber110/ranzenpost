@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P111-A2] startAbsenceForm clears stale sheetForm", () => {
-  test("namesSheet builds a fresh draft after an absence form was started", () => {
+describe("startAbsenceForm clears stale sheetForm", () => {
+  test("the names page builds a fresh draft after an absence form was started", () => {
     const { window } = loadApp();
     window.eval(`
       state.sheetForm = { D: { label: "STALE", color: "" } };
@@ -12,9 +12,9 @@ describe("[P111-A2] startAbsenceForm clears stale sheetForm", () => {
     expect(window.eval("state.sheetForm")).toBeNull();
 
     const draft = window.eval(`
-      state.config = { subjects: { D: { label: "Deutsch", color: "" } } };
-      namesSheet();
-      state.sheetForm;
+      state.config = { connections: [{ id: "s1", subjects: { D: { label: "Deutsch", color: "" } } }] };
+      namesPageView();
+      state.pageForm;
     `);
     expect(draft.subjects.D.label).toBe("Deutsch");
   });

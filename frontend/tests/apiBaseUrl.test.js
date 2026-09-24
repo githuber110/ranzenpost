@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P150] request base URL survives an ingress path without a trailing slash", () => {
+describe("request base URL survives an ingress path without a trailing slash", () => {
   test("apiUrl anchors relative paths under the full document path, keeping the ingress token", () => {
     const { window } = loadApp({ url: "http://localhost/api/hassio_ingress/TOKEN123" });
     expect(window.document.baseURI.endsWith("/")).toBe(false);
@@ -39,7 +39,7 @@ describe("[P150] request base URL survives an ingress path without a trailing sl
   });
 });
 
-describe("[P150] the setup wizard resolves its own requests, independently of app.js", () => {
+describe("the setup wizard resolves its own requests, independently of app.js", () => {
   const runWizard = async (url) => {
     const { window } = loadApp({ url });
     const requested = [];

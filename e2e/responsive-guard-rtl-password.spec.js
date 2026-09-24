@@ -66,21 +66,21 @@ for (const viewport of VIEWPORTS) {
       expect(tapOffenders, `rtl/${viewport.name}/password-sheet: ${JSON.stringify(tapOffenders)}`).toEqual([]);
     });
 
-    test("the subject sheet and its colour dialog stay inside the screen in Arabic", async ({ page }) => {
+    test("the subject page and its colour dialog stay inside the screen in Arabic", async ({ page }) => {
       await goto(page);
       await openSettings(page);
       await (await settingRow(page, "settings.names")).click();
-      await waitForSheetSettled(page);
-      await assertClean(page, `rtl/${viewport.name}/subjects-sheet`);
+      await page.waitForSelector(".names-page .names-block", { timeout: 8000 });
+      await assertClean(page, `rtl/${viewport.name}/subjects-page`);
 
       await page.locator(".swatch-trigger").first().click();
       await expect(page.locator(".color-dialog")).toBeVisible();
       await assertClean(page, `rtl/${viewport.name}/color-dialog`);
 
-      const inside = await page.evaluate(
-        () => !!document.querySelector(".scrim .color-dialog-scrim")
+      const nested = await page.evaluate(
+        () => !!document.querySelector(".color-dialog-scrim .sheet.color-dialog") && !document.querySelector(".scrim")
       );
-      expect(inside, "the colour dialog hangs inside the sheet scrim").toBe(true);
+      expect(nested, "the colour dialog is the only sheet, over the subjects page").toBe(true);
 
       const tapOffenders = await checkTapTargets(page);
       expect(tapOffenders, `rtl/${viewport.name}/color-dialog: ${JSON.stringify(tapOffenders)}`).toEqual([]);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
-describe("[P127] letters: view-entry reset via setView", () => {
+describe("letters: view-entry reset via setView", () => {
   test("leaving Archiv and returning through the view switch lands back on Aktuell", () => {
     const { window } = loadApp();
     window.eval(`

@@ -11,13 +11,13 @@ function pinboardData() {
   };
 }
 
-describe("[P128] pinboard: Auswählen/Fertig toggle in the sticky toolbar", () => {
+describe("pinboard: Auswählen/Fertig toggle in the sticky toolbar", () => {
   function renderPinboard(window, data) {
     const run = window.eval("(function (data) { state.pinboard = data; return pinboardView(); })");
     return run(data);
   }
 
-  test("[P156] Auswählen button is present, disappears in multi-select, and the sticky bar's round button ends selection", () => {
+  test("Auswählen button is present, disappears in multi-select, and the sticky bar's round button ends selection", () => {
     const { window } = loadApp();
     const data = pinboardData();
     const view = renderPinboard(window, data);
@@ -38,7 +38,7 @@ describe("[P128] pinboard: Auswählen/Fertig toggle in the sticky toolbar", () =
   });
 });
 
-describe("[P128] pinboard: long-press enters select mode", () => {
+describe("pinboard: long-press enters select mode", () => {
   test("enterPinboardSelectMode turns on select mode with the pressed tile selected", () => {
     const { window } = loadApp();
     window.eval(`
@@ -50,7 +50,7 @@ describe("[P128] pinboard: long-press enters select mode", () => {
   });
 });
 
-describe("[P128] pinboard: bulk actions are exactly Gelesen/Ungelesen markieren", () => {
+describe("pinboard: bulk actions are exactly Gelesen/Ungelesen markieren", () => {
   test("the selection bar offers only 'Gelesen markieren' and 'Ungelesen markieren', no archive option", () => {
     const { window } = loadApp();
     window.eval(`
@@ -64,8 +64,8 @@ describe("[P128] pinboard: bulk actions are exactly Gelesen/Ungelesen markieren"
   });
 });
 
-describe("[P128] pinboard: bulk mark read/unread calls the seen API with the right tile_ids", () => {
-  test("bulkMarkPinboardRead posts tile_ids with unseen:false", async () => {
+describe("pinboard: bulk mark read/unread calls the seen API with the right keys", () => {
+  test("bulkMarkPinboardRead posts keys with unseen:false", async () => {
     const { window } = loadApp();
     const calls = [];
     window.fetch = (url, opts) => {
@@ -79,12 +79,12 @@ describe("[P128] pinboard: bulk mark read/unread calls the seen API with the rig
     `);
     await window.eval("bulkMarkPinboardRead()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
-    expect(calls[0].body).toEqual({ tile_ids: [1, 2], unseen: false });
+    expect(calls[0].body).toEqual({ keys: [1, 2], unseen: false });
     expect(window.eval("state.pinboardSelectMode")).toBe(false);
     expect(window.eval("state.pinboardSelected")).toEqual([]);
   });
 
-  test("bulkMarkPinboardUnread posts tile_ids with unseen:true", async () => {
+  test("bulkMarkPinboardUnread posts keys with unseen:true", async () => {
     const { window } = loadApp();
     const calls = [];
     window.fetch = (url, opts) => {
@@ -98,11 +98,11 @@ describe("[P128] pinboard: bulk mark read/unread calls the seen API with the rig
     `);
     await window.eval("bulkMarkPinboardUnread()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
-    expect(calls[0].body).toEqual({ tile_ids: [1], unseen: true });
+    expect(calls[0].body).toEqual({ keys: [1], unseen: true });
   });
 });
 
-describe("[P128] pinboard: view-entry reset via setView", () => {
+describe("pinboard: view-entry reset via setView", () => {
   test("multi-select is switched off after navigating away and back", () => {
     const { window } = loadApp();
     window.eval(`

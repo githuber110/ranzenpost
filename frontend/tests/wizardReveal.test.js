@@ -21,7 +21,7 @@ const DAYCARE_DATA = {
 
 const LEAVE_DATA = { children: [{ id: 1, name: "Mia" }], types: ["leave"], rules: {} };
 
-describe("[P194] a mode choice unfolds its small follow-up inside the very same step", () => {
+describe("a mode choice unfolds its small follow-up inside the very same step", () => {
   test("sick: lesson-wise reporting shows the lesson pickers below the segment, without a new step", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
@@ -79,7 +79,7 @@ describe("[P194] a mode choice unfolds its small follow-up inside the very same 
   });
 });
 
-describe("[P194] the progress dots follow the shorter path", () => {
+describe("the progress dots follow the shorter path", () => {
   test("a step that unfolds in place carries no dashed 'maybe' dot any more", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
@@ -99,7 +99,7 @@ describe("[P194] the progress dots follow the shorter path", () => {
   });
 });
 
-describe("[P194] everything that points at a step points at the one that is shown", () => {
+describe("everything that points at a step points at the one that is shown", () => {
   test("a lock on the lesson order names the step the user can actually see", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);
@@ -134,7 +134,7 @@ describe("[P194] everything that points at a step points at the one that is show
   });
 });
 
-describe("[P194] the follow-ups that do not fit the measured budget keep their own step", () => {
+describe("the follow-ups that do not fit the measured budget keep their own step", () => {
   test("second leave day, own times and the weekly end date stay separate steps", () => {
     const { window } = loadApp();
     const leave = openWizard(window, "leave", LEAVE_DATA);
@@ -157,7 +157,7 @@ describe("[P194] the follow-ups that do not fit the measured budget keep their o
   });
 });
 
-describe("[P194] the screen reader is told about a field, not about a step", () => {
+describe("the screen reader is told about a field, not about a step", () => {
   test("unfolding and folding announce the field keys", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", SICK_DATA);

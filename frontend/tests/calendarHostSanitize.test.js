@@ -16,7 +16,7 @@ const CASES = [
   ["   ", ""],
 ];
 
-describe("[P214] sanitizeCalendarHost", () => {
+describe("sanitizeCalendarHost", () => {
   test.each(CASES)("%s -> %s", (input, expected) => {
     const { window } = loadApp();
     expect(window.eval(`sanitizeCalendarHost(${JSON.stringify(input)})`)).toBe(expected);
@@ -37,7 +37,7 @@ describe("[P214] sanitizeCalendarHost", () => {
     expect(url).toBe("http://192.168.0.42:8100/calendar/token-1.ics");
     expect((url.match(/:\d+/g) || [])).toHaveLength(1);
   });
-  test("[P214] an IPv6 host gets its brackets back in the composed feed URL", () => {
+  test("an IPv6 host gets its brackets back in the composed feed URL", () => {
     const { window } = loadApp();
     window.eval(
       `state.calendar = { data: { host: "[fd00::1]", port: 8100, subscriptions: [] }, error: false };`
@@ -49,7 +49,7 @@ describe("[P214] sanitizeCalendarHost", () => {
     expect(new URL(url.replace("webcal:", "http:")).port).toBe("8100");
   });
 
-  test("[P214] an IPv4 host keeps its plain form, no stray brackets", () => {
+  test("an IPv4 host keeps its plain form, no stray brackets", () => {
     const { window } = loadApp();
     window.eval(
       `state.calendar = { data: { host: "192.168.0.42", port: 8100, subscriptions: [] }, error: false };`
@@ -61,7 +61,7 @@ describe("[P214] sanitizeCalendarHost", () => {
   });
 });
 
-describe("[P214] the fallback host never overrules a host the browser can actually reach", () => {
+describe("the fallback host never overrules a host the browser can actually reach", () => {
   function withHost(hostname, data) {
     const { window } = loadApp({ url: `http://${hostname}/` });
     window.eval(

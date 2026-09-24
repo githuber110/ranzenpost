@@ -127,9 +127,11 @@ def test_the_version_is_the_same_everywhere_the_package_states_it(package):
 def test_the_changelog_describes_the_version_being_shipped(package):
     version = re.search(r'^version:\s*"([^"]+)"', (package / "config.yaml").read_text(encoding="utf-8"), re.M)
     changelog = (package / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert f"## {version.group(1)}" in changelog, (
-        "the device shows this changelog next to the update button, so the version being installed "
-        "has to be described in it"
+    from tests.test_integration_manifest import public_version_for
+
+    assert f"## {public_version_for(version.group(1))}" in changelog, (
+        "the device shows this changelog next to the update button, so the public version this build "
+        "leads to has to be described in it"
     )
 
 

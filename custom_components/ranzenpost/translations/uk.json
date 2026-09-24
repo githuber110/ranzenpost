@@ -1,0 +1,238 @@
+{
+  "config": {
+    "flow_title": "Ranzenpost",
+    "create_entry": {
+      "default": "Готово. Відкрийте Ranzenpost у бічній панелі та увійдіть до своєї школи. Пристрої та сутності з'являться самі."
+    },
+    "step": {
+      "hassio_confirm": {
+        "title": "Підключити додаток Ranzenpost",
+        "description": "Знайдено додаток {addon}. Підключити до нього Home Assistant?"
+      },
+      "install_addon": {
+        "title": "Встановити додаток Ranzenpost",
+        "description": "Додаток Ranzenpost ще не встановлено. Додати репозиторій {repository}, а потім встановити й запустити додаток?"
+      },
+      "addon_no_discovery": {
+        "title": "Додаток ще не повідомив про себе",
+        "description": "Додаток {addon} встановлено, але він ще не повідомив дані підключення. Відкрийте додаток, переконайтеся, що він запущений, і введіть хост, порт і токен із блоку Home Assistant у його налаштуваннях.",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "token": "Токен"
+        },
+        "data_description": {
+          "host": "Ім'я хоста контейнера додатка, зазвичай показане в його налаштуваннях.",
+          "port": "Порт API інтеграції, типово 8099.",
+          "token": "Токен доступу з налаштувань додатка."
+        }
+      },
+      "manual": {
+        "title": "Підключити Ranzenpost вручну",
+        "description": "Введіть хост, порт і токен запущеного контейнера Ranzenpost. Токен показано в налаштуваннях Ranzenpost.",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "token": "Токен"
+        },
+        "data_description": {
+          "host": "Ім'я хоста або IP-адреса контейнера Ranzenpost.",
+          "port": "Порт API інтеграції, типово 8099.",
+          "token": "Токен доступу з налаштувань Ranzenpost."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Оновити токен Ranzenpost",
+        "description": "Токен для {host} відхилено. Введіть актуальний токен із налаштувань Ranzenpost.",
+        "data": {
+          "token": "Токен"
+        }
+      }
+    },
+    "progress": {
+      "install_addon": "Встановлюється додаток Ranzenpost. Це може тривати кілька хвилин.",
+      "start_addon": "Додаток Ranzenpost запускається.",
+      "wait_discovery": "Очікування, поки додаток повідомить дані підключення."
+    },
+    "error": {
+      "cannot_connect": "Додаток недоступний. Переконайтеся, що він запущений.",
+      "invalid_auth": "Токен відхилено. Скопіюйте його знову з налаштувань Ranzenpost.",
+      "unknown": "Додаток відповів неочікувано."
+    },
+    "abort": {
+      "already_configured": "Цей додаток Ranzenpost уже підключено. Кожен хост додатка можна підключити один раз.",
+      "already_in_progress": "Налаштування Ranzenpost уже триває.",
+      "addon_install_failed": "Не вдалося встановити додаток Ranzenpost. Перевірте журнал Supervisor.",
+      "addon_start_failed": "Не вдалося запустити додаток Ranzenpost. Перевірте журнал додатка.",
+      "not_ranzenpost_addon": "Це повідомлення виявлення не належить додатку Ranzenpost.",
+      "reauth_successful": "Токен оновлено."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметри Ranzenpost",
+        "description": "Як часто інтеграція опитує додаток і для яких профілів створюються сутності.",
+        "data": {
+          "scan_interval": "Інтервал опитування",
+          "children": "Профілі"
+        },
+        "data_description": {
+          "scan_interval": "Секунди між двома запитами до додатка, не менше 30.",
+          "children": "Залиште порожнім, щоб створити сутності для всіх профілів."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "school_day_today": {
+        "name": "Сьогодні навчальний день"
+      },
+      "timetable_changed_today": {
+        "name": "Розклад сьогодні змінено"
+      }
+    },
+    "calendar": {
+      "lessons": {
+        "name": "Уроки"
+      },
+      "exams": {
+        "name": "Контрольні"
+      },
+      "absences": {
+        "name": "Пропуски"
+      },
+      "own_entries": {
+        "name": "Власні записи"
+      },
+      "holidays": {
+        "name": "Канікули"
+      }
+    },
+    "event": {
+      "timetable_changed": {
+        "name": "Зміна розкладу",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "substitution": "Заміна",
+              "cancellation": "Скасування",
+              "room_change": "Зміна кабінету",
+              "new_lesson": "Новий урок"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_lesson": {
+        "name": "Поточний урок"
+      },
+      "next_lesson": {
+        "name": "Наступний урок"
+      },
+      "school_end_today": {
+        "name": "Кінець занять сьогодні"
+      },
+      "next_school_day": {
+        "name": "Наступний навчальний день"
+      },
+      "changes_today": {
+        "name": "Зміни сьогодні"
+      },
+      "next_exam": {
+        "name": "Найближча контрольна"
+      },
+      "exams_upcoming": {
+        "name": "Майбутні контрольні"
+      },
+      "unread_letters": {
+        "name": "Непрочитані листи батькам"
+      },
+      "unread_posts": {
+        "name": "Непрочитані дописи на дошці"
+      },
+      "open_absences": {
+        "name": "Відкриті пропуски"
+      },
+      "next_absence": {
+        "name": "Наступна відсутність"
+      },
+      "timetable_last_updated": {
+        "name": "Розклад оновлено"
+      },
+      "next_holiday": {
+        "name": "Найближчі канікули"
+      },
+      "next_conference": {
+        "name": "Найближчий батьківський день"
+      },
+      "connection": {
+        "name": "Підключення",
+        "state": {
+          "ok": "Підключено",
+          "error": "Помилка",
+          "unconfigured": "Не налаштовано",
+          "unreachable": "Недоступно",
+          "auth_failed": "Потрібен вхід"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "timetable_changed": "Розклад змінився",
+      "lesson_cancelled": "Урок скасовано",
+      "substitution": "Заміна",
+      "new_letter": "Новий лист",
+      "new_noticeboard_post": "Новий допис на дошці",
+      "absence_status_changed": "Статус пропуску змінився",
+      "school_unreachable": "Школа недоступна",
+      "school_reachable": "Школа знову доступна",
+      "login_needed": "Потрібен вхід"
+    },
+    "condition_type": {
+      "is_school_day": "Навчальний день",
+      "lesson_running": "Триває урок"
+    }
+  },
+  "issues": {
+    "login_needed": {
+      "title": "Потрібен вхід для {school}",
+      "description": "Ranzenpost більше не може увійти в {school}. Відкрийте Ranzenpost на бічній панелі, перейдіть до налаштувань, виберіть цю школу та увійдіть знову."
+    },
+    "login_twofactor_setup": {
+      "title": "Для {school} потрібна двофакторна автентифікація",
+      "description": "IServ тепер вимагає двофакторну автентифікацію для цього акаунта в {school}. Відкрийте Ranzenpost на бічній панелі та завершіть налаштування."
+    },
+    "login_unknown_account": {
+      "title": "Акаунт невідомий у {school}",
+      "description": "IServ у {school} більше не знає збережене ім'я акаунта. Відкрийте Ranzenpost на бічній панелі та підключіть школу заново."
+    },
+    "login_default_password": {
+      "title": "Стандартний пароль заблоковано в {school}",
+      "description": "IServ у {school} не приймає стандартний пароль з інтернету. Змініть пароль у шкільній мережі або в браузері, потім повторно підключіться в Ranzenpost."
+    },
+    "login_locked": {
+      "title": "Доступ у {school} заблоковано",
+      "description": "IServ у {school} тимчасово заблокував доступ. Не входьте знову, це подовжує блокування. Зачекайте або зверніться до школи, потім відкрийте Ranzenpost."
+    },
+    "login_code_refused": {
+      "title": "Код відхилено в {school}",
+      "description": "IServ у {school} знову й знову відхиляє код підтвердження застосунку. Доступ застосунку потрібно налаштувати заново. Відкрийте Ranzenpost на бічній панелі та налаштуйте школу заново."
+    },
+    "addon_too_old": {
+      "title": "Оновіть додаток Ranzenpost",
+      "description": "Додаток Ranzenpost працює у версії {addon_version}, а цій інтеграції ({integration_version}) потрібна версія не нижче {required_version}. Оновіть додаток у магазині додатків. Пристрої та сутності з'являться самі, щойно він знову повідомить про свої школи."
+    },
+    "integration_too_old": {
+      "title": "Оновіть інтеграцію Ranzenpost",
+      "description": "Додаток Ranzenpost працює у версії {addon_version}, на один публічний випуск новіший за цю інтеграцію ({integration_version}). Оновіть інтеграцію через HACS, щоб версії збігалися; до того часу частина даних може бути відсутня."
+    },
+    "no_school_yet": {
+      "title": "Ще немає школи зі входом",
+      "description": "Готово. Відкрийте Ranzenpost у бічній панелі та увійдіть до своєї школи. Пристрої та сутності з'являться самі."
+    }
+  }
+}

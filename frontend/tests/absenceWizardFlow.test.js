@@ -30,7 +30,7 @@ function sickData(window, extra) {
   );
 }
 
-describe("[P177] the 7:10 case costs four taps", () => {
+describe("the 7:10 case costs four taps", () => {
   test("report -> type -> when -> Krankmelden, no scrolling detour, no keyboard", async () => {
     const { window, document } = loadApp();
     const day = today(window);
@@ -108,7 +108,7 @@ describe("[P177] the 7:10 case costs four taps", () => {
   });
 });
 
-describe("[P177] the review page shows every mandatory answer", () => {
+describe("the review page shows every mandatory answer", () => {
   test("each type lists a row for every step that carries an answer, and review is last", () => {
     const { window } = loadApp();
     const cases = {
@@ -146,7 +146,7 @@ describe("[P177] the review page shows every mandatory answer", () => {
   });
 });
 
-describe("[P177] regression: the three bugs the rebuild had to close", () => {
+describe("regression: the three bugs the rebuild had to close", () => {
   test("a rejection keeps the type-specific button label instead of silently resetting it", async () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", sickData(window));
@@ -227,7 +227,7 @@ describe("[P177] regression: the three bugs the rebuild had to close", () => {
   });
 });
 
-describe("[P177] the wizard never leaves a lock without a step to jump to", () => {
+describe("the wizard never leaves a lock without a step to jump to", () => {
   test("every problem the validator can raise names a reachable step", () => {
     const { window } = loadApp();
     const day = today(window);
