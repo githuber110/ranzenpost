@@ -340,17 +340,25 @@ def test_every_stage_carries_a_translatable_message():
             assert messages.text_in(language, key).strip()
 
 
-def test_a_failing_bootstrap_leaves_a_warning_with_a_traceback_in_the_log(caplog):
+PLANTED_HOST = "planted-school.example"
+
+
+def test_a_failing_bootstrap_leaves_a_warning_with_the_cause_but_no_host_in_the_log(caplog):
     class Dead(FakeIServClient):
         def fetch(self, path, params=None):
-            raise requests.ConnectionError("down")
+            raise requests.ConnectionError(
+                f"HTTPSConnectionPool(host='{PLANTED_HOST}', port=443): Max retries exceeded with url: {path}"
+            )
 
     with caplog.at_level(logging.WARNING, logger="app.messenger"):
         with pytest.raises(MessengerStageError):
             _service(Dead())._bootstrap()
     assert caplog.records
     assert caplog.records[0].levelno == logging.WARNING
-    assert caplog.records[0].exc_info is not None
+    assert caplog.records[0].exc_info is None
+    assert "ConnectionError at messenger.py:" in caplog.text
+    assert PLANTED_HOST not in caplog.text
+    assert PLANTED_HOST not in str(caplog.records[0].exc_text or "")
 
 
 @pytest.mark.parametrize("path,body", MESSENGER_WRITE_ROUTES)

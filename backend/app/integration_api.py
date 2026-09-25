@@ -207,7 +207,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         elif not integration.known_child(store.load_config(), child):
             return _refusal(404, ERROR_UNKNOWN_CHILD, UNKNOWN_CHILD_KEY)
         now = access.now()
-        window = _parse_range(start, end, holidays.berlin_today(integration._moment(now)))
+        window = _parse_range(start, end, holidays.berlin_today(integration.utc_moment(now)))
         if window is None:
             return _refusal(400, ERROR_BAD_RANGE, BAD_RANGE_KEY)
         if child and not integration.has_snapshot(store, child):

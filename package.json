@@ -1,14 +1,14 @@
 {
   "name": "ranzenpost",
   "private": true,
-  "version": "2609.02.00",
+  "version": "2609.2.2",
   "description": "Home Assistant app that pulls timetable, notices, and letters from IServ into a dedicated UI.",
   "license": "MIT",
   "scripts": {
     "test": "node scripts/run-frontend-tests.mjs",
     "test:focused": "vitest run",
     "test:card": "node scripts/run-frontend-tests.mjs --suite=card",
-    "test:card:focused": "vitest run --config vitest.card.config.js",
+    "test:card:focused": "vitest run --config vitest.card.config.mjs",
     "test:e2e": "playwright test",
     "screenshots": "node scripts/capture_screenshots.js",
     "test:all": "node scripts/run-all-tests.mjs"
@@ -16,6 +16,6 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "jsdom": "^25.0.1",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.11"
   }
 }

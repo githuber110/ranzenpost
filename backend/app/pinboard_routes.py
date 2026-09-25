@@ -4,9 +4,10 @@ import requests
 from fastapi import Body
 from fastapi.responses import PlainTextResponse, Response
 
+from .failure import failure_cause
 from .iserv.errors import LoginError, TwoFactorError
 from .service import NotConfiguredError
-from .upstream import _binary_upstream_response, read_endpoint, write_endpoint
+from .upstream import binary_upstream_response, read_endpoint, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,10 @@ def register_routes(app, service):
         try:
             upstream = service.pinboard_attachment(connection, filename)
         except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-            logger.warning("pinboard attachment could not be fetched", exc_info=True)
-            return _binary_upstream_response(error)
-        except Exception:
-            logger.warning("pinboard attachment was refused before the request", exc_info=True)
+            logger.warning("pinboard attachment could not be fetched: %s", failure_cause(error))
+            return binary_upstream_response(error)
+        except Exception as error:
+            logger.warning("pinboard attachment was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid attachment", status_code=400)
         headers = {}
         disposition = upstream.headers.get("content-disposition")

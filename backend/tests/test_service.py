@@ -9,7 +9,7 @@ from app.iserv.errors import DataError, TwoFactorError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.iserv.timetable import detect_changes
 from app.absence_service import SickNoteNotFoundError
-from app.service import NotConfiguredError, _as_int
+from app.service import NotConfiguredError, as_int
 from app.store import Store
 from tests.support import add_school, connection_service, single_school
 
@@ -1528,10 +1528,10 @@ def test_archive_tab_never_reports_unread(tmp_path):
 
 
 def test_letters_come_back_newest_first(tmp_path):
-    from app.sorting import _published_sort_key
+    from app.sorting import published_sort_key
 
     values = ["01.09.2026 08:00", "31.08.2026 15:15", "kaputt", "01.09.2026 09:30"]
-    ordered = sorted(values, key=_published_sort_key, reverse=True)
+    ordered = sorted(values, key=published_sort_key, reverse=True)
     assert ordered[0] == "01.09.2026 09:30"
     assert ordered[1] == "01.09.2026 08:00"
     assert ordered[-1] == "kaputt"
@@ -1559,9 +1559,15 @@ def test_pinboard_folders_sort_by_highest_post_id_not_by_updated_timestamp(tmp_p
 def test_letter_detail_leaves_attachment_filename_empty_instead_of_inventing_one(tmp_path, monkeypatch):
     import app.letter_service as letter_service_module
 
+    listed = (
+        '<table id="crud-table"><tbody><tr><td><a href="/iserv/parentletter/parent/show/'
+        '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222">T</a></td></tr></tbody></table>'
+    )
+
     class FetchClient:
         def fetch(self, path):
-            return type("Response", (), {"text": "", "url": "", "status_code": 200})()
+            text = "" if "/show/" in path else listed
+            return type("Response", (), {"text": text, "url": "", "status_code": 200})()
 
         def fetch_or_raise(self, path, params=None):
             return self.fetch(path)
@@ -2296,4 +2302,4 @@ def test_the_week_offset_is_clamped_like_the_holidays_module(value, expected):
     ],
 )
 def test_as_int_parses_or_rejects_the_value(value, expected):
-    assert _as_int(value) == expected
+    assert as_int(value) == expected

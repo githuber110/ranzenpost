@@ -67,7 +67,7 @@ Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings
 - Home Assistant 2025.6 or newer, as Home Assistant OS or Supervised. The add-on store needs the Supervisor.
 - A machine with `amd64` or `aarch64`, for example a Raspberry Pi 4 or 5, a Home Assistant Green or Yellow, or an x86 box.
 - An IServ parent account at a school that has switched on the parent modules.
-- Two-factor login is what Ranzenpost was built and tested with. A login without two-factor is built in but has not been verified at a real school yet.
+- Two-factor login is what Ranzenpost was built and tested with. A login without two-factor works too and has been confirmed at a real school.
 - HACS for the integration.
 
 <details>
@@ -147,7 +147,7 @@ The integration creates one device per school and one per child. Entity IDs use 
 | `sensor.ranzenpost_mia_current_lesson` | The subject of the lesson running now, `none` outside lessons | `date`, `weekday`, `period`, `subject`, `subject_code`, `teacher`, `room`, `start`, `end`, `substitution`, `cancelled`, `kind`, `before`, `after`, `note`, `minutes_until`, `minutes_left` |
 | `sensor.ranzenpost_mia_next_lesson` | The subject of the next lesson, also across the weekend and the holidays | The same fields as the current lesson |
 | `sensor.ranzenpost_mia_school_end_today` | When the last lesson ends today, unknown on a free day | `school_day` |
-| `sensor.ranzenpost_mia_next_school_day` | When the first lesson of the next school day starts | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
+| `sensor.ranzenpost_mia_next_school_day` | When the first lesson of the next school day starts, including today until its first lesson | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
 | `sensor.ranzenpost_mia_changes_today` | Number of timetable changes today | `changes`, a list of lessons with the fields above |
 | `sensor.ranzenpost_mia_next_exam` | The subject of the next marked exam, `none` without one | `date`, `weekday`, `days_until`, `period`, `subject`, `subject_code`, `name`, `start`, `end`, `teacher`, `room` |
 | `sensor.ranzenpost_mia_exams_upcoming` | Number of marked exams in the next 30 days | `exams`, a list with the fields above, and `days` |
@@ -178,16 +178,14 @@ In the automation editor, pick a child's device and choose a trigger: **Timetabl
 The sensors carry enough for the rest. Four ideas to copy:
 
 <details>
-<summary>Light up the kids' room on school days only</summary>
+<summary>Wake up one hour before the first lesson</summary>
 
 ```yaml
 triggers:
   - trigger: time
-    at: "06:30:00"
-conditions:
-  - condition: state
-    entity_id: binary_sensor.ranzenpost_mia_school_day_today
-    state: "on"
+    at:
+      entity_id: sensor.ranzenpost_mia_next_school_day
+      offset: "-01:00:00"
 actions:
   - action: light.turn_on
     target:
@@ -320,8 +318,8 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 
 | Module | IServ edition Ranzenpost reads | Reads | Writes |
 | --- | --- | --- | --- |
-| Timetable (`dsa-timetable`, `time-table`) | The Schul-App timetable | Lessons, substitutions, cancellations, lesson times | Nothing. Exam marks stay in the app |
-| Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message |
+| Timetable (`dsa-timetable`, `time-table`) | The Schul-App timetable. If it lists no lessons, the older `time-table` module | Lessons, substitutions, cancellations, lesson times | Nothing. Exam marks stay in the app |
+| Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message, a message to the school on a letter that offers a reply |
 | Noticeboards (`dieschulapp`) | Pinboards (Schul-App) | All boards, posts, attachments | Nothing. Read state stays in the app |
 | Absences (`dieschulapp`) | Absences (Schul-App). The older absences module is unverified | Reported absences and their status, the school's rules | Sick note, leave request with attachments, deregistration, day-care deregistration |
 | Parent-teacher conference days (`parentconference`) | Parent conferences | Dates and titles | Nothing |

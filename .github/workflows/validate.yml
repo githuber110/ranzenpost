@@ -5,11 +5,18 @@ on:
     branches:
       - "**"
   pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   hacs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
@@ -18,6 +25,8 @@ jobs:
 
   hassfest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master

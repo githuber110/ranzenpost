@@ -30,6 +30,6 @@ Assistant instance or physical access to the device.
   options the key is derived at runtime and never written to disk.
 - Every calendar subscription has its own random token that can be rotated or revoked. The feed
   port is off by default.
-- Write actions to IServ (absences, archiving, read confirmations) always ask first.
+- Write actions to IServ (absences, archiving, read confirmations, letter replies) always ask first.
 - Only the children IServ lists for the signed-in parent account are ever read.
 - Supported: the latest released version. Older versions get no separate fixes.

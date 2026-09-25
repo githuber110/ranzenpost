@@ -7,9 +7,12 @@ from app import scheduler
 from app.store import Store
 
 
+PLANTED_HOST = "planted-school.example"
+
+
 class BoomService:
     def is_configured(self):
-        raise RuntimeError("boom")
+        raise RuntimeError(f"HTTPSConnectionPool(host='{PLANTED_HOST}', port=443)")
 
 
 class _StopLoop(Exception):
@@ -25,7 +28,9 @@ def test_poll_cycle_failure_is_logged(caplog, monkeypatch):
     with caplog.at_level(logging.WARNING, logger="app.scheduler"):
         thread = scheduler.start_poller(BoomService(), interval_seconds=0)
         thread.join(timeout=2)
-    assert "poll cycle failed" in caplog.text
+    assert "poll cycle failed: RuntimeError at scheduler.py:" in caplog.text
+    assert PLANTED_HOST not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 def test_notifiers_for_wire_an_outage_channel_defaulting_to_on(tmp_path, monkeypatch):

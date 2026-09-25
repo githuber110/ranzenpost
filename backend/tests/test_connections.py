@@ -327,6 +327,30 @@ def test_marking_letters_read_routes_every_key_to_its_school(tmp_path):
         service.mark_letters_read(["deadbeef:l1:r1"])
 
 
+@pytest.mark.parametrize(
+    "error",
+    [requests.ConnectionError("down"), DataError("request failed: 503"), LoginError("refused"), NotConfiguredError("gone")],
+)
+def test_a_school_whose_letters_cannot_be_marked_counts_them_as_failed_and_keeps_the_others(tmp_path, error):
+    service, _, one, two, _ = two_schools(tmp_path)
+    service.connection(one).mark_letters_read = lambda keys=None, mark_all=False: {
+        "read": len(keys or []),
+        "blocked": 0,
+        "failed": 0,
+    }
+
+    def broken(keys=None, mark_all=False):
+        raise error
+
+    service.connection(two).mark_letters_read = broken
+    assert service.mark_letters_read([f"{one}:l1:r1", f"{two}:l2:r2", f"{two}:l3:r3"]) == {
+        "read": 1,
+        "blocked": 0,
+        "failed": 2,
+    }
+    assert service.mark_letters_read(mark_all=True) == {"read": 0, "blocked": 0, "failed": 1}
+
+
 def test_a_school_that_does_not_answer_is_named_as_unavailable_in_the_merge(tmp_path, caplog):
     service, _, one, two, _ = two_schools(tmp_path)
     service.connection(one).pinboard = lambda: {"folders": [{"id": 1, "title": "Board"}], "feed": [{"id": 7, "folder_id": 1}]}
@@ -343,6 +367,38 @@ def test_a_school_that_does_not_answer_is_named_as_unavailable_in_the_merge(tmp_
     assert body["folders"][0]["key"] == f"{one}:1"
     assert body["folders"][0]["school"] == "School One"
     assert any(f"school#{two}" in record.getMessage() for record in caplog.records)
+
+
+def test_a_school_that_does_not_answer_is_logged_without_its_host(tmp_path, caplog):
+    service, _, one, two, _ = two_schools(tmp_path)
+    service.connection(one).pinboard = lambda: {"folders": [], "feed": []}
+
+    def boom():
+        raise requests.ConnectionError("HTTPSConnectionPool(host='school-two.example', port=443): Max retries")
+
+    service.connection(two).pinboard = boom
+    with caplog.at_level(logging.WARNING, logger="app.service"):
+        service.pinboard()
+    assert f"school#{two} did not answer: ConnectionError" in caplog.text
+    assert "school-two.example" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_a_school_whose_child_list_fails_is_logged_without_its_host(tmp_path, caplog):
+    service, _, one, two, _ = two_schools(tmp_path)
+    original = service._children_of
+
+    def children_of(connection):
+        if connection.id == two:
+            raise requests.ConnectionError("HTTPSConnectionPool(host='school-two.example', port=443): Max retries")
+        return original(connection)
+
+    service._children_of = children_of
+    with caplog.at_level(logging.WARNING, logger="app.service"):
+        service.children()
+    assert f"child list of school#{two} unavailable: ConnectionError" in caplog.text
+    assert "school-two.example" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 def test_pinboard_keys_are_split_by_school_when_marking_seen(tmp_path):

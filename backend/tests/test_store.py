@@ -202,6 +202,7 @@ def test_remove_connection_purges_everything_that_belongs_to_it(tmp_path):
     store.save_secrets(two["id"], {"username": "second"})
     store.save_seen({one["id"]: {"pinboard": [1]}, two["id"]: {"pinboard": [2]}})
     store.save_modules({one["id"]: {"modules": {}}, two["id"]: {"modules": {}}})
+    store.save_letters_replies({one["id"]: {"r1": {"state": "sent"}}, two["id"]: {"r2": {"state": "sent"}}})
     store.save_marks({"marks": [{"id": "m1", "child_key": one_key}, {"id": "m2", "child_key": two_key}]})
     store.save_cancellations({"cancellations": [{"id": "c1", "child_key": one_key}]})
     store.save_calendar_subscriptions(
@@ -217,6 +218,7 @@ def test_remove_connection_purges_everything_that_belongs_to_it(tmp_path):
     assert store.load_secrets(two["id"])["username"] == "second"
     assert set(store.load_seen()) == {two["id"]}
     assert set(store.load_modules()) == {two["id"]}
+    assert set(store.load_letters_replies()) == {two["id"]}
     assert [entry["id"] for entry in store.load_marks()["marks"]] == ["m2"]
     assert store.load_cancellations()["cancellations"] == []
     assert [entry["id"] for entry in store.load_calendar_subscriptions()["subscriptions"]] == ["s2"]

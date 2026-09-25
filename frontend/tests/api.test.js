@@ -121,6 +121,73 @@ describe("request helpers run without a browser", () => {
     expect(setup({ signals: {} }).api.requestSignal(5)).toBeUndefined();
   });
 
+  test("getFile sends an unbounded request and hands back the raw response", async () => {
+    const raw = { ok: true, headers: { get: () => "attachment; filename=x.pdf" }, blob: () => Promise.resolve("blob") };
+    const { api, calls } = setup({ reply: () => Promise.resolve(raw) });
+    await expect(api.getFile("api/pinboard/attachment/x")).resolves.toBe(raw);
+    expect(calls).toEqual([{ url: `${INGRESS}api/pinboard/attachment/x`, options: undefined }]);
+  });
+
+  test("requestJson resolves ok bodies, maps failed bodies to a message and never throws", async () => {
+    const ok = setup({ reply: () => answer({ subscriptions: [] }) });
+    await expect(ok.api.requestJson("api/calendar/subscriptions", undefined, "calendar.subscribe.failed")).resolves.toEqual({
+      ok: true,
+      data: { subscriptions: [] },
+    });
+    expect(ok.calls).toEqual([{ url: `${INGRESS}api/calendar/subscriptions`, options: undefined }]);
+
+    const refused = setup({ reply: () => answer({ message_key: "a.b" }, false, 400) });
+    await expect(refused.api.requestJson("api/x", { method: "DELETE" }, "fallback.key")).resolves.toEqual({
+      ok: false,
+      message: "t:a.b",
+    });
+
+    const brokenBody = setup({ reply: () => Promise.resolve({ ok: false, json: () => Promise.reject(new Error("bad json")) }) });
+    await expect(brokenBody.api.requestJson("api/x", undefined, "fallback.key")).resolves.toEqual({
+      ok: false,
+      message: "t:fallback.key",
+    });
+
+    const offline = setup({ reply: () => Promise.reject(new Error("offline")) });
+    await expect(offline.api.requestJson("api/x", undefined, "fallback.key")).resolves.toEqual({
+      ok: false,
+      message: "t:fallback.key",
+    });
+  });
+
+  test("postJsonSafe posts JSON, reports a carried message on failure and never throws", async () => {
+    const { api, calls } = setup({ reply: () => answer({ ok: true }) });
+    await expect(api.postJsonSafe("api/config", { a: 1 }, "common.saveFailed")).resolves.toEqual({ ok: true });
+    expect(calls).toEqual([
+      {
+        url: `${INGRESS}api/config`,
+        options: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ a: 1 }),
+        },
+      },
+    ]);
+
+    const refused = setup({ reply: () => answer({ message_key: "settings.save.failed" }, false, 400) });
+    await expect(refused.api.postJsonSafe("api/config", {}, "common.saveFailed")).resolves.toEqual({
+      ok: false,
+      message: "t:settings.save.failed",
+    });
+
+    const noBody = setup({ reply: () => Promise.resolve({ ok: false, json: () => Promise.reject(new Error("no body")) }) });
+    await expect(noBody.api.postJsonSafe("api/config", {}, "common.saveFailed")).resolves.toEqual({
+      ok: false,
+      message: "t:common.saveFailed",
+    });
+
+    const offline = setup({ reply: () => Promise.reject(new Error("offline")) });
+    await expect(offline.api.postJsonSafe("api/config", {}, "common.saveFailed")).resolves.toEqual({
+      ok: false,
+      message: "t:common.saveFailed",
+    });
+  });
+
   test("apiMessage prefers the translated key, then the plain message, then the fallback", () => {
     const { api } = setup();
     expect(api.apiMessage({ message_key: "a.b", message_vars: { n: 1 } }, "x")).toBe('a.b:{"n":1}');

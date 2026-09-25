@@ -331,3 +331,67 @@ def test_post_absolute_posts_on_the_same_origin():
     client.post_absolute(BASE + "/iserv/x", data={"a": "b"})
     assert session.posted_url == BASE + "/iserv/x"
 
+
+
+def test_the_time_table_page_counts_as_absent_when_the_account_does_not_get_it():
+    class PageSession(FakeSession):
+        answer = (404, "/iserv/time-table/", "")
+
+        def get(self, url, timeout=None, params=None):
+            if url.endswith("/iserv/time-table/"):
+                status, path, text = self.answer
+                return FakeResponse(text, BASE + path, status_code=status)
+            return super().get(url, timeout=timeout, params=params)
+
+    session = PageSession()
+    client = IServClient(BASE, session=session)
+    cases = {
+        (404, "/iserv/time-table/", ""): "status 404",
+        (403, "/iserv/time-table/", "<h1>Riverside Primary</h1>"): "status 403",
+        (200, "/iserv/", "<nav></nav>"): "redirect",
+    }
+    for answer, reason in cases.items():
+        session.answer = answer
+        page = client.read_time_table_page()
+        assert page.absent == reason, answer
+        assert page.children == []
+    for answer in (
+        (401, "/iserv/time-table/", ""),
+        (200, "/iserv/auth/login", "<form><input name='_password'></form>"),
+        (200, "/iserv/time-table/", "<form><input name='_password'></form>"),
+    ):
+        session.answer = answer
+        with pytest.raises(DataError) as expired:
+            client.read_time_table_page()
+        assert expired.value.message_key == "api.schoolApp.sessionExpired", answer
+    session.answer = (200, "/iserv/time-table/", "<p>Wartung</p>")
+    with pytest.raises(DataError) as excinfo:
+        client.read_time_table_page()
+    assert excinfo.value.detail["recognised"] is False
+
+
+def test_the_time_table_page_lists_its_child_options():
+    client, _ = make_client()
+    client.login("parent", "secret", lambda: "451884")
+    page = client.read_time_table_page()
+    assert page.absent == ""
+    assert page.select is True
+    assert [child.name for child in page.children] == ["Alex Example", "Robin Example"]
+
+
+def test_a_time_table_answer_that_is_no_object_is_a_shape_error():
+    from app.iserv.timetable import TIMETABLE_SHAPE_KEY, parse_time_table
+
+    with pytest.raises(DataError) as excinfo:
+        parse_time_table([{"x": 1}])
+    assert excinfo.value.message_key == TIMETABLE_SHAPE_KEY
+    assert excinfo.value.detail["shape"][0] == "(root): array len 1 of object"
+
+
+def test_a_time_table_week_without_a_child_leaves_the_child_out_of_the_query():
+    from datetime import date
+
+    from app.iserv.timetable import data_params
+
+    params = data_params("", date(2026, 9, 9))
+    assert params == {"filter": '{"startDate":"07.09.2026","endDate":"13.09.2026","classes":[],"teachers":[],"rooms":[]}'}

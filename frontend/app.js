@@ -11,6 +11,7 @@ const WEEK_MAX = 8;
 const LESSON_MINUTES = 45;
 const PULL_AXIS_RATIO = 1;
 const OVERVIEW_ORIGIN = "overview";
+const LETTER_UNKNOWN_KEY = "api.letters.unknown";
 const LETTERS_TAB_CURRENT = "current";
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024;
@@ -106,7 +107,7 @@ const requests = createApi({
   formData: () => new FormData(),
 });
 var { apiMessage } = requests;
-const { apiUrl, requestSignal, getJson, postJson, postFormData } = requests;
+const { apiUrl, requestSignal, getJson, postJson, postFormData, getFile, requestJson, postJsonSafe } = requests;
 
 const languageLoader = createLanguageLoader({ getJson: (path) => getJson(path), page: document, agent: navigator });
 const { loadBaseLanguage } = languageLoader;
@@ -157,6 +158,7 @@ const dom = createDom({ page: document });
 const { el, iservText, icon, externalIcon } = dom;
 const { createToast, createSheets } = window.RanzenpostShell;
 const { createStore } = window.RanzenpostStore;
+const { createSelection } = window.RanzenpostSelection;
 
 const VIEWS = [
   { key: "overview", label: "nav.overview", icon: "overview" },
@@ -511,7 +513,9 @@ const state = {
   postSchoolFilter: "",
   messengerSchoolFilter: "",
 };
-const stateStore = createStore(state);
+const stateStore = createStore(state, {
+  reportError: (error) => (window.reportError ? window.reportError(error) : window.console.error(error)),
+});
 
 const OUTAGE_VIEWS = ["overview", "timetable", "absence", "post", "messenger", "conferences"];
 const BOOT_TIMEOUT_MS = 25000;
@@ -849,10 +853,12 @@ function postSegmentIs(segment) {
 function applyViewEntryDefaults(name) {
   const defaults = VIEW_ENTRY_DEFAULTS[name];
   if (!defaults) return;
+  const fresh = {};
   for (const key of Object.keys(defaults)) {
     const value = defaults[key];
-    state[key] = Array.isArray(value) ? value.slice() : value;
+    fresh[key] = Array.isArray(value) ? value.slice() : value;
   }
+  stateStore.patch(fresh);
 }
 
 function enterView(name, options) {
@@ -924,6 +930,20 @@ const toasts = createToast({
   dom,
 });
 const { toast, toastNode } = toasts;
+
+const selection = createSelection({
+  slot: { read: (key) => stateStore.get(key), patch: (partial) => stateStore.patch(partial) },
+  rerender: () => rerender(),
+  vibrate: (ms) => {
+    if (navigator.vibrate) navigator.vibrate(ms);
+  },
+  progress: () => stateStore.get("bulkProgress"),
+  t: (...args) => t(...args),
+  tCount: (...args) => tCount(...args),
+  formatNumber: (value) => formatNumber(value),
+  dom,
+});
+const { letters: letterSelection, pinboard: pinboardSelection } = selection;
 
 function currentChild() {
   return state.children.find((c) => c.key === state.childId) || state.children[0] || null;
@@ -1442,7 +1462,7 @@ function pdfViewerLoaded(viewer) {
 }
 
 async function fetchAppFile(path, fallbackFilename) {
-  const response = await fetch(apiUrl(path));
+  const response = await getFile(path);
   if (!response.ok) {
     const failure = new Error("http " + response.status);
     failure.userMessage = await responseUserMessage(response);
@@ -4295,6 +4315,13 @@ function timetableView() {
   }
   const monday = weekMonday();
   const fullWeek = holidayFullWeek(monday, data);
+  if (noLessonsListed(data, monday) && !ownEntriesKept(state.childId)) {
+    view.append(noLessonsBlock());
+    const note = refreshFailureNote("timetable");
+    if (note) view.append(note);
+    return view;
+  }
+  if (noLessonsListed(data, monday)) view.append(noteBlock(t("timetable.empty.text")));
   view.append(el("div", { class: "tt-frame" }, [
     weekSwipeHint(-1, "tt-edge-prev"),
     timetableGrid(data),
@@ -4314,6 +4341,20 @@ function timetableView() {
   const timetableNote = refreshFailureNote("timetable");
   if (timetableNote) view.append(timetableNote);
   return view;
+}
+
+function noLessonsListed(data, monday) {
+  return !!data && data.no_lessons === true && Array.isArray(data.lessons) && !holidayFullWeek(monday, data);
+}
+
+function ownEntriesKept(owner) {
+  const school = connectionOfKey(owner);
+  const box = school ? periodsData(school) : null;
+  return !!(periodsReady(box) && box.entries.length);
+}
+
+function noLessonsBlock() {
+  return emptyBlock("timetable", t("timetable.empty.title"), t("timetable.empty.text"));
 }
 
 function timetableShowsAllChildren() {
@@ -4376,6 +4417,10 @@ function timetableChildColumn(child) {
       }
       loadOverviewWeek(child.key, state.weekOffset);
     })));
+    return column;
+  }
+  if (noLessonsListed(data, weekMonday()) && !ownEntriesKept(child.key)) {
+    column.append(noLessonsBlock());
     return column;
   }
   column.append(timetableGrid(data, child.key));
@@ -4598,15 +4643,8 @@ async function loadCalendarSubscriptions() {
   }
 }
 
-async function calendarRequest(path, options) {
-  try {
-    const response = await fetch(apiUrl(path), options);
-    const body = await response.json().catch(() => null);
-    if (response.ok) return { ok: true, data: body };
-    return { ok: false, message: apiMessage(body, "calendar.subscribe.failed") };
-  } catch (error) {
-    return { ok: false, message: t("calendar.subscribe.failed") };
-  }
+function calendarRequest(path, options) {
+  return requestJson(path, options, "calendar.subscribe.failed");
 }
 
 function calendarPostRequest(path, body) {
@@ -6066,13 +6104,7 @@ function markMoveSheet(mark, childId) {
 }
 
 function jsonRequest(path, options, fallbackKey) {
-  return fetch(apiUrl(path), options)
-    .then((response) => response.json().catch(() => null).then((body) => ({ response, body })))
-    .then(({ response, body }) => {
-      if (response.ok) return { ok: true, data: body };
-      return { ok: false, message: apiMessage(body, fallbackKey) };
-    })
-    .catch(() => ({ ok: false, message: t(fallbackKey) }));
+  return requestJson(path, options, fallbackKey);
 }
 
 function markRequest(path, options) {
@@ -6349,10 +6381,7 @@ function postSegment() {
 function switchPostTab(segment) {
   if (postSegmentIs(segment)) return;
   state.postTab = segment;
-  state.lettersSelectMode = false;
-  state.lettersSelected = [];
-  state.pinboardSelectMode = false;
-  state.pinboardSelected = [];
+  selection.resetAll();
   state._keepScroll = 0;
   state._scrollTop = true;
   render();
@@ -6443,7 +6472,7 @@ function lettersView(lead) {
     const query = (state.lettersSearch || "").trim().toLowerCase();
     const bySchool = filterBySchool(letters, state.postSchoolFilter);
     const filtered = query ? bySchool.filter((letter) => matchesLetterQuery(letter, query)) : bySchool;
-    keepSelectionVisible(state.lettersSelected, filtered.map(letterKey));
+    letterSelection.keepVisible(filtered.map(letterKey));
     hitCount.textContent = query ? tCount("common.hits", filtered.length) : "";
     const nodes = [];
     if (!filtered.length) {
@@ -6493,60 +6522,6 @@ function letterConfirmationOpen(letter) {
   return !!(info && info.open);
 }
 
-function createSelectionController(modeKey, selectedKey) {
-  return {
-    toggleMode() {
-      state[modeKey] = !state[modeKey];
-      state[selectedKey] = [];
-      rerender();
-    },
-    enter(key) {
-      if (state[modeKey]) return;
-      state[modeKey] = true;
-      state[selectedKey] = [key];
-      if (navigator.vibrate) navigator.vibrate(12);
-      rerender();
-    },
-    exit() {
-      state[modeKey] = false;
-      state[selectedKey] = [];
-      rerender();
-    },
-    toggleItem(key) {
-      const idx = state[selectedKey].indexOf(key);
-      if (idx === -1) state[selectedKey].push(key);
-      else state[selectedKey].splice(idx, 1);
-      rerender();
-    },
-  };
-}
-
-function bulkLabel(count) {
-  const progress = state.bulkProgress;
-  if (!progress) return tCount("common.selected", count);
-  return t("common.bulkProgress", {
-    done: formatNumber(progress.done),
-    total: formatNumber(progress.total),
-  });
-}
-
-function selectionBar(count, onCancel, actions) {
-  const busy = !!state.bulkProgress;
-  return el("div", { class: "select-bar", "aria-busy": busy ? "true" : "false" }, [
-    el("div", { class: "select-bar-info" }, [
-      el("button", {
-        class: "select-bar-cancel",
-        type: "button",
-        disabled: busy ? "disabled" : null,
-        "aria-label": t("common.selection.end"),
-        onclick: onCancel,
-      }, [icon("close", 16)]),
-      el("span", { role: busy ? "status" : null }, bulkLabel(count)),
-    ]),
-    el("div", { class: "select-bar-actions" }, actions),
-  ]);
-}
-
 async function runBulk(targets, step) {
   if (state.bulkProgress) return null;
   let done = 0;
@@ -6576,8 +6551,6 @@ function bulkFailureNames(failed) {
   return names.slice(0, 3).join(", ");
 }
 
-const letterSelection = createSelectionController("lettersSelectMode", "lettersSelected");
-
 function toggleLetterSelectMode() {
   letterSelection.toggleMode();
 }
@@ -6594,15 +6567,6 @@ function toggleLetterSelected(key) {
   letterSelection.toggleItem(key);
 }
 
-function keepSelectionVisible(selected, visibleKeys) {
-  if (!selected || !selected.length) return selected;
-  const allowed = new Set(visibleKeys);
-  for (let index = selected.length - 1; index >= 0; index -= 1) {
-    if (!allowed.has(selected[index])) selected.splice(index, 1);
-  }
-  return selected;
-}
-
 function selectedLetterObjects() {
   const data = state.letters;
   if (!data || !data.letters) return [];
@@ -6611,21 +6575,21 @@ function selectedLetterObjects() {
 }
 
 function letterSelectionBar() {
-  const count = state.lettersSelected.length;
-  const isArchive = state.lettersTab === "archive";
-  const disabled = count === 0 ? "disabled" : null;
-  const buttons = isArchive
-    ? [el("button", { class: "btn slim ghost", type: "button", disabled, onclick: bulkRestoreLetters }, [icon("restore", 16), t("letters.action.restore")])]
+  const actions = state.lettersTab === "archive"
+    ? [{ icon: "restore", label: t("letters.action.restore"), run: bulkRestoreLetters }]
     : [
-        el("button", { class: "btn slim ghost", type: "button", disabled, onclick: bulkMarkLettersRead }, [icon("check", 16), t("letters.action.read")]),
-        el("button", { class: "btn slim ghost", type: "button", disabled, onclick: bulkArchiveLetters }, [icon("archive", 16), t("letters.action.archive")]),
+        { icon: "check", label: t("letters.action.read"), run: bulkMarkLettersRead },
+        { icon: "archive", label: t("letters.action.archive"), run: bulkArchiveLetters },
       ];
-  return selectionBar(count, exitLetterSelectMode, buttons);
+  return letterSelection.bar(actions);
 }
 
 function markReadOutcome(result, singleKey) {
   const read = Number(result && result.read) || 0;
   const blocked = Number(result && result.blocked) || 0;
+  const failed = Number(result && result.failed) || 0;
+  if (!result || result.error || (failed && !read)) return [t("letters.toast.markFailed"), "bad"];
+  if (failed) return [t("letters.toast.markedSomeFailed", { read: formatNumber(read) }), "bad"];
   if (blocked && !read) {
     return [t(singleKey && blocked === 1 ? "letters.toast.blocked" : "letters.toast.markedPartial", {
       read: formatNumber(read),
@@ -6809,8 +6773,7 @@ function setLettersFolder(tab) {
   if (tab === state.lettersTab) return;
   state.lettersTab = tab;
   state.letters = null;
-  state.lettersSelectMode = false;
-  state.lettersSelected = [];
+  letterSelection.reset();
 }
 
 function letterChildTag(letter) {
@@ -6924,7 +6887,8 @@ async function openLetter(letter, origin) {
     state.letterDetail = { letter, detail, origin: origin || null };
   } catch (error) {
     if (handleApiFailure(error)) return;
-    state.letterDetail = { letter, error: errorCode(error), origin: origin || null };
+    const refused = !!(error && error.body && error.body.message_key === LETTER_UNKNOWN_KEY);
+    state.letterDetail = { letter, error: errorCode(error), refused, origin: origin || null };
   }
   rerender();
 }
@@ -6939,7 +6903,7 @@ function letterTechEntries(letter) {
 }
 
 function letterDetailView() {
-  const { letter, detail, loading, error } = state.letterDetail;
+  const { letter, detail, loading, error, refused } = state.letterDetail;
   const view = el("div", {});
   const chips = letterTagNodes(letter);
   if (chips.length) view.append(el("div", { class: "row-tags" }, chips));
@@ -6947,6 +6911,10 @@ function letterDetailView() {
   if (meta) view.append(el("div", { class: "row-meta", style: "margin:0 0 20px" }, meta));
   if (loading) {
     view.append(loadingBlock());
+    return view;
+  }
+  if (refused) {
+    view.append(noteBlock(t(LETTER_UNKNOWN_KEY)));
     return view;
   }
   if (error || !detail) {
@@ -6963,6 +6931,9 @@ function letterDetailView() {
   if (confirmBlock) view.append(confirmBlock);
   view.append(
     el("div", { style: "margin-top:24px; display:flex; gap:12px; flex-wrap:wrap" }, [
+      letterReplyAvailable(detail)
+        ? el("button", { class: "btn ghost letter-reply-action", type: "button", onclick: () => openLetterReply(letter) }, t("letters.reply.action"))
+        : null,
       state.lettersTab === "archive"
         ? el("button", { class: "btn ghost", type: "button", onclick: () => restoreLetter(letter) }, [icon("restore", 18), t("letters.action.restore")])
         : el("button", { class: "btn ghost", type: "button", onclick: () => archiveLetter(letter) }, [icon("archive", 18), t("letters.action.archive")]),
@@ -6972,6 +6943,7 @@ function letterDetailView() {
 }
 
 const LETTER_REPLY_MAX_LENGTH = 4000;
+const LETTER_REPLY_TIMEOUT_MS = 90000;
 
 function letterConfirmationBlock(letter, detail) {
   const info = letterConfirmation(detail) || letterConfirmation(letter);
@@ -7098,6 +7070,129 @@ async function confirmLetterRead(letter) {
   rerender();
 }
 
+function letterReplyAvailable(detail) {
+  if (!detail || !detail.reply || detail.reply.available !== true) return false;
+  return !letterConfirmationOpen(detail);
+}
+
+function newReplyRequestId() {
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function openLetterReply(letter) {
+  letter.replySending = false;
+  letter.replyFailure = "";
+  openSheet(() => letterReplySheet(letter));
+}
+
+function letterReplySheet(letter) {
+  const draft = sheetState(() => ({ text: "", preview: false, request: newReplyRequestId() }));
+  if (draft.preview) return letterReplyPreview(letter, draft);
+  const field = el("textarea", {
+    class: "inp letter-reply-text",
+    dir: "auto",
+    rows: "5",
+    maxlength: String(LETTER_REPLY_MAX_LENGTH),
+    "aria-label": t("letters.reply.label"),
+  });
+  field.value = draft.text;
+  const next = el("button", {
+    class: "btn letter-reply-next",
+    type: "button",
+    disabled: draft.text.trim() ? null : "",
+    onclick: () => {
+      if (!draft.text.trim()) return;
+      draft.preview = true;
+      rerender();
+    },
+  }, t("letters.reply.preview"));
+  field.addEventListener("input", () => {
+    draft.text = field.value;
+    next.disabled = !draft.text.trim();
+  });
+  window.setTimeout(() => { if (field.isConnected) field.focus(); }, 0);
+  return sheet(
+    t("letters.reply.title"),
+    [
+      el("p", { class: "dlg-text" }, t("letters.reply.text")),
+      el("label", { class: "field" }, [el("span", { class: "lbl" }, t("letters.reply.label")), field]),
+    ],
+    [el("div", { class: "btn-stack" }, [next])]
+  );
+}
+
+function letterReplyPreview(letter, draft) {
+  const sending = !!letter.replySending;
+  const body = [
+    el("p", { class: "dlg-text" }, t("letters.reply.previewText")),
+    el("blockquote", { class: "dlg-quote letter-reply-quote", dir: "auto" }, draft.text.trim()),
+  ];
+  if (letter.replyFailure) body.push(noteBlock(letter.replyFailure));
+  return sheet(t("letters.reply.title"), body, [
+    el("div", { class: "btn-stack" }, [
+      el("button", { class: "btn letter-reply-send", type: "button", disabled: sending ? "" : null, onclick: () => sendLetterReply(letter, draft) }, [
+        sending ? el("span", { class: "spin" }) : null,
+        t("letters.reply.send"),
+      ]),
+      el("button", {
+        class: "btn ghost letter-reply-edit",
+        type: "button",
+        disabled: sending ? "" : null,
+        onclick: () => {
+          draft.preview = false;
+          letter.replyFailure = "";
+          rerender();
+        },
+      }, t("letters.reply.edit")),
+    ]),
+  ]);
+}
+
+async function sendLetterReply(letter, draft) {
+  const text = String(draft.text || "").trim();
+  if (letter.replySending || !text) return;
+  letter.replySending = true;
+  letter.replyFailure = "";
+  rerender();
+  let result = null;
+  try {
+    result = await postJson(
+      "api/letters/reply",
+      Object.assign({}, letterIdentity(letter), { text, request_id: draft.request, confirmed: true }),
+      LETTER_REPLY_TIMEOUT_MS
+    );
+  } catch (error) {
+    letter.replySending = false;
+    if (handleApiFailure(error)) return;
+    letter.replyFailure = t("api.letters.reply.uncertain");
+    toast(letter.replyFailure, "bad");
+    rerender();
+    return;
+  }
+  letter.replySending = false;
+  if (result && result.ok) {
+    dropSheet();
+    toast(t("letters.reply.sent"), "good");
+    rerender();
+    return;
+  }
+  letter.replyFailure = apiMessage(result, "letters.reply.failed");
+  toast(letter.replyFailure, "bad");
+  rerender();
+}
+
+function letterRefused(result) {
+  return !!(result && result.message_key === LETTER_UNKNOWN_KEY);
+}
+
+function dropRefusedLetter() {
+  toast(t(LETTER_UNKNOWN_KEY), "bad");
+  state.letterDetail = null;
+  state.letters = null;
+}
+
 async function archiveLetter(letter) {
   const ok = await confirmAction({
     title: t("letters.archive.singleTitle"),
@@ -7111,6 +7206,8 @@ async function archiveLetter(letter) {
       toast(t("letters.toast.archivedSingle"));
       state.letterDetail = null;
       state.letters = null;
+    } else if (letterRefused(result)) {
+      dropRefusedLetter();
     } else {
       toast(t("letters.toast.archiveFailed"), "bad");
     }
@@ -7127,6 +7224,8 @@ async function restoreLetter(letter) {
       toast(t("letters.toast.restoredSingle"));
       state.letterDetail = null;
       state.letters = null;
+    } else if (letterRefused(result)) {
+      dropRefusedLetter();
     } else {
       toast(t("letters.toast.restoreFailed"), "bad");
     }
@@ -7225,7 +7324,7 @@ function pinboardView(lead) {
       }
     }
     const tiles = pinboardTiles(data, folder, query);
-    keepSelectionVisible(state.pinboardSelected, tiles.map(tileKey));
+    pinboardSelection.keepVisible(tiles.map(tileKey));
     hitCount.textContent = query ? tCount("common.hits", tiles.length) : "";
     if (!tiles.length) {
       nodes.push(
@@ -7292,8 +7391,6 @@ function setPinboardFilter(onlyNew) {
   rerender();
 }
 
-const pinboardSelection = createSelectionController("pinboardSelectMode", "pinboardSelected");
-
 function togglePinboardSelectMode() {
   pinboardSelection.toggleMode();
 }
@@ -7311,13 +7408,10 @@ function togglePinboardSelected(key) {
 }
 
 function pinboardSelectionBar() {
-  const count = state.pinboardSelected.length;
-  const disabled = count === 0 ? "disabled" : null;
-  const buttons = [
-    el("button", { class: "btn slim ghost", type: "button", disabled, onclick: bulkMarkPinboardRead }, [icon("check", 16), t("pinboard.action.markRead")]),
-    el("button", { class: "btn slim ghost", type: "button", disabled, onclick: bulkMarkPinboardUnread }, [icon("restore", 16), t("pinboard.action.markUnread")]),
-  ];
-  return selectionBar(count, exitPinboardSelectMode, buttons);
+  return pinboardSelection.bar([
+    { icon: "check", label: t("pinboard.action.markRead"), run: bulkMarkPinboardRead },
+    { icon: "restore", label: t("pinboard.action.markUnread"), run: bulkMarkPinboardUnread },
+  ]);
 }
 
 async function bulkSetPinboardSeen(unseen) {
@@ -11406,20 +11500,8 @@ function globalConfigPayload() {
 }
 
 async function persistTo(path, payload) {
-  let response;
-  try {
-    response = await fetch(apiUrl(path), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    return { ok: false, message: t("common.saveFailed") };
-  }
-  if (!response.ok) {
-    const body = await response.json().then((data) => data, () => ({}));
-    return { ok: false, message: apiMessage(body, "common.saveFailed") };
-  }
+  const outcome = await postJsonSafe(path, payload, "common.saveFailed");
+  if (!outcome.ok) return outcome;
   state.timetable = null;
   state.overviewWeeks = {};
   state.absence = null;
@@ -13560,6 +13642,7 @@ function newEntryForm(options, data) {
   const type = options.type || P.TYPE_CLUB;
   const today = data.today || isoDate(new Date());
   const day = entryContextDay(options);
+  const effectiveDay = day < today ? today : day;
   const childKey = options.child || state.childId;
   const child = childKey && connectionOfKey(childKey) === options.school ? P.rawChild(childKey) : "";
   const fallbackChild = periodChildIds(options.school)[0] || "";
@@ -13573,11 +13656,11 @@ function newEntryForm(options, data) {
     start: Math.min(start, P.DAY_MINUTES - 1),
     duration: 0,
     repeat: P.REPEAT_WEEKLY,
-    days: [Math.min(6, Math.max(0, P.weekdayOf(day) || 0))],
+    days: [Math.min(6, Math.max(0, P.weekdayOf(effectiveDay) || 0))],
     interval: ENTRY_INTERVAL_MIN,
-    date: day < today ? today : day,
-    from: day < today ? today : day,
-    until: data.until_max,
+    date: effectiveDay,
+    from: effectiveDay,
+    until: effectiveDay,
     holidays: false,
     child: child || fallbackChild,
     note: "",
@@ -13857,14 +13940,29 @@ function entryDateFields(form, data, refit) {
   const holidays = el("input", { type: "checkbox", class: "entry-holidays" });
   holidays.checked = !!form.holidays;
   holidays.addEventListener("change", () => { form.holidays = holidays.checked; });
-  return el("div", { class: "field entry-range" }, [
+  const parts = [
     el("div", { class: "two" }, [
       el("label", {}, [el("span", { class: "flabel" }, t("periods.field.from")), from]),
       el("label", {}, [el("span", { class: "flabel" }, t("periods.field.until")), until]),
     ]),
-    el("span", { class: form.untilClamped ? "hint warn" : "hint" }, hint),
-    el("label", { class: "check entry-holidays-check" }, [holidays, el("span", {}, [t("periods.holidays"), el("small", {}, t("periods.holidays.hint"))])]),
-  ]);
+  ];
+  if (form.from && form.from === form.until) {
+    parts.push(el("div", { class: "entry-single-day" }, [
+      el("span", { class: "hint" }, t("periods.range.singleDay")),
+      el("button", {
+        class: "link-btn entry-until-summer",
+        type: "button",
+        onclick: () => {
+          form.until = limit;
+          form.untilClamped = false;
+          refit();
+        },
+      }, t("periods.range.untilSummer")),
+    ]));
+  }
+  parts.push(el("span", { class: form.untilClamped ? "hint warn" : "hint" }, hint));
+  parts.push(el("label", { class: "check entry-holidays-check" }, [holidays, el("span", {}, [t("periods.holidays"), el("small", {}, t("periods.holidays.hint"))])]));
+  return el("div", { class: "field entry-range" }, parts);
 }
 
 async function saveEntry(detail) {

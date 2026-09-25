@@ -433,7 +433,7 @@ def addon_version():
     return _version_cache.get("value") or ""
 
 
-def _moment(epoch):
+def utc_moment(epoch):
     return datetime.fromtimestamp(epoch, timezone.utc).replace(tzinfo=None)
 
 
@@ -611,19 +611,22 @@ def _held(items):
     return [item for item in items if not item["cancelled"]]
 
 
-def _next_school_day(days, today):
+def _next_school_day(days, today, now_iso):
     for day, items in days:
         held = _held(items)
-        if day > today and held:
-            return {
-                "date": day.isoformat(),
-                "weekday": _weekday(day),
-                "days_until": (day - today).days,
-                "start": held[0]["start"],
-                "end": max(item["end"] for item in held),
-                "lessons": len(held),
-                "first_lesson": held[0]["subject"],
-            }
+        if not held:
+            continue
+        if day == today and held[0]["start"] <= now_iso:
+            continue
+        return {
+            "date": day.isoformat(),
+            "weekday": _weekday(day),
+            "days_until": (day - today).days,
+            "start": held[0]["start"],
+            "end": max(item["end"] for item in held),
+            "lessons": len(held),
+            "first_lesson": held[0]["subject"],
+        }
     return None
 
 
@@ -738,7 +741,7 @@ def build_state(store, holiday_calendar, child_key, now_epoch):
         "now_lesson": now_lesson,
         "next_lesson": next_lesson,
         "school_end_today": max((item["end"] for item in held_today), default=None),
-        "next_school_day": _next_school_day(days, today),
+        "next_school_day": _next_school_day(days, today, now_iso),
         "changes_today": changes_today,
         "unread_letters": _counted(state.get("letters")),
         "unread_posts": _counted(state.get("posts")),
@@ -796,7 +799,7 @@ def build_events(store, holiday_calendar, child_key, kind, start, end, now_epoch
         "label": "",
         "color": "",
     }
-    events = feed.gather_events(subscription, store, holiday_calendar, _moment(now_epoch))
+    events = feed.gather_events(subscription, store, holiday_calendar, utc_moment(now_epoch))
     chosen = []
     for event in events:
         first = _event_day(event.start)

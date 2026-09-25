@@ -161,6 +161,9 @@ def test_the_shape_walk_is_capped_and_says_so():
     assert block[-1] == "  - cut after %d keys" % valueshape.MAX_LINES
 
 
+TIME_TABLE_SHELL = "<html><body><table id='timetable-content-combined'><tr><th>Std.</th></tr></table></body></html>"
+
+
 def fuzz_pages(rng):
     person = rng.choice(PLANTED)
     json_body = random_value(rng, 0)
@@ -185,6 +188,7 @@ def test_a_fuzzed_report_over_planted_pages_and_json_never_leaks_a_value(tmp_pat
         html, json_body = fuzz_pages(rng)
         pages = {
             "/iserv/time-table/data": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/data", json.dumps(json_body), "application/json", json_data=json_body),
+            "/iserv/time-table/": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/", TIME_TABLE_SHELL),
             "/iserv/": Response(200, SCHOOL_ONE_URL + "/iserv/x", html),
         }
         client = Client(SCHOOL_ONE_URL, pages)
@@ -379,12 +383,26 @@ def test_the_report_cache_rebuilds_when_it_is_stale_or_asked_for_another_scope(t
     assert "- Structure module: letters" in report
 
 
-def test_both_timetable_paths_are_read_with_status_skeleton_and_the_own_child(tmp_path):
+TIME_TABLE_OPTION = "11111111-1111-4111-8111-111111111111"
+SIBLING_OPTION = "22222222-2222-4222-8222-222222222222"
+TIME_TABLE_PAGE = (
+    "<html><body><select id='timetable-filter-child-select'><option value=''></option>"
+    "<option value='%s'>Musterkind, Mia</option><option value='%s'>Musterkind, Lea</option></select>"
+    "<table id='timetable-content-combined'><tr><th>Std.</th><th>Montag</th></tr>"
+    "<tr><td>1</td><td>Mathe bei Frau Lehrerin</td></tr><tr><td>2</td><td>Deutsch</td></tr></table>"
+    "</body></html>"
+) % (TIME_TABLE_OPTION, SIBLING_OPTION)
+
+
+def test_both_timetable_paths_are_read_the_way_the_client_reads_them(tmp_path):
     service, first, _second = two_school_service(tmp_path)
-    data = {"entries": [{"subject": "D", "start": "08:00"}]}
+    data = {"meta": {"filter": {"startDate": "14.09.2026"}}, "data": {"timetable": [{"subject": "D", "teacher": "Lehrerin", "dow": 1}]}}
     first.client.pages = dict(
-        {"/iserv/time-table/data": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/data", "{}", "application/json", json_data=data)},
-        **first.client.pages,
+        {
+            "/iserv/time-table/data": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/data", "{}", "application/json", json_data=data),
+            "/iserv/time-table/": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/", TIME_TABLE_PAGE),
+        },
+        **{path: answer for path, answer in first.client.pages.items() if path != "/iserv/time-table/"},
     )
     first.client.pages["/iserv/timetable/"] = Response(200, SCHOOL_ONE_URL + "/iserv/timetable/", "<html><form action='/iserv/timetable/' method='get'><select name='child'></select></form></html>")
     calls = []
@@ -396,20 +414,38 @@ def test_both_timetable_paths_are_read_with_status_skeleton_and_the_own_child(tm
 
     first.client.fetch = recording
     report = build(service, structure=True)
-    assert "#### timetable (Stundenplan (veraltet))" in report
-    assert "#### timetable-legacy (Stundenplan (veraltet))" in report
     legacy = report.split("#### timetable-legacy (", 1)[1].split("\n#### ", 1)[0]
-    assert "- Page: /iserv/timetable/ -> 200 text/html" in legacy
-    assert "- Form: /iserv/timetable/ (get)" in legacy
     assert "- Page: /iserv/timetable/data -> " in legacy
     modern = report.split("#### timetable (", 1)[1].split("\n#### ", 1)[0]
-    assert "- Page: /iserv/time-table/ -> 403" in modern
+    assert "- Page: /iserv/time-table/ -> 200 text/html" in modern
+    assert "- Table rows #timetable-content-combined: 3 (2 cells x3)" in modern
+    assert "- Child select: present, options 2, listed children 1" in modern
+    assert "- Data query: week filter with childId" in modern
     assert "- Page: /iserv/time-table/data -> 200 application/json" in modern
-    assert "  - entries[].start: string len 5, time HH:MM" in modern
-    data_calls = [params for path, params in calls if path.endswith("/data")]
-    assert len(data_calls) == 2
-    assert all(params["childId"] == "4711" for params in data_calls)
-    assert "4711" not in report
+    assert "  - data.timetable[].dow: int >0" in modern
+    modern_calls = [params for path, params in calls if path == "/iserv/time-table/data"]
+    assert [params["childId"] for params in modern_calls] == [TIME_TABLE_OPTION]
+    assert json.loads(modern_calls[0]["filter"])["child"] == TIME_TABLE_OPTION
+    assert [params["childId"] for path, params in calls if path == "/iserv/timetable/data"] == ["4711"]
+    for value in ("4711", TIME_TABLE_OPTION, SIBLING_OPTION, "Mathe bei", "Lehrerin", "Musterkind"):
+        assert value not in report, value
+
+
+def test_a_refused_time_table_page_leaves_the_data_unread(tmp_path):
+    service, first, _second = two_school_service(tmp_path)
+    calls = []
+    fetch = first.client.fetch
+
+    def recording(path, params=None):
+        calls.append((path, params))
+        return fetch(path, params)
+
+    first.client.fetch = recording
+    report = build(service, structure=True)
+    modern = report.split("#### timetable (", 1)[1].split("\n#### ", 1)[0]
+    assert "- Page: /iserv/time-table/ -> 403" in modern
+    assert "- Data: not read, the module is absent for this account (status 403)" in modern
+    assert not [path for path, _params in calls if path == "/iserv/time-table/data"]
 
 
 def test_the_report_names_has_2fa_for_every_connection(tmp_path):
@@ -645,6 +681,7 @@ def test_fuzzed_names_that_the_store_no_longer_knows_never_reach_report_or_log(t
         html, data = former_name_pages(rng)
         pages = {
             "/iserv/time-table/data": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/data", json.dumps(data), "application/json", json_data=data),
+            "/iserv/time-table/": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/", TIME_TABLE_SHELL),
             "/iserv/": Response(200, SCHOOL_ONE_URL + "/iserv/x", html),
         }
         client = Client(SCHOOL_ONE_URL, pages)

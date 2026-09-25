@@ -228,7 +228,7 @@
     },
     "integration_too_old": {
       "title": "Update the Ranzenpost integration",
-      "description": "The Ranzenpost add-on runs version {addon_version}, a public release ahead of this integration ({integration_version}). Update the integration through HACS so both match; until then some data may be missing."
+      "description": "The Ranzenpost add-on runs version {addon_version}, a feature release ahead of this integration ({integration_version}). Update the integration through HACS so both match; until then some data may be missing."
     },
     "no_school_yet": {
       "title": "No school signed in yet",

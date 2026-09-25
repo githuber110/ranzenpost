@@ -3,6 +3,7 @@ import { apiGlobals } from "../lib/api.js";
 import { domGlobals } from "../lib/dom.js";
 import { formatGlobals } from "../lib/format.js";
 import { i18nGlobals } from "../lib/i18nGlobals.js";
+import { SELECTION_KEYS as MODULE_SELECTION_KEYS, selectionGlobals } from "../lib/selection.js";
 import { SHEET_KEYS, shellGlobals } from "../lib/shell.js";
 import { storeGlobals } from "../lib/store.js";
 import { loadApp } from "./loadApp.js";
@@ -15,12 +16,24 @@ const GLOBALS_MODULE = "lib/globals.js";
 const APP_ONLY_GLOBALS = ["createLanguageLoader"];
 const WINDOW_LANGUAGE_FUNCTIONS = ["resolveLanguage", "applyLanguageChoice"];
 const WINDOW_API_FUNCTIONS = ["apiMessage"];
-const SCRIPT_API_FUNCTIONS = ["apiUrl", "requestSignal", "getJson", "postJson", "postFormData"];
+const SCRIPT_API_FUNCTIONS = [
+  "apiUrl",
+  "requestSignal",
+  "getJson",
+  "postJson",
+  "postFormData",
+  "getFile",
+  "requestJson",
+  "postJsonSafe",
+];
 const FORMER_WINDOW_API_FUNCTIONS = ["apiUrl", "apiError", "errorCode", "loginReasonOf", "isTimeoutError", "requestSignal"];
 const MODULE_ONLY_API_NAMES = ["documentBase", "API_BASE", "checkResponse", "raiseCarriedError", "API_ERROR"];
 const DOM_KIT_FUNCTIONS = ["el", "iservText", "icon", "externalIcon"];
 const TOAST_FUNCTIONS = ["toast", "toastNode"];
 const SHELL_KEYS = [...SHEET_KEYS, "toast"];
+const SELECTION_KEYS = ["lettersSelectMode", "lettersSelected", "pinboardSelectMode", "pinboardSelected"];
+const STORE_KEYS = [...SHELL_KEYS, ...SELECTION_KEYS];
+const ARRAY_MUTATORS = "push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin";
 const SHEET_FUNCTIONS = [
   "openSheet",
   "discardSheet",
@@ -133,6 +146,7 @@ describe("the lib folder stays free of the browser", () => {
         "lib/dom.js",
         "lib/shell.js",
         "lib/store.js",
+        "lib/selection.js",
         GLOBALS_MODULE,
       ])
     );
@@ -313,12 +327,53 @@ describe("the lib folder stays free of the browser", () => {
     expect(Object.keys(storeGlobals())).toEqual(["createStore"]);
   });
 
+  test("window.RanzenpostSelection is written by the globals bridge alone", () => {
+    const writers = scriptNames().filter((name) => /\bRanzenpostSelection\s*=[^=]/.test(readShipped(name)));
+    expect(writers).toEqual([GLOBALS_MODULE]);
+    expect(Object.keys(selectionGlobals())).toEqual(["createSelection"]);
+    expect([...MODULE_SELECTION_KEYS]).toEqual(SELECTION_KEYS);
+  });
+
+  test("app.js builds the selection once over store slots, binds both areas and keeps them off window", () => {
+    const source = readShipped("app.js");
+    const bound = destructuredNames(source, "const", "window\\.RanzenpostSelection");
+    expect([...bound].sort()).toEqual(Object.keys(selectionGlobals()).sort());
+    expect(source.match(/\bcreateSelection\(/g)).toEqual(["createSelection("]);
+    expect(destructuredNames(source, "const", "selection")).toEqual(["letters: letterSelection", "pinboard: pinboardSelection"]);
+    const start = source.indexOf("createSelection({\n");
+    expect(start).toBeGreaterThan(-1);
+    const block = source.slice(start, source.indexOf("\n});\n", start));
+    expect(block).toMatch(/\bslot: \{ read: \(key\) => stateStore\.get\(key\), patch: \(partial\) => stateStore\.patch\(partial\) \}/);
+    expect(block).not.toMatch(/(?<![\w$.])state\b(?!\s*:)/);
+    expect(source).not.toMatch(/\bfunction\s+(createSelectionController|keepSelectionVisible|selectionBar|bulkLabel)\b/);
+    const { window } = loadApp();
+    for (const name of ["createSelection", "selection", "letterSelection", "pinboardSelection"]) {
+      expect(window.eval(`typeof ${name}`), name).toBe(name === "createSelection" ? "function" : "object");
+      expect(Object.prototype.hasOwnProperty.call(window, name), name).toBe(false);
+    }
+  });
+
+  test("only the selection module writes the selection keys, app.js never hands one to the store by name", () => {
+    const keys = SELECTION_KEYS.join("|");
+    const namesKeyInStoreCall = new RegExp(`\\bstateStore\\s*\\.\\s*(?:set|patch)\\s*\\([^\\n]*\\b(?:${keys})\\b`);
+    expect(namesKeyInStoreCall.test("stateStore.patch({ lettersSelectMode: false, lettersSelected: [] });")).toBe(true);
+    expect(namesKeyInStoreCall.test('stateStore.set("pinboardSelected", kept);')).toBe(true);
+    expect(namesKeyInStoreCall.test("stateStore.patch(fresh);")).toBe(false);
+    expect(namesKeyInStoreCall.test('stateStore.set("toast", value);')).toBe(false);
+    const offenders = readShipped("app.js")
+      .split("\n")
+      .map((line, index) => ({ line: index + 1, text: line.trim() }))
+      .filter((hit) => namesKeyInStoreCall.test(hit.text))
+      .map((hit) => `${hit.line}: ${hit.text}`);
+    expect(offenders).toEqual([]);
+  });
+
   test("app.js builds one store around the state object right after it and keeps it off window", () => {
     const source = readShipped("app.js");
     const bound = destructuredNames(source, "const", "window\\.RanzenpostStore");
     expect([...bound].sort()).toEqual(Object.keys(storeGlobals()).sort());
     expect(source.match(/\bcreateStore\(/g)).toEqual(["createStore("]);
-    expect(source).toMatch(/\nconst state = \{\n[^]*?\n\};\nconst stateStore = createStore\(state\);\n/);
+    expect(source).toMatch(/\nconst state = \{\n[^]*?\n\};\nconst stateStore = createStore\(state, \{\n  reportError: [^\n]+\n\}\);\n/);
     const { window } = loadApp();
     for (const name of ["stateStore", "createStore"]) {
       expect(window.eval(`typeof ${name}`), name).not.toBe("undefined");
@@ -329,6 +384,22 @@ describe("the lib folder stays free of the browser", () => {
     expect(window.eval("state.storeProbe")).toEqual({ a: 1 });
     window.eval("state.storeProbe = 'direct'");
     expect(window.eval("stateStore.get('storeProbe')")).toBe("direct");
+  });
+
+  test("a failing store listener in the app reaches the page error report and stops neither the caller nor the others", () => {
+    const { window } = loadApp();
+    const reported = [];
+    window.reportError = (error) => reported.push(["report", error.message]);
+    window.eval("stateStore.subscribe(() => { throw new Error('first'); }); stateStore.subscribe((keys) => { state.heardAfter = keys; });");
+    window.eval("toast('still shown')");
+    expect(window.eval("[state.toast.message, state.heardAfter]")).toEqual(["still shown", ["toast"]]);
+    expect(reported).toEqual([["report", "first"]]);
+    delete window.reportError;
+    const logged = [];
+    window.console.error = (error) => logged.push(error.message);
+    window.eval("toggleLetterSelectMode()");
+    expect(window.eval("[state.lettersSelectMode, state.heardAfter]")).toEqual([true, ["lettersSelectMode", "lettersSelected"]]);
+    expect(logged).toEqual(["first"]);
   });
 
   test("a store write changes state and never repaints by itself", () => {
@@ -343,7 +414,7 @@ describe("the lib folder stays free of the browser", () => {
 
   test("app.js binds every shell global and builds the toast once over state.toast", () => {
     const source = readShipped("app.js");
-    const bound = destructuredNames(source, "const", "window\.RanzenpostShell");
+    const bound = destructuredNames(source, "const", "window\\.RanzenpostShell");
     expect([...bound].sort()).toEqual(Object.keys(shellGlobals()).sort());
     expect(source.match(/\bcreateToast\(/g)).toEqual(["createToast("]);
     expect(destructuredNames(source, "const", "toasts")).toEqual(TOAST_FUNCTIONS);
@@ -418,12 +489,17 @@ describe("the lib folder stays free of the browser", () => {
     expect(window.eval("[state.sheet, state.onSheetClose]")).toEqual([null, null]);
   });
 
-  test("app.js writes the six sheet keys and the toast only through the store behind the shell slots", () => {
-    const keys = SHELL_KEYS.join("|");
+  test("app.js writes the sheet, toast and selection keys only through the store and never by a computed key", () => {
+    const keys = STORE_KEYS.join("|");
     const sheetKey = `\\bstate\\s*(?:\\.\\s*(?:${keys})\\b|\\[\\s*["'\`](?:${keys})["'\`]\\s*\\])`;
+    const computedKey = `(?<![\\w$.])state\\s*\\[(?!\\s*(["'\`])[\\w$]*\\1\\s*\\])[^\\]]*\\]`;
     const patterns = [
       new RegExp(`${sheetKey}\\s*(?:[-+*/%&|^?]{0,3})=(?!=)`),
       new RegExp(`\\bdelete\\s+${sheetKey}(?!\\s*[.[])`),
+      new RegExp(`${sheetKey}\\s*\\.\\s*(?:${ARRAY_MUTATORS})\\s*\\(`),
+      new RegExp(`${computedKey}\\s*(?:[-+*/%&|^?]{0,3})=(?!=)`),
+      new RegExp(`\\bdelete\\s+${computedKey}`),
+      new RegExp(`${computedKey}\\s*\\.\\s*(?:${ARRAY_MUTATORS})\\s*\\(`),
       /\b(?:Object\s*\.\s*(?:assign|defineProperty|defineProperties)|Reflect\s*\.\s*(?:set|deleteProperty|defineProperty))\s*\(\s*state\s*[,)]/,
     ];
     const writesIn = (source) =>
@@ -445,6 +521,17 @@ describe("the lib folder stays free of the browser", () => {
       "Reflect.deleteProperty(state, 'sheet');",
       "delete state.toast;",
       'state["toast"] = { message };',
+      "state.lettersSelectMode = false;",
+      "state.pinboardSelected = [];",
+      "state.lettersSelected.push(key);",
+      "state.pinboardSelected .splice(idx, 1);",
+      "state['lettersSelected'].sort();",
+      "state[key] = value;",
+      "state[modeKey] = !state[modeKey];",
+      "state[ selectedKey ].push(key);",
+      "delete state[key];",
+      "if (x) state[`${area}Selected`] = [];",
+      "state[`sheet`] = null;",
     ];
     expect(writesIn(sneaky.join("\n"))).toHaveLength(sneaky.length);
     const allowed = [
@@ -454,13 +541,65 @@ describe("the lib folder stays free of the browser", () => {
       "delete state.sheetForm.draft;",
       "delete state.sheetsSeen;",
       "const onSheetClose = state.onSheetClose;",
+      "const keys = state.lettersSelected.slice();",
+      "const selected = state.pinboardSelected.includes(key);",
+      "const value = state[key];",
+      "if (state[key] === 1) run();",
+      "fresh[key] = value;",
+      "detail.state[key] = 1;",
+      "state.refreshFailed[key] = true;",
+      "state.lettersSelectedSeen = [];",
+      "state['view'] = 'post';",
     ];
     expect(writesIn(allowed.join("\n"))).toEqual([]);
     expect(writesIn(readShipped("app.js"))).toEqual([]);
+  });
+
+  test("entering a view writes every entry default through the store and hands out fresh lists", () => {
     const { window } = loadApp();
-    const dynamicKeys = window.eval("Object.values(VIEW_ENTRY_DEFAULTS).flatMap((defaults) => Object.keys(defaults))");
-    expect(dynamicKeys.length).toBeGreaterThan(0);
-    expect(dynamicKeys.filter((key) => SHELL_KEYS.includes(key))).toEqual([]);
+    const views = window.eval("Object.keys(VIEW_ENTRY_DEFAULTS)");
+    expect(views.length).toBeGreaterThan(0);
+    window.eval("state.heardKeys = []; stateStore.subscribe((keys) => state.heardKeys.push(...keys));");
+    for (const view of views) {
+      window.eval("state.heardKeys = []");
+      window.eval(`applyViewEntryDefaults(${JSON.stringify(view)})`);
+      expect(window.eval("state.heardKeys"), view).toEqual(window.eval(`Object.keys(VIEW_ENTRY_DEFAULTS[${JSON.stringify(view)}])`));
+    }
+    expect(window.eval("Object.keys(VIEW_ENTRY_DEFAULTS.post)")).toEqual(expect.arrayContaining(SELECTION_KEYS));
+    window.eval("state.lettersSelected = ['1:2']; applyViewEntryDefaults('post')");
+    expect(window.eval("state.lettersSelected")).toEqual([]);
+    expect(window.eval("state.lettersSelected === VIEW_ENTRY_DEFAULTS.post.lettersSelected")).toBe(false);
+  });
+
+  test("the letter and noticeboard selection goes through the store and replaces the list instead of changing it", () => {
+    const { window } = loadApp();
+    window.eval("state.heardKeys = []; stateStore.subscribe((keys) => state.heardKeys.push(...keys));");
+    const heard = () => window.eval("state.heardKeys.splice(0)");
+    const steps = [
+      ["toggleLetterSelectMode()", ["lettersSelectMode", "lettersSelected"], [true, []]],
+      ["toggleLetterSelected('a'); toggleLetterSelected('b'); toggleLetterSelected('c')", ["lettersSelected", "lettersSelected", "lettersSelected"], [true, ["a", "b", "c"]]],
+      ["toggleLetterSelected('b')", ["lettersSelected"], [true, ["a", "c"]]],
+      ["letterSelection.keepVisible(['c', 'z'])", ["lettersSelected"], [true, ["c"]]],
+      ["letterSelection.keepVisible(['c'])", [], [true, ["c"]]],
+      ["exitLetterSelectMode()", ["lettersSelectMode", "lettersSelected"], [false, []]],
+      ["enterLetterSelectMode('d')", ["lettersSelectMode", "lettersSelected"], [true, ["d"]]],
+      ["enterLetterSelectMode('e')", [], [true, ["d"]]],
+      ["setLettersFolder('archive')", ["lettersSelectMode", "lettersSelected"], [false, []]],
+    ];
+    for (const [code, keys, after] of steps) {
+      window.eval("state.listBefore = state.lettersSelected; state.copyBefore = state.lettersSelected.slice()");
+      window.eval(code);
+      expect(heard(), code).toEqual(keys);
+      expect(window.eval("[state.lettersSelectMode, state.lettersSelected]"), code).toEqual(after);
+      expect(window.eval("state.listBefore"), code).toEqual(window.eval("state.copyBefore"));
+    }
+    window.eval("togglePinboardSelectMode(); togglePinboardSelected(1); togglePinboardSelected(2)");
+    expect(heard()).toEqual(["pinboardSelectMode", "pinboardSelected", "pinboardSelected", "pinboardSelected"]);
+    expect(window.eval("[state.pinboardSelectMode, state.pinboardSelected]")).toEqual([true, [1, 2]]);
+    window.eval("state.postTab = 'pinboard'");
+    window.eval("switchPostTab('letters')");
+    expect(heard()).toEqual(expect.arrayContaining(SELECTION_KEYS));
+    expect(window.eval("[state.lettersSelectMode, state.lettersSelected, state.pinboardSelectMode, state.pinboardSelected]")).toEqual([false, [], false, []]);
   });
 
   test("app.js hands the sheets and the toast slots that go through the store and never touch state", () => {
@@ -565,6 +704,23 @@ describe("the lib folder stays free of the browser", () => {
       expect(Object.prototype.hasOwnProperty.call(window, name), name).toBe(false);
     }
     for (const name of MODULE_ONLY_API_NAMES) expect(window.eval(`typeof ${name}`), name).toBe("undefined");
+  });
+
+  test("app.js never calls fetch directly, only through the request helpers", () => {
+    const RAW_FETCH = /(?<!\.)\bfetch\s*\(/;
+    const offenders = readShipped("app.js")
+      .split("\n")
+      .map((line, index) => ({ line: index + 1, text: line }))
+      .filter((hit) => RAW_FETCH.test(hit.text) && !hit.text.includes("window.fetch"))
+      .map((hit) => `${hit.line}: ${hit.text.trim()}`);
+    expect(offenders).toEqual([]);
+  });
+
+  test("the boundary check sees a bare fetch call and leaves the window.fetch wiring alone", () => {
+    const RAW_FETCH = /(?<!\.)\bfetch\s*\(/;
+    expect(RAW_FETCH.test('const response = await fetch(apiUrl(path));')).toBe(true);
+    expect(RAW_FETCH.test('  fetch: (...args) => window.fetch(...args),')).toBe(false);
+    expect(RAW_FETCH.test('const requested = fetchAppFile(path);')).toBe(false);
   });
 
   test("the request helpers read window.fetch when they run, not when app.js loads", async () => {

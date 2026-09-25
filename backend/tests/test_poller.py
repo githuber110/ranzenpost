@@ -985,3 +985,55 @@ def test_a_restart_with_an_unchanged_plan_pushes_nothing(tmp_path):
     again.id = connection_id
     Poller(again, notifier=notifier, store=restarted_store).poll_once()
     assert notifier.calls == []
+
+
+def _sourced(timetable, source):
+    return dict(timetable, source=source)
+
+
+def test_a_switch_of_the_timetable_source_is_a_rebase_without_push_or_change_events(monkeypatch):
+    from app import integration
+
+    recorded = []
+    real = integration.record_poll
+
+    def capture(store, now_epoch, ok, error="", changes=None):
+        recorded.append(list(changes or []))
+        return real(store, now_epoch, ok, error, changes=changes)
+
+    monkeypatch.setattr(integration, "record_poll", capture)
+    children = [{"child_id": "c1", "name": "Alice"}]
+    changed = dict(_display_lesson(subject_code="EN", teacher_code="XYZ"), change_kind="changed", changed_fields=["teacher"])
+    timetables = {"c1": _sourced(_timetable("2026-08-31T10:00", lessons=[]), "school-app")}
+    notifier = NotifierRecorder()
+    store = FakeStore()
+    poller = _poller(children, timetables, notifier, store)
+    poller.poll_once()
+
+    timetables["c1"] = _sourced(
+        _timetable("2026-08-31T10:00", lessons=[_display_lesson(), changed], changes=[{"subject": "EN"}]), "time-table"
+    )
+    poller.poll_once()
+    assert notifier.calls == []
+    assert recorded[-1] == []
+    assert store.load_config()["poll_state"][f"{SCHOOL}:c1"]["timetable_source"] == "time-table"
+
+    timetables["c1"] = _sourced(_timetable("2026-08-31T11:00", lessons=[_display_lesson(room="R5")]), "school-app")
+    poller.poll_once()
+    assert notifier.calls == []
+    assert recorded[-1] == []
+
+    timetables["c1"] = _sourced(_timetable("2026-08-31T12:00", lessons=[_display_lesson(room="R6")]), "school-app")
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+
+def test_an_older_poll_state_counts_as_the_school_app_source():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    timetables = {"c1": _timetable("2026-08-31T10:00", lessons=[_display_lesson()])}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+    timetables["c1"] = _sourced(_timetable("2026-08-31T11:00", lessons=[_display_lesson(room="R2")]), "school-app")
+    poller.poll_once()
+    assert len(notifier.calls) == 1

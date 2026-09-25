@@ -49,7 +49,7 @@ CODE_REPAIR_FIELDS = (CODE_REPAIR_KEY, CODE_REPAIR_SENT_KEY)
 HELD_REFUSALS = (REASON_BAD_CREDENTIALS, REASON_UNKNOWN_ACCOUNT, REASON_DEFAULT_PASSWORD, REASON_LOCKED)
 
 
-def _next_totp_code(secret, used=None, sleeper=time.sleep, clock=time.time):
+def next_totp_code(secret, used=None, sleeper=time.sleep, clock=time.time):
     code = generate_code(secret)
     if used is not None and used.get("code") == code:
         now = clock()
@@ -69,12 +69,12 @@ def _code_provider(secrets, used=None, sleeper=time.sleep, clock=time.time):
                 message_key=LOGIN_TWOFACTOR_SETUP_KEY,
                 detail={"login_stage": "two_factor", "key_stored": False},
             )
-        return _next_totp_code(secret, used, sleeper, clock)
+        return next_totp_code(secret, used, sleeper, clock)
 
     return provide
 
 
-def _sign_in_failure_reason(error):
+def sign_in_failure_reason(error):
     if session_never_opened(error):
         return SESSION_NOT_OPENED
     if code_step_failed(error):
@@ -361,4 +361,8 @@ class SignInService:
                 self._fresh_refusal_logged = False
             logger.info("school#%s school app session expired, signing in again on the next request", self.connection.id)
             self._forced_relogin_at = now
+            self.drop_session()
+
+    def drop_session(self):
+        with self._session_lock:
             self._client = None

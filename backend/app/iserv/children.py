@@ -1,9 +1,16 @@
+import re
+
 from bs4 import BeautifulSoup
 
 from .models import Child
-from .pages import base_shape, refusal_wording
+from .pages import base_shape, path_of, refusal_wording
 
 CHILD_SELECT_ID = "timetable-filter-child-select"
+TIME_TABLE_PATH = "/iserv/time-table"
+TIME_TABLE_MARKER = re.compile(r"^timetable-")
+LOGIN_PATHS = ("/iserv/auth/", "/iserv/login", "/idesk/login")
+ABSENT_PAGE_STATUSES = (403, 404)
+SESSION_LOST_STATUSES = (401,)
 CHILD_PAGE_MESSAGE_KEY = "api.children.unreadable"
 CHILD_PAGE_FORBIDDEN_KEY = "api.children.forbidden"
 FORBIDDEN_STATUSES = (401, 403)
@@ -46,3 +53,31 @@ def page_diagnosis(response):
     if wording:
         shape["refusal"] = wording
     return shape
+
+
+def time_table_session_lost(response):
+    status = int(getattr(response, "status_code", 0) or 0)
+    if status in SESSION_LOST_STATUSES:
+        return "status %d" % status
+    final = path_of(getattr(response, "url", "") or "")
+    if any(final.startswith(marker) for marker in LOGIN_PATHS):
+        return "login page"
+    soup = BeautifulSoup(getattr(response, "text", "") or "", "html.parser")
+    if soup.find("input", attrs={"name": LOGIN_FIELD}) is not None:
+        return "login page"
+    return ""
+
+
+def time_table_absence(response):
+    status = int(getattr(response, "status_code", 0) or 0)
+    if status in ABSENT_PAGE_STATUSES:
+        return "status %d" % status
+    if status != 200:
+        return ""
+    if path_of(getattr(response, "url", "") or "").rstrip("/") != TIME_TABLE_PATH:
+        return "redirect"
+    return ""
+
+
+def time_table_recognised(html):
+    return BeautifulSoup(html or "", "html.parser").find(id=TIME_TABLE_MARKER) is not None

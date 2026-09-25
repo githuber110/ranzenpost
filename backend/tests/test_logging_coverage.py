@@ -7,6 +7,7 @@ FOREIGN_CALL = re.compile(r"\b(?:requests|session|self\.session|client|probe)\.(
 IMPORTS_REQUESTS = re.compile(r"^\s*import requests\s*$", re.MULTILINE)
 GETS_LOGGER = re.compile(r"logging\.getLogger\(")
 WARNS_WITH_TRACE = re.compile(r"logger\.warning\([^)]*exc_info=True", re.DOTALL)
+LOGS_THE_CAUSE = re.compile(r"logger\.warning\([^)]*failure_cause\(", re.DOTALL)
 
 LOGGING_DEBT = {
     "hanotify.py": "reaches Home Assistant, silent today - next wave",
@@ -56,14 +57,16 @@ def test_the_logging_debt_list_holds_no_entry_that_is_already_paid():
     assert stale == [], f"delete these entries from LOGGING_DEBT: {stale}"
 
 
-def test_the_messenger_reports_its_failures_with_a_stack_trace():
+def test_the_messenger_reports_its_failures_in_the_log():
     for name in ("messenger.py", "messenger_routes.py", "iserv/messenger.py"):
         source = (BACKEND_APP / name).read_text(encoding="utf-8")
         assert GETS_LOGGER.search(source), f"{name} has no logger"
     service = (BACKEND_APP / "messenger.py").read_text(encoding="utf-8")
     routes = (BACKEND_APP / "messenger_routes.py").read_text(encoding="utf-8")
-    assert WARNS_WITH_TRACE.search(service), "messenger.py logs no traceback"
-    assert WARNS_WITH_TRACE.search(routes), "messenger_routes.py logs no traceback"
+    assert LOGS_THE_CAUSE.search(service), "messenger.py logs no cause"
+    assert not WARNS_WITH_TRACE.search(service), "messenger.py logs a traceback that can carry the school host"
+    assert LOGS_THE_CAUSE.search(routes), "messenger_routes.py logs no cause"
+    assert not WARNS_WITH_TRACE.search(routes), "messenger_routes.py logs a traceback that can carry the school host"
 
 
 def test_the_guard_still_catches_a_module_that_was_stripped_of_its_logger():

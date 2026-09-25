@@ -111,7 +111,34 @@ export function createApi({ fetch: send, base, t, abortSignal, formData }) {
       .then((response) => response.json());
   }
 
-  return { apiUrl, apiMessage, requestSignal, getJson, postJson, postFormData };
+  function getFile(path) {
+    return send(apiUrl(path));
+  }
+
+  function requestJson(path, options, fallbackKey) {
+    return send(apiUrl(path), options)
+      .then((response) => response.json().catch(() => null).then((body) => ({ response, body })))
+      .then(({ response, body }) => {
+        if (response.ok) return { ok: true, data: body };
+        return { ok: false, message: apiMessage(body, fallbackKey) };
+      })
+      .catch(() => ({ ok: false, message: t(fallbackKey) }));
+  }
+
+  function postJsonSafe(path, body, fallbackKey) {
+    return send(apiUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then((response) => {
+        if (response.ok) return { ok: true };
+        return response.json().then((data) => data, () => ({})).then((data) => ({ ok: false, message: apiMessage(data, fallbackKey) }));
+      })
+      .catch(() => ({ ok: false, message: t(fallbackKey) }));
+  }
+
+  return { apiUrl, apiMessage, requestSignal, getJson, postJson, postFormData, getFile, requestJson, postJsonSafe };
 }
 
 export function apiGlobals() {

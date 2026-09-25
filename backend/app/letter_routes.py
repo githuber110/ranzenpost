@@ -2,12 +2,14 @@ import logging
 
 import requests
 from fastapi import Body
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from . import messages
 from .iserv.errors import LoginError, TwoFactorError
+from .failure import failure_cause
+from .letter_service import LETTER_UNKNOWN_KEY
 from .service import NotConfiguredError
-from .upstream import _binary_upstream_response, read_endpoint, write_endpoint
+from .upstream import binary_upstream_response, read_endpoint, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +20,8 @@ def _logged(label, call):
     def run():
         try:
             return call()
-        except Exception:
-            logger.warning("letter route %s failed", label, exc_info=True)
+        except Exception as error:
+            logger.warning("letter route %s failed: %s", label, failure_cause(error))
             raise
 
     return run
@@ -72,15 +74,35 @@ def register_routes(app, service):
     def letters_confirm(body: dict = Body(...)):
         return write_endpoint(_logged("confirm", lambda: _confirm_letter(body)), fallback="confirm_failed")
 
+    def _reply_to_letter(body):
+        text = body.get("text")
+        text = text.strip() if isinstance(text, str) else ""
+        if len(text) > LETTER_REPLY_MAX_LENGTH:
+            return messages.result(False, "api.letters.reply.tooLong", {"max": LETTER_REPLY_MAX_LENGTH})
+        return service.reply_to_letter(
+            body.get("connection_id", ""),
+            body.get("letter_id", ""),
+            body.get("recipient_id", ""),
+            text,
+            body.get("request_id", ""),
+            body.get("confirmed") is True,
+        )
+
+    @app.post("/api/letters/reply")
+    def letters_reply(body: dict = Body(...)):
+        return write_endpoint(_logged("reply", lambda: _reply_to_letter(body)), fallback="reply_failed")
+
     @app.get("/api/letters/attachment/{attachment_id}")
     def letters_attachment(attachment_id: str, connection: str = ""):
         try:
             upstream = service.letter_attachment(connection, attachment_id)
         except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-            logger.warning("letter attachment could not be fetched", exc_info=True)
-            return _binary_upstream_response(error)
-        except Exception:
-            logger.warning("letter attachment was refused before the request", exc_info=True)
+            logger.warning("letter attachment could not be fetched: %s", failure_cause(error))
+            return binary_upstream_response(error)
+        except Exception as error:
+            if getattr(error, "message_key", "") == LETTER_UNKNOWN_KEY:
+                return JSONResponse(status_code=404, content=messages.payload(LETTER_UNKNOWN_KEY))
+            logger.warning("letter attachment was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid attachment", status_code=400)
         headers = {}
         disposition = upstream.headers.get("content-disposition")

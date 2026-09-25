@@ -1,3 +1,10 @@
+import logging
+import threading
+import time
+
+import pytest
+
+from app.iserv.errors import DataError
 from app.iserv.letters import (
     build_archive_payload,
     build_confirmation_payload,
@@ -6,6 +13,11 @@ from app.iserv.letters import (
     parse_letter_detail,
     parse_letter_list,
 )
+from app.letter_service import LETTER_TABS, LETTER_UNKNOWN_KEY, LIST_REREAD_SECONDS
+from app.service import IServService
+from app.store import Store
+from tests.support import add_school
+from tests.test_service import CONFIRM_LETTER, CONFIRM_RECIPIENT, ConfirmClient, _fixture_text, make
 
 BASE = "https://school.example/iserv/parentletter/parent/index"
 
@@ -259,3 +271,497 @@ def test_build_confirmation_payload_leaves_the_message_untouched_without_text(fi
     found = parse_confirmation(fixture("letter_confirm_seen_text.html"), SHOW_URL)
     assert build_confirmation_payload(found)["form[text]"] == ""
     assert build_confirmation_payload(found, "danke")["form[text]"] == "danke"
+
+
+FOREIGN_LETTER = "30000000-0000-4000-8000-000000000009"
+FOREIGN_RECIPIENT = "40000000-0000-4000-8000-000000000009"
+LISTED_KEY = f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"
+INDEX_PATH = "/iserv/parentletter/parent/index"
+ARCHIVE_PATH = "/iserv/parentletter/parent/archive"
+EMPTY_LIST = "<html><body><p>Keine Elternbriefe</p></body></html>"
+
+
+def listed_page():
+    return _fixture_text("letters_index.html")
+
+
+def archive_page():
+    return listed_page().replace("parent-archive-letter", "parent-restore-letter")
+
+
+class LetterSchool(ConfirmClient):
+    def __init__(self, url="https://school.example", pages=None, current=None, archive=None, post_text=""):
+        pages = pages or [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")]
+        super().__init__(url, pages, post_text=post_text)
+        self.lists = {
+            INDEX_PATH: listed_page() if current is None else current,
+            ARCHIVE_PATH: EMPTY_LIST if archive is None else archive,
+        }
+        self.refused = set()
+        self.fetched = []
+
+    def fetch(self, path, params=None):
+        self.fetched.append(path)
+        response = super().fetch(path, params)
+        if path in self.refused:
+            response.status_code = 503
+        if path in self.lists:
+            response.text = self.lists[path]
+        elif "/parent_hide/" in path:
+            response.text = _fixture_text("letter_hide_confirm.html")
+        return response
+
+    def reads(self, path):
+        return self.fetched.count(path)
+
+    def opened(self):
+        return [path for path in self.fetched if "/parent/show/" in path or "/parent_hide/" in path]
+
+
+def letter_school(tmp_path, **kwargs):
+    service, _ = make(tmp_path)
+    client = LetterSchool(**kwargs)
+    service.client_factory = lambda url: client
+    service._session()
+    client.fetched.clear()
+    return service, client
+
+
+def assert_untouched(client):
+    assert client.posts == []
+    assert client.opened() == []
+
+
+def listed(service, tabs):
+    return service._letters()._listed_keys({LISTED_KEY}, tabs)
+
+
+def later(service, seconds=LIST_REREAD_SECONDS + 1):
+    letters = service._letters()
+    now = letters.clock()
+    letters.clock = lambda: now + seconds
+
+
+def test_confirming_a_letter_of_no_list_is_refused_without_contacting_the_letter(tmp_path):
+    service, client = letter_school(tmp_path)
+    result = service.confirm_letter(FOREIGN_LETTER, FOREIGN_RECIPIENT)
+    assert result["ok"] is False
+    assert result["message_key"] == LETTER_UNKNOWN_KEY
+    assert_untouched(client)
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 1
+
+
+def test_confirming_a_listed_letter_needs_no_new_list(tmp_path):
+    service, client = letter_school(tmp_path)
+    service.letters("current")
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+    assert len(client.posts) == 1
+
+
+def test_confirming_a_letter_that_is_only_in_the_archive_works(tmp_path):
+    service, client = letter_school(tmp_path, current=EMPTY_LIST, archive=archive_page())
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    assert len(client.posts) == 1
+
+
+def test_an_unknown_letter_reads_the_list_once_and_then_confirms(tmp_path):
+    service, client = letter_school(tmp_path, current=EMPTY_LIST)
+    service.letters("current")
+    client.lists[INDEX_PATH] = listed_page()
+    later(service)
+    assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
+    assert client.reads(INDEX_PATH) == 2
+    assert client.reads(ARCHIVE_PATH) == 0
+    assert len(client.posts) == 1
+
+
+def test_a_letter_list_that_cannot_be_read_stops_the_confirmation_before_the_letter(tmp_path):
+    service, client = letter_school(tmp_path)
+    client.refused.add(INDEX_PATH)
+    with pytest.raises(DataError):
+        service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert_untouched(client)
+
+
+def test_archiving_a_letter_of_no_list_is_refused_without_contacting_the_letter(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    with pytest.raises(DataError) as caught:
+        service.archive_letter(FOREIGN_LETTER, FOREIGN_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert_untouched(client)
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+
+
+def test_archiving_a_listed_letter_works_and_moves_it_to_the_archive(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letters("current")
+    assert service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
+    assert len(client.posts) == 1
+    assert client.reads(INDEX_PATH) == 1
+    assert listed(service, ("archive",)) == {LISTED_KEY}
+    assert listed(service, ("current",)) == set()
+
+
+def test_an_unknown_letter_reads_the_list_once_and_then_archives(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    assert service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
+    assert client.reads(INDEX_PATH) == 1
+    assert len(client.posts) == 1
+
+
+def test_a_letter_that_is_only_in_the_archive_is_not_archived_again(tmp_path):
+    service, client = letter_school(
+        tmp_path, pages=[_fixture_text("letter_detail.html")], current=EMPTY_LIST, archive=archive_page()
+    )
+    service.letters("archive")
+    with pytest.raises(DataError) as caught:
+        service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert_untouched(client)
+    assert client.reads(INDEX_PATH) == 1
+
+
+def test_restoring_needs_the_letter_in_the_archive(tmp_path):
+    service, client = letter_school(tmp_path)
+    with pytest.raises(DataError) as caught:
+        service.restore_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert client.posts == []
+    assert client.reads(ARCHIVE_PATH) == 1
+    assert client.reads(INDEX_PATH) == 0
+
+
+def test_restoring_an_archived_letter_works_and_moves_it_back(tmp_path):
+    service, client = letter_school(
+        tmp_path, current=EMPTY_LIST, archive=archive_page(), post_text=_fixture_text("letters_batch_confirm.html")
+    )
+    assert service.restore_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
+    assert len(client.posts) == 2
+    assert listed(service, ("current",)) == {LISTED_KEY}
+
+
+def test_marking_a_letter_of_no_list_read_opens_nothing(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    result = service.mark_letters_read([f"{FOREIGN_LETTER}:{FOREIGN_RECIPIENT}", LISTED_KEY])
+    assert result == {"read": 1, "blocked": 0, "failed": 1}
+
+
+PLANTED_HOST = "planted-school.example"
+
+
+class HostLeakingLetterSchool(LetterSchool):
+    def fetch(self, path, params=None):
+        if "/parent/show/" in path:
+            raise DataError(
+                f"HTTPSConnectionPool(host='{PLANTED_HOST}', port=443): Max retries exceeded with url: {path}"
+            )
+        return super().fetch(path, params)
+
+
+def test_marking_a_letter_read_logs_the_cause_without_the_school_host(tmp_path, caplog):
+    service, _ = make(tmp_path)
+    client = HostLeakingLetterSchool()
+    service.client_factory = lambda url: client
+    service._session()
+    with caplog.at_level(logging.WARNING, logger="app.letter_service"):
+        result = service.mark_letters_read([LISTED_KEY])
+    assert result == {"read": 0, "blocked": 0, "failed": 1}
+    assert "a letter could not be opened while marking it read: DataError at" in caplog.text
+    assert PLANTED_HOST not in caplog.text
+    assert caplog.records[-1].exc_info is None
+
+
+def test_opening_a_letter_of_no_list_is_refused_without_a_page_request(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    with pytest.raises(DataError) as caught:
+        service.letter_detail(FOREIGN_LETTER, FOREIGN_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert_untouched(client)
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 1
+
+
+def test_opening_a_listed_letter_needs_no_new_list(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letters("current")
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["title"] == "Einladung zum Schulfest"
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+
+
+def test_opening_a_letter_that_is_only_in_the_archive_works(tmp_path):
+    service, client = letter_school(
+        tmp_path, pages=[_fixture_text("letter_detail.html")], current=EMPTY_LIST, archive=archive_page()
+    )
+    service.letters("archive")
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["title"] == "Einladung zum Schulfest"
+    assert client.reads(INDEX_PATH) == 0
+    assert client.reads(ARCHIVE_PATH) == 1
+
+
+def test_an_unknown_letter_reads_the_list_once_and_then_opens(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["title"] == "Einladung zum Schulfest"
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+    assert len(client.opened()) == 1
+
+
+def test_the_search_index_opens_the_letters_it_just_listed_without_another_list(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    assert service.enrich_letters_search("current") == 3
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+
+
+def test_opening_a_letter_of_another_school_is_refused(tmp_path):
+    service, two, clients = two_letter_schools(tmp_path)
+    service.letters()
+    service.letters("archive")
+    with pytest.raises(DataError) as caught:
+        service.letter_detail(two, CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    for client in clients.values():
+        assert_untouched(client)
+
+
+SEEN_ATTACHMENT = "30000000-0000-4000-8000-000000000001"
+UNSEEN_ATTACHMENT = "30000000-0000-4000-8000-000000000003"
+
+
+def attachment_fetches(client):
+    return [path for path in client.fetched if "/parentletter/attachment/" in path]
+
+
+def test_an_attachment_that_no_opened_letter_showed_is_refused_without_a_request(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    with pytest.raises(DataError) as caught:
+        service.letter_attachment(UNSEEN_ATTACHMENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert attachment_fetches(client) == []
+
+
+def test_an_attachment_of_an_opened_letter_is_fetched(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    service.letter_attachment(SEEN_ATTACHMENT)
+    assert attachment_fetches(client) == [f"/iserv/parentletter/attachment/{SEEN_ATTACHMENT}"]
+
+
+def test_an_attachment_from_the_search_index_is_fetched_after_a_restart(tmp_path):
+    service, _ = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.enrich_letters_search("current")
+    service._letters().forget_listed()
+    client = LetterSchool(pages=[_fixture_text("letter_detail.html")])
+    service.client_factory = lambda url: client
+    service._sign_in.drop_session()
+    service.letter_attachment(SEEN_ATTACHMENT)
+    assert attachment_fetches(client) == [f"/iserv/parentletter/attachment/{SEEN_ATTACHMENT}"]
+
+
+def test_an_attachment_seen_at_another_school_is_refused(tmp_path):
+    service, two, clients = two_letter_schools(tmp_path)
+    service.letters()
+    service.letter_detail(SCHOOL_ONE_ID, CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    with pytest.raises(DataError) as caught:
+        service.letter_attachment(two, SEEN_ATTACHMENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert attachment_fetches(clients[SCHOOL_TWO_URL]) == []
+
+
+def test_a_list_read_a_moment_ago_is_not_read_again_for_an_unknown_letter(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letters("current")
+    service.letters("archive")
+    later(service, LIST_REREAD_SECONDS - 1)
+    with pytest.raises(DataError) as caught:
+        service.letter_detail(FOREIGN_LETTER, FOREIGN_RECIPIENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 1
+    assert client.opened() == []
+    later(service, LIST_REREAD_SECONDS + 1)
+    with pytest.raises(DataError):
+        service.letter_detail(FOREIGN_LETTER, FOREIGN_RECIPIENT)
+    assert client.reads(INDEX_PATH) == 2
+    assert client.reads(ARCHIVE_PATH) == 2
+
+
+def test_parallel_openings_of_an_unknown_letter_share_one_list_read(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    entered = threading.Event()
+    release = threading.Event()
+    original = client.fetch
+
+    def slow(path, params=None):
+        if path == INDEX_PATH:
+            entered.set()
+            release.wait(5)
+        return original(path, params)
+
+    client.fetch = slow
+    results = []
+
+    def open_letter():
+        results.append(service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["title"])
+
+    first = threading.Thread(target=open_letter)
+    second = threading.Thread(target=open_letter)
+    first.start()
+    assert entered.wait(5)
+    second.start()
+    time.sleep(0.2)
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert results == ["Einladung zum Schulfest", "Einladung zum Schulfest"]
+    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(ARCHIVE_PATH) == 0
+
+
+def one_letter_school(tmp_path):
+    store = Store(tmp_path / "data")
+    school = add_school(store, SCHOOL_ONE_URL, connection_id=SCHOOL_ONE_ID, school_name="School One")
+    clients = {SCHOOL_ONE_URL: LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")])}
+    service = IServService(store, client_factory=lambda url: clients[url])
+    return service, store, school, clients
+
+
+def test_an_attachment_of_the_previous_account_is_refused_after_an_account_switch(tmp_path):
+    service, store, school, clients = one_letter_school(tmp_path)
+    service.connection(school).enrich_letters_search("current")
+    service.letter_attachment(school, SEEN_ATTACHMENT)
+    clients[SCHOOL_ONE_URL] = LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")], current=EMPTY_LIST)
+    store.update_connection(school, login_revision=1)
+    with pytest.raises(DataError) as caught:
+        service.letter_attachment(school, SEEN_ATTACHMENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert attachment_fetches(clients[SCHOOL_ONE_URL]) == []
+
+
+def test_the_search_index_still_serves_an_attachment_after_a_restart_with_the_same_account(tmp_path):
+    service, store, school, clients = one_letter_school(tmp_path)
+    service.connection(school).enrich_letters_search("current")
+    clients[SCHOOL_ONE_URL] = LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")])
+    store.update_connection(school, login_revision=1)
+    service.letter_attachment(school, SEEN_ATTACHMENT)
+    assert attachment_fetches(clients[SCHOOL_ONE_URL]) == [f"/iserv/parentletter/attachment/{SEEN_ATTACHMENT}"]
+
+
+def test_an_attachment_of_a_letter_deleted_at_the_school_is_refused(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.enrich_letters_search("current")
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    client.lists[INDEX_PATH] = EMPTY_LIST
+    service.letters("current")
+    with pytest.raises(DataError) as caught:
+        service.letter_attachment(SEEN_ATTACHMENT)
+    assert caught.value.message_key == LETTER_UNKNOWN_KEY
+    assert attachment_fetches(client) == []
+    assert client.reads(INDEX_PATH) == 2
+    assert client.reads(ARCHIVE_PATH) == 1
+
+
+class HeldRead:
+    def __init__(self, client, first_text, later_text):
+        self.client = client
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.calls = 0
+        self.texts = [first_text, later_text]
+        self.original = client.fetch
+        client.fetch = self.fetch
+
+    def fetch(self, path, params=None):
+        if path != INDEX_PATH:
+            return self.original(path, params)
+        self.calls += 1
+        self.client.lists[INDEX_PATH] = self.texts[min(self.calls, 2) - 1]
+        response = self.original(path, params)
+        if self.calls == 1:
+            self.entered.set()
+            self.release.wait(5)
+        return response
+
+
+def counting_clock(service):
+    ticks = iter(range(1, 1000))
+    service._letters().clock = lambda: next(ticks)
+
+
+def test_an_older_list_read_that_finishes_last_does_not_replace_the_newer_list(tmp_path):
+    service, client = letter_school(tmp_path)
+    counting_clock(service)
+    held = HeldRead(client, listed_page(), EMPTY_LIST)
+    slow = threading.Thread(target=lambda: service.letters("current"))
+    slow.start()
+    assert held.entered.wait(5)
+    assert service.letters("current")["letters"] == []
+    held.release.set()
+    slow.join(5)
+    assert held.calls == 2
+    assert listed(service, ("current",)) == set()
+    assert service._letters()._read_stamp("current") == 2
+
+
+def test_a_list_read_that_started_before_an_archive_does_not_bring_the_letter_back(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letters("current")
+    held = HeldRead(client, listed_page(), listed_page())
+    slow = threading.Thread(target=lambda: service.letters("current"))
+    slow.start()
+    assert held.entered.wait(5)
+    assert service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
+    held.release.set()
+    slow.join(5)
+    assert listed(service, ("current",)) == set()
+    assert listed(service, ("archive",)) == {LISTED_KEY}
+
+
+def test_clearing_local_data_forgets_the_listed_letters(tmp_path):
+    service, _ = letter_school(tmp_path)
+    service.letters("current")
+    assert listed(service, LETTER_TABS) == {LISTED_KEY}
+    service._clear_local_data()
+    assert listed(service, LETTER_TABS) == set()
+
+
+SCHOOL_ONE_URL = "https://school-one.example"
+SCHOOL_TWO_URL = "https://school-two.example"
+SCHOOL_ONE_ID = "a1b2c3d4"
+
+
+def two_letter_schools(tmp_path):
+    store = Store(tmp_path / "data")
+    add_school(store, SCHOOL_ONE_URL, connection_id=SCHOOL_ONE_ID, school_name="School One")
+    two = add_school(store, SCHOOL_TWO_URL, connection_id="b2c3d4e5", school_name="School Two")
+    clients = {
+        SCHOOL_ONE_URL: LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")], archive=archive_page()),
+        SCHOOL_TWO_URL: LetterSchool(SCHOOL_TWO_URL, pages=[_fixture_text("letter_detail.html")], current=EMPTY_LIST),
+    }
+    service = IServService(store, client_factory=lambda url: clients[url])
+    return service, two, clients
+
+
+@pytest.mark.parametrize("action", ["confirm", "archive", "restore"])
+def test_a_letter_of_another_school_is_always_refused(tmp_path, action):
+    service, two, clients = two_letter_schools(tmp_path)
+    assert [entry["letter_id"] for entry in service.letters()["letters"]].count(CONFIRM_LETTER) == 1
+    service.letters("archive")
+    calls = {
+        "confirm": lambda: service.confirm_letter(two, CONFIRM_LETTER, CONFIRM_RECIPIENT),
+        "archive": lambda: service.archive_letter(two, CONFIRM_LETTER, CONFIRM_RECIPIENT),
+        "restore": lambda: service.restore_letter(two, CONFIRM_LETTER, CONFIRM_RECIPIENT),
+    }
+    try:
+        result = calls[action]()
+    except DataError as error:
+        result = {"message_key": error.message_key}
+    assert result["message_key"] == LETTER_UNKNOWN_KEY
+    for client in clients.values():
+        assert_untouched(client)

@@ -1,4 +1,3 @@
-import json
 import time
 from collections import namedtuple
 from datetime import date
@@ -17,7 +16,11 @@ from .children import (
     child_select_present,
     page_diagnosis,
     parse_children,
+    time_table_absence,
+    time_table_recognised,
+    time_table_session_lost,
 )
+from .dsa import SCHOOL_APP_EXPIRED_KEY
 from .errors import (
     LOGIN_SESSION_KEY,
     LOGIN_TWOFACTOR_KEY,
@@ -45,7 +48,13 @@ from .forms import (
     find_two_factor_form,
     parse_forms,
 )
-from .timetable import build_filter, parse_timetable, week_bounds
+from .timetable import (
+    TIME_TABLE_SOURCE,
+    TIMETABLE_SHAPE_KEY,
+    data_params,
+    parse_time_table,
+    parse_timetable,
+)
 from .totp import generate_code
 from .twofactor import (
     build_confirm_payload,
@@ -69,6 +78,8 @@ TWOFACTOR_ADD_PATH = "/iserv/auth/settings/twofactor/add"
 TWOFACTOR_LIST_PATH = "/iserv/auth/settings/twofactor/"
 TWOFACTOR_DELETE_PATH = "/iserv/auth/settings/twofactor/delete/{uuid}"
 MAX_REDIRECTS = 6
+TIME_TABLE_PAGE = "/iserv/time-table/"
+TIME_TABLE_DATA = "/iserv/time-table/data"
 
 
 ACCEPTED_LOGIN_STATUSES = (200, 302)
@@ -150,6 +161,7 @@ def password_outcome(answer, cookie_names):
 
 
 CappedBody = namedtuple("CappedBody", "status_code text truncated")
+TimeTablePage = namedtuple("TimeTablePage", "absent select children")
 CAPPED_CHUNK = 64 * 1024
 
 
@@ -157,7 +169,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session())
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.02.00")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.2.2")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -396,13 +408,8 @@ class IServClient:
         return parse_children(response.text)
 
     def get_timetable(self, child_id, reference=None):
-        start, end = week_bounds(reference or date.today())
-        week_filter = build_filter(child_id, start, end)
-        params = {
-            "filter": json.dumps(week_filter, separators=(",", ":")),
-            "childId": child_id,
-        }
-        response = self._get("/iserv/time-table/data", params=params)
+        params = data_params(child_id, reference or date.today())
+        response = self._get(TIME_TABLE_DATA, params=params)
         self._raise_server_failure(response)
         if response.status_code in FORBIDDEN_STATUSES:
             raise DataError(
@@ -417,6 +424,68 @@ class IServClient:
         except ValueError as error:
             raise DataError("timetable response was not json") from error
         return parse_timetable(payload)
+
+    def read_time_table_page(self):
+        response = self._get(TIME_TABLE_PAGE)
+        status = self._secondary_status(response)
+        self._raise_session_lost(response)
+        absent = time_table_absence(response)
+        if absent:
+            return TimeTablePage(absent, False, [])
+        if status != 200:
+            raise self._time_table_refusal("time-table page", response)
+        text = getattr(response, "text", "") or ""
+        if not time_table_recognised(text):
+            raise DataError(
+                "the time-table page was not recognised",
+                message_key=TIMETABLE_SHAPE_KEY,
+                detail=dict(page_diagnosis(response), source=TIME_TABLE_SOURCE, recognised=False),
+            )
+        return TimeTablePage("", child_select_present(text), parse_children(text))
+
+    def read_time_table_week(self, child_id, reference=None):
+        response = self._get(TIME_TABLE_DATA, params=data_params(child_id, reference or date.today()))
+        status = self._secondary_status(response)
+        self._raise_session_lost(response)
+        if status != 200:
+            raise self._time_table_refusal("time-table data", response)
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise DataError(
+                "time-table data was not json",
+                message_key=TIMETABLE_SHAPE_KEY,
+                detail=dict(page_diagnosis(response), source=TIME_TABLE_SOURCE),
+            ) from error
+        week = parse_time_table(payload)
+        week.answer = base_shape(response)
+        return week
+
+    @staticmethod
+    def _secondary_status(response):
+        status = int(getattr(response, "status_code", 0) or 0)
+        if status == RATE_LIMIT_STATUS:
+            raise rate_limit_outage(response)
+        return status
+
+    @staticmethod
+    def _raise_session_lost(response):
+        lost = time_table_session_lost(response)
+        if lost:
+            raise DataError(
+                "the time-table module answered without a session",
+                message_key=SCHOOL_APP_EXPIRED_KEY,
+                detail=dict(base_shape(response), source=TIME_TABLE_SOURCE, session=lost),
+            )
+
+    @staticmethod
+    def _time_table_refusal(what, response):
+        status = int(getattr(response, "status_code", 0) or 0)
+        return DataError(
+            f"{what} answered {status}",
+            message_key=TIMETABLE_SHAPE_KEY,
+            detail=dict(page_diagnosis(response), source=TIME_TABLE_SOURCE),
+        )
 
     def _cookie_names(self):
         return {cookie.name for cookie in self.session.cookies}

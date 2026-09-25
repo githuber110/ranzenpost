@@ -256,6 +256,7 @@ def test_a_sign_in_bumps_the_revision_once_after_the_new_credentials(tmp_path):
     assert username == "someone.else"
     assert fields["children"] == []
     assert fields["course_filters"] == {}
+    assert fields["timetable_source"] == ""
     assert base.connection(connection_id)["children"] == []
 
 

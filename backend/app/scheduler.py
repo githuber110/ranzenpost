@@ -3,6 +3,7 @@ import os
 import threading
 import time
 
+from .failure import failure_cause
 from .hanotify import notify
 from .poller import Poller
 
@@ -63,8 +64,8 @@ def start_poller(service, interval_seconds=1800, registry=None, holiday_calendar
             try:
                 if service.is_configured():
                     make_poller(service, interval_seconds, registry, holiday_calendar).poll_once()
-            except Exception:
-                logger.warning("poll cycle failed", exc_info=True)
+            except Exception as error:
+                logger.warning("poll cycle failed: %s", failure_cause(error))
             time.sleep(interval_seconds)
 
     thread = threading.Thread(target=loop, daemon=True)

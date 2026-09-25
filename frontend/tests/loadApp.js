@@ -6,6 +6,7 @@ import { apiGlobals } from "../lib/api.js";
 import { domGlobals } from "../lib/dom.js";
 import { formatGlobals } from "../lib/format.js";
 import { i18nGlobals } from "../lib/i18nGlobals.js";
+import { selectionGlobals } from "../lib/selection.js";
 import { shellGlobals } from "../lib/shell.js";
 import { storeGlobals } from "../lib/store.js";
 
@@ -63,6 +64,7 @@ export function loadApp({ url = "http://localhost/" } = {}) {
   window.RanzenpostDom = domGlobals();
   window.RanzenpostShell = shellGlobals();
   window.RanzenpostStore = storeGlobals();
+  window.RanzenpostSelection = selectionGlobals();
   inject(appJs);
   const renderNotice = window.renderNotice;
   window.renderNotice = (...args) => {

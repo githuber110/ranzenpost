@@ -142,7 +142,7 @@ class Answer:
 def _signed_in(tmp_path, answers):
     service, store, one, two, clients = two_schools(tmp_path, {SCHOOL_ONE: lambda url: SessionClient(url, answers)})
     connection = service.connection(one)
-    connection._client = service.client_factory(SCHOOL_ONE)
+    connection._sign_in._client = service.client_factory(SCHOOL_ONE)
     return service, store, one, connection
 
 

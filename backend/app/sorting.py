@@ -13,13 +13,13 @@ def child_sort_key(child):
     return (child_first_name(name).casefold(), name.casefold())
 
 
-def _folder_sort_key(last_post_id, title):
+def folder_sort_key(last_post_id, title):
     if last_post_id is None:
         return (1, _folder_order(title))
     return (0, -last_post_id)
 
 
-def _published_sort_key(value):
+def published_sort_key(value):
     text = (value or "").strip()
     parts = text.split(" ")[0].split(".")
     if len(parts) == 3:

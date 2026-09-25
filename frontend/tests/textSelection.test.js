@@ -61,7 +61,7 @@ describe("content containers stay text-selectable", () => {
   const css = readCss();
 
   function selectTextRuleFor(selector) {
-    const escaped = selector.replace(/[.[\]^$]/g, "\\$&");
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const re = new RegExp(`${escaped}\\s*[,{][^}]*user-select:\\s*text`);
     return re.test(css);
   }

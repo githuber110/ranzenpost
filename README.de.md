@@ -67,7 +67,7 @@ Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstel
 - Home Assistant 2025.6 oder neuer, als Home Assistant OS oder Supervised. Der Add-on-Store braucht den Supervisor.
 - Ein Rechner mit `amd64` oder `aarch64`, zum Beispiel ein Raspberry Pi 4 oder 5, ein Home Assistant Green oder Yellow oder ein x86-Rechner.
 - Ein IServ-Elternkonto an einer Schule, die die Elternmodule eingeschaltet hat.
-- Ranzenpost wurde mit Zwei-Faktor-Anmeldung gebaut und getestet. Die Anmeldung ohne Zwei-Faktor ist eingebaut, an einer echten Schule aber noch nicht bestätigt.
+- Ranzenpost wurde mit Zwei-Faktor-Anmeldung gebaut und getestet. Die Anmeldung ohne Zwei-Faktor klappt auch. Eine echte Schule hat das bestätigt.
 - HACS für die Integration.
 
 <details>
@@ -147,7 +147,7 @@ Die Integration legt ein Gerät pro Schule und eines pro Kind an. Entitäts-IDs 
 | `sensor.ranzenpost_mia_current_lesson` | Das Fach der gerade laufenden Stunde, `none` außerhalb der Stunden | `date`, `weekday`, `period`, `subject`, `subject_code`, `teacher`, `room`, `start`, `end`, `substitution`, `cancelled`, `kind`, `before`, `after`, `note`, `minutes_until`, `minutes_left` |
 | `sensor.ranzenpost_mia_next_lesson` | Das Fach der nächsten Stunde, auch über Wochenende und Ferien hinweg | Dieselben Felder wie die aktuelle Stunde |
 | `sensor.ranzenpost_mia_school_end_today` | Wann die letzte Stunde heute endet, an einem freien Tag unknown | `school_day` |
-| `sensor.ranzenpost_mia_next_school_day` | Wann die erste Stunde des nächsten Schultags beginnt | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
+| `sensor.ranzenpost_mia_next_school_day` | Wann die erste Stunde des nächsten Schultags beginnt, heute noch bis zur ersten Stunde | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
 | `sensor.ranzenpost_mia_changes_today` | Zahl der Stundenplanänderungen heute | `changes`, eine Liste von Stunden mit den Feldern oben |
 | `sensor.ranzenpost_mia_next_exam` | Das Fach der nächsten markierten Arbeit, `none` ohne eine | `date`, `weekday`, `days_until`, `period`, `subject`, `subject_code`, `name`, `start`, `end`, `teacher`, `room` |
 | `sensor.ranzenpost_mia_exams_upcoming` | Zahl der markierten Arbeiten in den nächsten 30 Tagen | `exams`, eine Liste mit den Feldern oben, und `days` |
@@ -178,16 +178,14 @@ Wähle im Automationseditor das Gerät eines Kindes und dann einen Auslöser: **
 Für alles Weitere tragen die Sensoren genug. Vier Ideen zum Übernehmen:
 
 <details>
-<summary>Das Kinderzimmer nur an Schultagen wecken</summary>
+<summary>Eine Stunde vor Unterrichtsbeginn wecken</summary>
 
 ```yaml
 triggers:
   - trigger: time
-    at: "06:30:00"
-conditions:
-  - condition: state
-    entity_id: binary_sensor.ranzenpost_mia_school_day_today
-    state: "on"
+    at:
+      entity_id: sensor.ranzenpost_mia_next_school_day
+      offset: "-01:00:00"
 actions:
   - action: light.turn_on
     target:
@@ -320,8 +318,8 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 
 | Modul | IServ-Ausgabe, die Ranzenpost liest | Liest | Schreibt |
 | --- | --- | --- | --- |
-| Stundenplan (`dsa-timetable`, `time-table`) | Der Stundenplan der Schul-App | Stunden, Vertretungen, Ausfälle, Stundenzeiten | Nichts. Markierte Arbeiten bleiben in der App |
-| Elternbriefe (`parentletter`) | Elternbriefe | Aktuelle und archivierte Briefe, Anhänge | Archivieren, Lesebestätigung mit optionaler Nachricht |
+| Stundenplan (`dsa-timetable`, `time-table`) | Der Stundenplan der Schul-App. Nennt er keine Stunden, das ältere Modul `time-table` | Stunden, Vertretungen, Ausfälle, Stundenzeiten | Nichts. Markierte Arbeiten bleiben in der App |
+| Elternbriefe (`parentletter`) | Elternbriefe | Aktuelle und archivierte Briefe, Anhänge | Archivieren, Lesebestätigung mit optionaler Nachricht, Nachricht an die Schule bei Briefen mit Antwortmöglichkeit |
 | Pinnwände (`dieschulapp`) | Pinnwände (Schul-App) | Alle Pinnwände, Beiträge, Anhänge | Nichts. Der Lesestatus bleibt in der App |
 | Abwesenheiten (`dieschulapp`) | Abwesenheiten (Schul-App). Das ältere Abwesenheitsmodul ist ungeprüft | Gemeldete Abwesenheiten und ihr Status, die Regeln der Schule | Krankmeldung, Beurlaubung mit Anhängen, Abmeldung, Abmeldung von der Ganztagsbetreuung |
 | Elternsprechtage (`parentconference`) | Elternsprechtage | Termine und Titel | Nichts |

@@ -33,8 +33,11 @@ entities for automations.
 ## Which IServ modules are supported
 
 Ranzenpost reads the timetable ("Stunden- und Vertretungsplan"), parent letters, pinboards,
-absences, parent-teacher conference days and the messenger. A school with only the older
-"Stundenplan" module at `/iserv/timetable/` sees it listed as present but not supported yet. It writes letter confirmations and archiving, absence reports and messenger messages,
+absences, parent-teacher conference days and the messenger. If the Schul-App timetable lists no
+lessons and the school has no lesson slots there, Ranzenpost reads the older timetable module at
+`/iserv/time-table/` instead and remembers that for the school. A week in which IServ lists no
+lessons shows a short note instead of an empty grid. A school with only the older
+"Stundenplan" module at `/iserv/timetable/` sees it listed as present but not supported yet. It writes letter confirmations, letter replies and archiving, absence reports and messenger messages,
 each only after you confirm. After every login it checks which of these modules your account
 offers and hides the rest. Modules it does not support yet are named in the settings by their
 official IServ name, with a button that opens a prefilled GitHub issue. The full map of modules,
@@ -115,8 +118,10 @@ Per child:
   `new_lesson` or empty), `before` and `after` (the changed fields), `note`, `minutes_until`,
   `minutes_left`.
 - `sensor.ranzenpost_<child>_school_end_today`: the end of the last lesson today. Attribute `school_day`.
-- `sensor.ranzenpost_<child>_next_school_day`: the start of the first lesson on the next day with lessons.
-  Attributes `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson`.
+- `sensor.ranzenpost_<child>_next_school_day`: the start of the first held lesson on the next day with lessons.
+  Today counts while that lesson has not started yet; `days_until` is then `0`. A day whose lessons are all
+  cancelled does not count as a school day. Attributes `date`, `weekday`, `days_until`, `end`, `lessons`,
+  `first_lesson`.
 - `sensor.ranzenpost_<child>_changes_today`: the number of changes today, the list under `changes`.
 - `sensor.ranzenpost_<child>_next_exam`: the subject of the next mark from the app's timetable. Attributes
   `date`, `weekday`, `days_until`, `period`, `subject`, `subject_code`, `name`, `start`, `end`,

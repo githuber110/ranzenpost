@@ -372,6 +372,142 @@ def build_confirmation_payload(confirmation, text=None):
     return payload
 
 
+REPLY_PRESENT = "present"
+REPLY_ABSENT = "absent"
+REPLY_UNKNOWN = "unknown"
+REPLY_HINTS = ("reply", "answer", "respond")
+REPLY_ENCODING = "application/x-www-form-urlencoded"
+REPLY_MODULE_PATH = "/iserv/parentletter/"
+SUBMIT_INPUT_TYPES = ("submit", "image")
+
+
+def _is_submit(control):
+    if control.name == "button":
+        return (control.get("type") or "submit").strip().lower() == "submit"
+    return control.name == "input" and (control.get("type") or "text").strip().lower() in SUBMIT_INPUT_TYPES
+
+
+def _origin(url):
+    parts = urlparse(str(url or ""))
+    return (parts.scheme.lower(), parts.netloc.lower())
+
+
+def _outside_letter_body(node):
+    return node.find_parent(class_=LETTER_BODY_CLASS) is None
+
+
+def _reply_hint_count(soup):
+    count = 0
+    for node in soup.find_all(["a", "form", "button"]):
+        if not _outside_letter_body(node):
+            continue
+        target = node.get("href") or node.get("action") or node.get("formaction") or ""
+        path = urlparse(str(target)).path.lower()
+        if any(word in path for word in REPLY_HINTS):
+            count += 1
+    return count
+
+
+def _reply_candidates(soup):
+    candidates = []
+    for form in soup.find_all("form"):
+        if not _outside_letter_body(form):
+            continue
+        if form.find(EDITOR_TAG) is not None or form.find("textarea") is not None:
+            candidates.append(form)
+    return candidates
+
+
+def _strict_reply_form(form, base_url):
+    name = (form.get("name") or "").strip()
+    if not name or form.find(attrs={CONFIRMATION_ATTR: True}) is not None:
+        return None
+    if (form.get("method") or "get").strip().lower() != "post":
+        return None
+    if (form.get("enctype") or REPLY_ENCODING).strip().lower() != REPLY_ENCODING:
+        return None
+    if form.find_all(["textarea", "select"]) or len(form.find_all(EDITOR_TAG)) != 1:
+        return None
+    custom = _form_custom_fields(form)
+    if len(custom) != 1 or custom[0][0].name != EDITOR_TAG:
+        return None
+    editor, editor_name = custom[0]
+    if editor.has_attr("disabled") or editor.has_attr("readonly"):
+        return None
+    fields = {}
+    for control in form.find_all("input"):
+        if _is_submit(control):
+            continue
+        if (control.get("type") or "text").strip().lower() != "hidden":
+            return None
+        if control.get("name"):
+            fields[control["name"]] = control.get("value") or ""
+    if f"{name}[_token]" not in fields:
+        return None
+    submits = [control for control in form.find_all(["button", "input"]) if _is_submit(control)]
+    if len(submits) != 1:
+        return None
+    submit = submits[0]
+    if not submit.get("name") or submit.has_attr("disabled"):
+        return None
+    action = urljoin(base_url, submit.get("formaction") or form.get("action") or base_url)
+    path = urlparse(action).path
+    if _origin(action) != _origin(base_url) or "%" in path or not path.startswith(REPLY_MODULE_PATH):
+        return None
+    fields.update(_editor_fields(editor, editor_name))
+    return {
+        "action": action,
+        "fields": fields,
+        "submits": {submit["name"]: submit.get("value") or ""},
+        "editor": editor_name,
+    }
+
+
+def parse_reply_form(html, base_url):
+    soup = BeautifulSoup(html or "", "html.parser")
+    candidates = _reply_candidates(soup)
+    outline = {
+        "candidates": len(candidates),
+        "editors": sum(len(form.find_all(EDITOR_TAG)) for form in candidates),
+        "textareas": sum(len(form.find_all("textarea")) for form in candidates),
+        "submits": sum(
+            len([control for control in form.find_all(["button", "input"]) if _is_submit(control)])
+            for form in candidates
+        ),
+        "marked": sum(1 for form in candidates if form.find(attrs={CONFIRMATION_ATTR: True}) is not None),
+        "hints": _reply_hint_count(soup),
+    }
+    if len(candidates) == 1:
+        form = _strict_reply_form(candidates[0], base_url)
+        if form is not None:
+            return {"state": REPLY_PRESENT, "form": form, "outline": outline}
+    if candidates or outline["hints"]:
+        return {"state": REPLY_UNKNOWN, "form": None, "outline": outline}
+    return {"state": REPLY_ABSENT, "form": None, "outline": outline}
+
+
+def build_reply_payload(form, text):
+    payload = dict(form.get("fields") or {})
+    editor = form.get("editor") or ""
+    payload[f"{editor}[plain]"] = text
+    payload[f"{editor}[html]"] = _plain_to_html(text)
+    payload.update(form.get("submits") or {})
+    return payload
+
+
+REPLY_ERROR_SELECTORS = (".alert-danger", ".form-error-message", ".invalid-feedback", ".has-error .help-block")
+
+
+def reply_form_errors(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    return sum(
+        1
+        for selector in REPLY_ERROR_SELECTORS
+        for node in soup.select(selector)
+        if _outside_letter_body(node) and node.get_text(" ", strip=True)
+    )
+
+
 NOTICE_SELECTORS = (".alert", ".form-error-message", ".invalid-feedback", ".help-block", ".error")
 NOTICE_LIMIT = 3
 NOTICE_LENGTH = 80

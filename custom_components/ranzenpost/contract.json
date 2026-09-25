@@ -1002,7 +1002,7 @@
         },
         "days_until": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 0
         },
         "start": {
           "$ref": "#/$defs/datetime"
