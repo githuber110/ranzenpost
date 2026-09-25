@@ -30,7 +30,7 @@ REQUIRED_MANIFEST_KEYS = {
 LINKED_KEYS = ("documentation", "issue_tracker")
 REPOSITORY = "https://github.com/githuber110/ranzenpost"
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
-VERSION = re.compile(r"^\d{4}\.\d{2}\.\d{2}$")
+VERSION = re.compile(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$")
 
 
 def _json(path):
@@ -60,11 +60,11 @@ def _changelog_top_heading():
     return match.group(1)
 
 
-def public_version_for(version):
-    month, release, build = version.split(".")
-    if build == "00":
-        return version
-    return f"{month}.{int(release) + 1:02d}.00"
+def version_key(version):
+    match = VERSION.match(version)
+    assert match, version
+    beta = match.group(4)
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)), 10**6 if beta is None else int(beta))
 
 
 def test_manifest_is_valid_json_with_the_required_keys():
@@ -124,12 +124,7 @@ def test_addon_package_and_integration_share_one_version():
     assert manifest_version == addon_version == package_version
 
 
-def test_changelog_top_section_names_the_public_version_this_build_leads_to():
-    addon_version = _addon_version()
-    assert _changelog_top_heading() == public_version_for(addon_version)
-
-
-def test_public_version_derivation():
-    assert public_version_for("2609.02.00") == "2609.02.00"
-    assert public_version_for("2609.01.31") == "2609.02.00"
-    assert public_version_for("2610.03.07") == "2610.04.00"
+def test_changelog_top_section_names_this_version_or_a_later_public_one():
+    heading = _changelog_top_heading()
+    assert VERSION.match(heading), heading
+    assert version_key(heading) >= version_key(_addon_version())

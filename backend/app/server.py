@@ -20,7 +20,7 @@ from .period_routes import register_routes as register_period_routes
 from .pinboard_routes import register_routes as register_pinboard_routes
 from .poller import Poller
 from .store import config_for_connection
-from .upstream import NETWORK, _binary_upstream_response, read_endpoint, upstream_write_error, write_endpoint
+from .upstream import NETWORK, binary_upstream_response, read_endpoint, upstream_write_error, write_endpoint
 from .wizard_routes import register_routes as register_wizard_routes
 
 logger = logging.getLogger(__name__)
@@ -301,7 +301,7 @@ def create_app(
 
     from .messenger_routes import register_routes as register_messenger_routes
 
-    register_messenger_routes(app, service, read_endpoint, write_endpoint, _binary_upstream_response)
+    register_messenger_routes(app, service, read_endpoint, write_endpoint, binary_upstream_response)
 
     if frontend_dir and Path(frontend_dir).is_dir():
         app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

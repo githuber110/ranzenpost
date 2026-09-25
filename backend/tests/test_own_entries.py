@@ -101,6 +101,17 @@ def test_daily_means_every_school_day():
     assert [own_entries.occurs_on(entry, day) for day in week] == [True] * 5 + [False] * 2
 
 
+def test_from_equal_to_until_limits_a_daily_or_weekly_entry_to_that_one_day():
+    daily = normalized(repeat="daily", type="pause", child="", start="09:15", duration=5, **{"from": "2026-09-23", "until": "2026-09-23"})
+    week = [MONDAY + timedelta(days=offset) for offset in range(7)]
+    assert [own_entries.occurs_on(daily, day) for day in week] == [False, False, True, False, False, False, False]
+    assert own_entries.occurrence_days(daily) == {date(2026, 9, 23)}
+
+    weekly = normalized(repeat="weekly", days=[2], **{"from": "2026-09-23", "until": "2026-09-23"})
+    assert [own_entries.occurs_on(weekly, day) for day in week] == [False, False, True, False, False, False, False]
+    assert own_entries.occurrence_days(weekly) == {date(2026, 9, 23)}
+
+
 def test_a_longer_lesson_shortens_a_pause_and_hides_the_one_it_covers():
     lunch = normalized(type="pause", name="Lunch", start="13:15", duration=35, repeat="daily", child="")
     move = normalized(type="pause", name="Room change", start="13:10", duration=5, repeat="daily", child="")

@@ -2,8 +2,8 @@ import logging
 from datetime import date, timedelta
 
 from . import messages
-from .attachments import _absence_attachment_url
-from .identifiers import UNKNOWN_CHILD_KEY, _as_int
+from .attachments import absence_attachment_url
+from .identifiers import UNKNOWN_CHILD_KEY, as_int
 from .iserv.absences import (
     DEREGISTER_TARGETS,
     ERROR_BODY,
@@ -172,7 +172,7 @@ class AbsenceService:
             )
         for entry in entries:
             for attachment in entry.get("attachments") or []:
-                attachment["url"] = _absence_attachment_url(attachment.get("file"), self.connection.id)
+                attachment["url"] = absence_attachment_url(attachment.get("file"), self.connection.id)
         self._update_absence_history(entries)
         merged = merge_absence_history(entries, self.connection.store.load_absence_history())
         merged.sort(key=lambda entry: entry.get("from_date") or "", reverse=True)
@@ -262,11 +262,11 @@ class AbsenceService:
             return messages.result(False, ABSENCE_ERROR_KEYS.get(str(error), ABSENCE_ERROR_FALLBACK_KEY))
         dsa = self.connection._dsa()
         listed = {
-            _as_int(item.get("id"))
+            as_int(item.get("id"))
             for item in dsa.user_requests_or_raise(_request_list_path(kind, payload.get("target"))) or []
             if isinstance(item, dict)
         }
-        if _as_int(payload.get("id")) not in listed - {None}:
+        if as_int(payload.get("id")) not in listed - {None}:
             return messages.result(False, "api.absence.upstream.gone")
         response = dsa.delete_entry(path)
         if response is not None and response.status_code in (200, 202, 204):
@@ -284,7 +284,7 @@ class AbsenceService:
             (
                 normalize_sick_note(item)
                 for item in dsa.sick_notes()
-                if _as_int(item.get("id")) == wanted_id
+                if as_int(item.get("id")) == wanted_id
             ),
             None,
         )
@@ -292,7 +292,7 @@ class AbsenceService:
             raise SickNoteNotFoundError("sick note not found")
         children = dsa.sick_note_children()
         child = next(
-            (c for c in children if _as_int(c.get("id")) == note.get("student_id")), None
+            (c for c in children if as_int(c.get("id")) == note.get("student_id")), None
         )
         if child is None:
             raise SickNoteNotFoundError("sick note not found")

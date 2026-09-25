@@ -102,6 +102,55 @@ describe("subscribe tells listeners about writes and does nothing else", () => {
     expect(heard).toEqual(["first", "second", "second"]);
   });
 
+  test("a throwing listener stops neither the other listeners nor the write, and its error goes to the reporter", () => {
+    const reported = [];
+    const target = { toast: null };
+    const store = createStore(target, { reportError: (error) => reported.push(error) });
+    const heard = [];
+    const broken = new Error("listener broke");
+    store.subscribe((keys) => heard.push(["first", keys]));
+    store.subscribe(() => {
+      throw broken;
+    });
+    store.subscribe((keys) => heard.push(["third", keys, target.toast]));
+    expect(() => store.set("toast", "saved")).not.toThrow();
+    expect(() => store.patch({ sheet: null, toast: "again" })).not.toThrow();
+    expect(heard).toEqual([
+      ["first", ["toast"]],
+      ["third", ["toast"], "saved"],
+      ["first", ["sheet", "toast"]],
+      ["third", ["sheet", "toast"], "again"],
+    ]);
+    expect(reported).toEqual([broken, broken]);
+    expect(target).toEqual({ toast: "again", sheet: null });
+  });
+
+  test("every failing listener is reported once, in listener order", () => {
+    const reported = [];
+    const store = createStore({}, { reportError: (error) => reported.push(error.message) });
+    store.subscribe(() => {
+      throw new Error("one");
+    });
+    store.subscribe(() => {
+      throw new Error("two");
+    });
+    store.set("a", 1);
+    expect(reported).toEqual(["one", "two"]);
+  });
+
+  test("without a reporter a throwing listener still leaves the write and the other listeners alone", () => {
+    const target = {};
+    const store = createStore(target);
+    const heard = [];
+    store.subscribe(() => {
+      throw new Error("quiet");
+    });
+    store.subscribe((keys) => heard.push(keys));
+    expect(() => store.set("a", 1)).not.toThrow();
+    expect(target.a).toBe(1);
+    expect(heard).toEqual([["a"]]);
+  });
+
   test("writes without listeners change the object and call nothing", () => {
     const target = {};
     const store = createStore(target);

@@ -80,6 +80,20 @@ function tr(window, key, vars) {
   return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
 }
 
+function atDay(window, iso, run) {
+  return window.eval(`
+    (function () {
+      const RealDate = Date;
+      function FixedDate(...args) { return args.length ? new RealDate(...args) : new RealDate(${JSON.stringify(iso)}); }
+      FixedDate.prototype = RealDate.prototype;
+      FixedDate.now = () => new RealDate(${JSON.stringify(iso)}).getTime();
+      FixedDate.UTC = RealDate.UTC;
+      Date = FixedDate;
+      try { return (${run})(); } finally { Date = RealDate; }
+    })
+  `)();
+}
+
 
 describe("lesson times page", () => {
   test("the settings row opens the page, which reads as in IServ until Customise", async () => {
@@ -218,15 +232,43 @@ describe("entry editor", () => {
   test("the plus in the plan opens a full page on the phone with the club defaults", async () => {
     const { window, doc } = await setup();
     window.eval('state.view = "timetable"; state.timetable = { lessons: [], period_times: {} }; render();');
-    doc.querySelector(".plan-add").click();
+    atDay(window, "2026-09-23T09:30:00", "() => { document.querySelector('.plan-add').click(); }");
     expect(window.eval("state.settingsPage")).toBe("entry");
     const form = window.eval("state.periodsDetail.form");
     expect(form.type).toBe("club");
     expect(form.repeat).toBe("weekly");
     expect(form.child).toBe("sam");
-    expect(form.until).toBe("2027-06-30");
+    expect(form.from).toBe("2026-09-23");
+    expect(form.until).toBe("2026-09-23");
     expect(doc.querySelector(".entry-save").disabled).toBe(true);
     expect(doc.querySelector(".periods-problem").textContent).toBe(tr(window, "periods.problem.name"));
+  });
+
+  test("a new entry from the plan tap on a day lands from and until on that day only", async () => {
+    const { window, doc } = await setup();
+    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "pause", start: 14 * 60, date: "2026-09-24" })`);
+    const form = window.eval("state.periodsDetail.form");
+    expect(form.repeat).toBe("daily");
+    expect(form.from).toBe("2026-09-24");
+    expect(form.until).toBe("2026-09-24");
+    const hint = doc.querySelector(".entry-single-day .hint");
+    expect(hint.textContent).toBe(tr(window, "periods.range.singleDay"));
+    const summerButton = doc.querySelector(".entry-until-summer");
+    expect(summerButton.textContent).toBe(tr(window, "periods.range.untilSummer"));
+    summerButton.click();
+    expect(window.eval("state.periodsDetail.form.until")).toBe("2027-06-30");
+    expect(doc.querySelector(".entry-single-day")).toBeNull();
+  });
+
+  test("a new appointment from settings also starts from = until = today, once by default", async () => {
+    const { window, doc } = await setup();
+    atDay(window, "2026-09-23T09:30:00", `() => { openEntryForm({ school: ${JSON.stringify(ONE)}, type: "appointment" }); }`);
+    const form = window.eval("state.periodsDetail.form");
+    expect(form.repeat).toBe("once");
+    expect(form.date).toBe("2026-09-23");
+    expect(form.from).toBe("2026-09-23");
+    expect(form.until).toBe("2026-09-23");
+    expect(doc.querySelector(".entry-single-day")).toBeNull();
   });
 
   test("the limit names what ends the entry and the duration controls move together", async () => {
@@ -253,11 +295,12 @@ describe("entry editor", () => {
 
   test("adding Wednesday for a Tuesday afternoon club hits the choir and a lesson blocks the start", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 16 * 60, date: "2026-09-22" })`);
+    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 16 * 60, date: "2026-09-29" })`);
     expect(window.eval("state.periodsDetail.form.days")).toEqual([1]);
+    doc.querySelector(".entry-until-summer").click();
     doc.querySelector('.entry-days [data-day="2"]').click();
     expect(doc.querySelector(".periods-problem").textContent).toBe(tr(window, "periods.problem.conflict", { day: window.eval("weekdayLabel(2)"), time: window.eval("clockLabel(960)"), what: "Choir" }));
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 14 * 60, date: "2026-09-22" })`);
+    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 14 * 60, date: "2026-09-29" })`);
     expect(doc.querySelector(".periods-problem").textContent).toContain(tr(window, "settings.periods.label", { number: "7" }));
   });
 
@@ -281,7 +324,7 @@ describe("entry editor", () => {
   test("saving posts the entry and returns to the plan", async () => {
     const { window, doc, calls } = await setup();
     window.eval('state.view = "timetable"; state.timetable = { lessons: [], period_times: {} }; render();');
-    doc.querySelector(".plan-add").click();
+    atDay(window, "2026-09-23T09:30:00", "() => { document.querySelector('.plan-add').click(); }");
     const name = doc.querySelector(".entry-name");
     name.value = "Chess";
     name.dispatchEvent(new window.Event("input"));
@@ -292,7 +335,7 @@ describe("entry editor", () => {
     const write = calls.find((call) => call.options.method === "POST");
     expect(write.url).toMatch(new RegExp(`api/connections/${ONE}/own-entries$`));
     const payload = JSON.parse(write.options.body);
-    expect(payload).toMatchObject({ type: "club", name: "Chess", repeat: "weekly", child: "sam", holidays: false, until: "2027-06-30" });
+    expect(payload).toMatchObject({ type: "club", name: "Chess", repeat: "weekly", child: "sam", holidays: false, from: "2026-09-23", until: "2026-09-23" });
     expect(payload.id).toBeUndefined();
     expect(window.eval("state.view")).toBe("timetable");
     expect(window.eval("state.periodsDetail")).toBeNull();
@@ -407,20 +450,6 @@ describe("plan and today", () => {
       }
     });
     return { lessons, period_times: {}, start_date: "21.09.2026", end_date: "25.09.2026" };
-  }
-
-  function atDay(window, iso, run) {
-    return window.eval(`
-      (function () {
-        const RealDate = Date;
-        function FixedDate(...args) { return args.length ? new RealDate(...args) : new RealDate(${JSON.stringify(iso)}); }
-        FixedDate.prototype = RealDate.prototype;
-        FixedDate.now = () => new RealDate(${JSON.stringify(iso)}).getTime();
-        FixedDate.UTC = RealDate.UTC;
-        Date = FixedDate;
-        try { return (${run})(); } finally { Date = RealDate; }
-      })
-    `)();
   }
 
   test("breaks become thin separators and the choir its own row on Wednesday only", async () => {

@@ -377,6 +377,16 @@ class DieSchulAppClient:
     def period_times(self):
         return parse_period_times(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
 
+    def timetable_slots_or_raise(self):
+        slots = self._require("timetable-slots/", {"filterBy": "type:is(lesson)"})
+        if not isinstance(slots, list):
+            raise DataError(
+                "school app answered slots in an unknown shape",
+                message_key=SCHOOL_APP_UNREADABLE_KEY,
+                detail={"path": "timetable-slots/"},
+            )
+        return slots
+
     def period_slots(self):
         return parse_period_slots(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
 

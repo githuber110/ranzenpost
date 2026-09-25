@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
@@ -106,7 +108,7 @@ def test_a_later_working_read_lifts_the_unavailable_mark_again(tmp_path):
     service._dsa = lambda: SchoolApp(SCHOOL_APP_CHILDREN)
     service.children()
     assert service.timetable_available() is False
-    service._client = None
+    service._sign_in.drop_session()
     service.children()
     assert service.timetable_available() is True
 
@@ -136,6 +138,29 @@ def test_an_unrelated_data_error_is_not_swallowed_by_the_fallback(tmp_path):
     with pytest.raises(DataError) as caught:
         service.children()
     assert caught.value.message_key == "api.something.else"
+
+
+PLANTED_HOST = "planted-school.example"
+
+
+class HostLeakingClient(RefusingClient):
+    def get_children(self):
+        raise DataError(
+            f"child list page was not readable at https://{PLANTED_HOST}/iserv/time-table/",
+            message_key=self.message_key,
+            detail={"status": 403},
+        )
+
+
+def test_the_fallback_to_the_school_app_logs_the_cause_without_the_school_host(tmp_path, caplog):
+    service = make(tmp_path, client_class=HostLeakingClient, school_app=SchoolApp(SCHOOL_APP_CHILDREN))
+    with caplog.at_level(logging.WARNING, logger="app.child_service"):
+        children = service.children()
+    assert [child["child_id"] for child in children] == ["99", "100"]
+    assert "the timetable page refused the child list, using the school app list instead: DataError" in caplog.text
+    assert " at child_service.py:" in caplog.text
+    assert PLANTED_HOST not in caplog.text
+    assert caplog.records[0].exc_info is None
 
 
 def test_a_school_app_entry_without_an_id_or_name_is_left_out(tmp_path):

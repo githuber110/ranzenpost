@@ -60,6 +60,7 @@ CONNECTION_DEFAULTS = {
     "holiday_region": "",
     "course_filters": {},
     "poll_state": {},
+    "timetable_source": "",
 }
 
 GLOBAL_SETTING_KEYS = (
@@ -210,6 +211,7 @@ def normalize_connection(entry):
         if not isinstance(merged.get(name), list):
             merged[name] = []
     merged["own_entries_ha"] = merged.get("own_entries_ha") is True
+    merged["timetable_source"] = merged["timetable_source"] if isinstance(merged.get("timetable_source"), str) else ""
     merged["id"] = str(merged.get("id") or "")
     return migrate_subject_colors(merged)
 
@@ -318,6 +320,7 @@ class Store:
         self.absence_history_path = self.dir / "absence_history.json"
         self.letters_search_cache_path = self.dir / "letters_search_cache.json"
         self.letters_confirmations_path = self.dir / "letters_confirmations.json"
+        self.letters_replies_path = self.dir / "letters_replies.json"
         self.holidays_cache_path = self.dir / "holidays_cache.json"
         self.calendar_subscriptions_path = self.dir / "calendar_subscriptions.json"
         self.calendar_snapshot_path = self.dir / "calendar_snapshot.json"
@@ -496,6 +499,7 @@ class Store:
             (self.load_absence_history, self.save_absence_history),
             (self.load_letters_search_cache, self.save_letters_search_cache),
             (self.load_letters_confirmations, self.save_letters_confirmations),
+            (self.load_letters_replies, self.save_letters_replies),
             (self.load_modules, self.save_modules),
         ):
             edit(self, load, save, lambda data: data.pop(connection_id, None))
@@ -623,6 +627,12 @@ class Store:
 
     def save_letters_confirmations(self, data):
         atomic_write.write_json(self.letters_confirmations_path, data)
+
+    def load_letters_replies(self):
+        return self._load_json_object(self.letters_replies_path)
+
+    def save_letters_replies(self, data):
+        atomic_write.write_json(self.letters_replies_path, data)
 
     def load_holidays_cache(self):
         return self._load_json_object(self.holidays_cache_path)
@@ -987,6 +997,12 @@ class ConnectionStore:
 
     def save_letters_confirmations(self, data):
         self._put_nested(self.base.load_letters_confirmations, self.base.save_letters_confirmations, data)
+
+    def load_letters_replies(self):
+        return self._nested(self.base.load_letters_replies)
+
+    def save_letters_replies(self, data):
+        self._put_nested(self.base.load_letters_replies, self.base.save_letters_replies, data)
 
     def load_modules(self):
         return self._nested(self.base.load_modules)

@@ -11,10 +11,18 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from . import feed, integration, logfile, modules, namebook, supervisor, valueshape
-from .iserv.timetable import build_filter, week_bounds
+from .iserv.children import (
+    child_select_present,
+    parse_children,
+    time_table_absence,
+    time_table_recognised,
+    time_table_session_lost,
+)
+from .iserv.timetable import data_params
 from .module_catalogue import edition_of, official_name
-from .pathpattern import path_only, path_pattern, placeholders
+from .pathpattern import MATRIX_ROOM, ROOM_MARK, path_only, path_pattern, placeholders
 from .store import host_of
+from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option
 from .vocabulary import TOKEN, known_word
 
 logger = logging.getLogger(__name__)
@@ -41,8 +49,10 @@ KNOWN_ROWS = (
     (modules.MESSENGER, "messenger", modules.PROBES[modules.MESSENGER][0]),
 )
 CATALOGUE_SLUGS = {LEGACY_TIMETABLE: "timetable"}
+TIME_TABLE_SLUG = "timetable"
+TIME_TABLE_DATA = "/iserv/time-table/data"
 DATA_PATHS = {
-    "timetable": "/iserv/time-table/data",
+    TIME_TABLE_SLUG: TIME_TABLE_DATA,
     LEGACY_TIMETABLE: "/iserv/timetable/data",
 }
 JSON_PROBES = {
@@ -58,18 +68,19 @@ MAX_LANDMARKS = 80
 MAX_LINKS = 200
 MAX_ENDPOINTS = 120
 MAX_HEADERS = 60
+MAX_TABLE_ROWS_LINES = 20
 HEADER_CHARS = 40
 MIN_WORD = 3
 MIN_SCHOOL_WORD = 4
 MIN_SECRET = 4
-EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-BEARER = re.compile(r"(?i)\bBearer\s+\S+")
+EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,10}")
+BEARER = re.compile(r"(?i)\bBearer\s+\S{1,4096}")
 ASSIGNED_SECRET = re.compile(
-    r"(?i)\b(PHPSESSID|IServSession|REMEMBERME|[A-Za-z_]*(?:token|secret|password|passwd|session|cookie|totp)[A-Za-z_]*)=([^;\s&\"']+)"
+    r"(?i)\b(PHPSESSID|IServSession|REMEMBERME|[A-Za-z_]{0,64}(?:token|secret|password|passwd|session|cookie|totp)[A-Za-z_]{0,64})=([^;\s&\"']{1,4096})"
 )
-URL_HOST = re.compile(r"(?i)\bhttps?://[^\s/\"'<>]+")
+URL_HOST = re.compile(r"(?i)\bhttps?://[^\s/\"'<>]{1,2048}")
 HOST_SUFFIXES = ("de", "com", "net", "org", "eu", "schule", "school", "example", "local", "io", "info", "edu", "at", "ch")
-BARE_HOST = re.compile(r"(?i)\b(?:[a-z0-9-]+\.)+(?:" + "|".join(HOST_SUFFIXES) + r")\b")
+BARE_HOST = re.compile(r"(?i)\b(?:[a-z0-9-]{1,63}\.){1,10}(?:" + "|".join(HOST_SUFFIXES) + r")\b")
 SCRIPT_PATH = re.compile(r"[\"'](/(?:iserv|_matrix)/[^\"'\s<>]*)[\"']")
 PLACEHOLDER = re.compile(r"<[a-z]+>")
 MAX_SCRIPTS_PER_MODULE = 8
@@ -181,7 +192,7 @@ class Redactor:
         self.users = _alternation(_name_parts(words.users, MIN_WORD, split=False), True)
 
     def __call__(self, text):
-        line = str(text or "")
+        line = MATRIX_ROOM.sub(ROOM_MARK, str(text or ""))
         line = _swap(self.secrets, "<secret>", line)
         line = _swap(self.phones, "<phone>", line)
         line = EMAIL.sub("<email>", line)
@@ -443,13 +454,18 @@ def html_skeleton(html):
             head += " #" + code_text(placeholders(str(form.get("id"))))
         lines.append(head)
         lines.extend(_unique((_field_line(field) for field in form.find_all(FIELD_TAGS)), MAX_HEADERS))
-    for table in soup.find_all("table"):
+    tables = soup.find_all("table")
+    for index, table in enumerate(tables):
         heads = _unique(
             (visible_text(" ".join(th.get_text(" ").split()))[:HEADER_CHARS] for th in table.find_all("th")),
             MAX_HEADERS,
         )
         if heads:
             lines.append("- Table headers: " + " | ".join(heads))
+        if index < MAX_TABLE_ROWS_LINES:
+            lines.append(table_rows(table))
+    if len(tables) > MAX_TABLE_ROWS_LINES:
+        lines.append("- Table rows skipped: %d beyond the limit of %d" % (len(tables) - MAX_TABLE_ROWS_LINES, MAX_TABLE_ROWS_LINES))
     links = _unique(
         (valueshape.link_shape(anchor.get("href")) for anchor in soup.find_all("a", href=True) if path_only(anchor.get("href")).startswith("/")),
         MAX_LINKS,
@@ -464,6 +480,17 @@ def html_skeleton(html):
         lines.append("- Endpoints: " + " | ".join(endpoints))
     lines.extend(embedded_json(soup))
     return lines
+
+
+def table_rows(table):
+    rows = table.find_all("tr")
+    shapes = {}
+    for row in rows:
+        cells = len(row.find_all(("td", "th"), recursive=False))
+        shapes[cells] = shapes.get(cells, 0) + 1
+    label = "#" + code_text(placeholders(str(table.get("id")))) if table.get("id") else "(no id)"
+    parts = ", ".join("%d cells x%d" % (cells, count) for cells, count in sorted(shapes.items()))
+    return "- Table rows %s: %d%s" % (label, len(rows), " (" + parts + ")" if parts else "")
 
 
 def _json_script(tag):
@@ -718,42 +745,108 @@ def script_section(client, response, cache):
 
 
 def _data_params(child_id, today):
-    if not child_id:
-        return None
-    start, end = week_bounds(today)
-    return {
-        "filter": json.dumps(build_filter(child_id, start, end), separators=(",", ":")),
-        "childId": child_id,
-    }
+    return data_params(child_id, today) if child_id else None
 
 
 def structure_targets(row, today, child_id=""):
     targets = [(row["page"], None)]
     if row["json"]:
         targets.extend(modules.probes_of(row["json"], today)[:1])
-    if row.get("data"):
+    if row.get("data") and row["slug"] != TIME_TABLE_SLUG:
         targets.append((row["data"], _data_params(child_id, today)))
     return targets
 
 
-def page_structure(client, row, today, cache=None, child_id=""):
+def _status(response):
+    return int(getattr(response, "status_code", 0) or 0)
+
+
+def _probe(client, path, params, cache, lines):
+    try:
+        response = client.fetch(path, params)
+    except Exception as error:
+        lines.append("- Page: %s -> error (%s)" % (path_pattern(path), type(error).__name__))
+        return None
+    if response is None:
+        lines.append("- Page: %s -> no answer" % path_pattern(path))
+        return None
+    lines.append(_answer_line(path, response))
+    if _status(response) == 200:
+        lines.extend(response_skeleton(response))
+        if cache is not None and _body_kind(response) == "html":
+            lines.extend(script_section(client, response, cache))
+    return response
+
+
+def _listed(children):
+    return [child for child in children or () if isinstance(child, dict) and str(child.get("child_id") or "").strip()]
+
+
+def _time_table_child(options, children, listed):
+    for child in _listed(children):
+        option = matching_option(options, str(child.get("child_id")), child.get("name"), listed)
+        if option is not None:
+            return option.child_id
+    return None
+
+
+def time_table_data_lines(client, page, today, children, listed=None):
+    if page is None:
+        return ["- Data: not read, the page did not answer"]
+    lost = time_table_session_lost(page)
+    if lost:
+        return ["- Data: not read, the session has expired (%s)" % lost]
+    absent = time_table_absence(page)
+    if absent:
+        return ["- Data: not read, the module is absent for this account (%s)" % absent]
+    if _status(page) != 200:
+        return ["- Data: not read, the page answered %d" % _status(page)]
+    html = getattr(page, "text", "") or ""
+    if not time_table_recognised(html):
+        return ["- Data: not read, the page is no time-table page"]
+    listed = len(_listed(children)) if listed is None else listed
+    lines = []
+    if child_select_present(html):
+        options = parse_children(html)
+        lines.append("- Child select: present, options %d, listed children %d" % (len(options), listed))
+        chosen = _time_table_child(options, children, listed)
+        if chosen is None:
+            lines.append("- Data: not read, no listed child matches the child select")
+            return lines
+        lines.append("- Data query: week filter with childId")
+    else:
+        lines.append("- Child select: none")
+        if listed != 1:
+            lines.append("- Data: not read, no child select and %d listed children" % listed)
+            return lines
+        chosen = ""
+        lines.append("- Data query: week filter without childId")
+    _probe(client, TIME_TABLE_DATA, data_params(chosen, today), None, lines)
+    return lines
+
+
+def page_structure(client, row, today, cache=None, child_id="", children=(), listed=None):
     cache = {} if cache is None else cache
     lines = ["#### %s (%s)" % (row["slug"], row["name"])]
+    answers = {}
     for path, params in structure_targets(row, today, child_id):
-        try:
-            response = client.fetch(path, params)
-        except Exception as error:
-            lines.append("- Page: %s -> error (%s)" % (path_pattern(path), type(error).__name__))
-            continue
-        if response is None:
-            lines.append("- Page: %s -> no answer" % path_pattern(path))
-            continue
-        lines.append(_answer_line(path, response))
-        if int(getattr(response, "status_code", 0) or 0) == 200:
-            lines.extend(response_skeleton(response))
-            if _body_kind(response) == "html":
-                lines.extend(script_section(client, response, cache))
+        answers[path] = _probe(client, path, params, cache, lines)
+    if row["slug"] == TIME_TABLE_SLUG and row.get("data"):
+        lines.extend(time_table_data_lines(client, answers.get(row["page"]), today, children, listed))
     return lines
+
+
+def _listed_count(connection, children):
+    reader = getattr(connection, "listed_child_count", None)
+    if callable(reader):
+        try:
+            count = int(reader() or 0)
+        except Exception:
+            logger.debug("diagnostics could not count the listed children", exc_info=True)
+            count = 0
+        if count > 0:
+            return count
+    return len(_listed(children))
 
 
 def module_filter(value):
@@ -839,6 +932,7 @@ def school_section(index, connection, structure, today, module=""):
     lines.append("- Modules checked: %s" % (_stamp(registry["checked_at"]) if registry["checked_at"] else "never"))
     client, session_state = _session_of(connection) if structure else (None, "not opened")
     lines.append("- Session: %s" % session_state)
+    lines.append("- Timetable source: %s" % (config.get(SOURCE_KEY) or SCHOOL_APP_SOURCE))
     lines.append("### Modules")
     lines.append(TABLE_HEAD)
     lines.append(TABLE_RULE)
@@ -856,8 +950,9 @@ def school_section(index, connection, structure, today, module=""):
                 lines.append("- Not read: no module named %s" % module)
             cache = {}
             child_id = _own_child_id(config)
+            listed = _listed_count(connection, config.get("children")) if any(row["slug"] == TIME_TABLE_SLUG for row in chosen) else None
             for row in chosen:
-                lines.extend(page_structure(client, row, today, cache, child_id))
+                lines.extend(page_structure(client, row, today, cache, child_id, config.get("children"), listed))
     return lines, words
 
 

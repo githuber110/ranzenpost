@@ -113,6 +113,56 @@ def test_the_next_school_day_is_tomorrow_on_a_school_morning(tmp_path):
     assert "school_start_tomorrow" not in body
 
 
+def test_the_next_school_day_is_today_before_the_first_lesson_starts(tmp_path):
+    before_first_lesson = int(datetime(2026, 9, 2, 4, 0, tzinfo=timezone.utc).timestamp())
+
+    body = _state(tmp_path, _today_snapshot, before_first_lesson)
+
+    assert body["next_school_day"]["date"] == "2026-09-02"
+    assert body["next_school_day"]["weekday"] == "wednesday"
+    assert body["next_school_day"]["days_until"] == 0
+    assert body["next_school_day"]["start"] == "2026-09-02T08:00:00+02:00"
+    assert body["next_school_day"]["lessons"] == 3
+    assert body["next_school_day"]["first_lesson"] == "Deutsch"
+
+
+def test_the_next_school_day_is_today_just_after_midnight_local_time(tmp_path):
+    just_after_midnight = int(datetime(2026, 9, 1, 22, 10, tzinfo=timezone.utc).timestamp())
+
+    body = _state(tmp_path, _today_snapshot, just_after_midnight)
+
+    assert body["next_school_day"]["date"] == "2026-09-02"
+    assert body["next_school_day"]["days_until"] == 0
+    assert body["next_school_day"]["start"] == "2026-09-02T08:00:00+02:00"
+
+
+def test_the_next_school_day_moves_on_once_todays_first_held_lesson_started(tmp_path):
+    after_start = int(datetime(2026, 9, 2, 6, 5, tzinfo=timezone.utc).timestamp())
+
+    body = _state(tmp_path, _today_snapshot, after_start)
+
+    assert body["next_school_day"]["date"] == "2026-09-03"
+    assert body["next_school_day"]["days_until"] == 1
+
+
+def test_the_next_school_day_skips_a_fully_cancelled_today(tmp_path):
+    from app.cancellations import CancellationRegistry
+
+    before_first_lesson = int(datetime(2026, 9, 2, 4, 0, tzinfo=timezone.utc).timestamp())
+    client, store, _ = _app(tmp_path, clock=Clock(before_first_lesson))
+    _today_snapshot(store)
+    cancellations = CancellationRegistry(store, clock=lambda: before_first_lesson)
+    cancellations.create(CHILD_ID, "2026-09-02", 1)
+    cancellations.create(CHILD_ID, "2026-09-02", 2)
+    cancellations.create(CHILD_ID, "2026-09-02", 3)
+
+    body = client.get(PREFIX + f"/state?{CHILD_QUERY}", headers=_auth(store)).json()
+
+    assert body["next_school_day"]["date"] == "2026-09-03"
+    assert body["next_school_day"]["days_until"] == 1
+    assert body["next_school_day"]["first_lesson"] == "Deutsch"
+
+
 def test_a_holiday_week_pushes_the_next_school_day_behind_it(tmp_path):
     calendar = FakeHolidayCalendar(
         days={f"2026-09-{day:02d}": _day(free=True, overrides=True, kind="school", name="Ferien") for day in range(7, 12)}

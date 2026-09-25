@@ -4,6 +4,7 @@ import requests
 from fastapi import Body
 from fastapi.responses import PlainTextResponse, Response
 
+from .failure import failure_cause
 from .iserv.errors import LoginError, TwoFactorError
 from .service import NotConfiguredError
 
@@ -14,8 +15,8 @@ def _logged(label, call):
     def run():
         try:
             return call()
-        except Exception:
-            logger.warning("messenger route %s failed", label, exc_info=True)
+        except Exception as error:
+            logger.warning("messenger route %s failed: %s", label, failure_cause(error))
             raise
 
     return run
@@ -87,10 +88,10 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
             TwoFactorError,
             requests.RequestException,
         ) as error:
-            logger.warning("messenger media could not be fetched", exc_info=True)
+            logger.warning("messenger media could not be fetched: %s", failure_cause(error))
             return binary_upstream_response(error)
-        except Exception:
-            logger.warning("messenger media was refused before the request", exc_info=True)
+        except Exception as error:
+            logger.warning("messenger media was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid media", status_code=400)
         headers = {}
         disposition = upstream.headers.get("content-disposition")

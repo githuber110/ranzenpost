@@ -3842,6 +3842,8 @@ button.pgap:active { background: color-mix(in srgb, var(--accent) 8%, transparen
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .two label { display: block; min-inline-size: 0; }
 .entry-holidays-check { margin-block-start: var(--s-4); }
+.entry-single-day { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-3); margin-block-start: var(--s-3); }
+.entry-single-day .link-btn { min-height: auto; padding-inline: 0; }
 .hint.warn, .field .hint.warn { color: var(--warn); font-weight: 600; }
 .periods-horizon { margin: 0 0 var(--s-2); font-size: 0.75rem; color: var(--ink-3); }
 .periods-problem { margin: 0 0 var(--s-4); font-size: 0.875rem; }

@@ -146,11 +146,12 @@ file, keep the `{placeholders}` exactly as they are, and run `npm test`.
 
 ## Versioning and releases
 
-Versions follow `YYMM.RR.MM`: year and month, the public release number, and an internal build
-counter that resets to `00` at a public release. `iserv_connector/config.yaml`, `package.json` and
+Versions follow `YYMM.N.P` like Home Assistant: year and month, then the feature release and the fix number,
+without leading zeros (`2609.2.1`). Test builds carry a `b` suffix (`2609.2.1b0`); Home Assistant and HACS sort
+them below the release. `iserv_connector/config.yaml`, `package.json` and
 `custom_components/ranzenpost/manifest.json` always carry the same version; a test guards that.
 
-A release is a tag `vYYMM.RR.MM`, e.g. `v2609.02.00`. CI checks the tag against
+A release is a tag `vYYMM.N.P`, e.g. `v2609.2.1`. CI checks the tag against
 `config.yaml`, builds and pushes the image, then creates the GitHub release from that version's
 section of `iserv_connector/CHANGELOG.md` (`scripts/extract_changelog_section.py`).
 

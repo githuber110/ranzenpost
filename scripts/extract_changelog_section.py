@@ -25,7 +25,7 @@ def extract_section(changelog_text: str, version: str) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Print one version's section of the changelog.")
-    parser.add_argument("version", help="the version heading to extract, e.g. 2609.01.31")
+    parser.add_argument("version", help="the version heading to extract, e.g. 2609.2.2")
     parser.add_argument("--file", type=Path, default=DEFAULT_CHANGELOG, help="path to the changelog")
     args = parser.parse_args(argv)
 

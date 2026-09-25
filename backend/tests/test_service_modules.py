@@ -250,7 +250,7 @@ def test_a_network_failure_keeps_the_stored_registry(tmp_path):
     service, store, _ = make(tmp_path, missing=[modules.PROBES[modules.LETTERS][0]])
     service.check_connection()
     assert service.modules()["modules"][modules.LETTERS] is False
-    service._client = None
+    service._sign_in.drop_session()
     service.client_factory = lambda url: ProbeClient(url, failing=[path for path, _ in modules.PROBES.values()])
     service.check_connection()
     service.refresh_modules()
@@ -287,7 +287,7 @@ def test_a_detection_that_blows_up_keeps_the_stored_registry(tmp_path, caplog):
         raise RuntimeError("parser exploded")
 
     service._probe_modules = broken
-    service._client = None
+    service._sign_in.drop_session()
     with caplog.at_level(logging.DEBUG, logger="app.service"):
         assert service.check_connection() == "ok"
     assert store.load_modules() == before

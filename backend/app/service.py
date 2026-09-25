@@ -22,12 +22,13 @@ from .store import (
     split_child_key,
 )
 from .absence_service import AbsenceService
-from .child_service import LETTERS_CHILD_PREFIX, SCHOOL_CACHE_SECONDS, ChildService, _unknown_child
+from .child_service import LETTERS_CHILD_PREFIX, SCHOOL_CACHE_SECONDS, ChildService, unknown_child
 from .letter_service import LetterService
 from .not_configured import ConnectionChangedError, NotConfiguredError
-from .attachments import _attachment_dict, _clean_filename
-from .identifiers import _as_int
-from .sorting import _folder_sort_key, _published_sort_key, child_sort_key
+from .attachments import attachment_dict, clean_filename
+from .failure import failure_cause
+from .identifiers import as_int
+from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.conferences import parse_conferences
 from .iserv.dsa import DieSchulAppClient
@@ -58,7 +59,8 @@ from .mapping import (
     to_display,
 )
 from .messenger import MessengerService
-from .sign_in import SignInService, _next_totp_code, _sign_in_failure_reason
+from .sign_in import SignInService, next_totp_code, sign_in_failure_reason
+from .timetable_source import TimetableSources, has_lessons
 
 CONFERENCES_PATH = "/iserv/parentconference/attendee/"
 NAV_BADGES_PATH = "/iserv/app/navigation/badges"
@@ -113,7 +115,7 @@ def _auth_health(reason):
 
 
 class ConnectionService:
-    _client = _sign_in_state("_client")
+    _client = property(lambda self: self._sign_in._client)
     _last_code = _sign_in_state("_last_code")
     _session_lock = _sign_in_state("_session_lock")
     _expiry_window = _sign_in_state("_expiry_window")
@@ -130,6 +132,7 @@ class ConnectionService:
         self._modules_recheck_at = 0.0
         self._letter_service = LetterService(self)
         self._child_service = ChildService(self)
+        self._timetable_sources = TimetableSources(self)
         self.clock = time.time
 
     def is_configured(self):
@@ -327,13 +330,13 @@ class ConnectionService:
             try:
                 self._login()
             except (LoginError, TwoFactorError):
-                self._client = None
+                self._sign_in.drop_session()
                 return "auth_failed"
             except OutageError:
-                self._client = None
+                self._sign_in.drop_session()
                 return STATUS_OUTAGE
             except requests.RequestException:
-                self._client = None
+                self._sign_in.drop_session()
                 return "network"
             except NotConfiguredError:
                 return "not_configured"
@@ -368,18 +371,18 @@ class ConnectionService:
             try:
                 self._login(timeout=HEALTH_CHECK_TIMEOUT_SECONDS)
             except (LoginError, TwoFactorError) as error:
-                self._client = None
-                return _auth_health(_sign_in_failure_reason(error))
+                self._sign_in.drop_session()
+                return _auth_health(sign_in_failure_reason(error))
             except OutageError:
-                self._client = None
+                self._sign_in.drop_session()
                 return {"status": STATUS_OUTAGE, "stale": False}
             except NotConfiguredError:
                 return {"status": STATUS_NOT_CONFIGURED, "stale": False}
             except requests.Timeout:
-                self._client = None
+                self._sign_in.drop_session()
                 return {"status": self._stored_status(slot), "stale": True}
             except requests.RequestException:
-                self._client = None
+                self._sign_in.drop_session()
                 return {"status": STATUS_NETWORK, "stale": False}
         return {"status": STATUS_OK, "stale": False}
 
@@ -463,7 +466,7 @@ class ConnectionService:
 
         with self._session_lock:
             edit_secrets(self.store, store)
-            self._client = None
+            self._sign_in.drop_session()
 
     def disconnect(self):
         secrets = self.store.load_secrets()
@@ -485,28 +488,33 @@ class ConnectionService:
             csrf_token = parse_delete_token(list_page.text)
             if not csrf_token:
                 return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
-            code = _next_totp_code(secret, self._last_code)
+            code = next_totp_code(secret, self._last_code)
             removed = client.delete_totp_token(uuid, code, csrf_token)
-        except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException):
-            logger.warning("removing the two-factor token could not be confirmed", exc_info=True)
+        except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException) as error:
+            logger.warning("removing the two-factor token could not be confirmed: %s", failure_cause(error))
             return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
         return _disconnect_result(True, removed, DISCONNECT_REMOVED_KEY if removed else DISCONNECT_FAILED_KEY)
 
     def _clear_local_data(self):
         with self._session_lock:
             self._child_service.retire()
+            self._letter_service.forget_listed()
             self.store.reset_config()
             self.store.delete_secrets()
-            self._client = None
+            self._sign_in.drop_session()
             self._messenger_service = None
             self._absence_service = None
             self._child_service = ChildService(self)
+            self._timetable_sources.reset()
 
     def children(self):
         return self._child_service.children()
 
     def _cached_child(self, child_id):
         return self._child_service._cached_child(child_id)
+
+    def listed_child_count(self):
+        return self._child_service.listed_count(refresh=True)
 
     def _migrate_stored_children(self, children):
         return self._child_service._migrate_stored_children(children)
@@ -590,7 +598,7 @@ class ConnectionService:
                         "folder_title": board.title,
                         "column_title": column.title,
                         "unread": is_unread,
-                        "attachments": [_attachment_dict(a, self.id) for a in tile.attachments],
+                        "attachments": [attachment_dict(a, self.id) for a in tile.attachments],
                     }
                     tiles.append(entry)
                     feed.append(entry)
@@ -602,17 +610,17 @@ class ConnectionService:
                     "unread": unread_count,
                     "last_post_id": last_post_id,
                     "columns": columns,
-                    "attachments": [_attachment_dict(a, self.id) for a in board.attachments],
+                    "attachments": [attachment_dict(a, self.id) for a in board.attachments],
                     "author": board.author,
                     "students_can_create_tiles": board.students_can_create_tiles,
                 }
             )
-        folders.sort(key=lambda entry: _folder_sort_key(entry.get("last_post_id"), entry.get("title")))
+        folders.sort(key=lambda entry: folder_sort_key(entry.get("last_post_id"), entry.get("title")))
         feed.sort(key=lambda entry: entry["id"] or 0, reverse=True)
         return {"folders": folders, "feed": feed}
 
     def pinboard_attachment(self, filename):
-        filename = _clean_filename(filename)
+        filename = clean_filename(filename)
         return self._session().fetch(DSA_FILE_PATH.format(filename=quote(filename, safe="")))
 
     def absence_attachment(self, filename):
@@ -657,6 +665,9 @@ class ConnectionService:
 
     def confirm_letter(self, letter_id, recipient_id, text=None):
         return self._letters().confirm_letter(letter_id, recipient_id, text)
+
+    def reply_to_letter(self, letter_id, recipient_id, text, request_id, confirmed=False):
+        return self._letters().reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
 
     def archive_letter(self, letter_id, recipient_id):
         return self._letters().archive_letter(letter_id, recipient_id)
@@ -800,15 +811,13 @@ class ConnectionService:
 
     def _timetable_payload(self, child_id, reference=None, week_offset=0):
         if str(child_id).startswith(LETTERS_CHILD_PREFIX):
-            raise _unknown_child()
+            raise unknown_child()
         offset = holidays.clamp_week_offset(week_offset)
         target = (reference or date.today()) + timedelta(days=7 * offset)
         child = self._cached_child(str(child_id))
-        if child is not None and child.get("course_ids"):
-            week = self._school_timetable(target, child["course_ids"])
-        else:
-            week = self._session().get_timetable(child_id, target)
-        school_slots = self._school_period_slots()
+        reading = self._timetable_sources.read(child_id, child, target)
+        week = reading.week
+        school_slots = reading.slots if reading.slots is not None else self._school_period_slots()
         school_times = {key: slot["start"] for key, slot in period_grid.normalize_slots(school_slots).items()}
 
         def learn(current):
@@ -832,6 +841,8 @@ class ConnectionService:
             "week_offset": offset,
             "substitutions_released": self._substitutions_released(),
             "vacations": list(getattr(week, "vacations", None) or []),
+            "source": reading.source,
+            "no_lessons": not has_lessons(week),
         }
         return payload, config
 
@@ -907,7 +918,7 @@ class IServService:
     def resolve(self, child_key):
         connection_id, child_id = split_child_key(child_key)
         if not connection_id or self.store.connection(connection_id) is None:
-            raise _unknown_child()
+            raise unknown_child()
         connection = self.connection(connection_id)
         return connection, connection.authorized_child(child_id)
 
@@ -988,7 +999,7 @@ class IServService:
                 connection, raw = self._children_of(connection)
             except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
                 failures.append(error)
-                logger.warning("child list of school#%s unavailable", connection.id, exc_info=True)
+                logger.warning("child list of school#%s unavailable: %s", connection.id, failure_cause(error))
                 raw = [dict(child, unavailable=True) for child in connection.stored_children()]
             listed.extend(self._child(connection, child) for child in raw)
         if failures and len(failures) == len(connections):
@@ -1023,7 +1034,7 @@ class IServService:
     def save_course_filter(self, child_key, chosen, known, confirmed_empty=False):
         connection, child_id = self.resolve(child_key)
         if child_id not in {child["child_id"] for child in connection.stored_children()}:
-            raise _unknown_child()
+            raise unknown_child()
         return connection.save_course_filter(child_id, chosen, known, confirmed_empty)
 
     def timetable_available(self):
@@ -1090,7 +1101,7 @@ class IServService:
                 results.append((connection, collect(connection)))
             except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
                 failures.append((connection, error))
-                logger.warning("school#%s did not answer", connection.id, exc_info=True)
+                logger.warning("school#%s did not answer: %s", connection.id, failure_cause(error))
         if not connections:
             raise NotConfiguredError("no school connected")
         if failures and not results:
@@ -1107,7 +1118,7 @@ class IServService:
                     [connection.id, str(entry.get("letter_id")), str(entry.get("recipient_id"))]
                 )
                 entries.append(tagged)
-        entries.sort(key=lambda item: _published_sort_key(item.get("published")), reverse=True)
+        entries.sort(key=lambda item: published_sort_key(item.get("published")), reverse=True)
         return {"letters": entries, "unavailable": unavailable}
 
     def mark_letters_read(self, keys=None, mark_all=False):
@@ -1118,7 +1129,11 @@ class IServService:
             grouped.setdefault(connection_id, []).append(rest)
         targets = self.connections() if mark_all else [self.known_connection(name) for name in grouped]
         for connection in targets:
-            outcome = connection.mark_letters_read(grouped.get(connection.id), mark_all)
+            try:
+                outcome = connection.mark_letters_read(grouped.get(connection.id), mark_all)
+            except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
+                logger.warning("school#%s letters were not marked read: %s", connection.id, failure_cause(error))
+                outcome = {"failed": len(grouped.get(connection.id) or []) or 1}
             for name in totals:
                 totals[name] += int(outcome.get(name) or 0)
         return totals
@@ -1128,6 +1143,9 @@ class IServService:
 
     def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
         return self.known_connection(connection_id).confirm_letter(letter_id, recipient_id, text)
+
+    def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
+        return self.known_connection(connection_id).reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
 
     def archive_letter(self, connection_id, letter_id, recipient_id):
         return self.known_connection(connection_id).archive_letter(letter_id, recipient_id)
@@ -1158,7 +1176,7 @@ class IServService:
         grouped = {}
         for key in keys or []:
             connection_id, rest = _split_prefixed(key)
-            tile_id = _as_int(rest)
+            tile_id = as_int(rest)
             if tile_id is not None:
                 grouped.setdefault(connection_id, []).append(tile_id)
         targets = self.connections() if mark_all else [self.known_connection(name) for name in grouped]

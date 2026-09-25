@@ -1,13 +1,17 @@
+import json
 import logging
 from dataclasses import replace
 from datetime import timedelta
 
+from ..valueshape import shape_lines
 from .errors import DataError
 from .models import Lesson, TimetableWeek
 
 logger = logging.getLogger(__name__)
 
 TIMETABLE_SHAPE_KEY = "api.timetable.unreadable"
+TIME_TABLE_SOURCE = "time-table"
+SHAPE_DIAGNOSIS_LINES = 40
 
 COMPARED_FIELDS = ("subject", "teacher", "room")
 CANCEL_TOKENS = ("cancel", "entfall", "ausfall")
@@ -28,6 +32,17 @@ def build_filter(child_id, start, end):
         "rooms": [],
         "child": child_id,
     }
+
+
+def data_params(child_id, reference):
+    start, end = week_bounds(reference)
+    week_filter = build_filter(child_id, start, end)
+    if not child_id:
+        week_filter.pop("child")
+    params = {"filter": json.dumps(week_filter, separators=(",", ":"))}
+    if child_id:
+        params["childId"] = child_id
+    return params
 
 
 def slot_key(date_value, period):
@@ -338,3 +353,22 @@ def parse_timetable(payload):
     week.cancelled = cancelled
     week.rows = rows
     return week
+
+
+def time_table_shape_error(note, payload):
+    return DataError(
+        note,
+        message_key=TIMETABLE_SHAPE_KEY,
+        detail={"source": TIME_TABLE_SOURCE, "shape": shape_lines(payload)[:SHAPE_DIAGNOSIS_LINES]},
+    )
+
+
+def parse_time_table(payload):
+    if not isinstance(payload, dict):
+        raise time_table_shape_error("the time-table answer was not an object", payload)
+    try:
+        return parse_timetable(payload)
+    except DataError as error:
+        raise time_table_shape_error(str(error), payload) from error
+    except (AttributeError, TypeError, ValueError) as error:
+        raise time_table_shape_error("the time-table entries were not understood", payload) from error

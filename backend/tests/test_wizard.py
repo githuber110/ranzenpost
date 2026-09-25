@@ -1229,3 +1229,21 @@ def test_a_setup_start_that_opened_no_session_asks_for_a_fresh_code_and_stays_on
     prober.begin = {"status": "awaiting_confirm"}
     assert wizard.connect(CODE2).get("awaiting_confirm") is True
     assert prober.begin_calls == 2
+
+
+def test_signing_in_with_another_account_forgets_the_timetable_source(tmp_path):
+    wizard, store, connection_id = finished_connection(tmp_path)
+    store.base.update_connection(connection_id, timetable_source="time-table")
+    wizard.reset(connection_id)
+    wizard.set_url("school-one.example")
+    wizard.set_login("other.parent", "s")
+    assert store.base.connection(connection_id)["timetable_source"] == ""
+
+
+def test_signing_in_again_with_the_same_account_keeps_the_timetable_source(tmp_path):
+    wizard, store, connection_id = finished_connection(tmp_path)
+    store.base.update_connection(connection_id, timetable_source="time-table")
+    wizard.reset(connection_id)
+    wizard.set_url("school-one.example")
+    wizard.set_login("parent", "s")
+    assert store.base.connection(connection_id)["timetable_source"] == "time-table"

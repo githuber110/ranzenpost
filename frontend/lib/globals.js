@@ -2,6 +2,7 @@ import { apiGlobals } from "./api.js";
 import { domGlobals } from "./dom.js";
 import { formatGlobals } from "./format.js";
 import { i18nGlobals } from "./i18nGlobals.js";
+import { selectionGlobals } from "./selection.js";
 import { shellGlobals } from "./shell.js";
 import { storeGlobals } from "./store.js";
 
@@ -11,3 +12,4 @@ window.RanzenpostFormat = formatGlobals();
 window.RanzenpostDom = domGlobals();
 window.RanzenpostShell = shellGlobals();
 window.RanzenpostStore = storeGlobals();
+window.RanzenpostSelection = selectionGlobals();

@@ -997,3 +997,43 @@ def test_the_ingress_path_comes_from_the_supervisor_slug(monkeypatch):
     assert supervisor.ingress_path() == ""
     monkeypatch.setattr(supervisor, "_addon_info", lambda: None)
     assert supervisor.ingress_path() == ""
+
+
+def test_a_week_from_the_time_table_module_reaches_the_integration_unchanged(tmp_path):
+    from datetime import date
+
+    from app.store import child_key
+    from tests.support import DEFAULT_SECRETS, connection_service
+    from tests.time_table_school import WEEK_PLAN, TimeTableSchool, client_factory
+
+    client, store, _ = _app(tmp_path)
+    school = TimeTableSchool(
+        child_id=_raw(CHILD_ID),
+        child_name=("Zwiebelfisch", "Quastenflosser"),
+        options=(("11111111-1111-4111-8111-111111111111", "Quastenflosser, Zwiebelfisch"),),
+    )
+    store.save_secrets(SCHOOL, dict(DEFAULT_SECRETS))
+    store.update_connection(SCHOOL, school_url="https://schule.example.test")
+    connection = connection_service(store, SCHOOL, client_factory(school))
+    week = connection.timetable(_raw(CHILD_ID), reference=date(2026, 9, 2))
+    assert week["source"] == "time-table"
+    assert child_key(SCHOOL, _raw(CHILD_ID)) == CHILD_ID
+    snapshot = {"children": {CHILD_ID: {"weeks": {week["start_date"]: {
+        "start_date": week["start_date"], "end_date": week["end_date"], "lessons": week["lessons"],
+    }}, "last_success": NOW_EPOCH}}}
+    store.save_calendar_snapshot(snapshot)
+
+    body = client.get(
+        PREFIX + f"/events?{CHILD_QUERY}&kind=lessons&start=2026-08-31&end=2026-09-04",
+        headers=_auth(store),
+    ).json()
+
+    timed = sorted((event for event in body if not event["all_day"]), key=lambda event: event["start"])
+    assert len(timed) == len(WEEK_PLAN)
+    assert [(event["subject_code"], event["location"]) for event in timed] == [
+        (subject, room) for _day, _period, subject, _teacher, room in sorted(WEEK_PLAN, key=lambda plan: (plan[0], plan[1]))
+    ]
+    assert timed[0]["start"] == "2026-08-31T08:00:00+02:00"
+    assert [event["cancelled"] for event in timed] == [False] * len(WEEK_PLAN)
+    state = client.get(PREFIX + f"/state?{CHILD_QUERY}", headers=_auth(store)).json()
+    assert state["school_day_today"] is True

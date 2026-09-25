@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, rmSync } from "node:fs";
 
 const SUITES = {
   frontend: { dir: "frontend/tests", config: [] },
-  card: { dir: "tests/card", config: ["--config", "vitest.card.config.js"] },
+  card: { dir: "tests/card", config: ["--config", "vitest.card.config.mjs"] },
 };
 const SUITE_FLAG = "--suite=";
 const suiteName = (process.argv.find((arg) => arg.startsWith(SUITE_FLAG)) || `${SUITE_FLAG}frontend`).slice(SUITE_FLAG.length);

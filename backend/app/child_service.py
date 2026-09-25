@@ -4,6 +4,7 @@ import time
 import requests
 
 from . import courses, modules
+from .failure import failure_cause
 from .identifiers import UNKNOWN_CHILD_KEY
 from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
 from .iserv.dsa import parse_children_from_me, student_for_name
@@ -41,11 +42,11 @@ def _moved_children(config, children):
     return moves
 
 
-def _unknown_child():
+def unknown_child():
     return DataError("unknown child", message_key=UNKNOWN_CHILD_KEY)
 
 
-def _connection_marker(config, revision=None):
+def connection_marker(config, revision=None):
     return (
         str(config.get("school_url") or ""),
         (config.get(LOGIN_REVISION_KEY) or 0) if revision is None else revision,
@@ -70,13 +71,13 @@ class ChildService:
 
     def _marker(self):
         config = self.connection.store.load_config()
-        marker = _connection_marker(config, getattr(self.connection, "login_revision", None))
+        marker = connection_marker(config, getattr(self.connection, "login_revision", None))
         if not self._current(config, marker):
             raise _changed_connection()
         return marker
 
     def _current(self, config, marker):
-        return not self._retired and _connection_marker(config) == marker
+        return not self._retired and connection_marker(config) == marker
 
     def stored_children(self):
         return [
@@ -91,7 +92,7 @@ class ChildService:
         if not stored:
             stored = self._listed_child_ids()
         if not child_id or child_id not in stored:
-            raise _unknown_child()
+            raise unknown_child()
         return child_id
 
     def _listed_child_ids(self):
@@ -120,8 +121,8 @@ class ChildService:
             if not fallback:
                 raise
             logger.warning(
-                "the timetable page refused the child list, using the school app list instead",
-                exc_info=True,
+                "the timetable page refused the child list, using the school app list instead: %s",
+                failure_cause(error),
             )
             kept = self._keep(fallback, marker)
             self.connection._timetable_page_denied = True
@@ -193,6 +194,15 @@ class ChildService:
         if self._retired:
             return
         self._children_cache = (time.time(), {child["child_id"]: child for child in children})
+
+    def listed_count(self, refresh=False):
+        stamp, cached = self._children_cache
+        if refresh and (not cached or time.time() - stamp > SCHOOL_CACHE_SECONDS):
+            listed = self._children_from_school_account()
+            if listed:
+                self._remember_children(listed)
+                cached = self._children_cache[1]
+        return len(cached)
 
     def _cached_child(self, child_id):
         stamp, cached = self._children_cache

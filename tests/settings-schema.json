@@ -26,7 +26,8 @@
     "setup_complete",
     "short_name",
     "subjects",
-    "teachers"
+    "teachers",
+    "timetable_source"
   ],
   "internal": {
     "schema_version": "internal store version",
@@ -36,6 +37,7 @@
     "created_at": "internal timestamp",
     "setup_complete": "internal wizard flag",
     "children": "chosen in the wizard, propagation covered by test_children_page.py and e2e/two-schools.spec.js",
-    "poll_state": "internal poller bookkeeping"
+    "poll_state": "internal poller bookkeeping",
+    "timetable_source": "learned from the school answers, covered by test_timetable_source.py"
   }
 }

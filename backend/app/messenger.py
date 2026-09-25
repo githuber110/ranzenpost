@@ -6,6 +6,7 @@ from urllib.parse import quote
 import requests
 
 from . import messages
+from .failure import failure_cause
 from .iserv.errors import DataError, LoginError
 from .store import edit_secrets, transaction
 from .iserv.messenger import (
@@ -130,10 +131,10 @@ class MessengerService:
         try:
             return client.fetch(path)
         except requests.Timeout as error:
-            logger.warning("messenger page timed out at %s", path, exc_info=True)
+            logger.warning("messenger page timed out at %s: %s", path, failure_cause(error))
             raise MessengerStageError(STAGE_TIMEOUT, {"path": path}) from error
         except requests.RequestException as error:
-            logger.warning("messenger page unreachable at %s", path, exc_info=True)
+            logger.warning("messenger page unreachable at %s: %s", path, failure_cause(error))
             raise MessengerStageError(STAGE_NETWORK, {"path": path}) from error
 
     def _fetch_messenger_page(self, client):
@@ -263,8 +264,8 @@ class MessengerService:
         fallback = client.base_url
         try:
             response = client.fetch(WELL_KNOWN_PATH)
-        except requests.RequestException:
-            logger.warning("matrix well-known lookup failed at %s", WELL_KNOWN_PATH, exc_info=True)
+        except requests.RequestException as error:
+            logger.warning("matrix well-known lookup failed at %s: %s", WELL_KNOWN_PATH, failure_cause(error))
             return fallback
         discovered = discover_matrix_base_url(response, fallback)
         if discovered != fallback:
@@ -298,7 +299,7 @@ class MessengerService:
         try:
             return self._guarded(call, client)
         except MatrixAuthError as error:
-            logger.warning("matrix token was rejected after a fresh bootstrap", exc_info=True)
+            logger.warning("matrix token was rejected after a fresh bootstrap: %s", failure_cause(error))
             raise LoginError("messenger token was rejected after refresh") from error
 
     def _guarded(self, call, client):
@@ -307,10 +308,10 @@ class MessengerService:
         except (MatrixAuthError, MessengerStageError):
             raise
         except requests.Timeout as error:
-            logger.warning("matrix call timed out", exc_info=True)
+            logger.warning("matrix call timed out: %s", failure_cause(error))
             raise MessengerStageError(STAGE_TIMEOUT, {"where": "matrix"}) from error
         except requests.RequestException as error:
-            logger.warning("matrix call failed", exc_info=True)
+            logger.warning("matrix call failed: %s", failure_cause(error))
             raise MessengerStageError(STAGE_NETWORK, {"where": "matrix"}) from error
 
     def _require_matrix_ok(self, label, response):
@@ -338,12 +339,16 @@ class MessengerService:
         except (MessengerStageError, LoginError) as error:
             try:
                 open_to_teachers = self._can_write_to_teacher()
-            except Exception:
-                logger.warning("the privilege lookup failed while reporting an earlier one", exc_info=True)
+            except Exception as lookup_error:
+                logger.warning(
+                    "the privilege lookup failed while reporting an earlier one: %s", failure_cause(lookup_error)
+                )
                 raise error from None
             if not open_to_teachers:
                 raise
-            logger.warning("the message list stays unreadable, the teacher room path stays open", exc_info=True)
+            logger.warning(
+                "the message list stays unreadable, the teacher room path stays open: %s", failure_cause(error)
+            )
             payload = {
                 "rooms": [],
                 "self_user_id": "",
@@ -394,7 +399,7 @@ class MessengerService:
         try:
             payload = response.json()
         except ValueError as error:
-            logger.warning("teacher search answered without json", exc_info=True)
+            logger.warning("teacher search answered without json: %s", failure_cause(error))
             raise MessengerStageError(STAGE_BOOTSTRAP, {"where": "teacher_search"}) from error
         return {"teachers": parse_teacher_suggestions(payload), "allowed": True}
 
@@ -453,8 +458,8 @@ class MessengerService:
         if "json" in str(created.headers.get("content-type") or "").lower():
             try:
                 body = created.json()
-            except ValueError:
-                logger.warning("teacher room creation answered with broken json", exc_info=True)
+            except ValueError as error:
+                logger.warning("teacher room creation answered with broken json: %s", failure_cause(error))
                 return messages.result(False, ROOM_REJECTED_KEY)
         if isinstance(body, dict):
             room_id = str(body.get("room_id") or "")
@@ -482,8 +487,8 @@ class MessengerService:
         while True:
             try:
                 body = self._sync_body()
-            except (requests.RequestException, LoginError):
-                logger.warning("waiting for the new room, a sync failed", exc_info=True)
+            except (requests.RequestException, LoginError) as error:
+                logger.warning("waiting for the new room, a sync failed: %s", failure_cause(error))
                 return False
             if room_membership(body, room_id) == "join":
                 return True

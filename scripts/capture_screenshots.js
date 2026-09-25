@@ -82,7 +82,7 @@ function startFixtureServer() {
   fs.rmSync(dataDir, { recursive: true, force: true });
   const child = spawn(
     resolvePython(),
-    ["-m", "uvicorn", "tests.e2e_fixture_app:app", "--host", "127.0.0.1", "--port", FIXTURE_PORT],
+    ["-m", "uvicorn", "tests.e2e_fixture_app:create_server_app", "--factory", "--host", "127.0.0.1", "--port", FIXTURE_PORT],
     { cwd: path.join(ROOT, "backend"), env: { ...process.env, ISERV_E2E_DATA_DIR: dataDir } }
   );
   return new Promise((resolve, reject) => {

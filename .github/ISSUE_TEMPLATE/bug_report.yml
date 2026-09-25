@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Ranzenpost does not behave as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You can write in German or English. Deutsch ist willkommen.
+        Never add a login, a two-factor code, a calendar link or names of children, teachers or schools.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Timetable
+        - Letters
+        - Noticeboard
+        - Absences
+        - Parent-teacher conferences
+        - Chat
+        - Dashboard card
+        - Home Assistant integration
+        - Setup or sign-in
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: report
+    attributes:
+      label: Report from Ranzenpost
+      description: In Ranzenpost open Settings, Help, Report a problem. Save report and attach ranzenpost-report.zip here, or Copy report and paste it. It carries versions, module states and the log with names removed.
+    validations:
+      required: true

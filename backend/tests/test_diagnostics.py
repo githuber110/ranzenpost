@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -386,6 +387,33 @@ def test_redact_replaces_names_hosts_mails_and_tokens_but_keeps_plain_words():
     assert diagnostics.redact("a b", diagnostics.RedactionWords(children=["a"])) == "a b"
 
 
+def test_redact_stays_linear_on_pathological_long_lines():
+    words = diagnostics.RedactionWords(hosts=["gymnasium-nord.example"], secrets=["SuperSecretPass1"])
+    pathological_lines = (
+        "a" * 100_000,
+        ("token" * 3 + "_") * 20_000,
+        ("x." * 50_000) + "de",
+        "x" * 100_000 + "@" + "y" * 100_000,
+        "https://" + "x" * 200_000,
+        "Bearer " + "x" * 200_000,
+    )
+    for line in pathological_lines:
+        start = time.monotonic()
+        diagnostics.redact(line, words)
+        elapsed = time.monotonic() - start
+        assert elapsed < 2.0, f"redact took {elapsed:.2f}s on a {len(line)}-char line"
+
+
+def test_long_secret_names_and_long_values_are_still_redacted():
+    words = diagnostics.RedactionWords(hosts=[], secrets=[])
+    name = "a_really_long_cookie_prefix_that_keeps_going_on_" + "session_marker"
+    line = f"{name}=AbcDef1234567890 and Bearer {'t' * 3000} and x_{'y' * 40}_token=ZyXw9876"
+    redacted = diagnostics.redact(line, words)
+    assert "AbcDef1234567890" not in redacted
+    assert "ZyXw9876" not in redacted
+    assert "t" * 100 not in redacted
+
+
 def test_path_patterns_hide_ids_uuids_dates_and_long_numbers():
     assert pathpattern.path_pattern("/iserv/parentletter/parent/show/10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000002") == "/iserv/parentletter/parent/show/<uuid>/<uuid>"
     assert pathpattern.path_pattern("/iserv/mystery/entry/4711?date=2026-03-05") == "/iserv/mystery/entry/<n>"
@@ -674,3 +702,142 @@ def test_the_client_reads_a_capped_script_and_stops_at_the_limit():
     assert kwargs["stream"] is True
     whole = IServClient("https://school.example", session=StreamingSession(StreamedAnswer([b"ab", b"cd"]))).fetch_capped("/iserv/js/b.js", 7, 10)
     assert whole == CappedBody(200, "abcd", False)
+
+
+TIME_TABLE_ROW = {"slug": "timetable", "name": "Stundenplan", "page": "/iserv/time-table/", "json": None, "data": "/iserv/time-table/data"}
+PLAIN_TIME_TABLE = "<html><body><table id='timetable-content-changes'><tr><th>Datum</th><th>Stunde</th></tr></table></body></html>"
+
+
+def time_table_client(page_html, data=None):
+    recorded = []
+    pages = {
+        "/iserv/time-table/data": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/data", "{}", "application/json", json_data=data or {"meta": {}, "data": {"timetable": []}}),
+        "/iserv/time-table/": Response(200, SCHOOL_ONE_URL + "/iserv/time-table/", page_html),
+    }
+    client = Client(SCHOOL_ONE_URL, pages)
+    fetch = client.fetch
+
+    def recording(path, params=None):
+        recorded.append((path, params))
+        return fetch(path, params)
+
+    client.fetch = recording
+    return client, recorded
+
+
+def test_a_single_child_page_without_a_select_is_probed_without_a_child():
+    client, recorded = time_table_client(PLAIN_TIME_TABLE)
+    children = [{"child_id": "4711", "name": CHILD_ONE}]
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "4711", children)
+    assert "- Child select: none" in lines
+    assert "- Data query: week filter without childId" in lines
+    assert "- Page: /iserv/time-table/data -> 200 application/json 2B" in lines
+    assert "  - data.timetable: array len 0" in lines
+    params = [params for path, params in recorded if path == "/iserv/time-table/data"][0]
+    assert "childId" not in params
+    assert '"startDate":"21.09.2026"' in params["filter"]
+
+
+def test_a_page_without_a_select_is_not_probed_for_two_children():
+    client, recorded = time_table_client(PLAIN_TIME_TABLE)
+    children = [{"child_id": "4711", "name": CHILD_ONE}, {"child_id": "4712", "name": CHILD_TWO}]
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "4711", children)
+    assert "- Data: not read, no child select and 2 listed children" in lines
+    assert not [path for path, _params in recorded if path == "/iserv/time-table/data"]
+
+
+def test_a_select_without_the_listed_child_is_not_probed():
+    page = "<select id='timetable-filter-child-select'><option value='x-1'>Robin Anders</option><option value='x-2'>Sam Anders</option></select>"
+    client, recorded = time_table_client(page)
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "4711", [{"child_id": "4711", "name": CHILD_ONE}, {"child_id": "4712", "name": CHILD_TWO}])
+    assert "- Child select: present, options 2, listed children 2" in lines
+    assert "- Data: not read, no listed child matches the child select" in lines
+    assert not [path for path, _params in recorded if path == "/iserv/time-table/data"]
+
+
+def test_table_rows_are_counted_per_row_shape_without_cell_text():
+    html = (
+        "<table id='timetable-content-timetable'><tr><th>Std.</th><th>Montag</th><th>Dienstag</th></tr>"
+        "<tr><td>1</td><td>Secret row</td><td>Alex Example</td></tr><tr><td>2</td><td>x</td><td>y</td></tr>"
+        "<tr><td colspan='3'>Hinweis fuer Alex Example</td></tr></table><table></table>"
+    )
+    lines = diagnostics.html_skeleton(html)
+    assert "- Table rows #timetable-content-timetable: 4 (1 cells x1, 3 cells x3)" in lines
+    assert "- Table rows (no id): 0" in lines
+    assert not any("Secret" in line or "Alex" in line or "Hinweis" in line for line in lines)
+
+
+MATRIX_PATH = "https://matrix.example/_matrix/client/v3/rooms/!ckNsmbrtnUzxgVSMbQ:12345678-1234-4123-8123-123456789012/messages?from=abc"
+
+
+def test_matrix_room_ids_are_masked_in_paths_logs_and_reports():
+    assert pathpattern.path_pattern(MATRIX_PATH) == "/_matrix/client/v3/rooms/<room>/messages"
+    assert pathpattern.placeholders("/rooms/%21AbCdEfGh%3Aiserv.example/state") == "/rooms/<room>/state"
+    assert diagnostics.scrub_line("sync room !AbCdEfGhIj:iserv.example:8448 failed") == "sync room <room> failed"
+    assert diagnostics.scrub_line("rooms/!ckNsmbrtnUzxgVSMbQ:<uuid>/messages") == "rooms/<room>/messages"
+    assert diagnostics.scrub_line("Hallo! Termin: morgen") == "Hallo! Termin: morgen"
+
+
+def test_the_request_log_masks_a_matrix_room(caplog):
+    class Answer:
+        url = MATRIX_PATH
+        status_code = 200
+        headers = {"Content-Type": "application/json"}
+        content = b"{}"
+        request = None
+        elapsed = None
+
+    with caplog.at_level(logging.INFO, logger="iserv"):
+        requestlog.log_response(Answer())
+    assert "ckNsmbrtnUzxgVSMbQ" not in caplog.text
+    assert "/_matrix/client/v3/rooms/<room>/messages" in caplog.text
+
+
+def test_the_report_names_the_timetable_source(tmp_path):
+    from app.store import edit_config
+
+    service, first, _second = two_school_service(tmp_path)
+    edit_config(first.store, lambda config: config.update(timetable_source="time-table"))
+    report = build(service, structure=False)
+    one, two = report.split("## School 1", 1)[1].split("## School 2", 1)
+    assert "- Timetable source: time-table" in one
+    assert "- Timetable source: school-app" in two
+
+
+def test_the_report_counts_the_listed_children_the_way_the_app_does():
+    page = "<select id='timetable-filter-child-select'><option value='x-1'>Robin Anders</option></select>"
+    client, recorded = time_table_client(page)
+    children = [{"child_id": "4711", "name": CHILD_ONE}]
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "4711", children, 2)
+    assert "- Child select: present, options 1, listed children 2" in lines
+    assert "- Data: not read, no listed child matches the child select" in lines
+    assert not [path for path, _params in recorded if path == "/iserv/time-table/data"]
+
+
+class CountingConnection:
+    def __init__(self, count):
+        self.count = count
+
+    def listed_child_count(self):
+        return self.count
+
+
+def test_the_listed_count_comes_from_the_connection_and_falls_back_to_the_stored_children():
+    children = [{"child_id": "4711", "name": CHILD_ONE}]
+    assert diagnostics._listed_count(CountingConnection(3), children) == 3
+    assert diagnostics._listed_count(CountingConnection(0), children) == 1
+    assert diagnostics._listed_count(object(), children) == 1
+
+
+def test_a_login_page_instead_of_the_time_table_is_reported_as_absent():
+    client, recorded = time_table_client("<form><input name='_password'></form>")
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "4711", [{"child_id": "4711", "name": CHILD_ONE}])
+    assert "- Data: not read, the session has expired (login page)" in lines
+    assert not [path for path, _params in recorded if path == "/iserv/time-table/data"]
+
+
+def test_the_row_lines_of_a_page_are_limited():
+    html = "".join("<table><tr><td>x</td></tr></table>" for _ in range(diagnostics.MAX_TABLE_ROWS_LINES + 5))
+    lines = diagnostics.html_skeleton(html)
+    assert len([line for line in lines if line.startswith("- Table rows (no id)")]) == diagnostics.MAX_TABLE_ROWS_LINES
+    assert "- Table rows skipped: 5 beyond the limit of %d" % diagnostics.MAX_TABLE_ROWS_LINES in lines

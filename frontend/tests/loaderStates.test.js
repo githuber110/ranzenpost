@@ -219,4 +219,25 @@ describe("one error switch decides where a failure lands", () => {
       window.eval('t("letters.detail.errorTitle")')
     );
   });
+
+  test("a letter outside the school list shows the short note instead of the error page", async () => {
+    const { window, document } = loadApp();
+    await quiet(window);
+    window.eval("state.view = 'post'; state.postTab = 'letters'; state.children = [];");
+    routeFetch(window, [
+      ["api/letters/detail", () => jsonResponse({ error: "network", message_key: "api.letters.unknown" })],
+      ["api/letters/seen", () => jsonResponse({ read: 0 })],
+    ]);
+
+    await window.eval(
+      "openLetter({ letter_id: '1', recipient_id: '1', title: 'Fremd', unread: false })"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const text = document.getElementById("app").textContent;
+    expect(window.eval("state.letterDetail.refused")).toBe(true);
+    expect(text).toContain(window.eval('t("api.letters.unknown")'));
+    expect(text).not.toContain(window.eval('t("letters.detail.errorTitle")'));
+    expect(document.querySelector(".body-html")).toBeNull();
+  });
 });

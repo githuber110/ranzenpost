@@ -360,7 +360,9 @@ def test_a_school_removed_during_its_poll_leaves_no_traces(tmp_path):
     assert SCHOOL not in (store.load_integration_state().get("schools") or {})
 
 
-@pytest.mark.parametrize("kind", ["seen", "modules", "letters_search_cache", "letters_confirmations", "absence_history"])
+@pytest.mark.parametrize(
+    "kind", ["seen", "modules", "letters_search_cache", "letters_confirmations", "letters_replies", "absence_history"]
+)
 def test_a_school_slot_is_not_written_back_after_the_school_was_removed(tmp_path, kind):
     store, first, _ = two_schools(tmp_path)
     scoped = ConnectionStore(store, first)

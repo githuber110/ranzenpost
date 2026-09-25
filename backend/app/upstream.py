@@ -70,6 +70,6 @@ BINARY_UPSTREAM_RESPONSES = {
 }
 
 
-def _binary_upstream_response(error):
+def binary_upstream_response(error):
     body, status = BINARY_UPSTREAM_RESPONSES[_upstream_code(error)]
     return PlainTextResponse(body, status_code=status)

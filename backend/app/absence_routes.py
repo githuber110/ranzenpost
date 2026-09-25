@@ -12,8 +12,9 @@ from . import messages
 from .absence_service import SickNoteNotFoundError
 from .iserv.errors import LoginError, TwoFactorError
 from .iserv.sick_note_pdf import UnsupportedTextError
+from .failure import failure_cause
 from .service import NotConfiguredError
-from .upstream import _binary_upstream_response, read_endpoint, write_endpoint
+from .upstream import binary_upstream_response, read_endpoint, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +92,10 @@ def register_routes(app, service):
         try:
             upstream = service.absence_attachment(connection, filename)
         except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-            logger.warning("absence attachment could not be fetched", exc_info=True)
-            return _binary_upstream_response(error)
-        except Exception:
-            logger.warning("absence attachment was refused before the request", exc_info=True)
+            logger.warning("absence attachment could not be fetched: %s", failure_cause(error))
+            return binary_upstream_response(error)
+        except Exception as error:
+            logger.warning("absence attachment was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid attachment", status_code=400)
         headers = {}
         disposition = upstream.headers.get("content-disposition")
@@ -117,8 +118,8 @@ def register_routes(app, service):
             logger.warning("sick note pdf refused: unsupported text")
             return PlainTextResponse("unsupported text", status_code=422)
         except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
-            logger.warning("sick note pdf could not be fetched", exc_info=True)
-            return _binary_upstream_response(error)
+            logger.warning("sick note pdf could not be fetched: %s", failure_cause(error))
+            return binary_upstream_response(error)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

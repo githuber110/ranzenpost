@@ -1,4 +1,7 @@
+import logging
+
 import pytest
+import requests
 
 from app.service import IServService, NotConfiguredError
 from app.store import Store
@@ -143,6 +146,27 @@ def test_disconnect_clears_config_and_secrets_as_the_ui_promises(tmp_path):
     assert store.load_config()["phones"] == []
     assert store.load_secrets() == {}
     assert service.is_configured() is False
+
+
+PLANTED_HOST = "planted-school.example"
+
+
+def test_disconnect_network_failure_logs_the_cause_without_the_host(tmp_path, caplog):
+    service, store, client = make(tmp_path, uuid="uuid-1")
+
+    def broken():
+        raise requests.ConnectionError(
+            f"HTTPSConnectionPool(host='{PLANTED_HOST}', port=443): Max retries exceeded with url: /iserv/account/twofactor"
+        )
+
+    client.get_twofactor_list_page = broken
+    with caplog.at_level(logging.WARNING, logger="app.service"):
+        result = service.disconnect()
+    assert result["attempted"] is True
+    assert result["removed"] is False
+    assert "removing the two-factor token could not be confirmed: ConnectionError at" in caplog.text
+    assert PLANTED_HOST not in caplog.text
+    assert caplog.records[0].exc_info is None
 
 
 def test_disconnect_forgets_the_children_the_school_listed(tmp_path):

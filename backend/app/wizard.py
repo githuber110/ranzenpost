@@ -538,13 +538,13 @@ class Wizard:
             return
         fields = {LOGIN_REVISION_KEY: int(entry.get(LOGIN_REVISION_KEY) or 0) + 1}
         if forget_children:
-            fields.update(children=[], course_filters={})
+            fields.update(children=[], course_filters={}, timetable_source="")
         self.store.update_connection(entry["id"], **fields)
 
     def _forget_children(self, state):
         entry = self._entry(state)
-        if entry is not None and (entry.get("children") or entry.get("course_filters")):
-            self.store.update_connection(entry["id"], children=[], course_filters={})
+        if entry is not None and (entry.get("children") or entry.get("course_filters") or entry.get("timetable_source")):
+            self.store.update_connection(entry["id"], children=[], course_filters={}, timetable_source="")
 
     def _save(self, state):
         self._sync_school_url(state)

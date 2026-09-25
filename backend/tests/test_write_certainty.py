@@ -21,10 +21,17 @@ HIDE_CONFIRM = (
     '<button type="submit" name="hide_confirm[submit]" value="1">Ja</button>'
     "</form></body></html>"
 )
+LISTED_ROW = (
+    '<table id="crud-table"><tbody><tr><td>'
+    '<input type="checkbox" name="iserv_crud_multi_select[multi][]" value="11111111-22222222">'
+    '<a href="/iserv/parentletter/parent/show/11111111/22222222">Elternbrief</a>'
+    "</td></tr></tbody></table>"
+)
+INDEX_LIST = "<html><body>" + LISTED_ROW + "</body></html>"
 ARCHIVE_LIST = (
     '<html><body><form action="/iserv/parentletter/parent/archive" method="post">'
     '<input name="iserv_crud_multi_select[_token]" value="tok">'
-    '<input type="checkbox" name="iserv_crud_multi_select[multi][]" value="11111111-22222222">'
+    + LISTED_ROW +
     '<button type="submit" name="iserv_crud_multi_select[actions][parent-restore-letter]" value="restore">'
     "Wiederherstellen</button>"
     "</form></body></html>"
@@ -89,7 +96,11 @@ def make(tmp_path, client):
 def _archive_client(post_status=200):
     return Client(
         "https://school.example",
-        pages={"parent_hide/": Answer(200, HIDE_CONFIRM), "show/": Answer(200, LETTER_PAGE)},
+        pages={
+            "parent/index": Answer(200, INDEX_LIST),
+            "parent_hide/": Answer(200, HIDE_CONFIRM),
+            "show/": Answer(200, LETTER_PAGE),
+        },
         post_status=post_status,
     )
 
@@ -124,7 +135,11 @@ def test_a_refused_archive_is_reported_instead_of_claimed_as_done(tmp_path):
 def test_a_refused_letter_page_never_becomes_a_successful_archive(tmp_path):
     client = Client(
         "https://school.example",
-        pages={"parent_hide/": Answer(200, HIDE_CONFIRM), "show/": Answer(403, LETTER_PAGE)},
+        pages={
+            "parent/index": Answer(200, INDEX_LIST),
+            "parent_hide/": Answer(200, HIDE_CONFIRM),
+            "show/": Answer(403, LETTER_PAGE),
+        },
     )
     service, _ = make(tmp_path, client)
     with pytest.raises(DataError):
@@ -135,7 +150,11 @@ def test_a_refused_letter_page_never_becomes_a_successful_archive(tmp_path):
 def test_a_refused_confirmation_page_never_becomes_a_successful_archive(tmp_path):
     client = Client(
         "https://school.example",
-        pages={"parent_hide/": Answer(403, HIDE_CONFIRM), "show/": Answer(200, LETTER_PAGE)},
+        pages={
+            "parent/index": Answer(200, INDEX_LIST),
+            "parent_hide/": Answer(403, HIDE_CONFIRM),
+            "show/": Answer(200, LETTER_PAGE),
+        },
     )
     service, _ = make(tmp_path, client)
     with pytest.raises(DataError):
@@ -226,10 +245,22 @@ def test_a_genuinely_empty_pinboard_is_still_just_empty(tmp_path):
 
 
 def test_marking_letters_read_counts_the_ones_it_could_not_open(tmp_path):
-    service, _ = make(tmp_path, Client("https://school.example", fetch_status=500))
+    client = Client("https://school.example", pages={"parent/index": Answer(200, INDEX_LIST)}, fetch_status=500)
+    service, _ = make(tmp_path, client)
     result = service.mark_letters_read(["11111111:22222222"])
     assert result["failed"] == 1
     assert result["read"] == 0
+
+
+def test_an_unreadable_letter_list_stops_marking_read_instead_of_opening_unknown_letters(tmp_path):
+    client = Client("https://school.example", fetch_status=500)
+    opened = []
+    original = client.fetch
+    client.fetch = lambda path, params=None: opened.append(path) or original(path, params)
+    service, _ = make(tmp_path, client)
+    with pytest.raises(DataError):
+        service.mark_letters_read(["11111111:22222222"])
+    assert [path for path in opened if "/show/" in path] == []
 
 
 def test_marks_follow_the_child_to_its_new_id(tmp_path):

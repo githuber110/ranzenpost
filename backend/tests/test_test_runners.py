@@ -18,7 +18,10 @@ def test_every_full_vitest_suite_goes_through_the_runner_that_counts_the_files()
 
 def test_the_runner_knows_every_vitest_config_of_the_repo():
     source = (ROOT / "scripts" / "run-frontend-tests.mjs").read_text(encoding="utf-8")
-    configs = sorted(path.name for path in ROOT.glob("vitest*.config.js") if path.name != "vitest.config.js")
+    configs = sorted(
+        path.name for path in ROOT.glob("vitest*.config.*") if path.suffix in (".js", ".mjs") and path.stem != "vitest.config"
+    )
+    assert configs, "no extra vitest config found; the glob no longer matches the config files"
     for name in configs:
         assert re.search(re.escape(name), source), f"{name} has no suite in the counting runner"
 

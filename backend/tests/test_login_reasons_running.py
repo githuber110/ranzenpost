@@ -319,7 +319,7 @@ def test_an_old_session_does_not_drop_a_newer_one(tmp_path):
     service, _, connection_id, log = school(tmp_path, None)
     connection = expiring(service, connection_id, clock)
     old = connection._session()
-    connection._client = None
+    connection._sign_in.drop_session()
     newer = connection._session()
     clock.value += 60 * 60
     connection._forget_session(old)
@@ -536,7 +536,7 @@ def test_only_code_failures_in_a_row_count_towards_the_hold(tmp_path):
         with pytest.raises(TwoFactorError):
             live._login()
         between(live, store, connection_id)
-        live._client = None
+        live._sign_in.drop_session()
         with pytest.raises(TwoFactorError):
             live._login()
         assert active_hold(store, connection_id, 1000.0) is None, name
@@ -1630,7 +1630,7 @@ def test_a_sign_in_that_works_ends_the_repair_and_a_fresh_one_pushes_once_again(
     assert "login_hold" not in store.load_secrets(connection_id)
     assert not repair_needed(service, connection_id)
     assert integration.build_schools(service, store)[0]["status"] != integration.STATUS_AUTH_FAILED
-    service.connection(connection_id)._client = None
+    service.connection(connection_id)._sign_in.drop_session()
     for _ in range(4):
         refuse_once_more(poller, store, connection_id, clock)
     assert repair_needed(service, connection_id)

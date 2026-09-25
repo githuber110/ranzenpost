@@ -1282,6 +1282,7 @@ EXEMPT_KEYS = {
     "setup_complete": "internal wizard flag",
     "children": "chosen in the wizard, propagation covered by test_children_page.py and e2e/two-schools.spec.js",
     "poll_state": "internal poller bookkeeping",
+    "timetable_source": "learned from the school answers, covered by test_timetable_source.py",
 }
 
 SHARED_SCHEMA = Path(__file__).resolve().parents[2] / "tests" / "settings-schema.json"

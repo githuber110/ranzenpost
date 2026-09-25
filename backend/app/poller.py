@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from . import courses, feed, holidays, integration, marks, messages, modules
+from .failure import error_kind
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
 from .iserv.errors import (
     LOGIN_SESSION_KEY,
@@ -85,6 +86,8 @@ PLAN_ORIGIN_FIELDS = ("date", "period", "subject_code", "teacher_code", "room")
 PLAN_FIELDS_KEY = "plan_fields"
 PLAN_FIELD_HASH_LENGTH = 12
 COURSE_SIGNATURE = "course_signature"
+SOURCE_STATE_KEY = "timetable_source"
+DEFAULT_SOURCE = "school-app"
 AUTH_NOTIFIED_FLAG = "auth_incident_sent"
 AUTH_NOTIFIED_REASON = "auth_incident_reason"
 LEGACY_AUTH_FLAG = "auth_incident"
@@ -101,14 +104,6 @@ SESSION_HELD_KIND = "held after a session that never opened"
 CODE_FAILURE_KIND = f"TwoFactorError/{LOGIN_TWOFACTOR_KEY}"
 CODE_HELD_KIND = "code refused since the last sign-in"
 SUMMARY_KEYS = {"letters": "letters", "pinboard": "posts", "conferences": "conferences"}
-
-
-def error_kind(error):
-    for name in ("reason", "stage", "message_key"):
-        value = getattr(error, name, None)
-        if isinstance(value, str) and value:
-            return f"{type(error).__name__}/{value}"
-    return type(error).__name__
 
 
 def plan_fields(lessons):
@@ -684,9 +679,11 @@ class Poller:
                 previous = poll_state.get(key)
                 course_signature = str((timetable.get("courses") or {}).get("signature") or "")
                 view_kind = PARALLEL_PENDING if courses_pending else ""
+                source = str(timetable.get("source") or DEFAULT_SOURCE)
                 rebased = previous is not None and (
                     str(previous.get(COURSE_SIGNATURE) or "") != course_signature
                     or str(previous.get(PUSH_VIEW_KEY) or "") != view_kind
+                    or str(previous.get(SOURCE_STATE_KEY) or DEFAULT_SOURCE) != source
                 )
                 previous_signature = previous.get("signature") if previous else None
                 previous_changes_signature = previous.get("changes_signature") if previous else None
@@ -775,6 +772,7 @@ class Poller:
                     COURSE_SIGNATURE: course_signature,
                     PUSH_VIEW_KEY: view_kind,
                     COURSE_HINT_KEY: bool(hint_sent),
+                    SOURCE_STATE_KEY: source,
                     integration.CHANGE_KEYS: change_keys,
                 }
                 if key in feed_children:

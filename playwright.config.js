@@ -46,7 +46,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: `"${resolvePython()}" -m uvicorn tests.e2e_fixture_app:app --host 127.0.0.1 --port ${PORT} --timeout-keep-alive ${IDLE_CONNECTION_SECONDS}`,
+    command: `"${resolvePython()}" -m uvicorn tests.e2e_fixture_app:create_server_app --factory --host 127.0.0.1 --port ${PORT} --timeout-keep-alive ${IDLE_CONNECTION_SECONDS}`,
     cwd: "./backend",
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

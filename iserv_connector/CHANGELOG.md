@@ -1,7 +1,43 @@
 # Changelog
 
-Version scheme: `YYMM.RR.MM` - YYMM is year+month, RR is the public release number (MM resets to
-00 at release time), MM is an internal pre-beta counter incremented until the next release.
+Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
+fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
+
+## 2609.2.2
+
+### New
+
+- A letter can take a message to the school when its IServ page offers a reply, once any read confirmation is done.
+  The message shows as a preview first and goes out only after you send it, never twice by itself. Letters whose
+  reply form the app does not recognise offer no reply.
+
+### Changed
+
+- Versions follow the Home Assistant scheme from now on, for example `2609.2.2` rather than `2609.02.02`. Home
+  Assistant warns about an integration that is a release behind only when the add-on brings new features, not for
+  fixes.
+- A week in which IServ lists no lessons now says so. The timetable shows a short note instead of an empty grid.
+- After the timetable source changes, parallel courses may ask once to be chosen again.
+- A new plan entry now starts and ends on the day you picked, instead of running to the end of the school year by
+  default. A repeating break or club that covers only that one day shows a short hint, with a button to extend it to
+  the summer holidays.
+- Opening, confirming, replying to, archiving, restoring or marking a letter as read now works only for a letter in
+  the letter list of its own school. Any other letter is refused with a short note before any action reaches the
+  school. An attachment opens only from a letter the app has shown.
+- Error lines in the log name the cause without letter ids, links or the school address. This covers letters,
+  absences, chat, the noticeboard, child lists, two-factor removal and the regular check.
+
+### Fixed
+
+- `sensor.ranzenpost_<child>_next_school_day` now includes today while its first lesson has not started yet, so a
+  time trigger with an offset on that sensor fires again instead of skipping straight to the day after.
+- The timetable no longer stays empty at schools that keep their plan in the older IServ timetable module. When the
+  Schul-App timetable lists no lessons, Ranzenpost reads the older module and remembers that for the school.
+- The problem report now reads the older timetable module the way the app does. Chat room ids no longer show in the
+  report or the log.
+- HACS shows the integration with its icon and recognises the licence.
+- Marking letters as read goes on at the other schools when one school does not answer, and the app now says when
+  letters could not be marked instead of reporting nothing to mark.
 
 ## 2609.02.00
 

@@ -169,6 +169,10 @@ class FakeService:
         self.confirm_args = (connection_id, letter_id, recipient_id, text)
         return {"ok": True, "message_key": "api.letters.confirm.ok", "confirmed_at": "2026-09-03T14:05:00"}
 
+    def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
+        self.reply_args = (connection_id, letter_id, recipient_id, text, request_id, confirmed)
+        return {"ok": True, "message_key": "api.letters.reply.ok"}
+
     def letter_attachment(self, connection_id, attachment_id):
         class Upstream:
             content = b"%PDF"
@@ -530,12 +534,48 @@ def test_letters_confirm_endpoint_passes_the_ids_and_the_optional_message(tmp_pa
     assert service.confirm_args == (SCHOOL, "l1", "r1", None)
 
 
+def test_letters_reply_endpoint_trims_the_text_and_passes_only_a_literal_confirmation(tmp_path):
+    from app import letter_routes
+
+    service = FakeService(Store(tmp_path / "data"))
+    api = TestClient(create_app(service))
+    base = {"connection_id": SCHOOL, "letter_id": "l1", "recipient_id": "r1", "request_id": "a" * 32}
+    answer = api.post("/api/letters/reply", json=dict(base, text="  Danke  ", confirmed=True)).json()
+    assert answer["ok"] is True
+    assert service.reply_args == (SCHOOL, "l1", "r1", "Danke", "a" * 32, True)
+    api.post("/api/letters/reply", json=dict(base, text="Danke", confirmed="true"))
+    assert service.reply_args[5] is False
+    api.post("/api/letters/reply", json=dict(base, text=5))
+    assert service.reply_args[3:] == ("", "a" * 32, False)
+    service.reply_args = None
+    refused = api.post(
+        "/api/letters/reply",
+        json=dict(base, text="x" * (letter_routes.LETTER_REPLY_MAX_LENGTH + 1), confirmed=True),
+    ).json()
+    assert refused["ok"] is False
+    assert refused["message_key"] == "api.letters.reply.tooLong"
+    assert refused["message_vars"] == {"max": letter_routes.LETTER_REPLY_MAX_LENGTH}
+    assert service.reply_args is None
+
+
 def test_letters_attachment_proxies_content(tmp_path):
     api, _ = client(tmp_path)
     response = api.get("/api/letters/attachment/abc123")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
     assert response.content == b"%PDF"
+
+
+def test_an_unknown_letter_attachment_answers_with_the_short_note(tmp_path, monkeypatch):
+    api, _ = client(tmp_path)
+
+    def refused(self, connection_id, attachment_id):
+        raise DataError("the attachment is not listed", message_key="api.letters.unknown")
+
+    monkeypatch.setattr(FakeService, "letter_attachment", refused)
+    response = api.get("/api/letters/attachment/abc123")
+    assert response.status_code == 404
+    assert response.json()["message_key"] == "api.letters.unknown"
 
 
 def test_pinboard_attachment_proxies_content(tmp_path):

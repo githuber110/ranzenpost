@@ -4,9 +4,12 @@ import re
 import shutil
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from app import courses, haservices, messages, modules, own_entries, subscriptions, supervisor
 from app.iserv.errors import DataError, OutageError
+from app.iserv.letters import REPLY_PRESENT, parse_reply_form
+from app.letter_service import LETTERS_SHOW_PATH, LetterService
 from app.messenger import (
     READ_FAILED_KEY,
     READ_OK_KEY,
@@ -22,8 +25,11 @@ from app.store import CONNECTION_DEFAULTS, DEFAULT_CONFIG, INTEGRATION_SCHOOLS_K
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BACKEND_DIR.parent / "frontend"
 E2E_DATA_DIR = Path(os.environ.get("ISERV_E2E_DATA_DIR", BACKEND_DIR.parent / "data-e2e"))
-if E2E_DATA_DIR.exists():
-    shutil.rmtree(E2E_DATA_DIR)
+
+
+def reset_e2e_data_dir():
+    if E2E_DATA_DIR.exists():
+        shutil.rmtree(E2E_DATA_DIR)
 
 LONG_SUBJECT = "Naturwissenschaften und angewandte Informatik"
 LANG_COOKIE = "e2e_lang"
@@ -62,6 +68,8 @@ CONTENT = {
         "letter_start": "Informationen zum Schuljahresstart und weiteren Terminen",
         "letter_conference": "Elternsprechtagsanmeldung für das Schuljahr 2026/2027",
         "letter_school_two": "Kennenlernabend der neuen Fuenften",
+        "letter_reply": "Ausflug in den Tierpark: Rueckfragen gern per Antwort",
+        "letter_confirmed": "Neue Hausordnung ab Oktober",
         "letter_scenario": "Elternbrief %02d mit einem sehr langen Titel zur Zeilenhoehe",
         "folder_council": "Elternbeirat",
         "folder_class": "Klasse 3b",
@@ -124,6 +132,8 @@ CONTENT = {
         "letter_start": "Information on the start of the school year and upcoming dates",
         "letter_conference": "Registration for the parent-teacher conference 2026/2027",
         "letter_school_two": "Welcome evening for the new fifth grade",
+        "letter_reply": "Trip to the zoo: questions welcome as a reply",
+        "letter_confirmed": "New school rules from October",
         "letter_scenario": "Parent letter %02d with a very long title to test the line height",
         "folder_council": "Parent council",
         "folder_class": "Class 3b",
@@ -167,6 +177,78 @@ def text(key):
 
 CONFIRM_LETTER_ID = "c3d4e5f6a7b8491023c4d5e6f7a8b901"
 CONFIRMED_AT = "2026-09-03T14:05:00"
+REPLY_LETTER_ID = "d4e5f6a7b8c9401234d5e6f7a8b9c012"
+CONFIRMED_LETTER_ID = "e5f6a7b8c9d0412345e6f7a8b9c0d123"
+CONFIRMED_RECIPIENT_ID = "f6a7b8c9d0e1423456f7a8b9c0d1e234"
+FIXTURE_ORIGIN = "https://school.example"
+LETTER_PAGES = {
+    REPLY_LETTER_ID: BACKEND_DIR / "tests" / "fixtures" / "letter_reply_form.html",
+    CONFIRMED_LETTER_ID: BACKEND_DIR / "tests" / "fixtures" / "letter_confirm_done.html",
+}
+
+
+def done_confirmation():
+    return {"type": "seen", "open": False, "done": True, "sendable": False, "confirmed_at": CONFIRMED_AT}
+
+
+def letter_page(letter_id, recipient_id):
+    path = LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id)
+    return SimpleNamespace(
+        status_code=200, url=FIXTURE_ORIGIN + path, text=LETTER_PAGES[letter_id].read_text(encoding="utf-8")
+    )
+
+
+def letter_list_page(path):
+    rows = "".join(
+        f'<tr><td><a href="{LETTERS_SHOW_PATH.format(letter=letter_id, recipient=CONFIRMED_RECIPIENT_ID)}">x</a></td></tr>'
+        for letter_id in LETTER_PAGES
+    )
+    return SimpleNamespace(
+        status_code=200, url=FIXTURE_ORIGIN + path, text=f'<table id="crud-table"><tbody>{rows}</tbody></table>'
+    )
+
+
+def letter_reply_offer(letter_id, recipient_id):
+    page = letter_page(letter_id, recipient_id)
+    return {"available": True} if parse_reply_form(page.text, page.url)["state"] == REPLY_PRESENT else None
+
+
+class FixtureLetterClient:
+    def __init__(self):
+        self.sent = []
+
+    def fetch_or_raise(self, path, params=None):
+        if "/parent/show/" not in path:
+            return letter_list_page(path)
+        parts = path.rstrip("/").split("/")
+        return letter_page(parts[-2], parts[-1])
+
+    def post_absolute(self, url, data, timeout=30, headers=None):
+        self.sent.append(dict(data))
+        return SimpleNamespace(status_code=200, url=url, text="", history=[])
+
+
+class FixtureReplyStore:
+    def __init__(self):
+        self.replies = {}
+
+    def load_letters_replies(self):
+        return dict(self.replies)
+
+    def save_letters_replies(self, data):
+        self.replies = dict(data)
+
+    def load_letters_search_cache(self):
+        return {}
+
+    def load_letters_confirmations(self):
+        return {}
+
+
+FIXTURE_LETTER_CLIENT = FixtureLetterClient()
+FIXTURE_LETTERS = LetterService(
+    SimpleNamespace(id="fixture", store=FixtureReplyStore(), _session=lambda: FIXTURE_LETTER_CLIENT)
+)
 
 HOLIDAY_REGION = "DE-NI"
 HOLIDAY_FULL_WEEK_OFFSET = 3
@@ -322,6 +404,11 @@ WIZARD_COOKIE = "e2e_wizard"
 WIZARD_MODE = contextvars.ContextVar("e2e_wizard", default="")
 COURSES_COOKIE = "e2e_courses"
 COURSES = contextvars.ContextVar("e2e_courses", default="")
+TIMETABLE_SOURCE_COOKIE = "e2e_timetable_source"
+TIMETABLE_SOURCE = contextvars.ContextVar("e2e_timetable_source", default="")
+TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty"}
+TIMETABLE_SOURCE_OPTION = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
+TIMETABLE_SOURCE_SCHOOLS = {}
 COURSE_PERIODS = {
     3: [("E1", "CCC", "R201"), ("E2", "DDD", "R202"), ("F1", "EEE", "R203"), ("L1", "FFF", "R204"), ("SP", "GGG", "GYM1"), ("SP", "HHH", "GYM2")],
     4: [("REV", "III", "R301"), ("RKA", "JJJ", "R302"), ("WN", "KKK", "R303")],
@@ -504,7 +591,36 @@ class ScenarioMiddleware:
             LAYOUT.set(read_cookie(scope, LAYOUT_COOKIE))
             WIZARD_MODE.set(read_cookie(scope, WIZARD_COOKIE))
             COURSES.set(read_cookie(scope, COURSES_COOKIE))
+            TIMETABLE_SOURCE.set(read_cookie(scope, TIMETABLE_SOURCE_COOKIE))
         await self.app(scope, receive, send)
+
+
+def timetable_source_mode():
+    return TIMETABLE_SOURCE_MODES.get(TIMETABLE_SOURCE.get(""), "")
+
+
+def timetable_source_school(mode):
+    from app.service import ConnectionService
+    from app.store import ConnectionStore
+    from tests.time_table_school import TimeTableSchool, client_factory
+
+    entry = TIMETABLE_SOURCE_SCHOOLS.get(mode)
+    if entry is not None:
+        return entry
+    directory = E2E_DATA_DIR / ("timetable-source-" + mode)
+    shutil.rmtree(directory, ignore_errors=True)
+    store = Store(directory)
+    created = store.add_connection(SCHOOL_ONE_URL, setup_complete=True)
+    store.save_secrets(created["id"], {"username": "parent", "password": "fixture"})
+    school = TimeTableSchool(
+        child_id="child-1",
+        child_name=("Mia", "Musterkind"),
+        options=((TIMETABLE_SOURCE_OPTION, "Musterkind, Mia"),),
+        time_table=mode,
+    )
+    entry = ConnectionService(ConnectionStore(store, created["id"]), client_factory=client_factory(school))
+    TIMETABLE_SOURCE_SCHOOLS[mode] = entry
+    return entry
 
 
 def emptied_keys():
@@ -1171,6 +1287,8 @@ class FixtureService:
         if connection_id not in school_ids():
             raise DataError("unknown child", message_key="api.child.unknown")
         raise_when_unreachable()
+        if timetable_source_mode() and connection_id == SCHOOL_ONE and child_id == "child-1":
+            return timetable_source_school(timetable_source_mode()).timetable(child_id, week_offset=week_offset)
         if courses_active():
             return courses.apply(course_week(week_offset), courses.filter_of(self._course_config(connection_id), child_id))
         if module_emptied(modules.TIMETABLE):
@@ -1426,6 +1544,30 @@ class FixtureService:
                     "confirmed_at": "",
                 },
             },
+            {
+                "letter_id": REPLY_LETTER_ID,
+                "recipient_id": CONFIRMED_RECIPIENT_ID,
+                "title": text("letter_reply"),
+                "child": "Mia Musterkind",
+                "recipients": text("class_3b"),
+                "published": "12.08.2026",
+                "unread": False,
+                "body_text": "",
+                "attachments": [],
+                "confirmation": done_confirmation(),
+            },
+            {
+                "letter_id": CONFIRMED_LETTER_ID,
+                "recipient_id": CONFIRMED_RECIPIENT_ID,
+                "title": text("letter_confirmed"),
+                "child": "Mia Musterkind",
+                "recipients": text("class_3b"),
+                "published": "05.08.2026",
+                "unread": False,
+                "body_text": "",
+                "attachments": [],
+                "confirmation": done_confirmation(),
+            },
         ]
         return letters
 
@@ -1442,7 +1584,21 @@ class FixtureService:
             "confirmed_at": CONFIRMED_AT,
         }
 
+    def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
+        if letter_id not in LETTER_PAGES:
+            return messages.result(False, "api.letters.reply.unavailable")
+        return FIXTURE_LETTERS.reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
+
     def letter_detail(self, connection_id, letter_id, recipient_id):
+        if letter_id in LETTER_PAGES:
+            return {
+                "title": "Letter",
+                "body_html": "<p>Inhalt</p>",
+                "attachments": [],
+                "archive_url_present": True,
+                "confirmation": done_confirmation(),
+                "reply": letter_reply_offer(letter_id, recipient_id),
+            }
         return {
             "title": "Letter",
             "body_html": "<p>Inhalt</p>",
@@ -2352,4 +2508,6 @@ def create_fixture_app():
     return app
 
 
-app = create_fixture_app()
+def create_server_app():
+    reset_e2e_data_dir()
+    return create_fixture_app()
