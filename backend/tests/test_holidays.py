@@ -572,7 +572,9 @@ class StubService:
     def check_connection(self):
         return "ok"
 
-    def first_connection(self):
+    def pick_school(self, connection_id=None):
+        if connection_id:
+            return self.known_connection(connection_id)
         entries = self.store.connections()
         if not entries:
             raise NotConfiguredError("no school connected")

@@ -459,6 +459,7 @@ const state = {
   messengerRoom: null,
   teacherRoom: null,
   absence: null,
+  absenceSchool: "",
   absenceForm: null,
   absenceFormDefault: null,
   absenceHistoryOpen: false,
@@ -968,11 +969,39 @@ function connectionOfKey(key) {
   return cut > 0 ? value.slice(0, cut) : "";
 }
 
+function soleSchoolId() {
+  const ready = readySchools();
+  const pool = ready.length ? ready : connections();
+  return pool.length === 1 ? pool[0].id : "";
+}
+
 function currentConnectionId() {
   const fromChild = connectionOfKey(state.childId);
-  if (fromChild) return fromChild;
+  if (fromChild && connectionOf(fromChild)) return fromChild;
+  const listed = state.children.map(schoolOfChild).find((id) => id && connectionOf(id));
+  return listed || soleSchoolId();
+}
+
+function greetingSchoolId() {
   const first = readySchools()[0] || connections()[0];
-  return first ? first.id : "";
+  return currentConnectionId() || (first ? first.id : "");
+}
+
+function schoolChoiceSheet(ids, chosen, onChoose) {
+  return sheet(t("schools.choose.title"), [
+    el("div", { class: "opt-list school-choice" }, ids.map((id) => {
+      const short = schoolShortName(id);
+      const full = schoolFullName(id);
+      const lines = [iservText("b", {}, full)];
+      if (short && short !== full) lines.push(iservText("small", {}, short));
+      return el("button", {
+        class: "opt",
+        type: "button",
+        "aria-pressed": String(id === chosen),
+        onclick: () => { dropSheet(); onChoose(id); },
+      }, [el("span", {}, lines)]);
+    })),
+  ]);
 }
 
 function connectionConfig(id) {
@@ -2061,7 +2090,8 @@ async function loadNotifyServices() {
 }
 
 function loadRest() {
-  getJson("api/me").then((data) => {
+  const greeting = greetingSchoolId();
+  getJson(greeting ? `api/me?connection=${encodeURIComponent(greeting)}` : "api/me").then((data) => {
     state.me = data && !data.error ? data : {};
     writeCachedForename(state.me.forename || "");
     rerender();
@@ -8306,8 +8336,24 @@ function teacherRoomEntry(className) {
   ]);
 }
 
+function teacherSchoolIds() {
+  const data = state.messengerRooms || {};
+  const listed = Array.isArray(data.teacher_schools) ? data.teacher_schools : readySchools().map((entry) => entry.id);
+  return listed.filter((id) => connectionOf(id));
+}
+
 function startTeacherRoom() {
+  const ids = teacherSchoolIds();
+  if (ids.length > 1) {
+    openSheet(() => schoolChoiceSheet(ids, "", openTeacherRoom));
+    return;
+  }
+  openTeacherRoom(ids[0] || currentConnectionId());
+}
+
+function openTeacherRoom(connectionId) {
   state.teacherRoom = {
+    connectionId: connectionId || "",
     teacher: null,
     query: "",
     results: null,
@@ -8332,7 +8378,7 @@ async function loadTeacherRoomChildren() {
   form.childrenFailed = false;
   let data = null;
   try {
-    data = await getJson(`api/messenger/room/teacher/children?connection=${encodeURIComponent(currentConnectionId())}`);
+    data = await getJson(`api/messenger/room/teacher/children?connection=${encodeURIComponent(form.connectionId)}`);
   } catch (error) {
     if (state.teacherRoom !== form) return;
     form.childrenFailed = true;
@@ -8435,7 +8481,7 @@ async function runTeacherSearch(query) {
   teacherSearchAbort = controller;
   let data = null;
   try {
-    data = await getJson(`api/messenger/teachers?query=${encodeURIComponent(query)}&connection=${encodeURIComponent(currentConnectionId())}`, controller ? controller.signal : undefined);
+    data = await getJson(`api/messenger/teachers?query=${encodeURIComponent(query)}&connection=${encodeURIComponent(form.connectionId)}`, controller ? controller.signal : undefined);
   } catch (error) {
     if (controller && controller.signal.aborted) return;
     if (handleApiFailure(error)) return;
@@ -8589,15 +8635,16 @@ function teacherRoomChildNames() {
 
 function teacherRoomReviewBody() {
   const form = state.teacherRoom;
+  const school = manySchools() && form.connectionId ? [[t("messenger.create.review.school"), schoolFullName(form.connectionId)]] : [];
   return el("div", { class: "sw-review" }, [
     el("div", { class: "create-name" }, [iservText("b", {}, form.teacher ? form.teacher.label : "")]),
-    factList([
+    factList(school.concat([
       [t("messenger.create.review.children"), teacherRoomChildNames()],
       [
         t("messenger.create.review.parents"),
         t(form.addOtherParents ? "messenger.create.review.parents.yes" : "messenger.create.review.parents.no"),
       ],
-    ]),
+    ])),
     el("p", { class: "hint" }, t("messenger.create.parents.origin")),
   ]);
 }
@@ -8680,7 +8727,7 @@ async function submitTeacherRoom() {
   let result = null;
   try {
     result = await postJson("api/messenger/room/teacher", {
-      connection_id: currentConnectionId(),
+      connection_id: form.connectionId,
       teacher: form.teacher.value,
       child_ids: form.childIds,
       add_other_parents: !!form.addOtherParents,
@@ -8765,8 +8812,35 @@ function conferencesView() {
   return view;
 }
 
+function absenceSchoolId() {
+  const fromChild = currentConnectionId();
+  if (fromChild) return fromChild;
+  return state.absenceSchool && connectionOf(state.absenceSchool) ? state.absenceSchool : "";
+}
+
+function openAbsenceSchoolId() {
+  return (state.absence && state.absence.connectionId) || absenceSchoolId();
+}
+
+function chooseAbsenceSchool(id) {
+  state.absenceSchool = id;
+  state.absence = null;
+  rerender();
+}
+
+function absenceSchoolBlock() {
+  const ids = readySchools().map((entry) => entry.id);
+  const button = el("button", {
+    class: "btn",
+    type: "button",
+    onclick: () => openSheet(() => schoolChoiceSheet(ids, state.absenceSchool || "", chooseAbsenceSchool)),
+  }, t("schools.choose.action"));
+  return emptyBlock("absence", t("schools.choose.title"), t("absence.school.text"), button);
+}
+
 async function loadAbsences() {
-  const school = currentConnectionId();
+  const school = absenceSchoolId();
+  if (!school && manySchools()) return;
   const keep = !!(state.absence && !state.absence.error && (!state.absence.connectionId || state.absence.connectionId === school));
   const outcome = await reload("absence", () => getJson(`api/absences?connection=${encodeURIComponent(school)}`), keep, school);
   if (!outcome) return;
@@ -8776,13 +8850,17 @@ async function loadAbsences() {
 }
 
 function absenceStale(box) {
-  return !box || (!!box.connectionId && box.connectionId !== currentConnectionId());
+  return !box || (!!box.connectionId && box.connectionId !== absenceSchoolId());
 }
 
 function absenceView() {
   const view = el("div", {});
   if (childPillsShown()) view.append(childPills(state.childId, selectChild));
-  const banner = schoolIssueBanner([currentConnectionId()]);
+  if (!absenceSchoolId() && manySchools()) {
+    view.append(absenceSchoolBlock());
+    return view;
+  }
+  const banner = schoolIssueBanner([absenceSchoolId()]);
   if (banner) view.append(banner);
   const box = state.absence;
   if (absenceStale(box)) {
@@ -8791,7 +8869,7 @@ function absenceView() {
     return view;
   }
   if (box.error) {
-    view.append(schoolInOutage(box.connectionId || currentConnectionId())
+    view.append(schoolInOutage(box.connectionId || absenceSchoolId())
       ? outageEmptyBlock()
       : emptyBlock("alert", t("absence.error.title"), t("absence.error.text"), retryButton(() => { state.absence = null; rerender(); })));
     return view;
@@ -8963,7 +9041,8 @@ function absenceTechEntries(entry) {
 function sickNotePdfBlock(entry) {
   const rules = (state.absence && state.absence.data && state.absence.data.rules) || {};
   const dutyHint = (rules.duty_hint || "").trim();
-  const path = `api/absences/sick-note-pdf?id=${encodeURIComponent(entry.id)}`;
+  const school = openAbsenceSchoolId();
+  const path = `api/absences/sick-note-pdf?id=${encodeURIComponent(entry.id)}${school ? `&connection=${encodeURIComponent(school)}` : ""}`;
   const button = el("button", { type: "button", class: "btn" }, [icon("clip", 18), t("absence.sickNote.pdf")]);
   button.addEventListener("click", async () => {
     if (button.disabled) return;
@@ -9032,13 +9111,14 @@ async function withdrawAbsence(entry) {
     openAbsenceSheet(entry);
     return;
   }
+  const school = openAbsenceSchoolId();
   dropSheet();
   state.detail = null;
   state.absence = null;
   rerender();
   try {
     const result = await postJson("api/absences/delete", {
-      connection_id: currentConnectionId(),
+      connection_id: school,
       type: entry.kind,
       id: entry.id,
       target: entry.target || "",
@@ -10111,7 +10191,7 @@ function childNameForForm() {
 function absencePayload(form, children) {
   const payload = Object.assign({}, form, {
     student_id: form.student_id || (children[0] ? children[0].id : ""),
-    connection_id: (state.absence && state.absence.connectionId) || currentConnectionId(),
+    connection_id: openAbsenceSchoolId(),
   });
   delete payload.attachments;
   delete payload.duration;
@@ -10268,10 +10348,16 @@ function moduleCardWanted() {
   return entries.length > 0 && !moduleCardHidden(entries);
 }
 
+function moduleIssueBody() {
+  const body = helpIssueBody();
+  return `${t("help.issue.moduleQuestion")}\n\n${body}`;
+}
+
 function moduleIssueUrl() {
   const segments = moduleSegments();
   const title = segments.length ? t("help.issue.title", { segments: segments.join(", ") }) : t("help.issue.titlePlain");
-  const params = new URLSearchParams({ title, body: helpIssueBody() });
+  const body = segments.length ? moduleIssueBody() : helpIssueBody();
+  const params = new URLSearchParams({ title, body });
   return `${MODULE_ISSUE_URL}?${params.toString()}`;
 }
 
@@ -10477,20 +10563,62 @@ function helpDetails() {
   return details;
 }
 
+function schoolNameList(ids) {
+  const names = ids.map((id) => schoolShortName(id) || schoolFullName(id)).filter(Boolean);
+  try {
+    return new Intl.ListFormat(currentLanguage(), { style: "long", type: "conjunction" }).format(names);
+  } catch (error) {
+    return names.join(", ");
+  }
+}
+
+function recheckOutcomeToast(outcomes) {
+  const failed = outcomes.filter((outcome) => !outcome.result || !outcome.result.ok);
+  if (!failed.length) {
+    toast(apiMessage(outcomes[0].result, "api.modules.rechecked"), "good");
+    return;
+  }
+  if (outcomes.length > 1 && failed.length < outcomes.length) {
+    toast(t("settings.modules.recheckPartial", { schools: schoolNameList(failed.map((outcome) => outcome.id)) }), "bad");
+    return;
+  }
+  const first = failed[0].result;
+  toast(first === null ? t("app.error.service.text") : apiMessage(first, "api.modules.rechecked"), "bad");
+}
+
+function recheckTarget() {
+  if (state.settingsSchoolId && connectionOf(state.settingsSchoolId)) return state.settingsSchoolId;
+  return manySchools() ? "" : editingConnectionId();
+}
+
 async function recheckModules() {
   if (state.modulesRechecking) return;
   state.modulesRechecking = true;
   rerender();
-  let result = null;
-  try {
-    result = await postJson("api/modules/recheck", { connection_id: editingConnectionId() });
-  } catch (error) {
-    result = null;
+  const target = recheckTarget();
+  const ids = target ? [target] : readySchools().map((entry) => entry.id);
+  const outcomes = [];
+  for (const id of ids.length ? ids : [""]) {
+    let result = null;
+    try {
+      result = await postJson("api/modules/recheck", { connection_id: id });
+    } catch (error) {
+      result = null;
+    }
+    outcomes.push({ id, result });
+  }
+  const answered = outcomes.filter((outcome) => outcome.result && outcome.result.modules);
+  let modules = answered.length ? answered[answered.length - 1].result.modules : null;
+  if (answered.length && manySchools()) {
+    try {
+      modules = await getJson("api/modules");
+    } catch (error) {
+      modules = null;
+    }
   }
   state.modulesRechecking = false;
-  if (result && result.modules) state.modules = applyModules(result.modules);
-  if (result === null) toast(t("app.error.service.text"), "bad");
-  else toast(apiMessage(result, "api.modules.rechecked"), result.ok ? "good" : "bad");
+  if (modules) state.modules = applyModules(modules);
+  recheckOutcomeToast(outcomes);
   rerender();
 }
 
@@ -12489,6 +12617,14 @@ function schoolChildrenCount(id) {
   return entry && Array.isArray(entry.children) ? entry.children.length : 0;
 }
 
+function schoolChildrenValue(id) {
+  const listState = (schoolSummary(id) || {}).children_state;
+  if (listState === "unreadable") return el("span", { class: "val warn" }, t("schools.children.unreadable"));
+  const listed = state.children.some((child) => schoolOfChild(child) === id);
+  if (listState === "refused" && !listed) return el("span", { class: "val" }, t("schools.children.refused"));
+  return el("span", { class: "val" }, tCount("schools.children", schoolChildrenCount(id)));
+}
+
 function schoolRow(entry) {
   const id = entry.id;
   const status = schoolStatusLabel(id);
@@ -12502,7 +12638,7 @@ function schoolRow(entry) {
     iservText("span", { class: "lbl" }, schoolFullName(id)),
     status
       ? el("span", { class: schoolInOutage(id) ? "val" : "val warn" }, status)
-      : el("span", { class: "val" }, tCount("schools.children", schoolChildrenCount(id))),
+      : schoolChildrenValue(id),
     el("span", { class: "chev" }, [icon("chevron", 16)]),
   ]);
 }

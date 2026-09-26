@@ -8,12 +8,12 @@ import zipfile
 import pytest
 from fastapi.testclient import TestClient
 
-from app import diagnostics, logfile, modules, namebook, valueshape, vocabulary
+from app import diagnostics, logfile, modules, namebook, pageshape, valueshape, vocabulary
 from app.poller import Poller
 from app.server import create_app
 from app.service import ConnectionService
 from app.store import Store
-from tests.support import add_school
+from tests.support import Response, add_school
 from tests.test_diagnostics import (
     CHILD_ONE,
     PASSWORD,
@@ -23,7 +23,6 @@ from tests.test_diagnostics import (
     USER_ONE,
     Client,
     Connection,
-    Response,
     Service,
     build,
     registry_for,
@@ -128,8 +127,7 @@ def test_the_shape_lines_walk_objects_and_the_first_array_element_with_masked_ke
         "items[].id: int >0",
         "items[].title: string len 11, letters",
         "items[].<key>: int >0",
-        "items[].<word>: object keys 1",
-        "items[].<word>.x: null",
+        "items[].<key>.x: null",
         "items[].<n>: boolean",
         "matrix.room_id: string len 19, free text",
         "empty: array len 0",
@@ -142,7 +140,47 @@ def test_link_shapes_keep_routes_and_hide_ids_files_and_name_like_segments():
     assert valueshape.link_shape("/iserv/profile/public/mia.musterkind") == "/iserv/profile/public/<seg>"
     assert valueshape.link_shape("/iserv/user/Musterkind") == "/iserv/user/<seg>"
     assert valueshape.link_shape("/iserv/file/-/Brief an Mia.pdf") == "/iserv/file/-/<file>.pdf"
-    assert valueshape.link_shape("/iserv/x/12") == "/iserv/x/<n>"
+    assert valueshape.link_shape("/iserv/news/12") == "/iserv/news/<n>"
+
+
+def test_link_shapes_hide_lowercase_names_and_tokens():
+    assert valueshape.link_shape("/iserv/addressbook/public/show/erika") == "/iserv/addressbook/public/show/<seg>"
+    assert valueshape.link_shape("/iserv/profile/max.mayer") == "/iserv/profile/<seg>"
+    assert valueshape.link_shape("/iserv/news/qwertzuiopasdfghjklyxcvb") == "/iserv/news/<seg>"
+    assert valueshape.link_shape("/iserv/news/k3jf8hs9dk2llmq0pzx7/show") == "/iserv/news/<seg>/show"
+    assert valueshape.link_shape("/iserv/news/brief-an-jonas.pdf") == "/iserv/news/<file>.pdf"
+    assert valueshape.link_shape("/_matrix/client/v3/sync") == "/_matrix/client/v3/sync"
+
+
+def test_identifiers_keep_only_known_words_in_any_case():
+    assert pageshape.code_text("form-mustermann") == "form-<word>"
+    assert pageshape.code_text("users[max.mustermann]") == "users[<word>.<word>]"
+    assert pageshape.code_text("child_LISA") == "child_<word>"
+    assert pageshape.code_text("confirm_anna") == "confirm_<word>"
+    assert pageshape.code_text("tbl-schmidt") == "tbl-<word>"
+    assert pageshape.code_text("iserv_crud_multi_select[actions][parent-archive-letter]") == "iserv_crud_multi_select[actions][parent-archive-letter]"
+    assert valueshape.safe_key("max.mustermann.anna") == "<key>.<key>.<key>"
+    assert valueshape.safe_key("anna_schmidt") == "<key>_<key>"
+    assert valueshape.safe_key("MUELLER") == "<key>"
+    assert valueshape.safe_key("createdAt") == "createdAt"
+
+
+def test_identifiers_hide_name_like_words_initials_and_login_ids():
+    cases = {
+        "art.freitag": "<word>.<word>",
+        "modal-Sonntag": "modal-<word>",
+        "item_Lehrer": "item_<word>",
+        "child_CAN": "child_<word>",
+        "guardian-Root": "guardian-<word>",
+        "row-Price": "row-<word>",
+        "teacher_MB": "teacher_<word>",
+        "@can.lehrer:schule.example": "@<word>.<word>:<word>.<word>",
+        "users[max.mustermann]": "users[<word>.<word>]",
+    }
+    for value, expected in cases.items():
+        assert pageshape.code_text(value) == expected, value
+    assert pageshape.code_text("user_id") == "user_id"
+    assert pageshape.code_text("isUnread") == "isUnread"
 
 
 def test_fuzzed_json_with_planted_personal_data_never_leaks_a_value():
@@ -156,7 +194,7 @@ def test_fuzzed_json_with_planted_personal_data_never_leaks_a_value():
 
 def test_the_shape_walk_is_capped_and_says_so():
     wide = {"key_%d" % index: index for index in range(valueshape.MAX_LINES + 50)}
-    block = diagnostics.shape_block(wide)
+    block = pageshape.shape_block(wide)
     assert len(block) == valueshape.MAX_LINES + 1
     assert block[-1] == "  - cut after %d keys" % valueshape.MAX_LINES
 
@@ -202,7 +240,7 @@ def test_a_fuzzed_report_over_planted_pages_and_json_never_leaks_a_value(tmp_pat
 
 def test_the_embedded_json_of_a_page_is_shown_as_shapes():
     html = '<script type="application/json" id="php-data">{"messenger_authentication": null, "messenger_routing_basepath": "/iserv/messenger"}</script><script type="application/json">{oops</script>'
-    lines = diagnostics.html_skeleton(html)
+    lines = pageshape.html_skeleton(html)
     assert "- Embedded JSON #php-data:" in lines
     assert "  - messenger_authentication: null" in lines
     assert "  - messenger_routing_basepath: string len 16, path /iserv/messenger" in lines
@@ -626,17 +664,17 @@ def test_the_log_file_already_masks_names_the_store_knows_when_it_writes(tmp_pat
 
 
 def test_visible_texts_keep_iserv_words_and_mask_everything_else():
-    assert diagnostics.visible_text("Titel | Kind | Absender 05.03.2026") == "Titel | Kind | Absender <date>"
-    assert diagnostics.visible_text("Stunde 1 Montag") == "Stunde 1 Montag"
-    assert diagnostics.visible_text("Ergebnis von mia musterkind") == "<word> von <word> <word>"
-    assert diagnostics.code_text("main-nav Musterkind childId") == "main-nav <word> childId"
+    assert pageshape.visible_text("Titel | Kind | Absender 05.03.2026") == "Titel | Kind | Absender <date>"
+    assert pageshape.visible_text("Stunde 1 Montag") == "Stunde 1 Montag"
+    assert pageshape.visible_text("Ergebnis von mia musterkind") == "<word> von <word> <word>"
+    assert pageshape.code_text("main-nav Musterkind childId") == "main-nav <word> childId"
 
 
 def test_hyphenated_name_like_segments_and_keys_are_masked_unless_they_are_route_words():
-    assert valueshape.link_shape("/iserv/x/mia-musterkind") == "/iserv/x/<seg>"
+    assert valueshape.link_shape("/iserv/news/mia-musterkind") == "/iserv/news/<seg>"
     assert valueshape.link_shape("/iserv/time-table/data") == "/iserv/time-table/data"
     assert valueshape.link_shape("/iserv/dsa-pinboard/") == "/iserv/dsa-pinboard/"
-    assert valueshape.safe_key("mia-musterkind") == "<key>"
+    assert valueshape.safe_key("mia-musterkind") == "<key>-<key>"
     assert valueshape.safe_key("time-table") == "time-table"
 
 

@@ -294,7 +294,7 @@ Elternbriefe, aktuell und archiviert, mit Anhängen. Verlangt ein Brief eine Les
 
 ### Mehrere Schulen
 
-Jede Schule und jedes Konto behält Anmeldung, Kinder, Namen und Stundenzeiten für sich. Briefe und Beiträge laufen in einem Posteingang zusammen, mit einem Schul-Chip an jeder Zeile und einem Filter je Schule. Kinder stehen schulübergreifend nach Vornamen sortiert. Klappt die Anmeldung einer Schule nicht, wird nur sie markiert, die anderen laufen weiter.
+Jede Schule und jedes Konto behält Anmeldung, Kinder, Namen und Stundenzeiten für sich. Briefe und Beiträge laufen in einem Posteingang zusammen, mit einem Schul-Chip an jeder Zeile und einem Filter je Schule. Kinder stehen schulübergreifend nach Vornamen sortiert. Klappt die Anmeldung einer Schule nicht, wird nur sie markiert, die anderen laufen weiter. Eine Schule, die für dein Konto keine Kinder listet, bringt trotzdem Briefe, Beiträge und Chat. Wo kein Kind die Schule vorgibt, etwa bei der Lehrersuche, fragt die App nach der Schule.
 
 ### Die Stunden im Kalender deines Handys
 
@@ -339,7 +339,7 @@ Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` a
 
 ## Hilfe bekommen
 
-1. Öffne in der App **Einstellungen, Hilfe, Problem melden** und tippe auf **Bericht speichern**. Er bündelt Versionen, den Zustand jedes Moduls und das Add-on-Log in `ranzenpost-report.zip`, ohne Namen, Adressen und Geheimnisse. Nichts wird von selbst verschickt.
+1. Öffne in der App **Einstellungen, Hilfe, Problem melden** und tippe auf **Bericht speichern**. Er bündelt Versionen, den Aufbau jedes IServ-Moduls und das Add-on-Log in `ranzenpost-report.zip`. Namen, Beträge, Adressen und Geheimnisse werden entfernt. Bei Modulen eines anderen Anbieters wie Klassengeld meldet sich der Bericht dort einmal an. Er öffnet keinen Brief und keinen einzelnen Eintrag. Nichts wird von selbst verschickt.
 2. Öffne ein [Issue](https://github.com/githuber110/ranzenpost/issues) und hänge die Datei an. Deutsch ist willkommen.
 3. Bei einem Sicherheitsproblem bitte kein öffentliches Issue öffnen. Siehe [SECURITY.md](SECURITY.md).
 

@@ -444,7 +444,7 @@ def test_the_first_sync_is_filtered_so_it_cannot_outlast_the_request_window():
     assert f'"limit":{INITIAL_SYNC_TIMELINE_LIMIT}' in session.params["filter"]
     session2 = Recorder()
     MatrixClient(BASE, "tok", session=session2).sync(since="s_1", timeout_ms=0)
-    assert "filter" not in session2.params
+    assert session2.params["filter"] == session.params["filter"]
 
 
 def _message_event(timestamp):

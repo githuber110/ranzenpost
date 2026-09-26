@@ -148,7 +148,15 @@ def test_the_parser_itself_is_unchanged_for_a_normal_page():
     assert [child.name for child in parse_children(SELECT_PAGE)] == ["Kim", "Alex"]
 
 
-@pytest.mark.parametrize("status", [401, 403])
+def test_a_lost_session_on_the_child_page_is_a_session_error_not_a_refusal():
+    from app.iserv.children import CHILD_PAGE_SESSION_KEY
+
+    with pytest.raises(DataError) as caught:
+        _client(FakePage(401, "<html><body>Anmeldung</body></html>")).get_children()
+    assert caught.value.message_key == CHILD_PAGE_SESSION_KEY
+
+
+@pytest.mark.parametrize("status", [403])
 def test_a_module_iserv_refuses_is_named_as_refused_not_as_unreadable(status):
     from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
 

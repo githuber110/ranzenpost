@@ -1,7 +1,7 @@
 import re
 
 from .pathpattern import path_only, placeholders
-from .vocabulary import known_word
+from .vocabulary import known_identifier, known_word
 
 MAX_LINES = 600
 MAX_DEPTH = 12
@@ -28,12 +28,70 @@ COLOUR = re.compile(r"^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 TOKEN = re.compile(r"^[A-Za-z0-9+/_=.-]{24,}$")
 BOOLEAN_TEXT = ("true", "false")
 KEY_PART = re.compile(r"^[A-Za-z_$@][A-Za-z0-9_$-]{0,47}$")
-CAPITALISED = re.compile(r"^[A-Z][a-z]{2,}$")
 VERSION_SEGMENT = re.compile(r"^v?\d{1,2}(?:\.\d{1,2}){1,2}$")
 FILE_SEGMENT = re.compile(r"^.+\.([a-z0-9]{1,5})$")
 PLACEHOLDER = re.compile(r"<[a-z]+>")
-HYPHEN_NAME = re.compile(r"^[^\W\d_]+(?:-[^\W\d_]+)+$")
-LINK_SEGMENT = re.compile(r"^[a-z0-9_-]*[a-z_-][A-Za-z0-9_-]{0,47}$")
+SHORT_VERSION = re.compile(r"^v\d{1,2}$")
+ROUTE_PART = re.compile(r"[-_~]|<[a-z]+>")
+ROUTE_LETTERS = re.compile(r"^[^\W\d_]+$")
+FILE_EXTENSIONS = frozenset(
+    {"js", "mjs", "css", "map", "json", "html", "htm", "php", "xml", "txt", "pdf", "png", "jpg", "jpeg", "gif", "svg", "ico",
+     "webp", "woff", "woff2", "ttf", "zip", "csv", "ics", "doc", "docx", "xls", "xlsx", "odt", "ods", "mp3", "mp4"}
+)
+IDENTIFIER_PART = re.compile(r"(<[a-z]+>|[^\W\d_]+|\d+)")
+SHORT_PARTS = frozenset({"id", "is", "at", "to", "of", "on", "in", "by", "no", "js", "ui", "x", "y"})
+LOGIN_LIKE = re.compile(r"@[\w.:-]+|[^\W\d_][\w-]*(?:[.:][\w-]+)+")
+
+
+def _starts_part(run, index):
+    if index == 0 or not run[index].isupper():
+        return False
+    after_lower = run[index - 1].islower()
+    ends_capitals = run[index - 1].isupper() and index + 1 < len(run) and run[index + 1].islower()
+    return after_lower or ends_capitals
+
+
+def _camel_parts(run):
+    parts = []
+    current = ""
+    for index, char in enumerate(run):
+        if current and _starts_part(run, index):
+            parts.append(current)
+            current = ""
+        current += char
+    return parts + ([current] if current else [])
+
+
+def _identifier_part(part):
+    if len(part) <= 2:
+        return part.lower() in SHORT_PARTS and not (len(part) == 2 and part.isupper())
+    return known_identifier(part)
+
+
+def _identifier_run(run, mark):
+    if run.startswith("<") or run.isdigit():
+        return run
+    return "".join(part if _identifier_part(part) else mark for part in _camel_parts(run))
+
+
+def _masked_run(run, mark):
+    return run if run.startswith("<") or run.isdigit() else mark
+
+
+def _shaped_pieces(text, mark, shape):
+    return "".join(shape(piece, mark) if index % 2 else piece for index, piece in enumerate(IDENTIFIER_PART.split(text)))
+
+
+def identifier_shape(value, mark=WORD_MARK):
+    text = placeholders(str(value or ""))
+    shaped = []
+    position = 0
+    for match in LOGIN_LIKE.finditer(text):
+        shaped.append(_shaped_pieces(text[position:match.start()], mark, _identifier_run))
+        shaped.append(_shaped_pieces(match.group(0), mark, _masked_run))
+        position = match.end()
+    shaped.append(_shaped_pieces(text[position:], mark, _identifier_run))
+    return "".join(shaped)
 
 
 def safe_key(key):
@@ -44,15 +102,12 @@ def safe_key(key):
         return "<uuid>"
     if ISO_DATE.match(text) or GERMAN_DATE.match(text) or GERMAN_DAY.match(text):
         return "<date>"
-    parts = text.split(".")
     shaped = []
-    for part in parts:
-        if not KEY_PART.match(part) or name_like(part):
-            return KEY_MARK
-        if CAPITALISED.match(part):
-            shaped.append(WORD_MARK)
+    for part in text.split("."):
+        if not KEY_PART.match(part):
+            shaped.append(KEY_MARK)
             continue
-        shaped.append(placeholders(part))
+        shaped.append(identifier_shape(part, KEY_MARK))
     return ".".join(shaped)
 
 
@@ -174,24 +229,22 @@ def shape_lines(data, limit=MAX_LINES):
     return lines
 
 
-def name_like(segment):
-    if not HYPHEN_NAME.match(segment):
-        return False
-    return not all(known_word(part) for part in segment.split("-"))
+def _route_word(segment):
+    parts = [part for part in ROUTE_PART.split(segment) if part]
+    return bool(parts) and all(ROUTE_LETTERS.match(part) and known_word(part) for part in parts)
 
 
 def _link_segment(segment):
     if not segment or segment == "-":
         return segment
-    if name_like(segment):
-        return SEGMENT_MARK
     if DIGITS.match(segment):
         return "<n>"
-    bare = PLACEHOLDER.sub("", segment)
-    if not bare or VERSION_SEGMENT.match(segment) or LINK_SEGMENT.match(bare):
+    if not PLACEHOLDER.sub("", segment) or VERSION_SEGMENT.match(segment) or SHORT_VERSION.match(segment):
+        return segment
+    if _route_word(segment):
         return segment
     extension = FILE_SEGMENT.match(segment.lower())
-    if extension:
+    if extension and extension.group(1) in FILE_EXTENSIONS:
         return FILE_MARK + "." + extension.group(1)
     return SEGMENT_MARK
 
@@ -199,3 +252,8 @@ def _link_segment(segment):
 def link_shape(value):
     path = placeholders(path_only(value))
     return "/".join(_link_segment(segment) for segment in path.split("/"))
+
+
+def table_cell(value):
+    text = str(value if value is not None else "")
+    return text.replace("|", "/").replace("\n", " ") or "-"

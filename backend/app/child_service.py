@@ -6,7 +6,7 @@ import requests
 from . import courses, modules
 from .failure import failure_cause
 from .identifiers import UNKNOWN_CHILD_KEY
-from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
+from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY, CHILD_PAGE_SESSION_KEY
 from .iserv.dsa import parse_children_from_me, student_for_name
 from .iserv.errors import DataError, LoginError, OutageError, TwoFactorError
 from .iserv.letters import parse_letter_list
@@ -42,6 +42,24 @@ def _moved_children(config, children):
     return moves
 
 
+def _stored_identities(stored, children):
+    stored_ids = {str(entry.get("child_id") or "") for entry in stored}
+    listed_ids = {str(child.get("child_id") or "") for child in children}
+    candidates = [entry for entry in stored if str(entry.get("child_id") or "") not in listed_ids]
+    taken = set()
+    result = []
+    for child in children:
+        child_id = str(child.get("child_id") or "")
+        match = student_for_name(candidates, child.get("name"))
+        stored_id = str(match.get("child_id") or "") if match is not None else ""
+        if not child_id or child_id in stored_ids or not stored_id or stored_id in taken:
+            result.append((child, child_id))
+            continue
+        taken.add(stored_id)
+        result.append((dict(child, child_id=stored_id), child_id))
+    return result
+
+
 def unknown_child():
     return DataError("unknown child", message_key=UNKNOWN_CHILD_KEY)
 
@@ -62,12 +80,14 @@ class ChildService:
         self.connection = connection
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
+        self._page_ids = None
         self._retired = False
 
     def retire(self):
         self._retired = True
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
+        self._page_ids = None
 
     def _marker(self):
         config = self.connection.store.load_config()
@@ -108,13 +128,18 @@ class ChildService:
         self.connection._timetable_page_denied = False
         listed = self._children_from_school_account()
         if listed:
+            self._remember_page_ids({})
             self._migrate_stored_children(listed, marker)
             return self._keep(listed, marker, remember=True)
         if not self.connection.module_available(modules.TIMETABLE):
-            return self._keep(self._fallback_children(), marker, remember=True)
+            self._remember_page_ids({})
+            return self._keep(self._as_stored(self._fallback_children(), "fallback"), marker, remember=True)
+        client = self.connection._session()
         try:
-            native = self.connection._session().get_children()
+            native = client.get_children()
         except DataError as error:
+            if error.message_key == CHILD_PAGE_SESSION_KEY:
+                self.connection._forget_session(client)
             if error.message_key not in CHILD_PAGE_KEYS:
                 raise
             fallback = self._children_from_school_app()
@@ -124,7 +149,8 @@ class ChildService:
                 "the timetable page refused the child list, using the school app list instead: %s",
                 failure_cause(error),
             )
-            kept = self._keep(fallback, marker)
+            self._remember_page_ids({})
+            kept = self._keep(self._as_stored(fallback, "school app"), marker)
             self.connection._timetable_page_denied = True
             return kept
         try:
@@ -143,7 +169,35 @@ class ChildService:
                 "class_full": student.get("class_full", "") if student else "",
                 "class_code": student.get("class_code", "") if student else "",
             })
-        return self._keep(result, marker)
+        identities = self._identities(result, "timetable page")
+        kept = self._keep([child for child, _ in identities], marker)
+        self._remember_page_ids({child["child_id"]: source_id for child, source_id in identities if child["child_id"] != source_id})
+        return kept
+
+    def _identities(self, children, source):
+        identities = _stored_identities(self.stored_children(), children)
+        kept = sum(1 for child, source_id in identities if child["child_id"] != source_id)
+        if kept:
+            logger.info("school#%s kept %d child(ren) of the %s list under the stored id", self.connection.id, kept, source)
+        return identities
+
+    def _as_stored(self, children, source):
+        return [child for child, _ in self._identities(children, source)]
+
+    def _remember_page_ids(self, page_ids):
+        if not self._retired:
+            self._page_ids = page_ids
+
+    def timetable_page_id(self, child_id):
+        child_id = str(child_id or "")
+        if self._page_ids is None:
+            try:
+                self.children()
+            except Exception as error:
+                logger.info("school#%s child list for the timetable page unreadable: %s", self.connection.id, type(error).__name__)
+            if self._page_ids is None:
+                self._remember_page_ids({})
+        return (self._page_ids or {}).get(child_id, child_id)
 
     def _keep(self, children, marker, remember=False):
         if not self._learn_children(children, marker):
@@ -224,26 +278,32 @@ class ChildService:
         def change(config):
             if not self._current(config, marker):
                 return
-            moves = _moved_children(config, children)
-            if not moves:
-                return
-            targets = dict(moves)
+            stored = config.get("children") or []
+            targets = dict(_moved_children(config, children))
             migrated = []
-            for entry in config.get("children") or []:
+            seen = {}
+            for entry in stored:
                 if not isinstance(entry, dict):
                     continue
                 child_id = str(entry.get("child_id") or "")
                 match = student_for_name(children, entry.get("name")) if child_id in targets else None
-                if match is None:
-                    migrated.append(entry)
+                if match is not None:
+                    entry = dict(entry, child_id=match["child_id"])
+                    if match.get("class_name"):
+                        entry["class_name"] = match["class_name"]
+                    config.update(courses.moved_filter(config, child_id, match["child_id"]) or {})
+                    logger.info("stored child moved to the school account id")
+                final_id = str(entry.get("child_id") or "")
+                if final_id and final_id in seen:
+                    kept = seen[final_id]
+                    kept.update({key: value for key, value in entry.items() if value and not kept.get(key)})
+                    logger.info("a child stored twice under the same id was merged")
                     continue
-                moved = dict(entry, child_id=match["child_id"])
-                if match.get("class_name"):
-                    moved["class_name"] = match["class_name"]
-                migrated.append(moved)
-                config.update(courses.moved_filter(config, child_id, match["child_id"]) or {})
-                logger.info("stored child moved to the school account id")
-            config["children"] = migrated
+                entry = dict(entry)
+                seen[final_id] = entry
+                migrated.append(entry)
+            if migrated != stored:
+                config["children"] = migrated
 
         edit_config(self.connection.store, change)
 

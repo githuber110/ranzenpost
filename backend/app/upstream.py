@@ -3,16 +3,18 @@ from requests import RequestException
 
 from . import messages
 from .iserv.errors import DataError, LoginError, TwoFactorError
-from .service import NotConfiguredError
+from .service import SCHOOL_REQUIRED_KEY, NotConfiguredError, SchoolRequiredError
 
 NOT_CONFIGURED = "not_configured"
 AUTH_FAILED = "auth_failed"
 NETWORK = "network"
-UPSTREAM_ERROR_CODES = (NOT_CONFIGURED, AUTH_FAILED, NETWORK)
+SCHOOL_REQUIRED = "school_required"
+UPSTREAM_ERROR_CODES = (NOT_CONFIGURED, AUTH_FAILED, NETWORK, SCHOOL_REQUIRED)
 UPSTREAM_ERROR_MESSAGE_KEYS = {
     NOT_CONFIGURED: "api.notConfigured",
     AUTH_FAILED: "api.authFailed",
     NETWORK: "api.network",
+    SCHOOL_REQUIRED: SCHOOL_REQUIRED_KEY,
 }
 
 
@@ -37,7 +39,9 @@ def upstream_write_error(code, error=None):
     return body
 
 
-def _upstream_code(error):
+def upstream_code(error):
+    if isinstance(error, SchoolRequiredError):
+        return SCHOOL_REQUIRED
     if isinstance(error, NotConfiguredError):
         return NOT_CONFIGURED
     if isinstance(error, (LoginError, TwoFactorError)):
@@ -49,14 +53,14 @@ def read_endpoint(call):
     try:
         return call()
     except (NotConfiguredError, LoginError, TwoFactorError, DataError, RequestException) as error:
-        return upstream_error(_upstream_code(error), error)
+        return upstream_error(upstream_code(error), error)
 
 
 def write_endpoint(call, fallback=None):
     try:
         return call()
     except (NotConfiguredError, LoginError, TwoFactorError, DataError, RequestException) as error:
-        return upstream_write_error(_upstream_code(error), error)
+        return upstream_write_error(upstream_code(error), error)
     except Exception:
         if fallback is None:
             raise
@@ -67,9 +71,10 @@ BINARY_UPSTREAM_RESPONSES = {
     NOT_CONFIGURED: ("not configured", 503),
     AUTH_FAILED: ("auth failed", 503),
     NETWORK: ("upstream unavailable", 502),
+    SCHOOL_REQUIRED: ("school required", 400),
 }
 
 
 def binary_upstream_response(error):
-    body, status = BINARY_UPSTREAM_RESPONSES[_upstream_code(error)]
+    body, status = BINARY_UPSTREAM_RESPONSES[upstream_code(error)]
     return PlainTextResponse(body, status_code=status)

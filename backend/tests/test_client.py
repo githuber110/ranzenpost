@@ -142,6 +142,24 @@ def test_get_timetable_reports_a_403_as_area_forbidden_not_a_login_failure():
     assert not isinstance(excinfo.value, LoginError)
 
 
+def test_get_timetable_reports_a_401_as_a_lost_session_not_a_refused_area():
+    from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+    from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY
+
+    class ExpiredSession(FakeSession):
+        def get(self, url, timeout=None, params=None):
+            if "time-table/data" in url:
+                return FakeResponse("expired", url, status_code=401)
+            return super().get(url, timeout=timeout, params=params)
+
+    client = IServClient(BASE, session=ExpiredSession())
+    client.login("parent", "secret", lambda: "451884")
+    with pytest.raises(DataError) as excinfo:
+        client.get_timetable("22222222-2222-4222-8222-222222222222")
+    assert excinfo.value.message_key == SCHOOL_APP_EXPIRED_KEY
+    assert excinfo.value.message_key != CHILD_PAGE_FORBIDDEN_KEY
+
+
 def test_fetch_or_raise_returns_the_response_on_success():
     client, _ = make_client()
     client.login("parent", "secret", lambda: "451884")

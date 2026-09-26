@@ -72,6 +72,53 @@ def test_an_empty_school_app_without_slots_falls_back_to_the_time_table_module(t
     assert '"child":"%s"' % OWN_OPTION in asked["filter"]
 
 
+def test_a_room_change_of_the_time_table_module_reaches_the_week(tmp_path):
+    record = {
+        "date": "07.09.2026",
+        "period": 1,
+        "periodStart": 1,
+        "periodEnd": 1,
+        "origSubject": "D",
+        "substitutionSubject": "D",
+        "origTeacher": "KLE",
+        "substitutionTeacher": "KLE",
+        "origRoom": "R101",
+        "substitutionRoom": "R305",
+        "origClass": ["5A"],
+        "substitutionClass": ["5A"],
+        "text": "",
+        "change_types": [],
+    }
+    service = make(tmp_path, TimeTableSchool(changes=[record]))
+    lesson = next(item for item in service.timetable(CHILD, reference=WEDNESDAY)["lessons"] if item["date"] == "07.09.2026" and item["period"] == 1)
+    assert lesson["room"] == "R305"
+    assert lesson["change_kind"] == "changed"
+    assert lesson["changed_fields"] == ["room"]
+    assert lesson["previous"]["room"] == "R101"
+
+
+def test_the_week_answer_lists_only_the_time_table_changes_that_reached_a_lesson(tmp_path):
+    shown = {
+        "date": "07.09.2026",
+        "period": 1,
+        "periodStart": 1,
+        "periodEnd": 1,
+        "origSubject": "D",
+        "substitutionSubject": "D",
+        "origTeacher": "KLE",
+        "substitutionTeacher": "KLE",
+        "origRoom": "R101",
+        "substitutionRoom": "R305",
+        "origClass": ["5A"],
+        "substitutionClass": ["5A"],
+        "text": "",
+        "change_types": [],
+    }
+    elsewhere = dict(shown, origClass=["6B"], substitutionClass=["6B"])
+    service = make(tmp_path, TimeTableSchool(changes=[shown, elsewhere]))
+    assert service.timetable(CHILD, reference=WEDNESDAY)["changes"] == [shown]
+
+
 def test_the_school_remembers_the_time_table_source(tmp_path):
     service = make(tmp_path, TimeTableSchool())
     service.timetable(CHILD, reference=WEDNESDAY)

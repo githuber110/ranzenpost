@@ -294,7 +294,7 @@ Parent letters, current and archived, with attachments. When a letter asks for a
 
 ### Several schools
 
-Each school or account keeps its own login, children, names and lesson times. Letters and posts merge into one feed with a school chip on every row and a filter per school. Children are ordered by first name across schools. A school whose login fails is flagged on its own while the others keep working.
+Each school or account keeps its own login, children, names and lesson times. Letters and posts merge into one feed with a school chip on every row and a filter per school. Children are ordered by first name across schools. A school whose login fails is flagged on its own while the others keep working. A school that lists no children for your account still brings its letters, posts and chat. Where no child decides the school, for example in teacher search, the app asks which school you mean.
 
 ### The lessons in your phone's calendar
 
@@ -339,7 +339,7 @@ A school that only offers the older timetable module, at `/iserv/timetable/`, sh
 
 ## Getting help
 
-1. In the app, open **Settings, Help, Report a problem** and tap **Save report**. It bundles versions, the state of every module and the add-on log into `ranzenpost-report.zip`, with names, addresses and secrets removed. Nothing is sent on its own.
+1. In the app, open **Settings, Help, Report a problem** and tap **Save report**. It bundles versions, the structure of each IServ module and the add-on log into `ranzenpost-report.zip`. Names, amounts, addresses and secrets are removed. For modules run by another provider, such as Klassengeld, the report signs in there once. It opens no letter and no single entry. Nothing is sent on its own.
 2. Open an [issue](https://github.com/githuber110/ranzenpost/issues) and attach that file. German is welcome.
 3. For a security problem, do not open a public issue. See [SECURITY.md](SECURITY.md).
 

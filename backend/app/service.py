@@ -8,9 +8,13 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-from . import courses, holidays, integration, lockout, messages, modules, period_grid, signin_pause
+from . import courses, holidays, integration, lockout, messages, modules, period_grid, requestlog, signin_pause
 from .signin_pause import PAUSES
 from .store import (
+    CHILDREN_LISTED,
+    CHILDREN_REFUSED,
+    CHILDREN_STATE_KEY,
+    CHILDREN_UNREADABLE,
     LOGIN_HOLD,
     LOGIN_REVISION_KEY,
     connection_display_name,
@@ -30,6 +34,7 @@ from .failure import failure_cause
 from .identifiers import as_int
 from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
+from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY
 from .iserv.conferences import parse_conferences
 from .iserv.dsa import DieSchulAppClient
 from .iserv.client import (
@@ -52,7 +57,7 @@ from .iserv.errors import (
     transport_outage,
 )
 from .iserv.dsa_timetable import parse_current_timetable
-from .iserv.timetable import display_rows
+from .iserv.timetable import display_rows, shown_changes
 from .iserv.twofactor import parse_delete_token
 from .mapping import (
     merge_discovered_codes,
@@ -72,6 +77,7 @@ TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 DSA_API_PATH = "/iserv/dieschulapp/api/1.0"
 DSA_FILE_PATH = DSA_API_PATH + "/files/{filename}"
 UNKNOWN_CONNECTION_KEY = "api.connection.unknown"
+SCHOOL_REQUIRED_KEY = "api.school.required"
 STATUS_OK = "ok"
 STATUS_AUTH_FAILED = "auth_failed"
 STATUS_NETWORK = "network"
@@ -128,6 +134,7 @@ class ConnectionService:
         self._messenger_service = None
         self._absence_service = None
         self._timetable_page_denied = False
+        self._child_list_state = ""
         self._settings_cache = (0.0, None)
         self._modules_recheck_at = 0.0
         self._letter_service = LetterService(self)
@@ -410,7 +417,7 @@ class ConnectionService:
         pause = self._repair_pause(url)
         if signin_pause.is_paused(pause, self.clock()):
             return self._repair_paused(pause)
-        client = self.client_factory(url)
+        client = requestlog.tag_school(self.client_factory(url), self.id)
         client.username = username
         accepted = client.accepts_password(password)
         refusal = getattr(client, "refusal", "") or (REASON_BAD_CREDENTIALS if accepted is False else "")
@@ -508,7 +515,21 @@ class ConnectionService:
             self._timetable_sources.reset()
 
     def children(self):
-        return self._child_service.children()
+        try:
+            listed = self._child_service.children()
+        except DataError as error:
+            self._note_child_list_state(child_list_state(error))
+            raise
+        self._note_child_list_state(CHILDREN_LISTED)
+        return listed
+
+    def _note_child_list_state(self, state):
+        self._child_list_state = state
+        if self.store.load_config().get(CHILDREN_STATE_KEY) != state:
+            edit_config(self.store, lambda config: config.update({CHILDREN_STATE_KEY: state}))
+
+    def child_list_state(self):
+        return self._child_list_state or str(self.store.load_config().get(CHILDREN_STATE_KEY) or "")
 
     def _cached_child(self, child_id):
         return self._child_service._cached_child(child_id)
@@ -834,7 +855,7 @@ class ConnectionService:
             "start_date": week.start_date,
             "end_date": week.end_date,
             "lessons": lessons,
-            "changes": week.changes,
+            "changes": shown_changes(week),
             "period_times": config.get("period_times", {}),
             "school_period_times": school_times,
             "change_count": sum(1 for entry in lessons if entry["change_kind"]),
@@ -845,6 +866,17 @@ class ConnectionService:
             "no_lessons": not has_lessons(week),
         }
         return payload, config
+
+
+def child_list_state(error):
+    if getattr(error, "message_key", "") == CHILD_PAGE_FORBIDDEN_KEY:
+        return CHILDREN_REFUSED
+    return CHILDREN_UNREADABLE
+
+
+class SchoolRequiredError(DataError):
+    def __init__(self):
+        super().__init__("a school must be named when several are set up", message_key=SCHOOL_REQUIRED_KEY)
 
 
 def _unknown_connection():
@@ -904,16 +936,15 @@ class IServService:
             raise _unknown_connection()
         return self.connection(connection_id)
 
-    def first_connection(self):
+    def pick_school(self, connection_id=None):
+        if connection_id:
+            return self.known_connection(connection_id)
         listed = self.connections()
         if not listed:
             raise NotConfiguredError("no school connected")
+        if len(listed) > 1:
+            raise SchoolRequiredError()
         return listed[0]
-
-    def _pick(self, connection_id):
-        if connection_id:
-            return self.known_connection(connection_id)
-        return self.first_connection()
 
     def resolve(self, child_key):
         connection_id, child_id = split_child_key(child_key)
@@ -949,6 +980,7 @@ class IServService:
                 "setup_complete": bool(entry.get("setup_complete")),
                 "username": connection.store.load_secrets().get("username", ""),
                 "children": [self._child(connection, child) for child in connection.stored_children()],
+                CHILDREN_STATE_KEY: connection.child_list_state(),
             }
             if with_status:
                 row["status"] = connection.check_connection() if row["setup_complete"] else STATUS_PENDING
@@ -999,7 +1031,10 @@ class IServService:
                 connection, raw = self._children_of(connection)
             except (NotConfiguredError,) + UPSTREAM_ERRORS as error:
                 failures.append(error)
-                logger.warning("child list of school#%s unavailable: %s", connection.id, failure_cause(error))
+                if child_list_state(error) == CHILDREN_REFUSED:
+                    logger.info("child list of school#%s refused for this account", connection.id)
+                else:
+                    logger.warning("child list of school#%s unavailable: %s", connection.id, failure_cause(error))
                 raw = [dict(child, unavailable=True) for child in connection.stored_children()]
             listed.extend(self._child(connection, child) for child in raw)
         if failures and len(failures) == len(connections):
@@ -1068,25 +1103,25 @@ class IServService:
         return self.modules()["modules"].get(name, True)
 
     def recheck_modules(self, connection_id=None):
-        return self._pick(connection_id).recheck_modules()
+        return self.pick_school(connection_id).recheck_modules()
 
     def me(self, connection_id=None):
-        return self._pick(connection_id).me()
+        return self.pick_school(connection_id).me()
 
     def school_profile(self, connection_id=None):
-        return self._pick(connection_id).school_profile()
+        return self.pick_school(connection_id).school_profile()
 
     def iserv_session(self, connection_id=None):
-        return self._pick(connection_id).iserv_session()
+        return self.pick_school(connection_id).iserv_session()
 
     def change_password(self, connection_id, current, new):
-        return self._pick(connection_id).change_password(current, new)
+        return self.pick_school(connection_id).change_password(current, new)
 
     def repair_password(self, connection_id, password):
-        return self._pick(connection_id).repair_password(password)
+        return self.pick_school(connection_id).repair_password(password)
 
     def disconnect(self, connection_id=None):
-        connection = self._pick(connection_id)
+        connection = self.pick_school(connection_id)
         result = connection.disconnect()
         with self._lock:
             self._connections.pop(connection.id, None)
@@ -1210,29 +1245,30 @@ class IServService:
         return payload
 
     def absences_overview(self, connection_id=None):
-        connection = self._pick(connection_id)
+        connection = self.pick_school(connection_id)
         overview = connection.absences_overview()
         overview["connection_id"] = connection.id
         overview["school"] = connection.display_name()
         return overview
 
     def report_absence(self, connection_id, payload, attachments=None):
-        return self._pick(connection_id).report_absence(payload, attachments)
+        return self.pick_school(connection_id).report_absence(payload, attachments)
 
     def delete_absence(self, connection_id, payload):
-        return self._pick(connection_id).delete_absence(payload)
+        return self.pick_school(connection_id).delete_absence(payload)
 
     def sick_note_pdf(self, connection_id, sick_note_id):
-        return self._pick(connection_id).sick_note_pdf(sick_note_id)
+        return self.pick_school(connection_id).sick_note_pdf(sick_note_id)
 
     def messenger_rooms(self):
         results, unavailable = self._merge(lambda connection: connection.messenger_rooms())
         rooms = []
         self_user_ids = {}
-        can_write = False
+        teacher_schools = []
         for connection, data in results:
             self_user_ids[connection.id] = data.get("self_user_id", "")
-            can_write = can_write or bool(data.get("can_write_to_teacher"))
+            if data.get("can_write_to_teacher"):
+                teacher_schools.append(connection.id)
             for room in data.get("rooms") or []:
                 tagged = self.annotate(connection, room)
                 tagged["self_user_id"] = data.get("self_user_id", "")
@@ -1241,31 +1277,32 @@ class IServService:
         return {
             "rooms": rooms,
             "self_user_ids": self_user_ids,
-            "can_write_to_teacher": can_write,
+            "can_write_to_teacher": bool(teacher_schools),
+            "teacher_schools": teacher_schools,
             "unavailable": unavailable,
         }
 
     def messenger_room_messages(self, connection_id, room_id, before=None):
-        connection = self._pick(connection_id)
+        connection = self.pick_school(connection_id)
         return _tag_media_urls(connection.messenger_room_messages(room_id, before), connection.id)
 
     def messenger_send(self, connection_id, room_id, text):
-        return self._pick(connection_id).messenger_send(room_id, text)
+        return self.pick_school(connection_id).messenger_send(room_id, text)
 
     def messenger_media(self, connection_id, server_name, media_id):
-        return self._pick(connection_id).messenger_media(server_name, media_id)
+        return self.pick_school(connection_id).messenger_media(server_name, media_id)
 
     def messenger_mark_read(self, connection_id, room_id, event_id):
-        return self._pick(connection_id).messenger_mark_read(room_id, event_id)
+        return self.pick_school(connection_id).messenger_mark_read(room_id, event_id)
 
     def messenger_teacher_search(self, connection_id, query):
-        return self._pick(connection_id).messenger_teacher_search(query)
+        return self.pick_school(connection_id).messenger_teacher_search(query)
 
     def messenger_teacher_room_children(self, connection_id):
-        return self._pick(connection_id).messenger_teacher_room_children()
+        return self.pick_school(connection_id).messenger_teacher_room_children()
 
     def messenger_create_teacher_room(self, connection_id, teacher, child_ids, add_other_parents):
-        return self._pick(connection_id).messenger_create_teacher_room(teacher, child_ids, add_other_parents)
+        return self.pick_school(connection_id).messenger_create_teacher_room(teacher, child_ids, add_other_parents)
 
     def messenger_unread_pulse(self):
         total = None

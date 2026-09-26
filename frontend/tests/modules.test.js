@@ -4,6 +4,7 @@ import { loadApp } from "./loadApp.js";
 const MODULES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger"];
 const ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new?";
 const ISSUE_BODY = "Attach the saved file ranzenpost-report.zip: drag it into this field. If you copied the report instead, paste it below.\n\n";
+const ISSUE_QUESTION = "For each module in the title, one sentence: what should Ranzenpost do with it?";
 
 function subsets() {
   const all = [];
@@ -220,7 +221,7 @@ describe("the settings follow the modules", () => {
     const params = new window.URLSearchParams(href.slice(ISSUE_URL.length));
     expect([...params.keys()].sort()).toEqual(["body", "title"]);
     expect(params.get("title")).toBe("Unsupported IServ modules: mail");
-    expect(params.get("body")).toBe(ISSUE_BODY);
+    expect(params.get("body")).toBe(`${ISSUE_QUESTION}\n\n${ISSUE_BODY}`);
     seed(window, all());
     const plain = new window.URLSearchParams(window.eval("moduleIssueUrl()").slice(ISSUE_URL.length));
     expect(plain.get("title")).toBe("Ranzenpost report");

@@ -218,5 +218,6 @@ def test_the_poll_of_a_school_without_timetable_goes_on_when_the_child_list_fail
             return [{"child_id": "c1", "name": "Kim"}]
 
     poller = Poller(Service())
-    children = poller._children_for_poll(Service(), "s1", {"timetable": False, "absences": True})
+    children, event = poller._children_for_poll(Service(), "s1")
     assert children == [{"child_id": "c1", "name": "Kim"}]
+    assert event["module"] == "children" and event["error"]

@@ -2,7 +2,7 @@ import contextvars
 import os
 import re
 import shutil
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +18,7 @@ from app.messenger import (
 )
 from app.mapping import derive_subject_code
 from app.server import create_app
+from app.service import SchoolRequiredError
 from app.wizard import Wizard
 from app.sorting import child_sort_key
 from app.store import CONNECTION_DEFAULTS, DEFAULT_CONFIG, INTEGRATION_SCHOOLS_KEY, LAYOUT_KEYS, Store, connection_short_name, normalize_layout
@@ -336,6 +337,12 @@ SCHOOL_TWO_CHILDREN = [
     {"child_id": "child-1", "name": "Mia Musterkind", "class_name": "7c"},
     {"child_id": "child-3", "name": "Lena Musterkind", "class_name": "5a"},
 ]
+SCHOOLS_SECOND_WITHOUT_CHILDREN = "2-empty"
+FIXTURE_SICK_NOTE_PDF = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+SCHOOL_TWO_TEACHERS = [
+    {"value": "userid:5b6c7d8e-9f01-4a2b-8c3d-4e5f6a7b8c9d", "label": "Fr. Zweig", "extra": "", "match": "zwe"},
+]
+SCHOOL_TWO_FORM_CHILDREN = [{"id": "7a8b9c0d-1e2f-4a3b-9c4d-5e6f7a8b9c0d", "name": "Lena Musterkind"}]
 
 
 def school_two_letters():
@@ -406,7 +413,7 @@ COURSES_COOKIE = "e2e_courses"
 COURSES = contextvars.ContextVar("e2e_courses", default="")
 TIMETABLE_SOURCE_COOKIE = "e2e_timetable_source"
 TIMETABLE_SOURCE = contextvars.ContextVar("e2e_timetable_source", default="")
-TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty"}
+TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty", "time-table-changes": "changes"}
 TIMETABLE_SOURCE_OPTION = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
 TIMETABLE_SOURCE_SCHOOLS = {}
 COURSE_PERIODS = {
@@ -531,9 +538,16 @@ def raise_when_unreachable():
         raise OutageError("status:503")
 
 
+def chosen_schools():
+    return str(SCHOOLS.get("") or os.environ.get(SCHOOLS_ENV, "")).strip()
+
+
 def school_count():
-    chosen = SCHOOLS.get("") or os.environ.get(SCHOOLS_ENV, "")
-    return 2 if str(chosen).strip() == "2" else 1
+    return 2 if chosen_schools() in ("2", SCHOOLS_SECOND_WITHOUT_CHILDREN) else 1
+
+
+def school_two_lists_children():
+    return chosen_schools() != SCHOOLS_SECOND_WITHOUT_CHILDREN
 
 
 def school_ids():
@@ -599,6 +613,38 @@ def timetable_source_mode():
     return TIMETABLE_SOURCE_MODES.get(TIMETABLE_SOURCE.get(""), "")
 
 
+def time_table_change(date_text, period, subject, teacher, room, new_teacher, new_room, kinds=()):
+    return {
+        "date": date_text,
+        "period": period,
+        "periodStart": period,
+        "periodEnd": period,
+        "origSubject": subject,
+        "substitutionSubject": subject if new_teacher or new_room else "",
+        "origTeacher": teacher,
+        "substitutionTeacher": new_teacher,
+        "origRoom": room,
+        "substitutionRoom": new_room,
+        "origClass": ["5A"],
+        "substitutionClass": ["5A"],
+        "text": "",
+        "change_types": list(kinds),
+        "updated": "0",
+    }
+
+
+def time_table_changes(start_text):
+    try:
+        monday = datetime.strptime(start_text, "%d.%m.%Y").date()
+    except ValueError:
+        return []
+    friday = (monday + timedelta(days=4)).strftime("%d.%m.%Y")
+    return [
+        time_table_change(monday.strftime("%d.%m.%Y"), 1, "D", "KLE", "R101", "KLE", "R305"),
+        time_table_change(friday, 1, "KU", "HAS", "R12", "", "", kinds=("cancellation",)),
+    ]
+
+
 def timetable_source_school(mode):
     from app.service import ConnectionService
     from app.store import ConnectionStore
@@ -616,7 +662,8 @@ def timetable_source_school(mode):
         child_id="child-1",
         child_name=("Mia", "Musterkind"),
         options=((TIMETABLE_SOURCE_OPTION, "Musterkind, Mia"),),
-        time_table=mode,
+        time_table="lessons" if mode == "changes" else mode,
+        changes=time_table_changes if mode == "changes" else (),
     )
     entry = ConnectionService(ConnectionStore(store, created["id"]), client_factory=client_factory(school))
     TIMETABLE_SOURCE_SCHOOLS[mode] = entry
@@ -1033,7 +1080,11 @@ class FixtureService:
             raise DataError("unknown connection", message_key="api.connection.unknown")
         return self.connection(connection_id)
 
-    def first_connection(self):
+    def pick_school(self, connection_id=None):
+        if connection_id:
+            return self.known_connection(connection_id)
+        if len(school_ids()) > 1:
+            raise SchoolRequiredError()
         return self.connection(school_ids()[0])
 
     def summaries(self, with_status=False):
@@ -1053,6 +1104,7 @@ class FixtureService:
                 "children": [
                     dict(tag(connection_id, child), key=child_key(connection_id, child["child_id"])) for child in children
                 ],
+                "children_state": "listed" if connection_id != SCHOOL_TWO or school_two_lists_children() else "refused",
             }
             if with_status:
                 row["status"] = "outage" if outage_active() else "ok"
@@ -1134,10 +1186,19 @@ class FixtureService:
             "self_user_ids": self_user_ids,
             "rooms": rooms,
             "can_write_to_teacher": True,
+            "teacher_schools": school_ids(),
             "unavailable": [],
         }
 
     def messenger_room_messages(self, connection_id, room_id, before=None):
+        school = self.pick_school(connection_id).id
+        payload = self._room_messages(room_id, before)
+        for message in payload["messages"]:
+            if message.get("media_url"):
+                message["media_url"] = f"{message['media_url']}?connection={school}"
+        return payload
+
+    def _room_messages(self, room_id, before=None):
         if room_id == MESSENGER_ROOM_NEW:
             return {"messages": [], "before": "", "self_user_id": MESSENGER_SELF}
         if before == MESSENGER_OLDER_TOKEN:
@@ -1155,28 +1216,34 @@ class FixtureService:
         }
 
     def messenger_send(self, connection_id, room_id, text):
+        self.pick_school(connection_id)
         if not str(text or "").strip():
             return {"ok": False, "message_key": "api.messenger.send.empty"}
         return {"ok": True, "message_key": "api.messenger.send.ok", "event_id": "$fixture-sent"}
 
     def messenger_mark_read(self, connection_id, room_id, event_id):
+        self.pick_school(connection_id)
         if not str(room_id or "").strip() or not str(event_id or "").strip():
             return messages.result(False, READ_FAILED_KEY)
         return messages.result(True, READ_OK_KEY)
 
     def messenger_teacher_search(self, connection_id, query):
+        school = self.pick_school(connection_id).id
         query = str(query or "").strip()
         if not query:
             return {"teachers": [], "allowed": True}
         needle = query.lower()
+        directory = SCHOOL_TWO_TEACHERS if school == SCHOOL_TWO else MESSENGER_TEACHER_DIRECTORY
         hits = [
             {"value": entry["value"], "label": entry["label"], "extra": entry["extra"]}
-            for entry in MESSENGER_TEACHER_DIRECTORY
+            for entry in directory
             if entry["match"] in needle
         ]
         return {"teachers": hits, "allowed": True}
 
     def messenger_teacher_room_children(self, connection_id=None):
+        if self.pick_school(connection_id).id == SCHOOL_TWO:
+            return {"allowed": True, "children": [dict(child) for child in SCHOOL_TWO_FORM_CHILDREN]}
         return {
             "allowed": True,
             "children": [
@@ -1185,6 +1252,7 @@ class FixtureService:
         }
 
     def messenger_create_teacher_room(self, connection_id, teacher, child_ids, add_other_parents):
+        self.pick_school(connection_id)
         teacher = str(teacher or "").strip()
         wanted = [str(value or "").strip() for value in (child_ids or [])]
         wanted = [value for value in wanted if value]
@@ -1196,6 +1264,7 @@ class FixtureService:
         return messages.result(True, ROOM_OK_KEY, room_id=MESSENGER_ROOM_NEW, joined=True)
 
     def messenger_media(self, connection_id, server_name, media_id):
+        self.pick_school(connection_id)
         if media_id == MESSENGER_IMAGE_ID:
             return FixtureMediaResponse(MESSENGER_TINY_JPEG, "image/jpeg")
         return FixtureMediaResponse(
@@ -1211,6 +1280,7 @@ class FixtureService:
         return "outage" if outage_active() else "ok"
 
     def me(self, connection_id=None):
+        self.pick_school(connection_id)
         raise_when_unreachable()
         return {
             "forename": "Alexa",
@@ -1238,7 +1308,7 @@ class FixtureService:
 
     def _raw_children(self, connection_id):
         if connection_id == SCHOOL_TWO:
-            return [dict(child) for child in SCHOOL_TWO_CHILDREN]
+            return [dict(child) for child in SCHOOL_TWO_CHILDREN] if school_two_lists_children() else []
         scenario = current_scenario()
         if scenario:
             return [dict(child) for child in SCENARIO_CHILDREN[: scenario["children"]]]
@@ -1257,6 +1327,7 @@ class FixtureService:
         return module_registry()
 
     def recheck_modules(self, connection_id=None):
+        self.pick_school(connection_id)
         return messages.result(True, "api.modules.rechecked", modules=module_registry())
 
     def _course_config(self, connection_id):
@@ -1578,6 +1649,7 @@ class FixtureService:
         return {"read": len(keys or [])}
 
     def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
+        self.known_connection(connection_id)
         return {
             "ok": True,
             "message_key": "api.letters.confirm.ok",
@@ -1585,11 +1657,13 @@ class FixtureService:
         }
 
     def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
+        self.known_connection(connection_id)
         if letter_id not in LETTER_PAGES:
             return messages.result(False, "api.letters.reply.unavailable")
         return FIXTURE_LETTERS.reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
 
     def letter_detail(self, connection_id, letter_id, recipient_id):
+        self.known_connection(connection_id)
         if letter_id in LETTER_PAGES:
             return {
                 "title": "Letter",
@@ -1616,6 +1690,11 @@ class FixtureService:
         }
 
     def archive_letter(self, connection_id, letter_id, recipient_id):
+        self.known_connection(connection_id)
+        return True
+
+    def restore_letter(self, connection_id, letter_id, recipient_id):
+        self.known_connection(connection_id)
         return True
 
     def conferences(self):
@@ -1635,6 +1714,7 @@ class FixtureService:
         }
 
     def absences_overview(self, connection_id=None):
+        connection_id = self.pick_school(connection_id).id
         raise_when_unreachable()
         today = fixture_today()
         week_leading_entry = [
@@ -1655,7 +1735,7 @@ class FixtureService:
         return {
             "connection_id": connection_id or SCHOOL_ONE,
             "school": school_display_name(connection_id or SCHOOL_ONE),
-            "children": [{"id": "child-1", "name": "Mia Musterkind", "class_name": "3b"}],
+            "children": [{"id": "child-1", "name": "Mia Musterkind", "class_name": "3b"}] if self._raw_children(connection_id) else [],
             "types": ["sick", "leave", "deregister", "daycare"],
             "deregister_options": ["bus", "lunch", "kindergarten"],
             "periods": [{"number": index, "name": text("period_name") % index} for index in range(1, 7)],
@@ -1715,7 +1795,16 @@ class FixtureService:
         }
 
     def report_absence(self, connection_id, payload, attachments=None):
+        self.pick_school(connection_id)
         return {"ok": True, "message": text("absence_submitted")}
+
+    def delete_absence(self, connection_id, payload):
+        self.pick_school(connection_id)
+        return {"ok": True, "message_key": "api.absence.withdrawn"}
+
+    def sick_note_pdf(self, connection_id, sick_note_id):
+        self.pick_school(connection_id)
+        return FIXTURE_SICK_NOTE_PDF, "krankmeldung.pdf"
 
 
 class FixtureHolidays:
@@ -2339,6 +2428,7 @@ class MatrixService(FixtureService):
         return super().archive_letter(connection_id, letter_id, recipient_id)
 
     def restore_letter(self, connection_id, letter_id, recipient_id):
+        super().restore_letter(connection_id, letter_id, recipient_id)
         matrix_state()["archived"].discard(f"{connection_id}:{letter_id}:{recipient_id}")
         return True
 
@@ -2360,6 +2450,7 @@ class MatrixService(FixtureService):
         return super().report_absence(connection_id, payload, attachments)
 
     def delete_absence(self, connection_id, payload):
+        super().delete_absence(connection_id, payload)
         wanted = str((payload or {}).get("id"))
         matrix_state()["absences"] = [entry for entry in matrix_state()["absences"] if str(entry["id"]) != wanted]
         return {"ok": True, "message_key": "api.absence.withdrawn"}

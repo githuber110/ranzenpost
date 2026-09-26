@@ -1,6 +1,10 @@
 import logging
+import re
+from urllib.parse import urljoin, urlsplit
 
+from . import logfile
 from .pathpattern import path_only, path_pattern
+from .valueshape import link_shape, table_cell
 
 logger = logging.getLogger("iserv")
 
@@ -33,7 +37,17 @@ SCHOOL_APP_TAG = "school-app"
 MATRIX_TAG = "messenger"
 START_TAG = "start"
 OTHER_TAG = "other"
-REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+OTHER_HOST_MARK = "<other host>"
+REQUEST_LOG_LINE = re.compile(
+    r"\biserv: (?P<tag>[\w-]+) (?P<method>[A-Z]+) (?P<path>\S+) (?P<status>\d+) \S+ (?P<length>\d+)B (?P<duration>\d+)ms"
+    r"(?:.* (?P<school>school#[0-9a-f]+))?"
+)
+SLOW_REQUEST_MS = 3000
+ERROR_STATUS_MIN = 400
+REQUESTS_TABLE_HEAD = "| Area | Requests | Max duration | Statuses |"
+REQUESTS_TABLE_RULE = "|---|---|---|---|"
+MAX_REQUEST_ROWS = 30
+SYNC_PATH_MARKER = "/sync"
 
 
 def module_tag(path):
@@ -60,7 +74,13 @@ def content_type_of(headers):
     return raw.split(";", 1)[0].strip().lower()
 
 
+def _body_unread(response):
+    return getattr(response, "_content", None) is False
+
+
 def body_length(response):
+    if _body_unread(response):
+        return 0
     declared = str((getattr(response, "headers", None) or {}).get("Content-Length") or "").strip()
     if declared.isdigit():
         return int(declared)
@@ -73,24 +93,48 @@ def duration_ms(response):
     return int(elapsed.total_seconds() * 1000) if elapsed is not None else 0
 
 
-def describe(response):
+def url_host(url):
+    try:
+        return (urlsplit(str(url or "")).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _location(response, url, home):
+    raw = str((getattr(response, "headers", None) or {}).get("Location") or "")
+    if not raw:
+        return ""
+    try:
+        target = url_host(urljoin(str(url or ""), raw))
+    except ValueError:
+        return OTHER_HOST_MARK
+    if target and target != home:
+        return OTHER_HOST_MARK
+    return link_shape(raw)
+
+
+def describe(response, own_host=""):
     request = getattr(response, "request", None)
-    path = path_pattern(getattr(response, "url", "") or "")
+    url = getattr(response, "url", "") or ""
+    host = url_host(url)
+    home = str(own_host or "").lower() or host
+    foreign = bool(host) and host != home
+    raw = "" if foreign else path_pattern(url)
     return {
         "method": str(getattr(request, "method", "") or "GET").upper(),
-        "path": path,
-        "tag": module_tag(path),
+        "path": OTHER_HOST_MARK if foreign else link_shape(raw),
+        "tag": module_tag(OTHER_HOST_MARK if foreign else raw),
         "status": int(getattr(response, "status_code", 0) or 0),
         "content_type": content_type_of(getattr(response, "headers", None)),
         "length": body_length(response),
         "duration_ms": duration_ms(response),
-        "location": path_pattern((getattr(response, "headers", None) or {}).get("Location") or ""),
+        "location": _location(response, url, home),
     }
 
 
-def log_response(response, *args, **kwargs):
+def log_response(response, *args, own_host="", **kwargs):
     try:
-        facts = describe(response)
+        facts = describe(response, own_host)
         line = "%s %s %s %s %s %sB %sms" % (
             facts["tag"],
             facts["method"],
@@ -102,17 +146,135 @@ def log_response(response, *args, **kwargs):
         )
         if facts["location"]:
             line += " -> " + facts["location"]
-        logger.info(line)
+        logger.info(line + school_suffix(response))
     except Exception:
         logger.debug("request log line failed", exc_info=True)
     return response
 
 
-def install(session):
+class HostLog:
+    def __init__(self, own_host):
+        self.own_host = str(own_host or "").lower()
+
+    def __call__(self, response, *args, **kwargs):
+        return log_response(response, own_host=self.own_host)
+
+    def __eq__(self, other):
+        return isinstance(other, HostLog) and other.own_host == self.own_host
+
+    def __hash__(self):
+        return hash(self.own_host)
+
+
+def _ours(hook):
+    return hook is log_response or isinstance(hook, HostLog)
+
+
+def install(session, own_host=""):
     hooks = getattr(session, "hooks", None)
     if not isinstance(hooks, dict):
         return session
     listed = hooks.setdefault("response", [])
-    if log_response not in listed:
-        listed.append(log_response)
+    if not own_host:
+        if not any(_ours(hook) for hook in listed):
+            listed.append(log_response)
+        return session
+    wanted = HostLog(own_host)
+    listed[:] = [hook for hook in listed if not _ours(hook) or hook == wanted]
+    if wanted not in listed:
+        listed.append(wanted)
     return session
+
+
+SCHOOL_ATTRIBUTE = "ranzenpost_school"
+
+
+def tag_school(client, school):
+    adapters = getattr(getattr(client, "session", None), "adapters", None)
+    if school and isinstance(adapters, dict):
+        for adapter in adapters.values():
+            setattr(adapter, SCHOOL_ATTRIBUTE, str(school))
+    return client
+
+
+def school_of(adapter):
+    return str(getattr(adapter, SCHOOL_ATTRIBUTE, "") or "")
+
+
+def school_suffix(response):
+    school = school_of(getattr(response, "connection", None))
+    return f" school#{school}" if school else ""
+
+
+def _slow_or_failed(log_lines):
+    for line in log_lines or ():
+        match = REQUEST_LOG_LINE.search(line)
+        if not match:
+            continue
+        status = int(match.group("status"))
+        duration = int(match.group("duration"))
+        if status == 0 or status >= ERROR_STATUS_MIN or duration >= SLOW_REQUEST_MS:
+            yield _area(match), status, duration
+
+
+def _area(match):
+    school = match.group("school")
+    return "%s %s" % (match.group("tag"), school) if school else match.group("tag")
+
+
+def slow_request_lines(log_lines):
+    buckets = {}
+    for tag, status, duration in _slow_or_failed(log_lines):
+        bucket = buckets.setdefault(tag, {"count": 0, "max_ms": 0, "statuses": []})
+        bucket["count"] += 1
+        bucket["max_ms"] = max(bucket["max_ms"], duration)
+        if status not in bucket["statuses"]:
+            bucket["statuses"].append(status)
+    lines = ["### Slow or failed requests"]
+    if not buckets:
+        lines.append("- None found in the log")
+        return lines
+    lines.append(REQUESTS_TABLE_HEAD)
+    lines.append(REQUESTS_TABLE_RULE)
+    for tag in list(buckets)[:MAX_REQUEST_ROWS]:
+        bucket = buckets[tag]
+        statuses = ", ".join(str(status) for status in sorted(bucket["statuses"]))
+        lines.append("| %s | %d | %dms | %s |" % (table_cell(tag), bucket["count"], bucket["max_ms"], table_cell(statuses)))
+    if len(buckets) > MAX_REQUEST_ROWS:
+        lines.append("- Areas skipped: %d beyond the limit of %d" % (len(buckets) - MAX_REQUEST_ROWS, MAX_REQUEST_ROWS))
+    return lines
+
+
+def _messenger_sync_sizes(log_lines):
+    sizes = []
+    for line in log_lines or ():
+        match = REQUEST_LOG_LINE.search(line)
+        if not match or match.group("tag") != MATRIX_TAG or SYNC_PATH_MARKER not in match.group("path"):
+            continue
+        sizes.append((match.group("school") or "", int(match.group("length"))))
+    return sizes
+
+
+def messenger_sync_lines(log_lines):
+    found = _messenger_sync_sizes(log_lines)
+    if not found:
+        return ["### Messenger sync", "- Sync queries: none found in the log"]
+    sizes = [size for _, size in found]
+    total = sum(sizes)
+    lines = [
+        "### Messenger sync",
+        "- Sync queries: %d" % len(sizes),
+        "- Size: total %s, average %s, max %s" % (
+            logfile.size_text(total), logfile.size_text(total // len(sizes)), logfile.size_text(max(sizes)),
+        ),
+    ]
+    schools = []
+    for school, _ in found:
+        if school and school not in schools:
+            schools.append(school)
+    for school in schools:
+        own = [size for tagged, size in found if tagged == school]
+        lines.append("- %s: %d queries, total %s, max %s" % (
+            school, len(own), logfile.size_text(sum(own)), logfile.size_text(max(own)),
+        ))
+    return lines

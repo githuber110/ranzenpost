@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import courses, feed, holidays, integration, marks, messages, modules
 from .failure import error_kind
+from .iserv.dsa import student_for_name
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
 from .iserv.errors import (
     LOGIN_SESSION_KEY,
@@ -31,8 +32,9 @@ from .iserv.errors import (
 from .logfile import timeline
 from .namebook import current as current_namebook
 from .not_configured import ConnectionChangedError
-from .service import LETTERS_CHILD_PREFIX
+from .service import LETTERS_CHILD_PREFIX, child_list_state
 from .store import (
+    CHILDREN_REFUSED,
     child_key as make_child_key,
     connection_known,
     directory_key,
@@ -578,15 +580,22 @@ class Poller:
         }
 
     @staticmethod
-    def _children_for_poll(connection, connection_id, flags):
-        if flags[modules.TIMETABLE]:
-            return connection.children()
+    def _children_for_poll(connection, connection_id):
         try:
-            return connection.children()
+            return connection.children(), None
         except DataError as error:
-            logger.warning("poll school#%s child list unreadable, using the stored one: %s", connection_id, error_kind(error))
             stored = getattr(connection, "stored_children", None)
-            return stored() if callable(stored) else []
+            kept = stored() if callable(stored) else []
+            state = child_list_state(error)
+            if state == CHILDREN_REFUSED:
+                logger.info(
+                    "poll school#%s child list refused for this account, polling on with %d stored child(ren)",
+                    connection_id,
+                    len(kept),
+                )
+                return kept, {"connection_id": connection_id, "module": "children", "state": state}
+            logger.warning("poll school#%s child list unreadable, using the stored one: %s", connection_id, error_kind(error))
+            return kept, {"module": "children", "error": str(error), "kind": error_kind(error)}
 
     def _poll_connection(self, connection, store, now_epoch, integration_active, many):
         connection_id = str(getattr(connection, "id", "") or "")
@@ -602,7 +611,7 @@ class Poller:
         try:
             flags = self._registry(connection)["modules"]
             needs_children = flags[modules.TIMETABLE] or flags[modules.ABSENCES]
-            children = self._children_for_poll(connection, connection_id, flags) if needs_children else []
+            children, child_event = self._children_for_poll(connection, connection_id) if needs_children else ([], None)
         except OutageError as error:
             return self._outage_connection(connection, connection_id, now_epoch, language, error)
         except LoginError as error:
@@ -636,6 +645,8 @@ class Poller:
         config.pop(LEGACY_AUTH_FLAG, None)
         config.pop(AUTH_NOTIFIED_FLAG, None)
         config.pop(AUTH_NOTIFIED_REASON, None)
+        if child_event is not None:
+            events.append(child_event)
         try:
             keyed = []
             for child in children:
@@ -972,7 +983,7 @@ class Poller:
 
     def _student_owners(self, connection_id, children, overview):
         owners = {}
-        by_name = {}
+        named = []
         for child in children or []:
             if not isinstance(child, dict):
                 continue
@@ -983,18 +994,16 @@ class Poller:
             student_id = child.get("student_id")
             if student_id is not None:
                 owners[student_id] = key
-            name = " ".join(str(child.get("name") or "").split()).casefold()
-            if name:
-                by_name[name] = key
+            named.append({"name": child.get("name"), "key": key})
         for student in overview.get("children") or []:
             if not isinstance(student, dict):
                 continue
             student_id = student.get("id")
             if student_id is None or student_id in owners:
                 continue
-            name = " ".join(str(student.get("name") or "").split()).casefold()
-            if name in by_name:
-                owners[student_id] = by_name[name]
+            match = student_for_name(named, student.get("name"))
+            if match is not None:
+                owners[student_id] = match["key"]
         return owners
 
     def _enrich_letters_search(self, connection):

@@ -58,8 +58,8 @@ class FakeService:
             raise DataError("unknown connection", message_key="api.connection.unknown")
         return self._connection
 
-    def first_connection(self):
-        return self._connection
+    def pick_school(self, connection_id=None):
+        return self.known_connection(connection_id) if connection_id else self._connection
 
     def health_overview(self):
         rows = self.summaries(with_status=True)

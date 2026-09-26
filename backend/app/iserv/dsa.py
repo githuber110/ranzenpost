@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 from .dsa_timetable import course_filter, query_date
@@ -8,6 +9,7 @@ from .html import clean_html
 
 API_ROOT = "/iserv/dieschulapp/api/1.0"
 CURRENT_TIMETABLE_PATH = "current-timetable/"
+LESSON_FILTER = "type:is(lesson)"
 SCHOOL_APP_UNREADABLE_KEY = "api.schoolApp.unreadable"
 SCHOOL_APP_EXPIRED_KEY = "api.schoolApp.sessionExpired"
 CHILDREN_FIELDS = ",".join(
@@ -26,6 +28,7 @@ PINBOARD_FIELDS = (
 PINBOARD_PARAMS = {"fields": PINBOARD_FIELDS}
 REFUSED_STATUSES = (403,)
 EXPIRED_STATUS = 401
+NAME_WORD_CATEGORIES = ("L", "M", "N")
 
 
 def _request_filter(student_id=None):
@@ -86,8 +89,10 @@ def normalize_class(value):
     return token
 
 
-def _name_words(name):
-    return frozenset(part for part in re.split(r"[\s,]+", (name or "").lower()) if part)
+def name_words(name):
+    text = unicodedata.normalize("NFC", unicodedata.normalize("NFC", str(name or "")).casefold())
+    spaced = "".join(char if unicodedata.category(char)[0] in NAME_WORD_CATEGORIES else " " for char in text)
+    return frozenset(spaced.split())
 
 
 def parse_students(payload):
@@ -152,13 +157,11 @@ def class_for_name(students, name):
 
 
 def student_for_name(students, name):
-    target = _name_words(name)
+    target = name_words(name)
     if not target:
         return None
-    for student in students or []:
-        if _name_words(student.get("name")) == target:
-            return student
-    return None
+    matches = [student for student in students or [] if name_words(student.get("name")) == target]
+    return matches[0] if len(matches) == 1 else None
 
 
 def parse_school(payload):
@@ -375,10 +378,10 @@ class DieSchulAppClient:
         return self._get("services/") or []
 
     def period_times(self):
-        return parse_period_times(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
+        return parse_period_times(self._get("timetable-slots/", {"filterBy": LESSON_FILTER}))
 
     def timetable_slots_or_raise(self):
-        slots = self._require("timetable-slots/", {"filterBy": "type:is(lesson)"})
+        slots = self._require("timetable-slots/", {"filterBy": LESSON_FILTER})
         if not isinstance(slots, list):
             raise DataError(
                 "school app answered slots in an unknown shape",
@@ -388,10 +391,10 @@ class DieSchulAppClient:
         return slots
 
     def period_slots(self):
-        return parse_period_slots(self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}))
+        return parse_period_slots(self._get("timetable-slots/", {"filterBy": LESSON_FILTER}))
 
     def lesson_slots(self):
-        slots = self._get("timetable-slots/", {"filterBy": "type:is(lesson)"}) or []
+        slots = self._get("timetable-slots/", {"filterBy": LESSON_FILTER}) or []
         result = []
         for slot in slots:
             number = slot.get("number")

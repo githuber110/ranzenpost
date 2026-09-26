@@ -61,7 +61,14 @@ CONNECTION_DEFAULTS = {
     "course_filters": {},
     "poll_state": {},
     "timetable_source": "",
+    "children_state": "",
 }
+
+CHILDREN_STATE_KEY = "children_state"
+CHILDREN_LISTED = "listed"
+CHILDREN_REFUSED = "refused"
+CHILDREN_UNREADABLE = "unreadable"
+CHILDREN_STATES = (CHILDREN_LISTED, CHILDREN_REFUSED, CHILDREN_UNREADABLE)
 
 GLOBAL_SETTING_KEYS = (
     "language",
@@ -212,6 +219,7 @@ def normalize_connection(entry):
             merged[name] = []
     merged["own_entries_ha"] = merged.get("own_entries_ha") is True
     merged["timetable_source"] = merged["timetable_source"] if isinstance(merged.get("timetable_source"), str) else ""
+    merged[CHILDREN_STATE_KEY] = merged[CHILDREN_STATE_KEY] if merged.get(CHILDREN_STATE_KEY) in CHILDREN_STATES else ""
     merged["id"] = str(merged.get("id") or "")
     return migrate_subject_colors(merged)
 

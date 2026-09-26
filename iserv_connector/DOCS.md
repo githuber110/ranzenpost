@@ -28,7 +28,9 @@ entities for automations.
   public holidays, marked exams, approved absences and own entries, then subscribe your calendar
   app to the generated link.
 - **Help**: **Settings → Help → Report a problem → Save report** writes `ranzenpost-report.zip`
-  with versions, module states and the log, names and secrets removed, to attach to a GitHub issue.
+  with versions, the structure of each IServ module and the log. Names, amounts and secrets are
+  removed. For modules run by another provider, such as Klassengeld, the report signs in there once.
+  It opens no letter and no single entry. Attach the file to a GitHub issue.
 
 ## Which IServ modules are supported
 
@@ -61,7 +63,9 @@ again.
 
 The app can hold several schools or IServ accounts at once. Each one keeps its own login, children,
 subject names, lesson times, phone numbers and holiday region; the children of every school appear
-side by side. The same school address may be connected twice with two accounts.
+side by side. The same school address may be connected twice with two accounts. A school that lists
+no children for the account still brings its letters, posts and chat; where no child decides the
+school, the app asks which one.
 
 ## Install
 

@@ -1,11 +1,10 @@
 import json
 import logging
-import re
 import threading
 from collections import namedtuple
 
 from .child_service import connection_marker
-from .iserv.dsa import SCHOOL_APP_EXPIRED_KEY, parse_period_slots
+from .iserv.dsa import SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
 from .iserv.errors import DataError, OutageError
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows
 from .store import edit_config
@@ -16,7 +15,6 @@ SOURCE_KEY = "timetable_source"
 SCHOOL_APP_SOURCE = "school-app"
 RECHECK_SECONDS = 3600
 MATCH_SECONDS = 600
-NAME_WORD = re.compile(r"\w+")
 LOGGED_DETAIL_LEFT_OUT = ("refusal",)
 
 Reading = namedtuple("Reading", "week source slots")
@@ -29,10 +27,6 @@ class Absent:
 
 def has_lessons(week):
     return bool(display_rows(week))
-
-
-def name_words(name):
-    return frozenset(NAME_WORD.findall(str(name or "").casefold()))
 
 
 def _covered(words, others):
@@ -182,7 +176,8 @@ class TimetableSources:
     def read(self, child_id, child, target):
         course_ids = (child or {}).get("course_ids")
         if not course_ids:
-            return Reading(self.connection._session().get_timetable(child_id, target), TIME_TABLE_SOURCE, None)
+            page_id = self.connection._child_service.timetable_page_id(child_id)
+            return Reading(self.connection._session().get_timetable(page_id, target), TIME_TABLE_SOURCE, None)
         marker = self._marker()
         raw_slots = self._slots()
         slots = parse_period_slots(raw_slots) if raw_slots is not None else None

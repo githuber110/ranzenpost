@@ -4,9 +4,9 @@ import requests
 from fastapi import Body
 
 from . import messages
-from .iserv.errors import LoginError, PasswordError, TwoFactorError
+from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
 from .service import NotConfiguredError
-from .upstream import write_endpoint
+from .upstream import upstream_code, upstream_write_error, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,9 @@ def register_routes(app, service, wizard):
         except requests.RequestException as error:
             logger.warning("password change failed: %s", type(error).__name__)
             return messages.result(False, "api.network", error="network")
+        except DataError as error:
+            logger.info("password change refused: %s", error.message_key)
+            return upstream_write_error(upstream_code(error), error)
         if outcome == "unverified":
             return messages.result(True, "api.password.unverified")
         return messages.result(True, "api.password.changed")

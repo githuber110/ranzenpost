@@ -361,8 +361,9 @@ describe("the help page", () => {
     expect(params.get("title")).toBe("Unsupported IServ modules: calendar, mail");
     const versions = label(window, "help.issue.versions", { app: "2609.02.00", home_assistant: "2026.9.1", iserv: "3.9.1" });
     expect(versions).toBe("Ranzenpost 2609.02.00, Home Assistant 2026.9.1, IServ 3.9.1");
-    expect(params.get("body")).toBe(label(window, "help.issue.body", { versions }));
-    expect(params.get("body").startsWith(versions + "\n\nAttach the saved file ranzenpost-report.zip")).toBe(true);
+    const question = label(window, "help.issue.moduleQuestion");
+    expect(params.get("body")).toBe(`${question}\n\n${label(window, "help.issue.body", { versions })}`);
+    expect(params.get("body").startsWith(question)).toBe(true);
     link.addEventListener("click", (event) => event.preventDefault());
     link.click();
     await settle();

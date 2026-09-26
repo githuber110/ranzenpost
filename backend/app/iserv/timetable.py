@@ -1,7 +1,7 @@
 import json
 import logging
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ..valueshape import shape_lines
 from .errors import DataError
@@ -16,6 +16,13 @@ SHAPE_DIAGNOSIS_LINES = 40
 COMPARED_FIELDS = ("subject", "teacher", "room")
 CANCEL_TOKENS = ("cancel", "entfall", "ausfall")
 CHANGE_TOKENS = ("substitut", "vertret", "change")
+DATE_FORMAT = "%d.%m.%Y"
+SUBSTITUTED_FIELDS = (
+    ("subject", "substitutionSubject"),
+    ("teacher", "substitutionTeacher"),
+    ("room", "substitutionRoom"),
+)
+PLACEHOLDER_CHARACTERS = frozenset("-+?–— ")
 
 
 def week_bounds(reference):
@@ -25,8 +32,8 @@ def week_bounds(reference):
 
 def build_filter(child_id, start, end):
     return {
-        "startDate": start.strftime("%d.%m.%Y"),
-        "endDate": end.strftime("%d.%m.%Y"),
+        "startDate": start.strftime(DATE_FORMAT),
+        "endDate": end.strftime(DATE_FORMAT),
         "classes": [],
         "teachers": [],
         "rooms": [],
@@ -363,11 +370,160 @@ def time_table_shape_error(note, payload):
     )
 
 
+def _number(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _change_periods(record):
+    first = _number(record.get("periodStart")) or _number(record.get("period"))
+    if first is None:
+        return range(0)
+    last = _number(record.get("periodEnd")) or first
+    return range(first, max(first, last) + 1)
+
+
+def _value(record, key):
+    text = _text(record.get(key)).strip()
+    return "" if set(text) <= PLACEHOLDER_CHARACTERS else text
+
+
+def _classes(value):
+    names = set()
+    for item in value if isinstance(value, list) else [value]:
+        if isinstance(item, str):
+            names.update(part.strip() for part in item.replace(";", ",").split(","))
+    names.discard("")
+    return names
+
+
+def _change_cancels(record):
+    if any(_kind_from_type(kind) == "cancelled" for kind in record.get("change_types") or []):
+        return True
+    return not any(_value(record, key) for _, key in SUBSTITUTED_FIELDS)
+
+
+def _change_hits(entry, record):
+    wanted = _classes(record.get("origClass"))
+    teacher = _value(record, "origTeacher")
+    return (
+        entry.get("date") == record.get("date")
+        and _number(entry.get("period")) in _change_periods(record)
+        and entry.get("subject") == record.get("origSubject")
+        and (not teacher or entry.get("teacher") == teacher)
+        and (not wanted or bool(_classes(entry.get("class")) & wanted))
+    )
+
+
+def _change_targets(original, record):
+    hits = [index for index, entry in enumerate(original) if isinstance(entry, dict) and _change_hits(entry, record)]
+    if len(hits) > 1 and not _value(record, "origTeacher"):
+        room = _value(record, "origRoom")
+        hits = [index for index in hits if room and original[index].get("room") == room]
+        if len(hits) > 1:
+            return []
+    return hits
+
+
+def _substituted(entry, record):
+    result = dict(entry)
+    for field, key in SUBSTITUTED_FIELDS:
+        value = _value(record, key)
+        if value:
+            result[field] = value
+    return result
+
+
+def _weekday(value):
+    try:
+        return datetime.strptime(str(value), DATE_FORMAT).isoweekday()
+    except ValueError:
+        return None
+
+
+def _added_lessons(record, original, current):
+    subject = _value(record, "substitutionSubject")
+    weekday = _weekday(record.get("date"))
+    shown = set().union(*(_classes(entry.get("class")) for entry in original if isinstance(entry, dict)))
+    reached = sorted(_classes(record.get("substitutionClass")) & shown) if shown else []
+    if not subject or weekday is None or (shown and not reached):
+        return []
+    added = []
+    for period in _change_periods(record):
+        if any(
+            isinstance(entry, dict) and entry.get("date") == record.get("date")
+            and _number(entry.get("period")) == period and entry.get("subject") == subject
+            for entry in current
+        ):
+            continue
+        added.append({
+            "id": record.get("id"),
+            "class": ",".join(reached),
+            "teacher": _value(record, "substitutionTeacher"),
+            "subject": subject,
+            "room": _value(record, "substitutionRoom"),
+            "dow": weekday,
+            "period": period,
+            "internal_id": record.get("internal_id"),
+            "date": record.get("date"),
+            "period_reference": None,
+        })
+    return added
+
+
+def _apply_changes(combined, records):
+    original = list(combined)
+    current = list(combined)
+    added = []
+    applied = []
+    for record in records:
+        if not _text(record.get("origSubject")):
+            lessons = _added_lessons(record, original, current + added)
+            added.extend(lessons)
+            if lessons:
+                applied.append(record)
+            continue
+        targets = _change_targets(original, record)
+        for index in targets:
+            base = current[index] if current[index] is not None else original[index]
+            current[index] = None if _change_cancels(record) else _substituted(base, record)
+        if targets:
+            applied.append(record)
+    return [entry for entry in current if entry is not None] + added, applied
+
+
+def with_time_table_changes(payload):
+    raw = payload.get("plain-changes") or []
+    records = sorted(
+        (record for record in raw if isinstance(record, dict)),
+        key=lambda record: str(record.get("updated") or ""),
+    )
+    data = payload.get("data")
+    combined = data.get("timetable") if isinstance(data, dict) else None
+    if not records or not isinstance(combined, list):
+        return payload, []
+    try:
+        timetable, applied = _apply_changes(combined, records)
+    except (AttributeError, TypeError, ValueError) as error:
+        logger.warning("time-table changes left out, their records were not understood: %s", type(error).__name__)
+        return payload, []
+    return {**payload, "data": {**data, "timetable": timetable}}, applied
+
+
+def shown_changes(week):
+    return week.changes if week.applied_changes is None else week.applied_changes
+
+
 def parse_time_table(payload):
     if not isinstance(payload, dict):
         raise time_table_shape_error("the time-table answer was not an object", payload)
     try:
-        return parse_timetable(payload)
+        changed, applied = with_time_table_changes(payload)
+        week = parse_timetable(changed)
+        week.applied_changes = applied
+        return week
     except DataError as error:
         raise time_table_shape_error(str(error), payload) from error
     except (AttributeError, TypeError, ValueError) as error:

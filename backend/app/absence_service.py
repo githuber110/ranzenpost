@@ -33,7 +33,7 @@ from .iserv.absences import (
     record_absence_history,
     sick_day_options,
 )
-from .iserv.dsa import absence_rules, deregister_options, enabled_absence_types
+from .iserv.dsa import LESSON_FILTER, absence_rules, deregister_options, enabled_absence_types
 from .iserv.errors import OUTAGE_KEY
 from .iserv.sick_note_pdf import render_sick_note_pdf, sick_note_pdf_filename, sick_note_title
 from .mapping import LESSON_MINUTES as LESSON_LENGTH, configured_time, shift_time
@@ -42,7 +42,7 @@ from .store import edit_slot
 logger = logging.getLogger(__name__)
 
 LESSON_SLOTS_PATH = "timetable-slots/"
-LESSON_SLOTS_PARAMS = {"filterBy": "type:is(lesson)"}
+LESSON_SLOTS_PARAMS = {"filterBy": LESSON_FILTER}
 LEAVE_MIN_DAYS_KEY = "requestToSchools_studentAbsence_minDays"
 ABSENCE_ERROR_KEYS = {
     ERROR_SUBJECT: "api.absence.error.subject",

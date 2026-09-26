@@ -13,7 +13,7 @@ from .absence_service import SickNoteNotFoundError
 from .iserv.errors import LoginError, TwoFactorError
 from .iserv.sick_note_pdf import UnsupportedTextError
 from .failure import failure_cause
-from .service import NotConfiguredError
+from .service import NotConfiguredError, SchoolRequiredError
 from .upstream import binary_upstream_response, read_endpoint, write_endpoint
 
 logger = logging.getLogger(__name__)
@@ -117,6 +117,9 @@ def register_routes(app, service):
         except UnsupportedTextError:
             logger.warning("sick note pdf refused: unsupported text")
             return PlainTextResponse("unsupported text", status_code=422)
+        except SchoolRequiredError as error:
+            logger.info("sick note pdf refused: no school named")
+            return binary_upstream_response(error)
         except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
             logger.warning("sick note pdf could not be fetched: %s", failure_cause(error))
             return binary_upstream_response(error)

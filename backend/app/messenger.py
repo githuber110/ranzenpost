@@ -1,17 +1,22 @@
+import hashlib
+import json
 import logging
 import re
+import threading
 import time
 from urllib.parse import quote
 
 import requests
 
-from . import messages
+from . import messages, requestlog
 from .failure import failure_cause
 from .iserv.errors import DataError, LoginError
 from .store import edit_secrets, transaction
 from .iserv.messenger import (
     AUTH_FIELDS,
+    BROAD_SYNC_FILTER,
     MAX_CONTINUATION_HOPS,
+    ROOM_LIST_SYNC_FILTER,
     STAGE_BOOTSTRAP,
     STAGE_MESSAGE_KEYS,
     STAGE_NO_CREDENTIALS,
@@ -23,6 +28,7 @@ from .iserv.messenger import (
     TEACHER_AUTOCOMPLETE_PATH,
     TEACHER_AUTOCOMPLETE_TYPE,
     TEACHER_ROOM_FORM_PATH,
+    UNREAD_SYNC_FILTER,
     WELL_KNOWN_PATH,
     BootstrapNotFoundError,
     MatrixAuthError,
@@ -44,6 +50,7 @@ from .iserv.messenger import (
     parse_privileges,
     parse_room_list,
     embedded_shape,
+    filter_misread,
     credentials_note,
     granted_privileges,
     credentials_withheld,
@@ -70,6 +77,9 @@ AUTHENTICATE_POST_TRIED_KEY = "messenger_authenticate_post_at"
 AUTHENTICATE_POST_INTERVAL_SECONDS = 24 * 60 * 60
 JOIN_TIMEOUT_SECONDS = 15
 JOIN_POLL_SECONDS = 1.0
+FILTER_REFUSED_STATUSES = (400, 413, 414)
+NARROW_FILTER_RETRY_HOURS = 6
+NARROW_FILTER_RETRY_SECONDS = NARROW_FILTER_RETRY_HOURS * 60 * 60
 
 READ_OK_KEY = "api.messenger.read.ok"
 READ_FAILED_KEY = "api.messenger.read.failed"
@@ -126,6 +136,8 @@ class MessengerService:
         self.now = time.time
         self.sleeper = time.sleep
         self._withheld_noted = False
+        self._narrow_refused = {}
+        self._narrow_lock = threading.Lock()
 
     def _fetch_page(self, client, path):
         try:
@@ -287,7 +299,7 @@ class MessengerService:
         else:
             auth = {field: secrets.get(f"messenger_{field}", "") for field in AUTH_FIELDS}
         base_url = secrets.get(MATRIX_BASE_URL_KEY) or self.iserv.iserv_session().base_url
-        return self.matrix_client_factory(base_url, auth["access_token"])
+        return requestlog.tag_school(self.matrix_client_factory(base_url, auth["access_token"]), getattr(self.iserv, "id", ""))
 
     def _with_matrix(self, call):
         client = self._matrix_client()
@@ -321,16 +333,70 @@ class MessengerService:
         logger.warning("matrix %s answered %s", label, status)
         raise MessengerStageError(STAGE_MATRIX, {"where": label, "status": status})
 
+    def _narrow_key(self, client, sync_filter):
+        identity = f"{client.base_url} {client.access_token}"
+        return (
+            hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+            json.dumps(sync_filter, sort_keys=True, separators=(",", ":")),
+        )
+
+    def _narrow_switched_off(self, key):
+        with self._narrow_lock:
+            self._narrow_refused = {
+                known: refused_at for known, refused_at in self._narrow_refused.items() if known[0] == key[0]
+            }
+            refused_at = self._narrow_refused.get(key)
+            if refused_at is None:
+                return False
+            if self.clock() - refused_at < NARROW_FILTER_RETRY_SECONDS:
+                return True
+            self._narrow_refused.pop(key, None)
+        logger.info("matrix sync tries the narrow filter again")
+        return False
+
+    def _switch_off_narrow(self, key, label, reason):
+        with self._narrow_lock:
+            self._narrow_refused[key] = self.clock()
+        logger.warning(
+            "matrix %s did not take the narrow filter (%s), using the broad filter for %s hours",
+            label,
+            reason,
+            NARROW_FILTER_RETRY_HOURS,
+        )
+
+    def _synced_body(self, client, sync_filter, label):
+        key = self._narrow_key(client, sync_filter)
+        if self._narrow_switched_off(key):
+            return self._broadly_synced_body(client, label)
+        response = client.sync(timeout_ms=0, sync_filter=sync_filter)
+        status = int(getattr(response, "status_code", 0) or 0)
+        if status in FILTER_REFUSED_STATUSES:
+            return self._broad_instead(client, key, label, f"status {status}")
+        self._require_matrix_ok(label, response)
+        body = response.json()
+        if filter_misread(body, sync_filter):
+            return self._broad_instead(client, key, label, "member fields missing")
+        return body
+
+    def _broad_instead(self, client, key, label, reason):
+        body = self._broadly_synced_body(client, label)
+        self._switch_off_narrow(key, label, reason)
+        return body
+
+    def _broadly_synced_body(self, client, label):
+        response = client.sync(timeout_ms=0, sync_filter=BROAD_SYNC_FILTER)
+        self._require_matrix_ok(label, response)
+        return response.json()
+
     def _own_user_id(self):
         return self.store.load_secrets().get("messenger_user_id", "")
 
     def rooms(self):
         def call(client):
-            response = client.sync(timeout_ms=0)
-            self._require_matrix_ok("sync", response)
+            body = self._synced_body(client, ROOM_LIST_SYNC_FILTER, "sync")
             own_user_id = self._own_user_id()
             return {
-                "rooms": parse_room_list(response.json(), own_user_id),
+                "rooms": parse_room_list(body, own_user_id),
                 "self_user_id": own_user_id,
             }
 
@@ -362,9 +428,7 @@ class MessengerService:
 
     def _sync_body(self):
         def call(client):
-            response = client.sync(timeout_ms=0)
-            self._require_matrix_ok("sync", response)
-            return response.json()
+            return self._synced_body(client, UNREAD_SYNC_FILTER, "sync")
 
         return self._with_matrix(call)
 
@@ -540,9 +604,7 @@ class MessengerService:
 
     def unread_pulse(self):
         def call(client):
-            response = client.sync(timeout_ms=0)
-            self._require_matrix_ok("pulse", response)
-            body = response.json()
+            body = self._synced_body(client, UNREAD_SYNC_FILTER, "pulse")
             rooms = body.get("rooms") if isinstance(body, dict) else None
             join = rooms.get("join") if isinstance(rooms, dict) else None
             shape_understood = isinstance(body, dict) and (rooms is None or isinstance(rooms, dict)) and (
