@@ -2,6 +2,8 @@ import hashlib
 import json
 import re
 
+from .iserv.timetable import CHANGE_ITEMS_FORMAT
+
 CONFIRMED_EMPTY_KEY = "confirmed_empty"
 FILTERS_KEY = "course_filters"
 KEY_SEPARATOR = "|"
@@ -180,6 +182,15 @@ def visible_changes(changes, visible, hidden):
     ]
 
 
+def _changes_of_visible_lessons(payload, lessons, visible):
+    changes = list(payload.get("changes") or [])
+    marked = [lesson for lesson in lessons if lesson.get("change_kind")]
+    if len(marked) != len(changes):
+        return None
+    shown = {id(lesson) for lesson in visible}
+    return [change for lesson, change in zip(marked, changes) if id(lesson) in shown]
+
+
 def apply(payload, active):
     lessons = list(payload.get("lessons") or [])
     parallel = parallel_keys(lessons)
@@ -188,7 +199,8 @@ def apply(payload, active):
     known = set(active["known"]) if active else set()
     filtered = dict(payload)
     filtered["lessons"] = visible
-    filtered["changes"] = visible_changes(payload.get("changes"), visible, hidden)
+    by_lesson = _changes_of_visible_lessons(payload, lessons, visible) if payload.get("changes_format") == CHANGE_ITEMS_FORMAT else None
+    filtered["changes"] = visible_changes(payload.get("changes"), visible, hidden) if by_lesson is None else by_lesson
     filtered["change_count"] = sum(1 for lesson in visible if lesson.get("change_kind"))
     filtered["courses"] = {
         "parallel": len(parallel),

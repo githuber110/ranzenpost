@@ -72,10 +72,10 @@ AUTH_NOTIFY_KEYS = {
 }
 CODE_REPAIR_KEY = LOGIN_TWOFACTOR_KEY
 LETTERS_KEY = "notify.letters.new"
-LETTERS_CONFIRM_KEY = "notify.letters.newConfirm"
 PINBOARD_KEY = "notify.pinboard.new"
 CONFERENCES_KEY = "notify.conferences.new"
 TIMETABLE_KEY = "notify.timetable.changes"
+TIMETABLE_MOVED_KEY = "notify.timetable.changesMoved"
 TIMETABLE_CLEARED_KEY = "notify.timetable.cleared"
 TIMETABLE_PLAN_KEY = "notify.timetable.plan"
 TIMETABLE_COURSES_KEY = "notify.timetable.courses"
@@ -89,6 +89,7 @@ PLAN_FIELDS_KEY = "plan_fields"
 PLAN_FIELD_HASH_LENGTH = 12
 COURSE_SIGNATURE = "course_signature"
 SOURCE_STATE_KEY = "timetable_source"
+CHANGES_FORMAT_KEY = "changes_format"
 DEFAULT_SOURCE = "school-app"
 AUTH_NOTIFIED_FLAG = "auth_incident_sent"
 AUTH_NOTIFIED_REASON = "auth_incident_reason"
@@ -139,6 +140,10 @@ def describe_plan_differences(found):
     if not found:
         return "no plan field differs"
     return ", ".join(f"{field} differs in {count} lessons" for field, count in found)
+
+
+def moved_in(changes):
+    return any(isinstance(item, dict) and item.get("moved") for item in changes or [])
 
 
 def push_view_of(timetable):
@@ -691,10 +696,12 @@ class Poller:
                 course_signature = str((timetable.get("courses") or {}).get("signature") or "")
                 view_kind = PARALLEL_PENDING if courses_pending else ""
                 source = str(timetable.get("source") or DEFAULT_SOURCE)
+                changes_format = str(timetable.get(CHANGES_FORMAT_KEY) or "")
                 rebased = previous is not None and (
                     str(previous.get(COURSE_SIGNATURE) or "") != course_signature
                     or str(previous.get(PUSH_VIEW_KEY) or "") != view_kind
                     or str(previous.get(SOURCE_STATE_KEY) or DEFAULT_SOURCE) != source
+                    or str(previous.get(CHANGES_FORMAT_KEY) or "") != changes_format
                 )
                 previous_signature = previous.get("signature") if previous else None
                 previous_changes_signature = previous.get("changes_signature") if previous else None
@@ -720,7 +727,7 @@ class Poller:
                     self._notify(
                         "timetable",
                         name,
-                        self._tagged(language, school, self._message(language, name, changes_count)),
+                        self._tagged(language, school, self._message(language, name, changes_count, moved_in(week_changes))),
                         f"changes school#{connection_id} child#{child_id}: {changes_count} changes, changed set",
                     )
                 elif (
@@ -784,6 +791,7 @@ class Poller:
                     PUSH_VIEW_KEY: view_kind,
                     COURSE_HINT_KEY: bool(hint_sent),
                     SOURCE_STATE_KEY: source,
+                    CHANGES_FORMAT_KEY: changes_format,
                     integration.CHANGE_KEYS: change_keys,
                 }
                 if key in feed_children:
@@ -799,8 +807,6 @@ class Poller:
                     "changed": signature_changed,
                     "has_changes": has_changes,
                 })
-            if flags[modules.LETTERS]:
-                self._enrich_letters_search(connection)
             events.extend(self._poll_modules(connection, poll_state, language, flags, summary, school, connection_id))
             messenger_event = (
                 self._poll_messenger(connection, poll_state, language, school, connection_id)
@@ -868,10 +874,10 @@ class Poller:
     def _poll_modules(self, connection, poll_state, language=None, flags=None, summary=None, school="", connection_id=""):
         events = []
         summary = summary if summary is not None else {}
-        for event, state_key, collect, key, method, resolve in (
-            ("letters", "letter_keys", self._letter_keys, LETTERS_KEY, "letters", self._letters_key),
-            ("pinboard", "pinboard_ids", self._pinboard_ids, PINBOARD_KEY, "pinboard", None),
-            ("conferences", "conference_keys", self._conference_keys, CONFERENCES_KEY, "conferences", None),
+        for event, state_key, collect, key, method in (
+            ("letters", "letter_keys", self._letter_keys, LETTERS_KEY, "letters"),
+            ("pinboard", "pinboard_ids", self._pinboard_ids, PINBOARD_KEY, "pinboard"),
+            ("conferences", "conference_keys", self._conference_keys, CONFERENCES_KEY, "conferences"),
         ):
             if flags is not None and not flags.get(event, True):
                 summary[SUMMARY_KEYS[event]] = []
@@ -893,11 +899,10 @@ class Poller:
                 continue
             fresh = current - set(known)
             if fresh:
-                chosen = (resolve(connection, fresh) if resolve is not None else None) or key
                 self._notify(
                     event,
                     "",
-                    self._tagged(language, school, messages.text_count(language, chosen, len(fresh))),
+                    self._tagged(language, school, messages.text_count(language, key, len(fresh))),
                     f"school#{connection_id}: {len(fresh)} new",
                 )
             events.append({"module": event, "new": len(fresh)})
@@ -935,16 +940,6 @@ class Poller:
                 f"school#{connection_id}: {count - previous} new, {count} unread",
             )
         return {"module": "messenger", "unread": count}
-
-    def _letters_key(self, connection, fresh):
-        reader = getattr(connection, "pending_confirmation_keys", None)
-        if not callable(reader):
-            return None
-        try:
-            pending = reader("current")
-        except Exception:
-            return None
-        return LETTERS_CONFIRM_KEY if fresh & set(pending or ()) else None
 
     def _poll_absences(self, connection, connection_id, snapshot=None, wanted=(), children=()):
         observe = getattr(connection, "absences_overview", None)
@@ -1006,15 +1001,6 @@ class Poller:
                 owners[student_id] = match["key"]
         return owners
 
-    def _enrich_letters_search(self, connection):
-        enrich = getattr(connection, "enrich_letters_search", None)
-        if not callable(enrich):
-            return
-        try:
-            enrich("current")
-        except Exception:
-            pass
-
     def _letter_keys(self, connection, summary):
         data = connection.letters("current") or {}
         summary["letters"] = integration.unread_notices(data.get("letters"))
@@ -1072,5 +1058,5 @@ class Poller:
         return hashlib.sha256(json.dumps(serialized, ensure_ascii=False).encode("utf-8")).hexdigest()
 
     @staticmethod
-    def _message(language, name, count):
-        return messages.text_count(language, TIMETABLE_KEY, count, {"name": name})
+    def _message(language, name, count, moved=False):
+        return messages.text_count(language, TIMETABLE_MOVED_KEY if moved else TIMETABLE_KEY, count, {"name": name})

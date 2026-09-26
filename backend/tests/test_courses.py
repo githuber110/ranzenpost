@@ -55,7 +55,7 @@ class ParallelClient:
     def get_children(self):
         return [Child(CHILD_ID, "Kim")]
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         self.references.append(reference)
         return parse_timetable(week_payload(self.fixture_name, reference))
 

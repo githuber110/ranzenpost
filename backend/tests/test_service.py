@@ -45,7 +45,7 @@ class FakeClient:
         return response
 
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         lessons = [Lesson("31.08.2026", 1, 1, "D", "BEH", "R1", "1a")]
         return TimetableWeek("31.08.2026", "06.09.2026", "22.07.2026 12:25", lessons, lessons, [])
 
@@ -246,14 +246,18 @@ def test_letters_unread_annotation_and_seen_toggle(tmp_path):
     assert unread[0]["title"] == "Informationen zum Wandertag"
 
 
-def test_enrich_letters_search_indexes_body_and_attachments(tmp_path):
+def test_only_the_letter_opened_in_the_app_gets_its_body_and_attachments_indexed(tmp_path):
     from pathlib import Path as _Path
 
     list_fixture = (_Path(__file__).parent / "fixtures" / "letters_index.html").read_text(encoding="utf-8")
     detail_fixture = (_Path(__file__).parent / "fixtures" / "letter_detail.html").read_text(encoding="utf-8")
+    opened = []
 
     class LetterClient(FakeClient):
         def fetch(self, path, params=None):
+            if "/parent/show/" in path:
+                opened.append(path)
+
             class R:
                 status_code = 200
                 url = "https://school.example" + path
@@ -266,17 +270,16 @@ def test_enrich_letters_search_indexes_body_and_attachments(tmp_path):
 
     before = service.letters("current")["letters"]
     assert all(entry["body_text"] == "" and entry["attachments"] == [] for entry in before)
+    assert opened == []
 
-    indexed = service.enrich_letters_search("current")
-    assert indexed == len(before)
+    service.letter_detail(before[0]["letter_id"], before[0]["recipient_id"])
 
     after = service.letters("current")["letters"]
-    enriched = next(entry for entry in after if entry["title"] == "Einladung zum Schulfest")
-    assert "Schulfest" in enriched["body_text"]
-    assert {a["filename"] for a in enriched["attachments"]} == {"einladung.pdf", "anmeldung.docx"}
-
-    again = service.enrich_letters_search("current")
-    assert again == 0
+    indexed = {entry["title"]: entry for entry in after}
+    assert "Schulfest" in indexed[before[0]["title"]]["body_text"]
+    assert {a["filename"] for a in indexed[before[0]["title"]]["attachments"]} == {"einladung.pdf", "anmeldung.docx"}
+    assert all(entry["body_text"] == "" for entry in after if entry["title"] != before[0]["title"])
+    assert len(opened) == 1
 
 
 from app.iserv.errors import DataError
@@ -347,10 +350,10 @@ class FakeMeDsa:
         return self._payload if path == "users/me" else None
 
 
-def test_timetable_available_reads_school_setting(tmp_path):
+def test_the_release_setting_alone_never_hides_the_timetable_before_a_probe(tmp_path):
     service, _ = make(tmp_path)
     service._dsa = lambda: FakeAdvancedDsa(settings={"timetable_availableForGuardiansAndStudents": False})
-    assert service.timetable_available() is False
+    assert service.timetable_available() is True
 
 
 def test_timetable_available_defaults_true_when_setting_missing(tmp_path):
@@ -614,7 +617,7 @@ class ChangeClient(FakeClient):
         super().__init__(url)
         self.reference = None
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         self.reference = reference
         combined = [
             Lesson("31.08.2026", 1, 1, "D", "BEH", "R1", "1a"),
@@ -717,7 +720,7 @@ def test_timetable_week_offset_is_clamped(tmp_path):
 class SharedSlotClient(FakeClient):
     combined_subjects = ("M", "TEAM")
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         plain = [
             Lesson("01.09.2026", 2, 4, "M", "ERN", "R1", "1a"),
             Lesson("01.09.2026", 2, 4, "TEAM", "BEH", "R2", "1a"),
@@ -1825,29 +1828,34 @@ def test_confirm_letter_reports_an_upstream_status(tmp_path):
     assert store.load_letters_confirmations() == {}
 
 
-def test_letters_list_carries_the_open_confirmation_after_enrichment(tmp_path):
-    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen.html")])
-    assert all(entry["confirmation"] is None for entry in service.letters("current")["letters"])
-    service.enrich_letters_search("current")
-    entries = service.letters("current")["letters"]
-    assert all(entry["confirmation"]["open"] for entry in entries)
-    assert service.pending_confirmation_keys("current") == {
-        service._letters()._letter_key(entry) for entry in entries
+def _open_confirmations(service):
+    return {
+        service._letters()._letter_key(entry)
+        for entry in service.letters("current")["letters"]
+        if (entry["confirmation"] or {}).get("open")
     }
 
 
-def test_enrich_keeps_refreshing_an_open_confirmation_but_stops_once_it_is_done(tmp_path):
+def test_letters_list_carries_the_open_confirmation_of_a_letter_opened_in_the_app(tmp_path):
+    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_confirm_seen.html")])
+    key = f"{CONFIRM_LETTER}:{CONFIRM_RECIPIENT}"
+    assert all(entry["confirmation"] is None for entry in service.letters("current")["letters"])
+    assert _open_confirmations(service) == set()
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    entries = {service._letters()._letter_key(entry): entry for entry in service.letters("current")["letters"]}
+    assert entries[key]["confirmation"]["open"] is True
+    assert all(entry["confirmation"] is None for name, entry in entries.items() if name != key)
+    assert _open_confirmations(service) == {key}
+
+
+def test_an_opened_letter_shows_its_confirmation_as_done_once_it_is_confirmed(tmp_path):
     service, store, client = _confirm_service(
         tmp_path,
         [_fixture_text("letter_confirm_seen.html"), _fixture_text("letter_confirm_done.html")],
     )
-    first = service.enrich_letters_search("current")
-    assert first == 3
-    assert service.enrich_letters_search("current") == 3
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
     assert service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)["ok"] is True
     assert store.load_letters_confirmations()
-    remaining = service.enrich_letters_search("current")
-    assert remaining == 2
     done = next(
         entry
         for entry in service.letters("current")["letters"]
@@ -1856,12 +1864,7 @@ def test_enrich_keeps_refreshing_an_open_confirmation_but_stops_once_it_is_done(
     assert done["confirmation"]["done"] is True
     assert done["confirmation"]["open"] is False
     assert done["confirmation"]["confirmed_at"]
-
-
-def test_letters_without_a_confirmation_are_not_refetched(tmp_path):
-    service, _, _ = _confirm_service(tmp_path, [_fixture_text("letter_detail.html")])
-    assert service.enrich_letters_search("current") == 3
-    assert service.enrich_letters_search("current") == 0
+    assert _open_confirmations(service) == set()
 
 
 def test_a_letter_with_an_open_confirmation_is_reported_blocked_not_read(tmp_path):
@@ -1886,7 +1889,9 @@ def test_a_letter_with_an_open_confirmation_is_reported_blocked_not_read(tmp_pat
     service, _ = make(tmp_path)
     service.client_factory = lambda url: ConfirmingLetterClient(url)
     key = "10000000-0000-4000-8000-000000000002:20000000-0000-4000-8000-000000000002"
+    assert _open_confirmations(service) == set()
     assert service.mark_letters_read([key]) == {"read": 0, "blocked": 1, "failed": 0}
+    assert _open_confirmations(service) == {key}
 
 
 def test_mark_all_read_separates_the_blocked_letters_from_the_read_ones(tmp_path):
@@ -2233,8 +2238,8 @@ def test_clearing_local_data_keeps_a_confirmation_in_flight_busy(tmp_path):
 class VacationClient(FakeClient):
     vacations = []
 
-    def get_timetable(self, child_id, reference=None):
-        week = super().get_timetable(child_id, reference)
+    def read_time_table_week(self, child_id, reference=None):
+        week = super().read_time_table_week(child_id, reference)
         week.vacations = list(self.vacations)
         return week
 

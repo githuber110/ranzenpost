@@ -3,7 +3,14 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
-## 2609.2.3
+## 2609.3.0
+
+### New
+
+- Timetables of the IServ `time-table` module show moved lessons at both places, marked "Moved" with "to Thu 5" and
+  "from Tue 6", and the school's note at its lesson. Every change is marked, including substitutes and new subjects
+  whose teacher the school does not name, and classes taught together. The change notification counts the marked
+  lessons.
 
 ### Changed
 
@@ -19,6 +26,11 @@ fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below 
 
 ### Fixed
 
+- The timetable shows again when the school app does not release it to parents but the IServ `time-table` module
+  does. Lessons without a teacher and changes with unknown type codes no longer break the week.
+- The app no longer opens parent letters in the background to build its search. Before, this marked every letter as read
+  at the school right after installation. Full-text search covers letters you opened in the app; the rest are found by
+  title, sender, child and class. New letters get the normal notification.
 - Room and teacher changes from the IServ `time-table` module now show in the week, with cancellations and extra
   lessons. The change notification counts only changes that affect a lesson.
 - A school whose account lists no children keeps its letters, pinboard, conferences and chat updated instead of stopping.

@@ -5,7 +5,15 @@ from bs4 import BeautifulSoup
 
 from . import modules
 from .iserv.children import child_select_present, parse_children
-from .iserv.dsa import CHILDREN_FIELDS, CURRENT_TIMETABLE_PATH, LESSON_FILTER, parse_children_from_me, parse_students
+from .iserv.dsa import (
+    CHILDREN_FIELDS,
+    CURRENT_TIMETABLE_PATH,
+    LESSON_FILTER,
+    SUBSTITUTIONS_SETTING,
+    TIMETABLE_SETTING,
+    parse_children_from_me,
+    parse_students,
+)
 from .iserv.dsa_timetable import course_filter, query_date
 from .iserv.letters import parse_letter_list
 from .iserv.timetable import DATE_FORMAT, week_bounds
@@ -23,9 +31,8 @@ CHILDREN_NOT_READ = "| %s | not read | - | - |"
 SCHOOL_SETTINGS_PATH = modules.DSA_API + "/school-settings/"
 CURRENT_TIMETABLE_QUERY_PATH = modules.DSA_API + "/" + CURRENT_TIMETABLE_PATH
 TIMETABLE_SLOTS_PATH = modules.DSA_API + "/timetable-slots/"
-TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
-SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 KNOWN_SETTINGS = (TIMETABLE_SETTING, SUBSTITUTIONS_SETTING)
+RELEASE_OFF_LINE = "- Timetable release: off, the app reads the time-table module instead of the school app"
 LETTER_ACTION = re.compile(r"\[actions\]\[([^\]]+)\]")
 SUBMIT_TYPES = ("submit", "image")
 MAX_LETTER_ACTIONS = 20
@@ -66,17 +73,24 @@ def _children_source_line(label, entries):
     return "| %s | %d | %d | %d |" % (table_cell(label), len(entries), dup_ids, dup_names)
 
 
-def fetch_json(client, path, params=None):
+def fetch_answer(client, path, params=None):
     try:
         response = client.fetch(path, params)
     except Exception:
-        return None
-    if response is None or status_of(response) != 200:
-        return None
+        return 0, None
+    if response is None:
+        return 0, None
+    status = status_of(response)
+    if status != 200:
+        return status, None
     try:
-        return json_of(response)
+        return status, json_of(response)
     except (ValueError, TypeError):
-        return None
+        return status, None
+
+
+def fetch_json(client, path, params=None):
+    return fetch_answer(client, path, params)[1]
 
 
 def _school_account_children(client):
@@ -173,9 +187,10 @@ def _child_query_fact(client, child, today, substitutions):
     if selector:
         params["filterBy"] = selector
     count = selector.count("|") + 1 if selector else 0
-    payload = fetch_json(client, CURRENT_TIMETABLE_QUERY_PATH, params)
+    status, payload = fetch_answer(client, CURRENT_TIMETABLE_QUERY_PATH, params)
     if not isinstance(payload, dict):
-        return "courses in filter %d, not read" % count
+        refused = ", answer %d" % status if status and status != 200 else ""
+        return "courses in filter %d, not read%s" % (count, refused)
     return "courses in filter %d, %s" % (count, _entries_fact(payload))
 
 
@@ -183,6 +198,8 @@ def school_app_query_lines(client, config, today):
     lines = ["### School app"]
     settings = _school_settings(client) if client is not None else None
     lines.append("- Settings: " + ", ".join("%s=%s" % (key, _switch(settings, key)) for key in KNOWN_SETTINGS))
+    if isinstance(settings, dict) and settings.get(TIMETABLE_SETTING) is False:
+        lines.append(RELEASE_OFF_LINE)
     if client is None:
         lines.append("- Timetable query: not read, no session")
         return lines

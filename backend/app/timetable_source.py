@@ -4,7 +4,7 @@ import threading
 from collections import namedtuple
 
 from .child_service import connection_marker
-from .iserv.dsa import SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
+from .iserv.dsa import REFUSED_STATUSES, SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
 from .iserv.errors import DataError, OutageError
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows
 from .store import edit_config
@@ -16,8 +16,11 @@ SCHOOL_APP_SOURCE = "school-app"
 RECHECK_SECONDS = 3600
 MATCH_SECONDS = 600
 LOGGED_DETAIL_LEFT_OUT = ("refusal",)
+WITHHELD_WHY = "the school app does not release the timetable"
+REFUSED_WHY = "the school app refuses the timetable"
 
 Reading = namedtuple("Reading", "week source slots")
+WeekRequest = namedtuple("WeekRequest", "child_id child target marker raw_slots slots")
 
 
 class Absent:
@@ -91,6 +94,11 @@ def _yes_no(value):
     return "yes" if value else "no"
 
 
+def school_app_refusal(error):
+    detail = getattr(error, "detail", None) or {}
+    return detail.get("source") == SCHOOL_APP_SOURCE and detail.get("status") in REFUSED_STATUSES
+
+
 class TimetableSources:
     def __init__(self, connection):
         self.connection = connection
@@ -100,6 +108,7 @@ class TimetableSources:
         self._notes = {}
         self._vacations = None
         self._announced = False
+        self._refused = False
 
     def reset(self):
         with self._lock:
@@ -108,6 +117,7 @@ class TimetableSources:
             self._notes = {}
             self._vacations = None
             self._announced = False
+            self._refused = False
 
     def _note(self, key, message, *args, level=logging.INFO):
         now = self.connection.clock()
@@ -143,7 +153,7 @@ class TimetableSources:
     def _recheck_due(self):
         now = self.connection.clock()
         with self._lock:
-            due = self._checked_at is None or self._vacations is None or now - self._checked_at >= RECHECK_SECONDS
+            due = self._checked_at is None or now - self._checked_at >= RECHECK_SECONDS
             announce = not self._announced
             self._announced = True
         if announce:
@@ -161,11 +171,26 @@ class TimetableSources:
             return None
 
     def _school_week(self, target, course_ids):
-        school = self.connection._school_timetable(target, course_ids)
+        try:
+            school = self.connection._school_timetable(target, course_ids)
+        except DataError as error:
+            if school_app_refusal(error):
+                self._note_refusal()
+            raise
         with self._lock:
             self._checked_at = self.connection.clock()
             self._vacations = list(getattr(school, "vacations", None) or [])
+            self._refused = False
         return school
+
+    def _note_refusal(self):
+        with self._lock:
+            self._checked_at = self.connection.clock()
+            self._refused = True
+
+    def _school_app_refused(self):
+        with self._lock:
+            return self._refused
 
     def _time_table_reading(self, week, slots):
         with self._lock:
@@ -177,53 +202,97 @@ class TimetableSources:
         course_ids = (child or {}).get("course_ids")
         if not course_ids:
             page_id = self.connection._child_service.timetable_page_id(child_id)
-            return Reading(self.connection._session().get_timetable(page_id, target), TIME_TABLE_SOURCE, None)
+            return Reading(self._read_week(self.connection._session(), page_id, target), TIME_TABLE_SOURCE, None)
         marker = self._marker()
         raw_slots = self._slots()
         slots = parse_period_slots(raw_slots) if raw_slots is not None else None
+        request = WeekRequest(child_id, child, target, marker, raw_slots, slots)
         remembered = self.remembered()
-        if remembered and raw_slots:
-            self._store_source("", "the school app lists lesson slots", marker)
+        if self.connection.school_app_timetable_withheld():
+            self._note("withheld", "school app does not release the timetable, trying the time-table module")
+            reading = self._instead_of_school_app(request, remembered, WITHHELD_WHY)
+            if reading is not None:
+                return reading
             remembered = False
-        if remembered and not self._recheck_due():
-            week = self._time_table_week(child_id, child, target)
+        if remembered and (not raw_slots or self._school_app_refused()) and not self._recheck_due():
+            week = self._time_table_week(request)
             if week is not None:
                 return self._time_table_reading(week, slots)
-            self._store_source("", "the time-table module is absent", marker)
+            self._forget_time_table(request)
             remembered = False
-        school = self._school_week(target, course_ids)
+        try:
+            school = self._school_week(target, course_ids)
+        except DataError as error:
+            if not school_app_refusal(error):
+                raise
+            self._note("refused", "school app refuses the timetable (%s), trying the time-table module", error.detail.get("status"))
+            reading = self._instead_of_school_app(request, remembered, REFUSED_WHY)
+            if reading is None:
+                raise error
+            return reading
+        return self._after_school_week(request, school, remembered)
+
+    def _after_school_week(self, request, school, remembered):
+        if remembered and request.raw_slots:
+            self._store_source("", "the school app lists lesson slots", request.marker)
+            remembered = False
         if has_lessons(school):
             if remembered:
-                self._store_source("", "the school app lists lessons", marker)
-            return Reading(school, SCHOOL_APP_SOURCE, slots)
-        week_key = school.start_date
-        slot_count = "unknown" if raw_slots is None else len(raw_slots)
-        if raw_slots:
-            self._note("empty", "school app timetable empty (entries 0, slots %s) for the week of %s, no lessons that week", slot_count, week_key)
-            return Reading(school, SCHOOL_APP_SOURCE, slots)
+                self._store_source("", "the school app lists lessons", request.marker)
+            return Reading(school, SCHOOL_APP_SOURCE, request.slots)
+        slot_count = "unknown" if request.raw_slots is None else len(request.raw_slots)
+        if request.raw_slots:
+            self._note(
+                "empty", "school app timetable empty (entries 0, slots %s) for the week of %s, no lessons that week",
+                slot_count, school.start_date,
+            )
+            return Reading(school, SCHOOL_APP_SOURCE, request.slots)
         self._note("fallback", "school app timetable empty (entries 0, slots %s), trying the time-table module", slot_count)
-        week = self._time_table_week(child_id, child, target)
+        return self._instead_of_empty_school_week(request, school, remembered)
+
+    def _instead_of_empty_school_week(self, request, school, remembered):
+        week_key = school.start_date
+        week = self._time_table_week(request)
         if week is None:
             self._note("absent", "the week of %s has no lessons", week_key)
             if remembered:
-                self._store_source("", "the time-table module is absent", marker)
-            return Reading(school, SCHOOL_APP_SOURCE, slots)
+                self._forget_time_table(request)
+            return Reading(school, SCHOOL_APP_SOURCE, request.slots)
         if has_lessons(week) and not remembered:
-            self._store_source(TIME_TABLE_SOURCE, "the school app lists no lessons and no slots", marker)
+            self._store_source(TIME_TABLE_SOURCE, "the school app lists no lessons and no slots", request.marker)
             remembered = True
         if not remembered:
             self._note("empty-both", "time-table module lists no lessons either, the week of %s has no lessons", week_key)
-            return Reading(school, SCHOOL_APP_SOURCE, slots)
-        self._note("chosen", "timetable source time-table chosen for the week of %s", week_key)
-        return self._time_table_reading(week, slots)
+            return Reading(school, SCHOOL_APP_SOURCE, request.slots)
+        return self._chosen(request, week, week_key)
 
-    def _time_table_week(self, child_id, child, target):
+    def _instead_of_school_app(self, request, remembered, why):
+        week = self._time_table_week(request)
+        if week is None:
+            if remembered:
+                self._forget_time_table(request)
+            return None
+        if not remembered:
+            self._store_source(TIME_TABLE_SOURCE, why, request.marker)
+        return self._chosen(request, week, week.start_date)
+
+    def _forget_time_table(self, request):
+        self._store_source("", "the time-table module is absent", request.marker)
+
+    def _chosen(self, request, week, week_key):
+        self._note("chosen", "timetable source time-table chosen for the week of %s", week_key)
+        return self._time_table_reading(week, request.slots)
+
+    def _time_table_week(self, request):
         client = self.connection._session()
+        chosen = self._reported(client, lambda: self._time_table_id(client, str(request.child_id), request.child))
+        if chosen is None:
+            return None
+        return self._read_week(client, chosen, request.target)
+
+    def _reported(self, client, step):
         try:
-            chosen = self._time_table_id(client, str(child_id), child)
-            if chosen is None:
-                return None
-            week = client.read_time_table_week(chosen, target)
+            return step()
         except OutageError:
             raise
         except DataError as error:
@@ -236,6 +305,9 @@ class TimetableSources:
                 level=logging.WARNING,
             )
             raise
+
+    def _read_week(self, client, chosen, target):
+        week = self._reported(client, lambda: client.read_time_table_week(chosen, target))
         answer = getattr(week, "answer", None) or {}
         self._note(
             "data",

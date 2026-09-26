@@ -17,6 +17,7 @@ from tests.test_service_modules import (
     MESSENGER_PAGE_WITHOUT_CREDENTIALS,
     MESSENGER_PAGE_WITHOUT_DATA,
     ProbeClient,
+    Response,
     SchoolApp,
 )
 
@@ -64,12 +65,6 @@ class ModularService:
     def letters(self, tab="current"):
         self.calls.append("letters")
         return {"letters": [{"letter_id": "a", "recipient_id": "r", "title": "Trip", "unread": True}]}
-
-    def enrich_letters_search(self, tab="current"):
-        self.calls.append("enrich_letters_search")
-
-    def pending_confirmation_keys(self, tab="current"):
-        return set()
 
     def pinboard(self):
         self.calls.append("pinboard")
@@ -145,7 +140,6 @@ def test_missing_modules_are_never_requested(tmp_path, caplog):
         events = _poller(store, service).poll_once()
     names = _names(service.calls)
     assert "letters" not in names
-    assert "enrich_letters_search" not in names
     assert "pinboard" not in names
     assert "conferences" not in names
     assert "messenger" not in names
@@ -262,6 +256,65 @@ def _registry_lines(caplog):
 
 def _authenticate_calls(holder):
     return [path for path in holder["client"].calls if "authenticate" in path]
+
+
+LETTER_ROW = (
+    '<tr><td><a href="/iserv/parentletter/parent/show/{letter}/{recipient}">Letter {number}</a></td>'
+    "<td>Alex Sample</td><td>M. Sample</td><td></td><td>Class 3b</td><td>01.09.2026 08:00</td></tr>"
+)
+
+
+def _letter_list(count):
+    rows = "".join(
+        LETTER_ROW.format(
+            letter=f"10000000-0000-4000-8000-{number:012d}", recipient=f"20000000-0000-4000-8000-{number:012d}", number=number
+        )
+        for number in range(1, count + 1)
+    )
+    return f'<html><body><table id="crud-table"><tbody>{rows}</tbody></table></body></html>'
+
+
+class LetterProbeClient(ProbeClient):
+    def __init__(self, url, missing, letters):
+        super().__init__(url, missing=missing)
+        self.letters = letters
+
+    def fetch(self, path, params=None):
+        if path == modules.PROBES[modules.LETTERS][0]:
+            self.calls.append(path)
+            return Response(200, self.base_url + path, _letter_list(self.letters["count"]))
+        return super().fetch(path, params)
+
+    def fetch_or_raise(self, path, params=None):
+        return self.fetch(path, params)
+
+
+def test_a_poll_opens_no_letter_page_however_many_letters_are_new(tmp_path):
+    store = Store(tmp_path / "data")
+    connection_id = add_school(store, "https://school-one.example")
+    missing = [
+        path
+        for name in modules.MODULES
+        if name != modules.LETTERS
+        for path, _ in modules.probes_of(name, datetime.fromtimestamp(NOW_EPOCH).date())
+    ] + [modules.LEGACY_TIMETABLE_PATH]
+    letters = {"count": 3}
+    holder = {}
+
+    def factory(url):
+        holder["client"] = LetterProbeClient(url, missing, letters)
+        return holder["client"]
+
+    service = connection_service(store, connection_id, factory)
+    service._dsa = lambda: SchoolApp()
+    assert service.check_connection() == "ok"
+    assert service.modules()["modules"][modules.LETTERS] is True
+    Poller(service, store=store, clock=lambda: NOW_EPOCH).poll_once()
+    letters["count"] = 40
+    Poller(service, store=store, clock=lambda: NOW_EPOCH).poll_once()
+    calls = holder["client"].calls
+    assert calls.count(modules.PROBES[modules.LETTERS][0]) >= 3
+    assert [path for path in calls if "/parent/show/" in path] == []
 
 
 def test_a_messenger_page_without_data_and_without_authenticate_is_quietly_missing_and_never_polled(tmp_path, caplog):
@@ -399,3 +452,103 @@ def test_a_429_during_absences_backs_off_without_a_per_item_error(tmp_path):
     slot = _school_state(store)
     assert slot["last_error"] == integration.ERROR_OUTAGE
     assert slot[integration.OUTAGE_RETRY_AT] - slot["last_poll"] == 600
+
+
+def test_the_poller_reads_and_counts_a_week_the_school_app_refuses(tmp_path, caplog):
+    from app.store import child_key
+    from tests.time_table_school import MOVED_WEEK_PLAN, client_factory, withheld_school
+
+    store = Store(tmp_path / "data")
+    connection_id = add_school(store, "https://school-one.example")
+    school = withheld_school()
+    service = connection_service(store, connection_id, client_factory(school))
+    with caplog.at_level(logging.INFO):
+        Poller(service, store=store, clock=lambda: NOW_EPOCH).poll_once()
+    assert service.modules()["modules"][modules.TIMETABLE] is True
+    state = service.store.load_config()["poll_state"][child_key(connection_id, "500001")]
+    assert state["timetable_source"] == "time-table"
+    assert state["changes_count"] == 5
+    lessons_outside_unchosen_parallel_courses = len(MOVED_WEEK_PLAN) - 17
+    assert state["push_view"] == "parallel_pending"
+    assert len(state["plan_fields"]["date"]) == lessons_outside_unchosen_parallel_courses == 24
+    assert school.paths("/iserv/time-table/data")
+    assert _warnings(caplog) == []
+
+
+def withheld_poller(tmp_path, notifier=None, **school_fields):
+    from tests.time_table_school import client_factory, withheld_school
+
+    store = Store(tmp_path / "data")
+    connection_id = add_school(store, "https://school-one.example")
+    school = withheld_school(**school_fields)
+    service = connection_service(store, connection_id, client_factory(school))
+    poller = Poller(service, store=store, clock=lambda: NOW_EPOCH, notifier=notifier)
+    return poller, service, school, connection_id
+
+
+def poll_state_of(service, connection_id):
+    from app.store import child_key
+
+    return service.store.load_config()["poll_state"][child_key(connection_id, "500001")]
+
+
+def marked_in_push_view(service):
+    from app.poller import push_view_of
+
+    view, _ = push_view_of(service.timetable("500001"))
+    return sum(1 for lesson in view["lessons"] if lesson["change_kind"]), view
+
+
+def test_the_pushed_change_count_equals_the_marked_lessons_while_parallel_courses_are_open(tmp_path):
+    poller, service, _, connection_id = withheld_poller(tmp_path)
+    poller.poll_once()
+    marked, view = marked_in_push_view(service)
+    hidden_parallel_course_changes = 2
+    assert poll_state_of(service, connection_id)["changes_count"] == marked == len(view["changes"]) == 7 - hidden_parallel_course_changes
+    assert {item["subject"] for item in view["changes"]} == {"M", "L", "Bio"}
+
+
+def test_the_pushed_change_count_equals_the_marked_lessons_once_the_courses_are_chosen(tmp_path):
+    from app import courses
+
+    poller, service, _, connection_id = withheld_poller(tmp_path)
+    parallel = sorted(courses.parallel_keys(service.timetable("500001")["lessons"]))
+    service.save_course_filter("500001", ["Eth|", "SP-A|", "G|"], parallel)
+    poller.poll_once()
+    marked, view = marked_in_push_view(service)
+    assert poll_state_of(service, connection_id)["changes_count"] == marked == len(view["changes"]) == 7
+
+
+def test_a_week_with_moved_lessons_says_so_in_the_push(tmp_path):
+    from app import messages
+    from tests.time_table_school import moved_week_changes
+
+    calls = []
+    poller, service, school, connection_id = withheld_poller(tmp_path, notifier=lambda name, message: calls.append(message) or True, changes=())
+    poller.poll_once()
+    course_hint = messages.text_in("de", "notify.timetable.courses", {"name": "Kim"})
+    assert [message for message in calls if course_hint not in message] == []
+    school.changes = moved_week_changes
+    poller.poll_once()
+    pushed = [message for message in calls if course_hint not in message]
+    expected = messages.text_count("de", "notify.timetable.changesMoved", 5, {"name": "Kim"})
+    assert len(pushed) == 1
+    assert expected in pushed[0]
+    assert poll_state_of(service, connection_id)["changes_format"] == "lessons"
+
+
+def test_the_new_change_list_format_does_not_push_the_known_changes_again(tmp_path):
+    calls = []
+    poller, service, _, connection_id = withheld_poller(tmp_path, notifier=lambda name, message: calls.append(message) or True)
+    poller.poll_once()
+    before = list(calls)
+    config = service.store.load_config()
+    state = next(iter(config["poll_state"].values()))
+    state.pop("changes_format")
+    state["changes_signature"] = "signature-of-the-raw-records"
+    service.store.save_config(config)
+    poller.poll_once()
+    assert calls == before
+    assert poll_state_of(service, connection_id)["changes_format"] == "lessons"
+    poller.poll_once()
+    assert calls == before

@@ -1879,6 +1879,23 @@ def test_school_app_query_lines_accept_only_real_booleans():
     assert "- Child 1: courses in filter 2, students 0, entries per student -" in lines
 
 
+def test_school_app_query_lines_name_a_withheld_and_refused_timetable():
+    settings = [{"timetable_availableForGuardiansAndStudents": False, "substitutions_availableForGuardiansAndStudents": True}]
+    client, _ = school_app_client(settings, None)
+    client.pages[reportfacts.CURRENT_TIMETABLE_QUERY_PATH] = Response(403, SCHOOL_ONE_URL, "<html>Forbidden</html>", "text/html")
+    lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert "- Settings: timetable_availableForGuardiansAndStudents=no, substitutions_availableForGuardiansAndStudents=yes" in lines
+    assert "- Timetable release: off, the app reads the time-table module instead of the school app" in lines
+    assert "- Child 1: courses in filter 2, not read, answer 403" in lines
+
+
+def test_school_app_query_lines_leave_out_the_release_line_when_released_or_unknown():
+    for settings in ([{"timetable_availableForGuardiansAndStudents": True}], [{}], {"timetable_availableForGuardiansAndStudents": "false"}):
+        client, _ = school_app_client(settings, {"students": []})
+        lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
+        assert not [line for line in lines if line.startswith("- Timetable release:")]
+
+
 def test_school_app_query_lines_without_a_session_says_so():
     lines = reportfacts.school_app_query_lines(None, {}, datetime(2026, 9, 23).date())
     assert "- Settings: timetable_availableForGuardiansAndStudents=not read, substitutions_availableForGuardiansAndStudents=not read" in lines
@@ -1978,3 +1995,85 @@ def test_a_crawled_page_scans_its_scripts_only_once(monkeypatch):
     lines = reportcrawl.module_crawl(client, landing, "/iserv/ausleihe/", reportcrawl.menu_shape, {}, "/iserv/")
     assert "- Crawl: 1 linked pages, skipped none" in lines
     assert len(scanned) == 1
+
+
+def moved_week_payload():
+    from tests.time_table_school import MOVED_WEEK_PLAN, moved_week_changes, time_table_week
+
+    payload = time_table_week("21.09.2026", "27.09.2026", plan=MOVED_WEEK_PLAN)
+    payload["plain-changes"] = moved_week_changes("21.09.2026")
+    return payload
+
+
+def test_the_report_lists_the_digit_codes_and_the_effect_of_every_change_record():
+    client, _recorded = time_table_client(PLAIN_TIME_TABLE, data=moved_week_payload())
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "", [], 1)
+    start = lines.index("- Time-table change records:")
+    assert lines[start + 1:start + 10] == [
+        "| # | change_types | Effect | Move | Subject changed | Classes changed | Text |",
+        "|---|---|---|---|---|---|---|",
+        "| 1 | 3,5 | changed | from | yes | no | no |",
+        "| 2 | 2,4 | changed | - | no | yes | no |",
+        "| 3 | 1,5 | cancelled | to | - | no | yes |",
+        "| 4 | 2,4 | changed | - | no | no | no |",
+        "| 5 | 3,5 | changed | from | yes | no | no |",
+        "| 6 | 2,4 | changed | - | no | yes | no |",
+        "| 7 | 1,5 | cancelled | to | - | no | no |",
+    ]
+    text = "\n".join(lines)
+    for literal in ("Material", "mitbringen", "Eth", "5B", "R0.06"):
+        assert literal not in text, literal
+
+
+def test_change_type_values_that_are_no_short_digits_are_masked():
+    payload = moved_week_payload()
+    payload["plain-changes"][0]["change_types"] = ["Vertretung durch Frau Lehrerin", 4711123, "3\nLehrerin", "5"]
+    client, _recorded = time_table_client(PLAIN_TIME_TABLE, data=payload)
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "", [], 1)
+    assert "| 1 | <text>,<text>,<text>,5 | changed | from | yes | no | no |" in lines
+    assert "Lehrerin" not in "\n".join(lines)
+    assert "4711123" not in "\n".join(lines)
+
+
+RENDERER_SCRIPT = "/iserv/time-table/static/js/renderer.5f1df5bd.js"
+RENDERER_PAGE = PLAIN_TIME_TABLE.replace("<body>", '<body><script src="%s"></script>' % RENDERER_SCRIPT)
+
+
+def renderer_lines(script):
+    client, _recorded = time_table_client(RENDERER_PAGE, data=moved_week_payload())
+    client.scripts = {RENDERER_SCRIPT: script}
+    return diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "", [], 1)
+
+
+def test_the_report_prints_the_change_type_labels_of_the_page_scripts_in_school_neutral_words():
+    script = (
+        'var t={change_types:{1:_("Entfall"),2:"Vertretung",3:"Hierhin verschoben",'
+        '5:"Wegverlegung",7:"Frau Lehrerin"}};function r(c){switch(c.change_types[0]){case "4":return "Raumänderung";}}'
+    )
+    lines = renderer_lines(script)
+    assert "- Change type anchors in scripts: 2" in lines
+    assert "- Change type labels in scripts: 1 -> Entfall | 2 -> Vertretung | 3 -> Hierhin verschoben | 4 -> Raumänderung | 5 -> Wegverlegung | 7 -> <word> <word>" in lines
+    assert "Lehrerin" not in "\n".join(lines)
+
+
+def test_a_change_type_word_found_before_a_later_key_keeps_its_own_window(monkeypatch):
+    monkeypatch.setattr(scriptscan, "TYPE_WINDOW", 10)
+    word = '{1:"Entfall"}'
+    key = 'change_types {2:"Vertretung"}'
+    text = " " * 96 + word + " " * (207 - 96 - len(word)) + key
+    assert text.index("Entfall") == 100 and text.index("change_types") == 207
+    anchors, pairs = scriptscan.change_type_labels([text])
+    assert anchors == 1
+    assert [code for code, _labels in pairs] == [1, 2]
+
+
+def test_a_script_without_a_change_type_table_says_so():
+    lines = renderer_lines('fetch("/iserv/time-table/data");var x={1:"a"};')
+    assert "- Change type anchors in scripts: 0" in lines
+    assert "- Change type labels in scripts: none found" in lines
+
+
+def test_the_report_names_unread_scripts_instead_of_an_empty_label_table():
+    client, _recorded = time_table_client(PLAIN_TIME_TABLE, data=moved_week_payload())
+    lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "", [], 1)
+    assert "- Change type labels in scripts: no page script read" in lines

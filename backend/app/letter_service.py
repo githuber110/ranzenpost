@@ -287,75 +287,22 @@ class LetterService:
             "can_reply": bool(parsed.get("editor") or parsed.get("text_field")),
         }
 
-    def _confirmation_cache_entry(self, public):
-        if not public or not public.get("open"):
-            return None
-        return {
-            "type": public.get("type", ""),
-            "sendable": bool(public.get("sendable")),
-            "can_reply": bool(public.get("can_reply")),
-        }
-
     def _store_confirmation_cache(self, key, parsed):
         state = self._cached_confirmation(parsed)
 
         def change(cache):
             entry = cache.get(key)
-            if isinstance(entry, dict):
-                cache[key] = dict(entry, confirmation=state)
+            cache[key] = dict(entry if isinstance(entry, dict) else {}, confirmation=state)
 
         edit_slot(self.connection.store, "letters_search_cache", change)
 
-    def _needs_confirmation_refresh(self, entry):
-        if not isinstance(entry, dict):
-            return True
-        if "confirmation" not in entry:
-            return True
-        return bool(entry.get("confirmation"))
-
-    def enrich_letters_search(self, tab="current"):
-        entries = self.letters(tab)["letters"]
-        cache = self.connection.store.load_letters_search_cache()
-        cached_before = dict(cache)
-        records = self.connection.store.load_letters_confirmations()
-        indexed = 0
-        for entry in entries:
-            key = self._letter_key(entry)
-            cached = cache.get(key)
-            known = key in cache
-            if known and key in records:
-                continue
-            if known and not self._needs_confirmation_refresh(cached):
-                continue
-            detail = self._letter_detail(
-                _clean_id(entry.get("letter_id")), _clean_id(entry.get("recipient_id")), inspect_reply=False
-            )
-            cache[key] = {
-                "body_text": cached.get("body_text", "") if known else plain_text(detail.get("body_html", "")),
-                "attachments": cached.get("attachments", []) if known else detail.get("attachments", []),
-                "confirmation": self._confirmation_cache_entry(detail.get("confirmation")),
-            }
-            indexed += 1
-        if indexed:
-            fresh = {key: value for key, value in cache.items() if value is not cached_before.get(key)}
-
-            def change(current):
-                confirmed = self.connection.store.load_letters_confirmations()
-                for key, value in fresh.items():
-                    if key in confirmed and key in current:
-                        continue
-                    current[key] = value
-
-            edit_slot(self.connection.store, "letters_search_cache", change)
-        return indexed
-
-    def pending_confirmation_keys(self, tab="current"):
-        entries = self.letters(tab)["letters"]
-        return {
-            self._letter_key(entry)
-            for entry in entries
-            if (entry.get("confirmation") or {}).get("open")
+    def _store_search_entry(self, key, body_html, attachments, parsed):
+        entry = {
+            "body_text": plain_text(body_html),
+            "attachments": attachments,
+            "confirmation": self._cached_confirmation(parsed),
         }
+        edit_slot(self.connection.store, "letters_search_cache", lambda cache: cache.update({key: entry}))
 
     def mark_letters_read(self, keys=None, mark_all=False):
         targets = [str(key) for key in keys or []]
@@ -416,12 +363,11 @@ class LetterService:
             raise DataError("the letter is not listed", message_key=LETTER_UNKNOWN_KEY)
         return self._letter_detail(letter_id, recipient_id)
 
-    def _letter_detail(self, letter_id, recipient_id, inspect_reply=True):
+    def _letter_detail(self, letter_id, recipient_id):
         _, response = self._fetch_letter_page(letter_id, recipient_id)
         detail = parse_letter_detail(response.text, response.url)
         parsed = parse_confirmation(response.text, response.url)
         key = f"{letter_id}:{recipient_id}"
-        self._store_confirmation_cache(key, parsed)
         record = self.connection.store.load_letters_confirmations().get(key)
         attachments = [
             {
@@ -434,8 +380,9 @@ class LetterService:
         self._remember_attachments(
             key, [str(item.get("attachment_id")) for item in detail.get("attachments", []) if item.get("attachment_id")]
         )
+        self._store_search_entry(key, detail.get("body_html", ""), attachments, parsed)
         reply = None
-        if inspect_reply and parsed is None:
+        if parsed is None:
             reply = self._reply_offer(key, response)
         return {
             "title": detail.get("title", ""),

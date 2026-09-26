@@ -2,6 +2,7 @@ import json
 import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from ..valueshape import shape_lines
 from .errors import DataError
@@ -23,6 +24,7 @@ SUBSTITUTED_FIELDS = (
     ("room", "substitutionRoom"),
 )
 PLACEHOLDER_CHARACTERS = frozenset("-+?–— ")
+CHANGE_ITEMS_FORMAT = "lessons"
 
 
 def week_bounds(reference):
@@ -84,15 +86,20 @@ def change_key(lesson, crowded):
     return f"{taught}|{lesson.room}" if taught in crowded else taught
 
 
+def _field(raw, key):
+    value = raw.get(key)
+    return "" if value is None else value
+
+
 def _to_lesson(raw):
     return Lesson(
         date=raw.get("date", ""),
         day_of_week=int(raw.get("dow", 0)),
         period=int(raw.get("period", 0)),
-        subject=raw.get("subject", ""),
-        teacher=raw.get("teacher", ""),
-        room=raw.get("room", ""),
-        class_name=raw.get("class", ""),
+        subject=_field(raw, "subject"),
+        teacher=_field(raw, "teacher"),
+        room=_field(raw, "room"),
+        class_name=_field(raw, "class"),
         lesson_id=raw.get("id"),
         internal_id=raw.get("internal_id"),
     )
@@ -427,12 +434,24 @@ def _change_targets(original, record):
     return hits
 
 
+def _teacher_withheld(record):
+    if "substitutionTeacher" not in record or _value(record, "substitutionTeacher") or _change_cancels(record):
+        return False
+    subject = _value(record, "substitutionSubject")
+    if subject and subject != _text(record.get("origSubject")).strip():
+        return True
+    room = _value(record, "substitutionRoom")
+    return not room or room == _value(record, "origRoom")
+
+
 def _substituted(entry, record):
     result = dict(entry)
     for field, key in SUBSTITUTED_FIELDS:
         value = _value(record, key)
         if value:
             result[field] = value
+    if _teacher_withheld(record):
+        result["teacher"] = ""
     return result
 
 
@@ -478,23 +497,39 @@ def _apply_changes(combined, records):
     current = list(combined)
     added = []
     applied = []
+    touched = []
     for record in records:
         if not _text(record.get("origSubject")):
             lessons = _added_lessons(record, original, current + added)
             added.extend(lessons)
             if lessons:
                 applied.append(record)
+                touched.append((record, [], lessons))
             continue
         targets = _change_targets(original, record)
+        cancels = _change_cancels(record)
         for index in targets:
             base = current[index] if current[index] is not None else original[index]
-            current[index] = None if _change_cancels(record) else _substituted(base, record)
+            current[index] = None if cancels else _substituted(base, record)
         if targets:
             applied.append(record)
-    return [entry for entry in current if entry is not None] + added, applied
+            touched.append((record, targets, []))
+    kept = [index for index, entry in enumerate(current) if entry is not None]
+    position = {index: spot for spot, index in enumerate(kept)}
+    extra = {id(entry): len(kept) + spot for spot, entry in enumerate(added)}
+    reach = [
+        {
+            "record": record,
+            "dropped": [original[index] for index in targets if index not in position],
+            "shown": [(position[index], original[index]) for index in targets if index in position]
+            + [(extra[id(entry)], None) for entry in lessons],
+        }
+        for record, targets, lessons in touched
+    ]
+    return [current[index] for index in kept] + added, applied, reach
 
 
-def with_time_table_changes(payload):
+def _changes_with_reach(payload):
     raw = payload.get("plain-changes") or []
     records = sorted(
         (record for record in raw if isinstance(record, dict)),
@@ -503,26 +538,250 @@ def with_time_table_changes(payload):
     data = payload.get("data")
     combined = data.get("timetable") if isinstance(data, dict) else None
     if not records or not isinstance(combined, list):
-        return payload, []
+        return payload, [], []
     try:
-        timetable, applied = _apply_changes(combined, records)
+        timetable, applied, reach = _apply_changes(combined, records)
     except (AttributeError, TypeError, ValueError) as error:
         logger.warning("time-table changes left out, their records were not understood: %s", type(error).__name__)
-        return payload, []
-    return {**payload, "data": {**data, "timetable": timetable}}, applied
+        return payload, [], []
+    return {**payload, "data": {**data, "timetable": timetable}}, applied, reach
+
+
+def _class_list(names):
+    return ", ".join(sorted(names))
+
+
+def _raw_previous(entry):
+    if entry is None:
+        return _previous_values(None)
+    return {"subject": _field(entry, "subject"), "teacher": _field(entry, "teacher"), "room": _field(entry, "room")}
+
+
+def _with_note(entry, record):
+    note = _text(record.get("text")).strip()
+    if not note:
+        return
+    notes = [part for part in (entry.get("note") or "").split("\n") if part]
+    if note not in notes:
+        notes.append(note)
+    entry["note"] = "\n".join(notes)
+
+
+def _with_classes(entry, record):
+    before = _classes(record.get("origClass"))
+    after = _classes(record.get("substitutionClass"))
+    if entry["kind"] != "changed" or not before or not after or before == after:
+        return
+    if "class" not in entry["fields"]:
+        entry["fields"].append("class")
+    entry["previous"] = dict(entry["previous"], **{"class": _class_list(before)})
+    entry["classes"] = _class_list(after)
+
+
+def _marked(entry, record, before, move, teacher):
+    if entry:
+        result = dict(entry)
+    else:
+        result = _entry("added" if before is None else "changed", [], _raw_previous(before))
+    result["fields"] = list(result.get("fields") or [])
+    if result["kind"] == "changed" and _teacher_withheld(record):
+        result["fields"] = [name for name in COMPARED_FIELDS if name in result["fields"] or name == "teacher"]
+        result["teacher_hidden"] = True
+    if result.get("teacher_hidden") and not result["previous"].get("teacher") and not teacher:
+        result["fields"] = [name for name in result["fields"] if name != "teacher"]
+    _with_classes(result, record)
+    _with_note(result, record)
+    result.update(move)
+    if result["kind"] == "changed" and not result["fields"] and not result.get("teacher_hidden"):
+        result["no_details"] = True
+    return result
+
+
+def _identity(date_value, period, subject, teacher, room):
+    return (str(date_value or ""), _number(period), subject or "", teacher or "", room or "")
+
+
+def _dropped_row(rows, dropped):
+    wanted = _identity(
+        dropped.get("date"), dropped.get("period"), _field(dropped, "subject"), _field(dropped, "teacher"), _field(dropped, "room")
+    )
+    loose = wanted[:3] + ("", "")
+    matchers = (
+        ("cancelled", lambda lesson, previous: _identity(lesson.date, lesson.period, lesson.subject, lesson.teacher, lesson.room) == wanted),
+        ("changed", lambda lesson, previous: _identity(lesson.date, lesson.period, previous.get("subject"), previous.get("teacher"), previous.get("room")) == wanted),
+        ("cancelled", lambda lesson, previous: _identity(lesson.date, lesson.period, lesson.subject, "", "") == loose),
+    )
+    for kind, matches in matchers:
+        for spot, (lesson, entry) in enumerate(rows):
+            if entry and entry.get("kind") == kind and matches(lesson, entry.get("previous") or {}):
+                return spot
+    return None
+
+
+class MoveSide(NamedTuple):
+    direction: str
+    subject: str
+    classes: set
+    teacher: str
+    places: list
+    codes: frozenset
+
+
+def _span(places):
+    periods = sorted({period for _, period in places})
+    return {"date": places[0][0], "period": periods[0], "period_end": periods[-1]}
+
+
+def _move_side(item, rows):
+    record = item["record"]
+    if item["dropped"] and not item["shown"]:
+        places = [(str(entry.get("date") or ""), _number(entry.get("period"))) for entry in item["dropped"]]
+        if any(period is None for _, period in places):
+            return None
+        return MoveSide("away", _text(record.get("origSubject")), _classes(record.get("origClass")), _value(record, "origTeacher"), places, _codes(record))
+    subject = _value(record, "substitutionSubject")
+    if item["shown"] and subject and subject != _text(record.get("origSubject")):
+        places = [(rows[spot][0].date, rows[spot][0].period) for spot, _ in item["shown"]]
+        return MoveSide("here", subject, _classes(record.get("substitutionClass")), _value(record, "substitutionTeacher"), places, _codes(record))
+    return None
+
+
+def change_type_texts(values):
+    if not isinstance(values, list):
+        return None
+    return [str(value) if isinstance(value, (str, int)) and not isinstance(value, bool) else None for value in values]
+
+
+def _codes(record):
+    return frozenset(text.strip() for text in change_type_texts(record.get("change_types")) or [] if text and text.strip())
+
+
+def _moves_together(away, here):
+    return (
+        away.subject == here.subject
+        and (not away.codes or not here.codes or bool(away.codes & here.codes))
+        and (not away.classes or not here.classes or bool(away.classes & here.classes))
+        and (not away.teacher or not here.teacher or away.teacher == here.teacher)
+        and not set(away.places) & set(here.places)
+    )
+
+
+def _moves(reach, rows):
+    sides = [(number, _move_side(item, rows)) for number, item in enumerate(reach)]
+    aways = [(number, side) for number, side in sides if side and side.direction == "away"]
+    heres = [(number, side) for number, side in sides if side and side.direction == "here"]
+    moves = {}
+    for number, away in aways:
+        partners = [(other, here) for other, here in heres if _moves_together(away, here)]
+        if len(partners) != 1:
+            continue
+        partner, here = partners[0]
+        if sum(1 for _, other in aways if _moves_together(other, here)) != 1:
+            continue
+        moves[number] = {"moved_to": _span(here.places)}
+        moves[partner] = {"moved_from": _span(away.places)}
+    return moves
+
+
+def _overlay(rows, reach):
+    rows = list(rows)
+    moves = _moves(reach, rows)
+    for number, item in enumerate(reach):
+        record = item["record"]
+        move = moves.get(number, {})
+        for spot, before in item["shown"]:
+            lesson, entry = rows[spot]
+            rows[spot] = (lesson, _marked(entry, record, before, move, lesson.teacher))
+        for dropped in item["dropped"]:
+            spot = _dropped_row(rows, dropped)
+            if spot is None:
+                lesson = _to_lesson(dropped)
+                rows.append((lesson, _marked(_cancelled_entry(), record, None, move, lesson.teacher)))
+            else:
+                lesson, entry = rows[spot]
+                rows[spot] = (lesson, _marked(entry or _cancelled_entry(), record, None, move, lesson.teacher))
+    return rows
+
+
+def change_items(rows):
+    return [
+        {
+            "date": lesson.date,
+            "period": lesson.period,
+            "subject": lesson.subject,
+            "teacher": lesson.teacher,
+            "room": lesson.room,
+            "kind": entry.get("kind") or "",
+            "fields": list(entry.get("fields") or []),
+            "note": entry.get("note") or "",
+            "moved": bool(entry.get("moved_to") or entry.get("moved_from")),
+        }
+        for lesson, entry in rows
+        if entry
+    ]
+
+
+def with_time_table_changes(payload):
+    changed, applied, _ = _changes_with_reach(payload)
+    return changed, applied
+
+
+def _effect(item):
+    if item["dropped"] and not item["shown"]:
+        return "cancelled"
+    if item["shown"] and all(before is None for _, before in item["shown"]):
+        return "added"
+    return "changed"
+
+
+def _record_fact(record, effect, move):
+    before = _text(record.get("origSubject")).strip()
+    after = _value(record, "substitutionSubject")
+    classes = _classes(record.get("origClass"))
+    other = _classes(record.get("substitutionClass"))
+    return {
+        "types": record.get("change_types"),
+        "effect": effect,
+        "move": move,
+        "subject_changed": (before != after) if before and after else None,
+        "classes_changed": bool(classes and other and classes != other),
+        "text": bool(_text(record.get("text")).strip()),
+    }
+
+
+def change_record_facts(payload):
+    changed, _, reach = _changes_with_reach(payload)
+    try:
+        moves = _moves(reach, parse_timetable(changed).rows)
+    except (DataError, AttributeError, TypeError, ValueError):
+        moves = {}
+    effects = {}
+    for number, item in enumerate(reach):
+        move = moves.get(number, {})
+        effects[id(item["record"])] = (_effect(item), "to" if "moved_to" in move else "from" if "moved_from" in move else "")
+    return [
+        _record_fact(record, *effects.get(id(record), ("none", "")))
+        for record in payload.get("plain-changes") or []
+        if isinstance(record, dict)
+    ]
+
+
+def changes_format(week):
+    return CHANGE_ITEMS_FORMAT if week.change_items is not None else ""
 
 
 def shown_changes(week):
-    return week.changes if week.applied_changes is None else week.applied_changes
+    return week.changes if week.change_items is None else week.change_items
 
 
 def parse_time_table(payload):
     if not isinstance(payload, dict):
         raise time_table_shape_error("the time-table answer was not an object", payload)
     try:
-        changed, applied = with_time_table_changes(payload)
+        changed, _, reach = _changes_with_reach(payload)
         week = parse_timetable(changed)
-        week.applied_changes = applied
+        week.rows = _overlay(week.rows, reach)
+        week.change_items = change_items(week.rows)
         return week
     except DataError as error:
         raise time_table_shape_error(str(error), payload) from error

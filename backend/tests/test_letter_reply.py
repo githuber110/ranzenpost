@@ -195,10 +195,10 @@ def test_a_missing_or_unknown_form_offers_nothing_and_logs_one_line_without_valu
         assert value not in caplog.text
 
 
-def test_the_background_search_index_neither_inspects_nor_logs_the_reply_form(tmp_path, caplog):
+def test_the_letter_list_neither_inspects_nor_logs_the_reply_form(tmp_path, caplog):
     caplog.set_level(logging.INFO)
     service, _, _ = _reply_service(tmp_path, [_fixture_text("letter_confirm_done.html")])
-    service.enrich_letters_search("current")
+    service.letters("current")
     assert "letter reply form" not in caplog.text
 
 

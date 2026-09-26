@@ -15,7 +15,7 @@ from .iserv.children import (
     time_table_recognised,
     time_table_session_lost,
 )
-from .iserv.timetable import data_params, with_time_table_changes
+from .iserv.timetable import change_record_facts, change_type_texts, data_params, with_time_table_changes
 from .module_catalogue import edition_of, official_name
 from .pageshape import body_kind, json_of, response_skeleton, shape_block, status_of, visible_text
 from .pathpattern import MATRIX_ROOM, ROOM_MARK
@@ -29,13 +29,14 @@ from .reportcrawl import (
     module_crawl,
     module_link_structure,
     module_prefix,
+    MAX_SCRIPTS_PER_MODULE,
     script_section,
     start_page_links,
     unsupported_module_lines,
 )
 from .reportfacts import children_lines, iserv_version_lines, letters_summary_lines, listed_children, school_app_query_lines
 from .requestlog import messenger_sync_lines, slow_request_lines
-from .scriptscan import SCRIPT_ROOT
+from .scriptscan import SCRIPT_ROOT, change_type_label_line, change_type_labels, script_sources
 from .store import host_of
 from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option
 from .valueshape import table_cell
@@ -66,6 +67,10 @@ KNOWN_ROWS = (
 CATALOGUE_SLUGS = {LEGACY_TIMETABLE: "timetable"}
 TIME_TABLE_SLUG = "timetable"
 TIME_TABLE_DATA = "/iserv/time-table/data"
+TYPE_CODE = re.compile(r"^\d{1,3}$")
+RECORD_TABLE_HEAD = "| # | change_types | Effect | Move | Subject changed | Classes changed | Text |"
+RECORD_TABLE_RULE = "|---|---|---|---|---|---|---|"
+MAX_RECORD_ROWS = 40
 DATA_PATHS = {
     TIME_TABLE_SLUG: TIME_TABLE_DATA,
     LEGACY_TIMETABLE: "/iserv/timetable/data",
@@ -411,7 +416,7 @@ def _time_table_child(options, children, listed):
     return None
 
 
-def time_table_data_lines(client, page, today, children, listed=None):
+def time_table_data_lines(client, page, today, children, listed=None, cache=None):
     if page is None:
         return ["- Data: not read, the page did not answer"]
     lost = time_table_session_lost(page)
@@ -444,7 +449,52 @@ def time_table_data_lines(client, page, today, children, listed=None):
         lines.append("- Data query: week filter without childId")
     response = _probe(client, TIME_TABLE_DATA, data_params(chosen, today), None, lines)
     lines.extend(_change_record_lines(response))
+    lines.extend(_change_type_label_lines(page, cache))
     return lines
+
+
+def _type_codes(values):
+    texts = change_type_texts(values)
+    if texts is None:
+        return "-"
+    return ",".join(text if text is not None and TYPE_CODE.fullmatch(text) else "<text>" for text in texts) or "-"
+
+
+def _fact_cell(value):
+    return "-" if value is None else "yes" if value else "no"
+
+
+def _record_fact_lines(payload):
+    facts = change_record_facts(payload)
+    lines = ["- Time-table change records:", RECORD_TABLE_HEAD, RECORD_TABLE_RULE]
+    for number, fact in enumerate(facts[:MAX_RECORD_ROWS], start=1):
+        lines.append("| %d | %s | %s | %s | %s | %s | %s |" % (
+            number, _type_codes(fact["types"]), fact["effect"], fact["move"] or "-",
+            _fact_cell(fact["subject_changed"]), _fact_cell(fact["classes_changed"]), _fact_cell(fact["text"]),
+        ))
+    if len(facts) > MAX_RECORD_ROWS:
+        lines.append("- Time-table change records cut after %d" % MAX_RECORD_ROWS)
+    return lines
+
+
+def _script_texts(page, cache):
+    texts = []
+    for path in script_sources(getattr(page, "text", "") or "", str(getattr(page, "url", "") or ""))[:MAX_SCRIPTS_PER_MODULE]:
+        _state, body = (cache or {}).get(path) or ("", None)
+        if body is not None and int(getattr(body, "status_code", 0) or 0) == 200:
+            texts.append(body.text or "")
+    return texts
+
+
+def _change_type_label_lines(page, cache):
+    texts = _script_texts(page, cache)
+    if not texts:
+        return ["- Change type labels in scripts: no page script read"]
+    anchors, pairs = change_type_labels(texts)
+    return [
+        "- Change type anchors in scripts: %d" % anchors,
+        "- Change type labels in scripts: %s" % change_type_label_line(pairs),
+    ]
 
 
 def _change_record_lines(response):
@@ -462,6 +512,7 @@ def _change_record_lines(response):
     _changed, applied = with_time_table_changes(payload)
     lines = ["- Time-table changes: raw %d, applied %d" % (len(raw), len(applied)), "- Time-table change record shape:"]
     lines.extend(shape_block(raw))
+    lines.extend(_record_fact_lines(payload))
     return lines
 
 
@@ -474,7 +525,7 @@ def page_structure(client, row, today, cache=None, child_id="", children=(), lis
     for path, params in structure_targets(row, today, child_id):
         answers[path] = _probe(client, path, params, cache, lines)
     if row["slug"] == TIME_TABLE_SLUG and row.get("data"):
-        lines.extend(time_table_data_lines(client, answers.get(row["page"]), today, children, listed))
+        lines.extend(time_table_data_lines(client, answers.get(row["page"]), today, children, listed, cache))
     landing = answers.get(row["page"])
     if landing is not None and status_of(landing) == 200 and body_kind(landing) == "html" and callable(getattr(client, "fetch_unfollowed", None)):
         lines.extend(module_crawl(client, landing, module_prefix(row["page"]), menu_shape, cache, SCRIPT_ROOT))

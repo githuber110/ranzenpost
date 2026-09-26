@@ -36,7 +36,7 @@ from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY
 from .iserv.conferences import parse_conferences
-from .iserv.dsa import DieSchulAppClient
+from .iserv.dsa import SUBSTITUTIONS_SETTING, TIMETABLE_SETTING, DieSchulAppClient
 from .iserv.client import (
     LOGIN_TWOFACTOR_SETUP_KEY,
     PASSWORD_UNVERIFIED,
@@ -57,7 +57,7 @@ from .iserv.errors import (
     transport_outage,
 )
 from .iserv.dsa_timetable import parse_current_timetable
-from .iserv.timetable import display_rows, shown_changes
+from .iserv.timetable import changes_format, display_rows, shown_changes
 from .iserv.twofactor import parse_delete_token
 from .mapping import (
     merge_discovered_codes,
@@ -73,7 +73,6 @@ START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
 MODULES_RECHECKED_KEY = "api.modules.rechecked"
 MODULES_TOO_SOON_KEY = "api.modules.tooSoon"
-TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 DSA_API_PATH = "/iserv/dieschulapp/api/1.0"
 DSA_FILE_PATH = DSA_API_PATH + "/files/{filename}"
 UNKNOWN_CONNECTION_KEY = "api.connection.unknown"
@@ -95,7 +94,6 @@ UPSTREAM_ERRORS = (LoginError, TwoFactorError, DataError, requests.RequestExcept
 TIMETABLE_UNREADABLE_KEY = "api.timetable.unreadable"
 COURSES_SAVED_KEY = "api.courses.saved"
 COURSES_RESET_KEY = "api.courses.reset"
-SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 
 
 DISCONNECT_NO_UUID_KEY = "api.disconnect.noUuid"
@@ -208,12 +206,15 @@ class ConnectionService:
             raise OutageError(status_reason(status))
         html = getattr(page, "text", "") if status == 200 else ""
         login_html = str(getattr(client, "login_page", "") or "")
-        registry = modules.detect(html, client.fetch, self.store.load_modules(), login_html=login_html)
-        if registry["modules"][modules.TIMETABLE] and self._timetable_setting_off():
-            registry["modules"][modules.TIMETABLE] = False
-        return registry
+        return modules.detect(
+            html,
+            client.fetch,
+            self.store.load_modules(),
+            login_html=login_html,
+            school_app_timetable=not self.school_app_timetable_withheld(),
+        )
 
-    def _timetable_setting_off(self):
+    def school_app_timetable_withheld(self):
         try:
             settings = self._school_settings()
         except Exception:
@@ -234,11 +235,12 @@ class ConnectionService:
     def modules(self):
         stored = self.store.load_modules()
         registry = modules.normalize(stored if stored else None)
-        if self._timetable_page_denied:
-            registry["modules"][modules.TIMETABLE] = False
-        if not stored and registry["modules"][modules.TIMETABLE] and self._timetable_setting_off():
+        if self._timetable_page_denied and not self._school_app_timetable_usable(registry):
             registry["modules"][modules.TIMETABLE] = False
         return registry
+
+    def _school_app_timetable_usable(self, registry):
+        return modules.school_app_timetable_served(registry) and self._child_service.course_ids_known()
 
     def stored_modules(self):
         stored = self.store.load_modules()
@@ -557,14 +559,15 @@ class ConnectionService:
         return value if isinstance(value, bool) else None
 
     def _school_timetable(self, target, course_ids):
-        payload = self._dsa().current_timetable(
+        school_app = self._dsa()
+        payload = school_app.current_timetable(
             target, course_ids, substitutions=self._substitutions_released() is True
         )
         if payload is None:
             raise DataError(
                 "timetable was not readable",
                 message_key=TIMETABLE_UNREADABLE_KEY,
-                detail={"source": "school-app", "date": target.isoformat()},
+                detail={"source": "school-app", "date": target.isoformat(), "status": school_app.last_status},
             )
         return parse_current_timetable(payload, target)
 
@@ -671,12 +674,6 @@ class ConnectionService:
 
     def letters(self, tab="current"):
         return self._letters().letters(tab)
-
-    def enrich_letters_search(self, tab="current"):
-        return self._letters().enrich_letters_search(tab)
-
-    def pending_confirmation_keys(self, tab="current"):
-        return self._letters().pending_confirmation_keys(tab)
 
     def mark_letters_read(self, keys=None, mark_all=False):
         return self._letters().mark_letters_read(keys, mark_all)
@@ -856,6 +853,7 @@ class ConnectionService:
             "end_date": week.end_date,
             "lessons": lessons,
             "changes": shown_changes(week),
+            "changes_format": changes_format(week),
             "period_times": config.get("period_times", {}),
             "school_period_times": school_times,
             "change_count": sum(1 for entry in lessons if entry["change_kind"]),

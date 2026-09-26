@@ -7,7 +7,7 @@ from . import valueshape
 from .pageshape import code_text, json_script, unique
 from .pathpattern import path_only, placeholders
 from .valueshape import table_cell
-from .vocabulary import known_word
+from .vocabulary import CHANGE_TYPE_WORDS, known_word
 
 MAX_SCRIPT_ENDPOINTS = 400
 MIN_SEGMENTS = 2
@@ -40,6 +40,18 @@ CREDENTIAL_KEY = re.compile(
 )
 HASH_SEGMENT = re.compile(r"(?<=[-._~])(?=[A-Za-z0-9_]*\d)[A-Za-z0-9_]{6,}(?=\.(?:[a-z]+\.)*m?js$)")
 SCRIPT_NAME_PART = re.compile(r"(<[a-z]+>|[-_.~])")
+TYPE_KEY_ANCHOR = re.compile(r"change_?types?|chgtypes?", re.IGNORECASE)
+TYPE_WORD_ANCHOR = re.compile("|".join(CHANGE_TYPE_WORDS), re.IGNORECASE)
+TYPE_WINDOW = 1500
+TYPE_LABEL = r"(?:[\w$.]+\(\s*)?[\"'`]([^\"'`\\\n]{1,60})[\"'`]"
+TYPE_PAIRS = (
+    re.compile(r"(?<![\w$.])[\"']?(\d{1,2})[\"']?\s*:\s*" + TYPE_LABEL),
+    re.compile(r"\bcase\s+[\"']?(\d{1,2})[\"']?\s*:\s*(?:return\s+)?" + TYPE_LABEL),
+    re.compile(r"\[\s*[\"']?(\d{1,2})[\"']?\s*\]\s*=\s*" + TYPE_LABEL),
+)
+LABEL_WORD = re.compile(r"[^\W\d_]+")
+LABEL_DIGITS = re.compile(r"\d+")
+MAX_TYPE_LABELS = 40
 
 
 def script_sources(html, page_url, root=SCRIPT_ROOT):
@@ -202,3 +214,46 @@ def inline_endpoints(html):
 def endpoint_rows(found, link_shape=None):
     rows = unique((_endpoint_row(key, keys, link_shape) for key, keys in sorted(found.items(), key=_sort_key)), MAX_SCRIPT_ENDPOINTS)
     return [SCRIPT_TABLE_HEAD, SCRIPT_TABLE_RULE] + rows
+
+
+def _label_shape(label):
+    words = LABEL_WORD.sub(lambda match: match.group(0) if known_word(match.group(0)) else valueshape.WORD_MARK, label.strip())
+    return LABEL_DIGITS.sub("<n>", words)
+
+
+def _type_windows(text):
+    found = sorted(
+        (max(0, match.start() - TYPE_WINDOW), min(len(text), match.end() + TYPE_WINDOW))
+        for pattern in (TYPE_KEY_ANCHOR, TYPE_WORD_ANCHOR)
+        for match in pattern.finditer(text)
+    )
+    spans = []
+    for start, end in found:
+        if spans and start <= spans[-1][1]:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], end))
+        else:
+            spans.append((start, end))
+    return [text[start:end] for start, end in spans]
+
+
+def change_type_labels(texts):
+    anchors = 0
+    found = {}
+    for text in texts:
+        anchors += len(TYPE_KEY_ANCHOR.findall(text))
+        for window in _type_windows(text):
+            for pattern in TYPE_PAIRS:
+                for match in pattern.finditer(window):
+                    code = int(match.group(1))
+                    found.setdefault(code, [])
+                    shaped = _label_shape(match.group(2))
+                    if shaped and shaped not in found[code]:
+                        found[code].append(shaped)
+    pairs = [(code, labels) for code, labels in sorted(found.items()) if labels][:MAX_TYPE_LABELS]
+    return anchors, pairs
+
+
+def change_type_label_line(pairs):
+    if not pairs:
+        return "none found"
+    return " | ".join("%d -> %s" % (code, " / ".join(labels)) for code, labels in pairs)

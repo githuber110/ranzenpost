@@ -13,8 +13,6 @@ from ..lockout import LOCKED, classify_login_response, login_refusal
 from .auth import apply_login_fields, fill_two_factor_code
 from .pages import base_shape, refusal_of
 from .children import (
-    CHILD_PAGE_FORBIDDEN_KEY,
-    FORBIDDEN_STATUSES,
     child_page_message_key,
     child_select_present,
     page_diagnosis,
@@ -56,7 +54,6 @@ from .timetable import (
     TIMETABLE_SHAPE_KEY,
     data_params,
     parse_time_table,
-    parse_timetable,
 )
 from .totp import generate_code
 from .twofactor import (
@@ -286,7 +283,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.2.3")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.3.0")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -541,25 +538,6 @@ class IServClient:
                 detail=page_diagnosis(response),
             )
         return parse_children(response.text)
-
-    def get_timetable(self, child_id, reference=None):
-        params = data_params(child_id, reference or date.today())
-        response = self._get(TIME_TABLE_DATA, params=params)
-        self._raise_server_failure(response)
-        self._raise_session_lost(response)
-        if response.status_code in FORBIDDEN_STATUSES:
-            raise DataError(
-                f"timetable request failed: {response.status_code}",
-                message_key=CHILD_PAGE_FORBIDDEN_KEY,
-                detail=page_diagnosis(response),
-            )
-        if response.status_code != 200:
-            raise DataError(f"timetable request failed: {response.status_code}")
-        try:
-            payload = response.json()
-        except ValueError as error:
-            raise DataError("timetable response was not json") from error
-        return parse_timetable(payload)
 
     def read_time_table_page(self):
         response = self._get(TIME_TABLE_PAGE)

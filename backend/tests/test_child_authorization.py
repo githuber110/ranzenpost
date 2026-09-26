@@ -35,7 +35,7 @@ class RecordingClient:
             raise self.failure
         return list(self.children)
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         self.timetable_calls.append(child_id)
         raise AssertionError(f"timetable of {child_id} must not be requested")
 
@@ -105,7 +105,7 @@ def test_an_unreadable_child_list_is_an_error_and_not_an_empty_list(tmp_path):
 
 def test_without_stored_children_a_listed_child_is_allowed(tmp_path):
     class Allowed(RecordingClient):
-        def get_timetable(self, child_id, reference=None):
+        def read_time_table_week(self, child_id, reference=None):
             self.timetable_calls.append(child_id)
             raise DataError("stop after the check", message_key="test.reached")
 

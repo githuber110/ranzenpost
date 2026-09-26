@@ -1,5 +1,6 @@
 import pytest
 
+from app import modules
 from app.iserv.children import CHILD_PAGE_MESSAGE_KEY
 from app.iserv.errors import DataError
 from app.store import Store
@@ -44,6 +45,10 @@ def school_without_timetable(tmp_path, school_app, client=LetterPages):
     connection_id = add_school(store, "https://school.example")
     service = connection_service(store, connection_id, lambda url: client(url))
     service._dsa = lambda: school_app
+    probed = modules.default_registry()
+    probed["modules"][modules.TIMETABLE] = False
+    probed["checked_at"] = 1_790_000_000
+    service.store.save_modules(probed)
     return service, store, connection_id
 
 

@@ -298,12 +298,33 @@ def test_a_detection_that_blows_up_keeps_the_stored_registry(tmp_path, caplog):
     assert store.load_modules() == before
 
 
-def test_the_timetable_flag_also_honours_the_school_setting(tmp_path):
-    service, _, _ = make(tmp_path)
+def test_an_unreleased_school_app_timetable_leaves_the_time_table_module_available(tmp_path):
+    service, _, holder = make(tmp_path)
     service._dsa = lambda: SchoolApp({"timetable_availableForGuardiansAndStudents": False})
     service.check_connection()
-    assert service.modules()["modules"][modules.TIMETABLE] is False
-    assert service.timetable_available() is False
+    assert service.modules()["modules"][modules.TIMETABLE] is True
+    assert service.timetable_available() is True
+    assert modules.DSA_TIMETABLE_PATH not in holder["client"].calls
+    assert modules.PROBES[modules.TIMETABLE][0] in holder["client"].calls
+
+
+def test_a_refusing_school_app_leaves_the_time_table_module_available(tmp_path):
+    service, _, _ = make(tmp_path, missing=[modules.DSA_TIMETABLE_PATH])
+    service._dsa = lambda: SchoolApp({"timetable_availableForGuardiansAndStudents": False})
+    service.check_connection()
+    assert service.timetable_available() is True
+    released, _, _ = make(tmp_path / "released", missing=[modules.DSA_TIMETABLE_PATH])
+    released.check_connection()
+    assert released.timetable_available() is True
+
+
+def test_an_unreleased_timetable_is_available_before_and_after_the_first_probe(tmp_path):
+    service, _, _ = make(tmp_path)
+    service._dsa = lambda: SchoolApp({"timetable_availableForGuardiansAndStudents": False})
+    assert service.timetable_available() is True
+    service.check_connection()
+    assert service.stored_modules()["checked_at"] > 0
+    assert service.timetable_available() is True
 
 
 def test_a_timetable_served_only_by_the_school_app_stays_available(tmp_path):

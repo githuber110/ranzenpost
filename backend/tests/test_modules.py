@@ -503,3 +503,14 @@ def test_a_registry_stored_before_the_catalogue_keeps_its_unknown_list():
     registry = modules.normalize({"modules": {}, "unknown": [{"segment": "mail", "label": "E-Mail"}], "checked_at": 3})
     assert registry["unknown"] == [{"segment": "mail", "label": "E-Mail"}]
     assert registry["unsupported"] == []
+
+
+def test_a_withheld_school_app_timetable_is_not_probed_and_leaves_the_page_to_decide():
+    served = _timetable_answers(None, None)
+    registry = modules.detect(START_PAGE, served, None, school_app_timetable=False)
+    assert registry["modules"][TIMETABLE] is True
+    assert modules.DSA_TIMETABLE_PATH not in [path for path, _ in served.calls]
+    assert registry["probes"][TIMETABLE]["path"] == modules.PROBES[TIMETABLE][0]
+    missing = _timetable_answers(None, NATIVE_MISSING)
+    assert modules.detect(START_PAGE, missing, None, school_app_timetable=False)["modules"][TIMETABLE] is False
+    assert modules.DSA_TIMETABLE_PATH not in [path for path, _ in missing.calls]

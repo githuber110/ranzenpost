@@ -36,7 +36,7 @@ class FakeClient:
     def get_children(self):
         return [Child(child_id, name) for child_id, name in self._children]
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         lessons = [Lesson("31.08.2026", 1, 1, "D", "BEH", "R1", "1a")]
         return TimetableWeek("31.08.2026", "06.09.2026", "22.07.2026 12:25", lessons, lessons, [])
 
@@ -531,7 +531,6 @@ def test_push_texts_name_the_school_only_when_there_is_more_than_one(tmp_path):
         service.connection(name).letters = lambda tab="current", school=name: {
             "letters": [{"letter_id": school, "recipient_id": "r", "title": "New", "unread": True}]
         }
-        service.connection(name).pending_confirmation_keys = lambda tab="current": set()
     Poller(service, notifiers=notifiers).poll_once()
     for name in (one, two):
         service.connection(name).letters = lambda tab="current", school=name: {

@@ -105,7 +105,7 @@ class FakeClient:
     def get_children(self):
         return [Child(RAW_CHILD, CHILD_NAME)]
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         lessons = list(self.source.lessons)
         return TimetableWeek(WEEK_START, WEEK_END, "01.09.2026 12:00", lessons, lessons, list(self.source.changes))
 
@@ -201,16 +201,6 @@ class FakeLetters:
         listed = self.archive if tab == "archive" else self.current
         return {"letters": [self._view(entry, tab) for entry in listed]}
 
-    def pending_confirmation_keys(self, tab="current"):
-        return {
-            f"{entry['letter_id']}:{entry['recipient_id']}"
-            for entry in self.letters(tab)["letters"]
-            if entry["confirmation"]["open"]
-        }
-
-    def enrich_letters_search(self, tab="current"):
-        return 0
-
     def archive_letter(self, letter_id, recipient_id):
         moved = [entry for entry in self.current if entry["letter_id"] == letter_id]
         self.current = [entry for entry in self.current if entry["letter_id"] != letter_id]
@@ -275,8 +265,6 @@ class Harness:
         self.letters = FakeLetters(self.store.connection_store(SCHOOL))
         for name in (
             "letters",
-            "pending_confirmation_keys",
-            "enrich_letters_search",
             "archive_letter",
             "restore_letter",
             "confirm_letter",
