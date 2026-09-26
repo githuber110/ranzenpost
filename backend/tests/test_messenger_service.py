@@ -111,7 +111,7 @@ class FakeMatrixClient:
         self.plan = plan or {}
         self.calls = []
 
-    def sync(self, since=None, timeout_ms=0):
+    def sync(self, since=None, timeout_ms=0, sync_filter=None):
         self.calls.append(("sync", self.access_token))
         return self._resolve("sync")
 
@@ -193,7 +193,7 @@ def test_a_401_triggers_exactly_one_bootstrap_refresh_then_succeeds():
     def factory(base_url, access_token):
         tokens_seen.append(access_token)
 
-        def sync_plan(since=None, timeout_ms=0):
+        def sync_plan(since=None, timeout_ms=0, sync_filter=None):
             if access_token == "stale-tok":
                 raise MatrixAuthError("expired")
             return FakeMatrixResponse(json_data={"rooms": {"join": {}}})

@@ -316,7 +316,9 @@ def _api(made, tmp_path):
         def is_configured(self):
             return True
 
-        def first_connection(self):
+        id = "a1b2c3d4"
+
+        def pick_school(self, connection_id=None):
             return self
 
         def known_connection(self, connection_id):

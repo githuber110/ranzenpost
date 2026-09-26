@@ -3,6 +3,29 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2609.2.3
+
+### Changed
+
+- The messenger asks the school server only for the data it shows. Checking for new messages loads far less data, the chat
+  list about a third of what it did.
+- With several schools, teacher search, new chats and absences ask which school you mean instead of using the first one.
+  Settings show when a school lists no profiles for your account.
+- Children are matched by name the same way everywhere, including name order, hyphens and ß. When two children share a
+  name, nothing is guessed.
+- The full problem report shows how each IServ module is built, including modules run by other providers such as
+  Klassengeld after their sign-in. It also marks modules that only show data. It leaves out names, amounts and tokens,
+  opens no letter or single entry, and stops after one minute. Requests in the log name their school.
+
+### Fixed
+
+- Room and teacher changes from the IServ `time-table` module now show in the week, with cancellations and extra
+  lessons. The change notification counts only changes that affect a lesson.
+- A school whose account lists no children keeps its letters, pinboard, conferences and chat updated instead of stopping.
+- A short outage of the school account no longer creates a second child or a second Home Assistant device, and a child
+  stored twice is merged back into one.
+- The sick note PDF opens for the right school when several schools are set up.
+
 ## 2609.2.2
 
 ### New

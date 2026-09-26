@@ -19,7 +19,7 @@ from .mark_routes import register_routes as register_mark_routes
 from .period_routes import register_routes as register_period_routes
 from .pinboard_routes import register_routes as register_pinboard_routes
 from .poller import Poller
-from .store import config_for_connection
+from .store import CHILDREN_STATE_KEY, config_for_connection
 from .upstream import NETWORK, binary_upstream_response, read_endpoint, upstream_write_error, write_endpoint
 from .wizard_routes import register_routes as register_wizard_routes
 
@@ -111,11 +111,7 @@ def create_app(
         return response
 
     def _connection_config(connection_id):
-        if connection_id:
-            service.known_connection(connection_id)
-        else:
-            connection_id = service.first_connection().id
-        return config_for_connection(service.store, connection_id)
+        return config_for_connection(service.store, service.pick_school(connection_id or None).id)
 
     @app.get("/api/health")
     def health():
@@ -148,6 +144,7 @@ def create_app(
                         "username": row["username"],
                         "setup_complete": row["setup_complete"],
                         "children": len(row["children"]),
+                        CHILDREN_STATE_KEY: row.get(CHILDREN_STATE_KEY, ""),
                     },
                     **integration.outage_view(service.store, row["id"]),
                 )
@@ -248,7 +245,7 @@ def create_app(
 
     @app.get("/api/holidays/region-suggestion")
     def holiday_region_suggestion(connection: str = ""):
-        return region_source.suggest(connection or None)
+        return read_endpoint(lambda: region_source.suggest(service.pick_school(connection or None).id))
 
     @app.get("/api/holidays")
     def holiday_range(week: int = 0, start: str = "", end: str = "", connection: str = ""):

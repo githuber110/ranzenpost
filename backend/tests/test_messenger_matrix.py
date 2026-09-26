@@ -62,7 +62,9 @@ def test_sync_forwards_the_since_token_for_incremental_polling():
     client, session = make_client()
     client.sync(since="s123", timeout_ms=30000)
     _, _, _, params = session.calls[0]
-    assert params == {"timeout": 30000, "since": "s123"}
+    assert params["timeout"] == 30000
+    assert params["since"] == "s123"
+    assert "filter" in params
 
 
 def test_a_401_response_raises_matrix_auth_error():

@@ -122,6 +122,7 @@ class TimeTableSchool:
         page=PAGE_SHOWN,
         vacations=(),
         on_data=None,
+        changes=(),
     ):
         self.child_id = child_id
         self.child_name = child_name
@@ -133,6 +134,7 @@ class TimeTableSchool:
         self.page = page
         self.vacations = list(vacations)
         self.on_data = on_data
+        self.changes = changes if callable(changes) else list(changes)
         self.headers = {}
         self.cookies = [Cookie("IServSession")]
         self.hooks = {"response": []}
@@ -198,6 +200,8 @@ class TimeTableSchool:
             return Answer(url, payload={"rows": [{"cells": 3}]}, content_type="application/json")
         week_filter = json.loads(params.get("filter") or "{}")
         payload = time_table_week(week_filter.get("startDate", ""), week_filter.get("endDate", ""), self.time_table == LESSONS)
+        records = self.changes(week_filter.get("startDate", "")) if callable(self.changes) else self.changes
+        payload["plain-changes"] = [dict(record) for record in records]
         return Answer(url, payload=payload, content_type="application/json")
 
     def get(self, url, params=None, timeout=None, **kwargs):

@@ -1,7 +1,10 @@
+import ipaddress
+import json
+import socket
 import time
 from collections import namedtuple
 from datetime import date
-from urllib.parse import urlparse
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests
 
@@ -163,13 +166,127 @@ def password_outcome(answer, cookie_names):
 CappedBody = namedtuple("CappedBody", "status_code text truncated")
 TimeTablePage = namedtuple("TimeTablePage", "absent select children")
 CAPPED_CHUNK = 64 * 1024
+REDIRECT_NONE = "none"
+REDIRECT_SAME_HOST = "same host"
+REDIRECT_OTHER_HOST = "other host"
+
+
+def host_kind(url, base_url):
+    target = requestlog.url_host(url)
+    return REDIRECT_SAME_HOST if target and target == requestlog.url_host(base_url) else REDIRECT_OTHER_HOST
+
+
+def redirect_kind(url, status, location, base_url):
+    if not 300 <= int(status or 0) < 400 or not location:
+        return REDIRECT_NONE
+    return host_kind(urljoin(str(url or ""), str(location)), base_url)
+
+
+CHAIN_REFUSED = "target refused"
+CHAIN_TOO_LONG = "too many redirects"
+CHAIN_OUT_OF_TIME = "time budget reached"
+CHAIN_BLOCKED_HOSTS = ("localhost",)
+CHAIN_BLOCKED_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa")
+ChainHop = namedtuple("ChainHop", "status where")
+RedirectChain = namedtuple("RedirectChain", "hops landing stop reader")
+
+
+class UnfollowedAnswer:
+    def __init__(self, status_code, url, content_type, text, truncated, redirect, next_url=""):
+        self.status_code = status_code
+        self.url = url
+        self.headers = {"Content-Type": content_type} if content_type else {}
+        self.text = text
+        self.content = text.encode("utf-8")
+        self.truncated = truncated
+        self.redirect = redirect
+        self.next_url = next_url
+
+    def json(self):
+        return json.loads(self.text)
+
+
+def resolve_host(host):
+    return [info[4][0] for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
+
+
+def _public_address(address):
+    try:
+        return ipaddress.ip_address(str(address).split("%", 1)[0]).is_global
+    except ValueError:
+        return False
+
+
+def chain_target_allowed(url, resolver=resolve_host):
+    parts = urlparse(str(url or ""))
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or "." not in host or host in CHAIN_BLOCKED_HOSTS or host.endswith(CHAIN_BLOCKED_SUFFIXES):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        pass
+    try:
+        addresses = list(resolver(host) or ())
+    except (OSError, UnicodeError, ValueError):
+        return False
+    return bool(addresses) and all(_public_address(address) for address in addresses)
+
+
+class ChainReader:
+    def __init__(self, home_url, session, landing_url):
+        self.home_url = home_url
+        self.session = session
+        parts = urlparse(landing_url)
+        self.origin = "%s://%s" % (parts.scheme, parts.netloc)
+
+    def fetch_unfollowed(self, path, limit, timeout, expired=None):
+        return unfollowed_get(self.session, self.origin + path, limit, timeout, self.home_url, expired)
+
+    def fetch_capped(self, path, limit, timeout, expired=None):
+        return capped_get(self.session, self.origin + path, limit, timeout, expired)
+
+
+def capped_get(session, url, limit, timeout, expired=None):
+    response = session.get(url, timeout=timeout, stream=True, allow_redirects=False)
+    try:
+        text, truncated = _read_capped(response, limit, expired)
+    finally:
+        response.close()
+    return CappedBody(int(response.status_code or 0), text, truncated)
+
+
+def unfollowed_get(session, url, limit, timeout, home_url, expired=None):
+    response = session.get(url, timeout=timeout, stream=True, allow_redirects=False)
+    try:
+        status = int(response.status_code or 0)
+        location = response.headers.get("Location")
+        redirect = redirect_kind(url, status, location, home_url)
+        next_url = urldefrag(urljoin(url, location))[0] if redirect != REDIRECT_NONE else ""
+        text, truncated = ("", False) if next_url else _read_capped(response, limit, expired)
+    finally:
+        response.close()
+    return UnfollowedAnswer(status, url, str(response.headers.get("Content-Type") or ""), text, truncated, redirect, next_url)
+
+
+def _read_capped(response, limit, expired=None):
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=CAPPED_CHUNK):
+        body.extend(chunk)
+        if len(body) > limit:
+            del body[limit:]
+            return bytes(body).decode("utf-8", "replace"), True
+        if expired is not None and expired():
+            return bytes(body).decode("utf-8", "replace"), True
+    return bytes(body).decode("utf-8", "replace"), False
 
 
 class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
-        self.session = requestlog.install(session or requests.Session())
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.2.2")
+        self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.2.3")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -177,6 +294,8 @@ class IServClient:
         self.refusal = ""
         self.answered = False
         self.sleeper = time.sleep
+        self.new_chain_session = requests.Session
+        self.resolve_host = resolve_host
 
     def login(self, username, password, code_provider):
         self.username = username
@@ -248,23 +367,39 @@ class IServClient:
     def fetch(self, path, params=None):
         return self._get(path, params=params)
 
-    def fetch_capped(self, path, limit, timeout):
-        body = bytearray()
-        truncated = False
+    def fetch_capped(self, path, limit, timeout, expired=None):
         try:
-            response = self.session.get(self._url(path), timeout=timeout, stream=True)
-            try:
-                for chunk in response.iter_content(chunk_size=CAPPED_CHUNK):
-                    body.extend(chunk)
-                    if len(body) > limit:
-                        del body[limit:]
-                        truncated = True
-                        break
-            finally:
-                response.close()
+            return capped_get(self.session, self._url(path), limit, timeout, expired)
         except requests.RequestException as error:
             raise transport_outage(error) from error
-        return CappedBody(int(response.status_code or 0), bytes(body).decode("utf-8", "replace"), truncated)
+
+    def fetch_unfollowed(self, path, limit, timeout, expired=None):
+        try:
+            return unfollowed_get(self.session, self._url(path), limit, timeout, self.base_url, expired)
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
+
+    def continue_chain(self, answer, max_hops, limit, timeout, expired=None):
+        hops = [ChainHop(int(answer.status_code or 0), host_kind(answer.url, self.base_url))]
+        target = getattr(answer, "next_url", "")
+        if getattr(answer, "redirect", REDIRECT_NONE) != REDIRECT_OTHER_HOST or not target:
+            return RedirectChain(hops, None, CHAIN_REFUSED, None)
+        chain = requestlog.install(self.new_chain_session(), urlparse(self.base_url).hostname or "")
+        chain.headers["User-Agent"] = self.session.headers.get("User-Agent", "")
+        for _ in range(max_hops):
+            if expired is not None and expired():
+                return RedirectChain(hops, None, CHAIN_OUT_OF_TIME, None)
+            if not chain_target_allowed(target, self.resolve_host):
+                return RedirectChain(hops, None, CHAIN_REFUSED, None)
+            try:
+                reply = unfollowed_get(chain, target, limit, timeout, self.base_url, expired)
+            except requests.RequestException as error:
+                return RedirectChain(hops, None, "error %s" % type(error).__name__, None)
+            hops.append(ChainHop(reply.status_code, host_kind(target, self.base_url)))
+            target = reply.next_url
+            if not target:
+                return RedirectChain(hops, reply, "", ChainReader(self.base_url, chain, reply.url))
+        return RedirectChain(hops, None, CHAIN_TOO_LONG, None)
 
     def fetch_or_raise(self, path, params=None):
         response = self._get(path, params=params)
@@ -411,6 +546,7 @@ class IServClient:
         params = data_params(child_id, reference or date.today())
         response = self._get(TIME_TABLE_DATA, params=params)
         self._raise_server_failure(response)
+        self._raise_session_lost(response)
         if response.status_code in FORBIDDEN_STATUSES:
             raise DataError(
                 f"timetable request failed: {response.status_code}",

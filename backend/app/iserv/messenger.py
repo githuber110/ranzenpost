@@ -29,12 +29,44 @@ PHP_DATA_ID = "php-data"
 
 MATRIX_SYNC_PATH = "/_matrix/client/v3/sync"
 INITIAL_SYNC_TIMELINE_LIMIT = 20
-INITIAL_SYNC_FILTER = {
+BROAD_SYNC_FILTER = {
     "room": {
         "timeline": {"limit": INITIAL_SYNC_TIMELINE_LIMIT},
         "ephemeral": {"limit": 0, "types": []},
     },
     "presence": {"limit": 0, "types": []},
+}
+MEMBERSHIP_FIELD = "content.membership"
+ROOM_LIST_EVENT_FIELDS = [
+    "type",
+    "state_key",
+    "origin_server_ts",
+    "content.name",
+    "content.membership",
+    "content.displayname",
+    "content.body",
+]
+ROOM_LIST_SYNC_FILTER = {
+    "event_fields": ROOM_LIST_EVENT_FIELDS,
+    "account_data": {"types": []},
+    "presence": {"limit": 0, "types": []},
+    "room": {
+        "state": {"types": ["m.room.name", "m.room.member"]},
+        "timeline": {"limit": INITIAL_SYNC_TIMELINE_LIMIT},
+        "ephemeral": {"limit": 0, "types": []},
+        "account_data": {"types": []},
+    },
+}
+UNREAD_SYNC_FILTER = {
+    "event_fields": ["type"],
+    "account_data": {"types": []},
+    "presence": {"limit": 0, "types": []},
+    "room": {
+        "state": {"types": []},
+        "timeline": {"limit": 1},
+        "ephemeral": {"limit": 0, "types": []},
+        "account_data": {"types": []},
+    },
 }
 MATRIX_MESSAGES_PATH = "/_matrix/client/v3/rooms/{room_id}/messages"
 MATRIX_SEND_PATH = "/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}"
@@ -602,6 +634,25 @@ def looks_like_teacher_room_form(html):
     return parse_teacher_room_form(html, "") is not None
 
 
+def filter_misread(sync_body, sync_filter):
+    if MEMBERSHIP_FIELD not in ((sync_filter or {}).get("event_fields") or []):
+        return False
+    rooms = (sync_body or {}).get("rooms") if isinstance(sync_body, dict) else None
+    joined = rooms.get("join") if isinstance(rooms, dict) else None
+    if not isinstance(joined, dict):
+        return False
+    for room in joined.values():
+        if not isinstance(room, dict):
+            continue
+        for event in _all_state_events(room):
+            if event.get("type") != "m.room.member":
+                continue
+            content = event.get("content")
+            if not isinstance(content, dict) or "membership" not in content:
+                return True
+    return False
+
+
 def room_membership(sync_body, room_id):
     rooms = (sync_body or {}).get("rooms") or {}
     for membership in ("join", "invite", "leave"):
@@ -667,12 +718,13 @@ class MatrixClient:
             raise MatrixAuthError("matrix token rejected")
         return response
 
-    def sync(self, since=None, timeout_ms=0):
-        params = {"timeout": timeout_ms}
+    def sync(self, since=None, timeout_ms=0, sync_filter=None):
+        params = {
+            "timeout": timeout_ms,
+            "filter": json.dumps(sync_filter or ROOM_LIST_SYNC_FILTER, separators=(",", ":")),
+        }
         if since:
             params["since"] = since
-        else:
-            params["filter"] = json.dumps(INITIAL_SYNC_FILTER, separators=(",", ":"))
         return self._get(MATRIX_SYNC_PATH, params=params)
 
     def room_messages(self, room_id, before_token=None, limit=30):

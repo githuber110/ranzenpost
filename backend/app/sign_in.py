@@ -4,6 +4,7 @@ import math
 import threading
 import time
 
+from . import requestlog
 from .iserv.client import LOGIN_SESSION_KEY, LOGIN_TWOFACTOR_KEY, LOGIN_TWOFACTOR_SETUP_KEY, REFUSAL_KEYS
 from .iserv.errors import (
     REASON_BAD_CREDENTIALS,
@@ -218,7 +219,7 @@ class SignInService:
         hold = _login_hold_of(secrets, fingerprint, self.connection.clock())
         if hold is not None:
             raise _held_login_error(hold)
-        client = self.connection.client_factory(config["school_url"])
+        client = requestlog.tag_school(self.connection.client_factory(config["school_url"]), self.connection.id)
         if timeout is not None:
             client.timeout = timeout
         try:

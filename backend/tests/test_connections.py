@@ -7,7 +7,7 @@ from app import integration, modules
 from app.iserv.errors import DataError, LoginError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.poller import Poller
-from app.service import IServService, NotConfiguredError
+from app.service import IServService, NotConfiguredError, SchoolRequiredError
 from app.store import Store
 from tests.support import DEFAULT_SECRETS, add_school, connection_service
 
@@ -456,7 +456,9 @@ def test_the_absence_overview_names_its_school(tmp_path):
     assert body["connection_id"] == two
     assert body["school"] == "School Two"
     service.connection(one).absences_overview = lambda: {"children": [], "entries": []}
-    assert service.absences_overview()["connection_id"] == one
+    assert service.absences_overview(one)["connection_id"] == one
+    with pytest.raises(SchoolRequiredError):
+        service.absences_overview()
 
 
 def test_the_poller_walks_every_school_and_a_failing_one_does_not_stop_the_other(tmp_path):

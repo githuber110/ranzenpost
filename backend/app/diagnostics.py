@@ -6,9 +6,6 @@ import re
 import threading
 import time
 import zipfile
-from urllib.parse import urljoin, urlsplit
-
-from bs4 import BeautifulSoup
 
 from . import feed, integration, logfile, modules, namebook, supervisor, valueshape
 from .iserv.children import (
@@ -18,12 +15,30 @@ from .iserv.children import (
     time_table_recognised,
     time_table_session_lost,
 )
-from .iserv.timetable import data_params
+from .iserv.timetable import data_params, with_time_table_changes
 from .module_catalogue import edition_of, official_name
-from .pathpattern import MATRIX_ROOM, ROOM_MARK, path_only, path_pattern, placeholders
+from .pageshape import body_kind, json_of, response_skeleton, shape_block, status_of, visible_text
+from .pathpattern import MATRIX_ROOM, ROOM_MARK
+from .reportcrawl import (
+    CrawlBudget,
+    capped_module,
+    linked_rows,
+    menu_lines,
+    menu_paths_by_segment,
+    menu_shape,
+    module_crawl,
+    module_link_structure,
+    module_prefix,
+    script_section,
+    start_page_links,
+    unsupported_module_lines,
+)
+from .reportfacts import children_lines, iserv_version_lines, letters_summary_lines, listed_children, school_app_query_lines
+from .requestlog import messenger_sync_lines, slow_request_lines
+from .scriptscan import SCRIPT_ROOT
 from .store import host_of
 from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option
-from .vocabulary import TOKEN, known_word
+from .valueshape import table_cell
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +77,7 @@ JSON_PROBES = {
 }
 TABLE_HEAD = "| Module | Slug | Edition | Status | Probe | HTTP | Content type | Length | Final path |"
 TABLE_RULE = "|---|---|---|---|---|---|---|---|---|"
-LANDMARK_TAGS = ("header", "nav", "main", "section", "article", "aside", "footer", "form", "table", "iframe", "dialog")
-FIELD_TAGS = ("input", "select", "textarea", "button")
-MAX_LANDMARKS = 80
-MAX_LINKS = 200
-MAX_ENDPOINTS = 120
-MAX_HEADERS = 60
-MAX_TABLE_ROWS_LINES = 20
-HEADER_CHARS = 40
+MAX_UNKNOWN_STRUCTURE_ROWS = 10
 MIN_WORD = 3
 MIN_SCHOOL_WORD = 4
 MIN_SECRET = 4
@@ -81,51 +89,13 @@ ASSIGNED_SECRET = re.compile(
 URL_HOST = re.compile(r"(?i)\bhttps?://[^\s/\"'<>]{1,2048}")
 HOST_SUFFIXES = ("de", "com", "net", "org", "eu", "schule", "school", "example", "local", "io", "info", "edu", "at", "ch")
 BARE_HOST = re.compile(r"(?i)\b(?:[a-z0-9-]{1,63}\.){1,10}(?:" + "|".join(HOST_SUFFIXES) + r")\b")
-SCRIPT_PATH = re.compile(r"[\"'](/(?:iserv|_matrix)/[^\"'\s<>]*)[\"']")
-PLACEHOLDER = re.compile(r"<[a-z]+>")
-MAX_SCRIPTS_PER_MODULE = 8
-MAX_SCRIPT_BYTES = 2 * 1024 * 1024
-SCRIPT_TIMEOUT = 10
-MAX_SCRIPT_ENDPOINTS = 400
-MIN_SEGMENTS = 2
-SCRIPT_PREFIXES = ("/iserv/", "/_matrix/", "/api/")
-SCRIPT_ROOT = "/iserv/"
-EXPR = "<expr>"
-HASH_MARK = "<hash>"
-KEY_WINDOW = 300
-HEAD_WINDOW = 160
-OPTIONS_WINDOW = 400
-NO_METHOD = "-"
-SCRIPT_TABLE_HEAD = "| Method | Path | Script | Keys nearby |"
-SCRIPT_TABLE_RULE = "|---|---|---|---|"
-STRING_LITERAL = re.compile(r"\"([^\"\\]*(?:\\.[^\"\\]*)*)\"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`")
-PATH_START = re.compile(r"[\"'`]/")
-TEMPLATE_HOLE = re.compile(r"\$\{[^{}]*\}")
-PATH_LITERAL = re.compile(r"^(?:<expr>)?/(?:[A-Za-z0-9_.$/-]|<expr>)*(?:\?.*)?$")
-PATH_TAIL = re.compile(r"^(?:[A-Za-z0-9_.$/?=&%-]|<expr>)*$")
-HAS_LETTER = re.compile(r"[A-Za-z]")
-PLUS_NEXT = re.compile(r"\s*\+\s*")
-EXPR_TOKEN = re.compile(r"[\w$.]+(?:\([^()]*\))?(?:\[[^\[\]]*\])?")
-PREFIX_EXPR = re.compile(r"[\w$.\]\)]+\s*\+\s*$")
-XHR_OPEN = re.compile(r"\.open\(\s*[\"']([A-Za-z]+)[\"']\s*,\s*$")
-VERB_CALL = re.compile(r"\.(get|post|put|patch|delete|head|options)\s*\(\s*$", re.IGNORECASE)
-FETCH_CALL = re.compile(r"(?<![\w$.])(?:fetch|axios(?:\.request)?)\s*\(\s*(?:\{[^{}]*?\burl\s*:\s*)?$")
-METHOD_OPTION = re.compile(r"\bmethod\s*:\s*[\"']([A-Za-z]+)[\"']")
-CREDENTIAL_KEY = re.compile(
-    r"(?<![\w$])(access_?token|refresh_?token|login_?token|user_?id|device_?id|home_?server|matrix[a-z_]{0,30}|[a-z_]{1,24}_?token|password)(?![\w$])",
-    re.IGNORECASE,
-)
-HASH_SEGMENT = re.compile(r"(?<=[-._~])(?=[A-Za-z0-9_]*\d)[A-Za-z0-9_]{6,}(?=\.(?:[a-z]+\.)*m?js$)")
 MODULE_NAME = re.compile(r"[^a-z0-9_-]")
 MIN_PHONE = 6
 REPORT_LOG_TAIL = 200
 BUNDLE_NAME = "ranzenpost-report.zip"
 REPORT_FILE = "report.md"
 LOG_FILE = "log.txt"
-JSON_SCRIPT_TYPES = ("application/json", "application/ld+json")
 REPORT_CACHE_SECONDS = 600
-
-
 WORD_FIELDS = ("children", "schools", "teachers", "users", "hosts", "secrets", "phones")
 
 
@@ -222,25 +192,6 @@ def scrub_line(line):
     return namebook.scrub(GENERIC(line))
 
 
-WORD_MARK = "<word>"
-
-
-def _capitalised(token):
-    return token[:1].isupper() and any(char.islower() for char in token[1:])
-
-
-def code_text(text):
-    return TOKEN.sub(lambda match: WORD_MARK if _capitalised(match.group(0)) and not known_word(match.group(0)) else match.group(0), str(text or ""))
-
-
-def visible_text(text):
-    def keep(match):
-        token = match.group(0)
-        return token if token.isdigit() or known_word(token) else WORD_MARK
-
-    return TOKEN.sub(keep, placeholders(str(text or "")))
-
-
 def learn_words(book, words):
     if book is None:
         return
@@ -313,23 +264,18 @@ def _stamp(epoch):
     return local.isoformat(timespec="seconds") + "+%02d:00" % offset
 
 
-def _cell(value):
-    text = str(value if value is not None else "")
-    return text.replace("|", "/").replace("\n", " ") or "-"
-
-
 def _module_row(name, slug, edition, status, probe):
     probe = probe or {}
     return "| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-        _cell(name),
-        _cell(slug),
-        _cell(edition),
-        _cell(status),
-        _cell(probe.get("verdict") or "-"),
-        _cell(probe.get("status") or "-"),
-        _cell(probe.get("content_type") or "-"),
-        _cell(probe.get("length") if probe else "-"),
-        _cell(probe.get("final_path") or "-"),
+        table_cell(name),
+        table_cell(slug),
+        table_cell(edition),
+        table_cell(status),
+        table_cell(probe.get("verdict") or "-"),
+        table_cell(probe.get("status") or "-"),
+        table_cell(probe.get("content_type") or "-"),
+        table_cell(probe.get("length") if probe else "-"),
+        table_cell(valueshape.link_shape(probe.get("final_path")) if probe.get("final_path") else "-"),
     )
 
 
@@ -392,356 +338,39 @@ def module_rows(registry):
         rows.append({
             "name": entry.get("name") or official_name(slug) or visible_text(entry.get("label") or slug),
             "slug": slug,
+            "segment": entry.get("segment"),
             "edition": edition_of(slug),
             "status": STATUS_UNSUPPORTED,
             "probe": None,
             "page": "/iserv/%s/" % entry.get("segment"),
             "json": None,
+            "guessed_page": True,
         })
     for entry in registry["unknown"]:
         rows.append({
             "name": visible_text(entry.get("label") or entry.get("segment")),
             "slug": entry.get("segment"),
+            "segment": entry.get("segment"),
             "edition": "",
             "status": STATUS_UNKNOWN,
             "probe": None,
             "page": "/iserv/%s/" % entry.get("segment"),
             "json": None,
+            "guessed_page": True,
         })
     return rows
 
 
-def _selector(node):
-    label = node.name
-    if node.get("id"):
-        label += "#" + code_text(placeholders(str(node.get("id"))))
-    classes = [code_text(placeholders(cls)) for cls in (node.get("class") or [])[:2]]
-    if classes:
-        label += "." + ".".join(classes)
-    return label
-
-
-def _field_line(field):
-    name = str(field.get("name") or "").strip()
-    if not name:
-        return ""
-    kind = field.name if field.name != "input" else str(field.get("type") or "text").lower()
-    facts = [kind]
-    if field.has_attr("required"):
-        facts.append("required")
-    return "  - %s (%s)" % (code_text(placeholders(name)), ", ".join(facts))
-
-
-def _unique(values, limit):
-    seen = []
-    for value in values:
-        if value and value not in seen:
-            seen.append(value)
-        if len(seen) >= limit:
-            break
-    return seen
-
-
-def html_skeleton(html):
-    soup = BeautifulSoup(html or "", "html.parser")
-    lines = []
-    landmarks = _unique((_selector(node) for node in soup.find_all(LANDMARK_TAGS)), MAX_LANDMARKS)
-    if landmarks:
-        lines.append("- Landmarks: " + " | ".join(landmarks))
-    for form in soup.find_all("form"):
-        head = "- Form: %s (%s)" % (valueshape.link_shape(form.get("action") or "") or "-", str(form.get("method") or "get").lower())
-        if form.get("id"):
-            head += " #" + code_text(placeholders(str(form.get("id"))))
-        lines.append(head)
-        lines.extend(_unique((_field_line(field) for field in form.find_all(FIELD_TAGS)), MAX_HEADERS))
-    tables = soup.find_all("table")
-    for index, table in enumerate(tables):
-        heads = _unique(
-            (visible_text(" ".join(th.get_text(" ").split()))[:HEADER_CHARS] for th in table.find_all("th")),
-            MAX_HEADERS,
-        )
-        if heads:
-            lines.append("- Table headers: " + " | ".join(heads))
-        if index < MAX_TABLE_ROWS_LINES:
-            lines.append(table_rows(table))
-    if len(tables) > MAX_TABLE_ROWS_LINES:
-        lines.append("- Table rows skipped: %d beyond the limit of %d" % (len(tables) - MAX_TABLE_ROWS_LINES, MAX_TABLE_ROWS_LINES))
-    links = _unique(
-        (valueshape.link_shape(anchor.get("href")) for anchor in soup.find_all("a", href=True) if path_only(anchor.get("href")).startswith("/")),
-        MAX_LINKS,
-    )
-    if links:
-        lines.append("- Links: " + " | ".join(links))
-    endpoints = []
-    for script in soup.find_all("script"):
-        endpoints.extend(valueshape.link_shape(match) for match in SCRIPT_PATH.findall(script.get_text() or ""))
-    endpoints = _unique(endpoints, MAX_ENDPOINTS)
-    if endpoints:
-        lines.append("- Endpoints: " + " | ".join(endpoints))
-    lines.extend(embedded_json(soup))
-    return lines
-
-
-def table_rows(table):
-    rows = table.find_all("tr")
-    shapes = {}
-    for row in rows:
-        cells = len(row.find_all(("td", "th"), recursive=False))
-        shapes[cells] = shapes.get(cells, 0) + 1
-    label = "#" + code_text(placeholders(str(table.get("id")))) if table.get("id") else "(no id)"
-    parts = ", ".join("%d cells x%d" % (cells, count) for cells, count in sorted(shapes.items()))
-    return "- Table rows %s: %d%s" % (label, len(rows), " (" + parts + ")" if parts else "")
-
-
-def _json_script(tag):
-    kind = str(tag.get("type") or "").split(";", 1)[0].strip().lower()
-    return kind in JSON_SCRIPT_TYPES
-
-
-def embedded_json(soup):
-    lines = []
-    for tag in soup.find_all("script"):
-        if not _json_script(tag):
-            continue
-        label = "#" + code_text(placeholders(str(tag.get("id")))) if tag.get("id") else "(no id)"
-        try:
-            data = json.loads(tag.get_text() or "")
-        except ValueError:
-            lines.append("- Embedded JSON %s: unreadable" % label)
-            continue
-        lines.append("- Embedded JSON %s:" % label)
-        lines.extend(shape_block(data))
-    return lines
-
-
-def shape_block(data):
-    shapes = valueshape.shape_lines(data)
-    lines = ["  - " + line for line in shapes]
-    if len(shapes) >= valueshape.MAX_LINES:
-        lines.append("  - cut after %d keys" % valueshape.MAX_LINES)
-    return lines
-
-
-def json_skeleton(payload):
-    return ["- JSON value shapes:"] + shape_block(payload)
-
-
 def _answer_line(path, response):
     facts = modules.probe_record(path, response, "")
+    shown = valueshape.link_shape(facts["path"])
+    final = valueshape.link_shape(facts["final_path"]) if facts["final_path"] else ""
     return "- Page: %s -> %s %s %sB" % (
-        facts["path"],
+        shown,
         facts["status"],
         facts["content_type"] or "-",
         facts["length"],
-    ) + (" (final %s)" % facts["final_path"] if facts["final_path"] and facts["final_path"] != facts["path"] else "")
-
-
-def response_skeleton(response):
-    kind = _body_kind(response)
-    if kind == "json":
-        try:
-            return json_skeleton(response.json())
-        except (ValueError, AttributeError):
-            return ["- JSON: unreadable"]
-    if kind == "html":
-        return html_skeleton(getattr(response, "text", "") or "")
-    return ["- Body: %s" % kind]
-
-
-def _body_kind(response):
-    content_type = modules.probe_record("", response, "")["content_type"]
-    text = getattr(response, "text", "") or ""
-    if "json" in content_type or text.lstrip()[:1] in ("{", "["):
-        return "json"
-    if "html" in content_type or "<" in text[:200]:
-        return "html"
-    return content_type or "unknown type"
-
-
-def script_sources(html, page_url):
-    host = urlsplit(page_url or "").netloc.lower()
-    found = []
-    if not host:
-        return found
-    for tag in BeautifulSoup(html or "", "html.parser").find_all("script", src=True):
-        parts = urlsplit(urljoin(page_url, str(tag.get("src") or "").strip()))
-        if parts.netloc.lower() != host or not parts.path.startswith(SCRIPT_ROOT):
-            continue
-        path = parts.path + ("?" + parts.query if parts.query else "")
-        if path not in found:
-            found.append(path)
-    return found
-
-
-def script_label(path):
-    name = path_only(path).rsplit("/", 1)[-1]
-    return placeholders(HASH_SEGMENT.sub(HASH_MARK, name))
-
-
-def _script_line(path):
-    folder = path_only(path).rsplit("/", 1)[0]
-    return path_pattern(folder) + "/" + script_label(path)
-
-
-def _literal_value(match):
-    if match.group(3) is not None:
-        return TEMPLATE_HOLE.sub(EXPR, match.group(3))
-    return match.group(1) if match.group(1) is not None else match.group(2)
-
-
-def _chain(text, start_value, position):
-    parts = [start_value]
-    while True:
-        plus = PLUS_NEXT.match(text, position)
-        if not plus:
-            break
-        literal = STRING_LITERAL.match(text, plus.end())
-        if literal:
-            value = _literal_value(literal)
-            if not PATH_TAIL.match(value):
-                break
-            parts.append(value)
-            position = literal.end()
-            continue
-        token = EXPR_TOKEN.match(text, plus.end())
-        if not token:
-            break
-        parts.append(EXPR)
-        position = token.end()
-    return "".join(parts), position
-
-
-def _call_span(text, position):
-    depth = 0
-    end = min(len(text), position + OPTIONS_WINDOW)
-    for index in range(position, end):
-        char = text[index]
-        if char in "({[":
-            depth += 1
-        elif char in ")}]":
-            depth -= 1
-            if depth < 0:
-                return text[position:index]
-    return text[position:end]
-
-
-def _method_of(text, start, end):
-    head = text[max(0, start - HEAD_WINDOW):start]
-    prefix = PREFIX_EXPR.search(head)
-    if prefix:
-        head = head[:prefix.start()]
-    opened = XHR_OPEN.search(head)
-    if opened:
-        return opened.group(1).upper()
-    verb = VERB_CALL.search(head)
-    if verb:
-        return verb.group(1).upper()
-    call = FETCH_CALL.search(head)
-    if not call:
-        return ""
-    options = METHOD_OPTION.search(head[call.start():]) or METHOD_OPTION.search(_call_span(text, end))
-    return options.group(1).upper() if options else "GET"
-
-
-def _keys_near(text, start, end):
-    window = text[max(0, start - KEY_WINDOW):min(len(text), end + KEY_WINDOW)]
-    return {match.group(1) for match in CREDENTIAL_KEY.finditer(window)}
-
-
-def _accept(pattern):
-    if not PATH_LITERAL.match(pattern) or not HAS_LETTER.search(pattern):
-        return False
-    if EXPR in pattern or any(prefix in pattern for prefix in SCRIPT_PREFIXES):
-        return True
-    segments = [segment for segment in path_only(pattern).split("/") if segment]
-    return len(segments) >= MIN_SEGMENTS
-
-
-def script_endpoints(text, label):
-    found = {}
-    position = 0
-    while len(found) < MAX_SCRIPT_ENDPOINTS:
-        hit = PATH_START.search(text, position)
-        if not hit:
-            break
-        match = STRING_LITERAL.match(text, hit.start())
-        if not match:
-            position = hit.start() + 1
-            continue
-        position = match.end()
-        value = _literal_value(match)
-        pattern, position = _chain(text, value, match.end())
-        if PREFIX_EXPR.search(text[max(0, match.start() - HEAD_WINDOW):match.start()]):
-            pattern = EXPR + pattern
-        if not _accept(pattern):
-            continue
-        method = _method_of(text, match.start(), position)
-        pattern = placeholders(path_only(pattern))
-        keys = _keys_near(text, match.start(), position) if method else set()
-        found.setdefault((method or NO_METHOD, pattern, label), set()).update(keys)
-    return found
-
-
-def _read_script(client, path, cache):
-    if path in cache:
-        return cache[path]
-    reader = getattr(client, "fetch_capped", None)
-    if not callable(reader):
-        outcome = ("not read", None)
-    else:
-        try:
-            outcome = ("ok", reader(path, MAX_SCRIPT_BYTES, SCRIPT_TIMEOUT))
-        except Exception as error:
-            outcome = ("error %s" % type(error).__name__, None)
-    cache[path] = outcome
-    return outcome
-
-
-def _script_fact(state, body):
-    if body is None:
-        return state
-    status = int(getattr(body, "status_code", 0) or 0)
-    if status != 200:
-        return "HTTP %d" % status
-    if body.truncated:
-        return "truncated at %dB" % MAX_SCRIPT_BYTES
-    return "%dB" % len(body.text.encode("utf-8"))
-
-
-def _endpoint_row(key, keys):
-    method, pattern, label = key
-    return "| %s | %s | %s | %s |" % (_cell(method), _cell(pattern), _cell(label), _cell(", ".join(sorted(keys)) or "-"))
-
-
-def _sort_key(item):
-    method, pattern, label = item[0]
-    bare = pattern[len(EXPR):] if pattern.startswith(EXPR) else pattern
-    return bare, method, label
-
-
-def script_section(client, response, cache):
-    sources = script_sources(getattr(response, "text", "") or "", str(getattr(response, "url", "") or ""))
-    if not sources:
-        return []
-    lines = ["##### Script endpoints"]
-    facts = []
-    found = {}
-    for path in sources[:MAX_SCRIPTS_PER_MODULE]:
-        state, body = _read_script(client, path, cache)
-        facts.append("%s (%s)" % (_script_line(path), _script_fact(state, body)))
-        if body is not None and int(getattr(body, "status_code", 0) or 0) == 200:
-            for key, keys in script_endpoints(body.text, script_label(path)).items():
-                found.setdefault(key, set()).update(keys)
-    lines.append("- Scripts: " + " | ".join(facts))
-    if len(sources) > MAX_SCRIPTS_PER_MODULE:
-        lines.append("- Scripts skipped: %d beyond the limit of %d" % (len(sources) - MAX_SCRIPTS_PER_MODULE, MAX_SCRIPTS_PER_MODULE))
-    if not found:
-        lines.append("- Endpoints: none")
-        return lines
-    lines.append(SCRIPT_TABLE_HEAD)
-    lines.append(SCRIPT_TABLE_RULE)
-    lines.extend(_endpoint_row(key, keys) for key, keys in sorted(found.items(), key=_sort_key)[:MAX_SCRIPT_ENDPOINTS])
-    return lines
+    ) + (" (final %s)" % final if final and final != shown else "")
 
 
 def _data_params(child_id, today):
@@ -757,33 +386,25 @@ def structure_targets(row, today, child_id=""):
     return targets
 
 
-def _status(response):
-    return int(getattr(response, "status_code", 0) or 0)
-
-
 def _probe(client, path, params, cache, lines):
     try:
         response = client.fetch(path, params)
     except Exception as error:
-        lines.append("- Page: %s -> error (%s)" % (path_pattern(path), type(error).__name__))
+        lines.append("- Page: %s -> error (%s)" % (valueshape.link_shape(path), type(error).__name__))
         return None
     if response is None:
-        lines.append("- Page: %s -> no answer" % path_pattern(path))
+        lines.append("- Page: %s -> no answer" % valueshape.link_shape(path))
         return None
     lines.append(_answer_line(path, response))
-    if _status(response) == 200:
+    if status_of(response) == 200:
         lines.extend(response_skeleton(response))
-        if cache is not None and _body_kind(response) == "html":
+        if cache is not None and body_kind(response) == "html":
             lines.extend(script_section(client, response, cache))
     return response
 
 
-def _listed(children):
-    return [child for child in children or () if isinstance(child, dict) and str(child.get("child_id") or "").strip()]
-
-
 def _time_table_child(options, children, listed):
-    for child in _listed(children):
+    for child in listed_children(children):
         option = matching_option(options, str(child.get("child_id")), child.get("name"), listed)
         if option is not None:
             return option.child_id
@@ -799,12 +420,12 @@ def time_table_data_lines(client, page, today, children, listed=None):
     absent = time_table_absence(page)
     if absent:
         return ["- Data: not read, the module is absent for this account (%s)" % absent]
-    if _status(page) != 200:
-        return ["- Data: not read, the page answered %d" % _status(page)]
+    if status_of(page) != 200:
+        return ["- Data: not read, the page answered %d" % status_of(page)]
     html = getattr(page, "text", "") or ""
     if not time_table_recognised(html):
         return ["- Data: not read, the page is no time-table page"]
-    listed = len(_listed(children)) if listed is None else listed
+    listed = len(listed_children(children)) if listed is None else listed
     lines = []
     if child_select_present(html):
         options = parse_children(html)
@@ -821,19 +442,43 @@ def time_table_data_lines(client, page, today, children, listed=None):
             return lines
         chosen = ""
         lines.append("- Data query: week filter without childId")
-    _probe(client, TIME_TABLE_DATA, data_params(chosen, today), None, lines)
+    response = _probe(client, TIME_TABLE_DATA, data_params(chosen, today), None, lines)
+    lines.extend(_change_record_lines(response))
     return lines
 
 
-def page_structure(client, row, today, cache=None, child_id="", children=(), listed=None):
+def _change_record_lines(response):
+    if response is None or status_of(response) != 200:
+        return []
+    try:
+        payload = json_of(response)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    raw = payload.get("plain-changes")
+    if not isinstance(raw, list) or not raw:
+        return []
+    _changed, applied = with_time_table_changes(payload)
+    lines = ["- Time-table changes: raw %d, applied %d" % (len(raw), len(applied)), "- Time-table change record shape:"]
+    lines.extend(shape_block(raw))
+    return lines
+
+
+def page_structure(client, row, today, cache=None, child_id="", children=(), listed=None, nav_paths=None):
     cache = {} if cache is None else cache
+    if row.get("guessed_page"):
+        return module_link_structure(client, row, nav_paths, cache)
     lines = ["#### %s (%s)" % (row["slug"], row["name"])]
     answers = {}
     for path, params in structure_targets(row, today, child_id):
         answers[path] = _probe(client, path, params, cache, lines)
     if row["slug"] == TIME_TABLE_SLUG and row.get("data"):
         lines.extend(time_table_data_lines(client, answers.get(row["page"]), today, children, listed))
-    return lines
+    landing = answers.get(row["page"])
+    if landing is not None and status_of(landing) == 200 and body_kind(landing) == "html" and callable(getattr(client, "fetch_unfollowed", None)):
+        lines.extend(module_crawl(client, landing, module_prefix(row["page"]), menu_shape, cache, SCRIPT_ROOT))
+    return capped_module(lines)
 
 
 def _listed_count(connection, children):
@@ -846,7 +491,7 @@ def _listed_count(connection, children):
             count = 0
         if count > 0:
             return count
-    return len(_listed(children))
+    return len(listed_children(children))
 
 
 def module_filter(value):
@@ -914,7 +559,48 @@ def _registry_without_network(connection):
     return modules.registry_of(connection)
 
 
-def school_section(index, connection, structure, today, module=""):
+def _params_key(params):
+    return json.dumps(params, sort_keys=True, default=str) if params else ""
+
+
+class ReportFetcher:
+    def __init__(self, client, budget=None):
+        self.client = client
+        self.answers = {}
+        self.budget = budget if budget is not None else CrawlBudget()
+        if callable(getattr(client, "fetch_capped", None)):
+            self.fetch_capped = self._fetch_capped
+        if callable(getattr(client, "fetch_unfollowed", None)):
+            self.fetch_unfollowed = self._fetch_unfollowed
+        if callable(getattr(client, "continue_chain", None)):
+            self.continue_chain = self._continue_chain
+
+    def _once(self, key, call):
+        if key not in self.answers:
+            try:
+                self.budget.check()
+                self.answers[key] = (call(), None)
+            except Exception as error:
+                self.answers[key] = (None, error)
+        answer, error = self.answers[key]
+        if error is not None:
+            raise error
+        return answer
+
+    def fetch(self, path, params=None):
+        return self._once(("page", path, _params_key(params)), lambda: self.client.fetch(path, params))
+
+    def _fetch_capped(self, path, limit, timeout, expired=None):
+        return self._once(("capped", path, limit), lambda: self.client.fetch_capped(path, limit, timeout, expired=expired))
+
+    def _fetch_unfollowed(self, path, limit, timeout, expired=None):
+        return self._once(("unfollowed", path, limit), lambda: self.client.fetch_unfollowed(path, limit, timeout, expired=expired))
+
+    def _continue_chain(self, answer, max_hops, limit, timeout, expired=None):
+        return self._once(("chain", str(answer.url), limit), lambda: self.client.continue_chain(answer, max_hops, limit, timeout, expired=expired))
+
+
+def school_section(index, connection, structure, today, module="", budget=None):
     registry = _registry_without_network(connection)
     config = _config_of(connection)
     secrets = _secrets_of(connection)
@@ -940,19 +626,30 @@ def school_section(index, connection, structure, today, module=""):
     for row in rows:
         lines.append(_module_row(row["name"], row["slug"], row["edition"], row["status"], row["probe"]))
     lines.extend(history_lines(connection))
+    fetcher = ReportFetcher(client, budget) if structure and callable(getattr(client, "fetch", None)) else None
+    lines.extend(children_lines(fetcher, config))
     if structure:
+        lines.extend(school_app_query_lines(fetcher, config, today))
+        lines.extend(letters_summary_lines(fetcher))
+        start = start_page_links(fetcher) if fetcher is not None else None
+        nav_paths = menu_paths_by_segment(start[0]) if start is not None else {}
+        lines.extend(menu_lines(start, linked_rows(rows, nav_paths)))
+        lines.extend(iserv_version_lines(fetcher))
+        lines.extend(unsupported_module_lines(fetcher, rows, nav_paths))
         lines.append("### Page structure")
-        if client is None or not callable(getattr(client, "fetch", None)):
+        if fetcher is None:
             lines.append("- Not read: no session")
         else:
-            chosen = [row for row in rows if not module or row["slug"] == module]
-            if not chosen:
+            base = list(rows) if not module else [row for row in rows if row["slug"] == module]
+            if module and not base:
                 lines.append("- Not read: no module named %s" % module)
+            always = [row for row in rows if row["status"] == STATUS_UNKNOWN and row not in base]
+            chosen = base + always[:MAX_UNKNOWN_STRUCTURE_ROWS]
             cache = {}
             child_id = _own_child_id(config)
             listed = _listed_count(connection, config.get("children")) if any(row["slug"] == TIME_TABLE_SLUG for row in chosen) else None
             for row in chosen:
-                lines.extend(page_structure(client, row, today, cache, child_id, config.get("children"), listed))
+                lines.extend(page_structure(fetcher, row, today, cache, child_id, config.get("children"), listed, nav_paths))
     return lines, words
 
 
@@ -1021,12 +718,17 @@ def report_parts(service, structure=True, log_lines=None, clock=time.time, versi
     lines.append("## Schools")
     lines.append("- Schools: %d" % len(connections))
     words = RedactionWords()
+    budget = CrawlBudget()
     for index, connection in enumerate(connections, 1):
         lines.append("")
-        section, school_words = school_section(index, connection, structure, today, module)
+        section, school_words = school_section(index, connection, structure, today, module, budget)
         lines.extend(section)
         words.extend(school_words)
     log = _log_lines(log_lines)
+    lines.append("")
+    lines.extend(slow_request_lines(log))
+    lines.append("")
+    lines.extend(messenger_sync_lines(log))
     lines.append("")
     lines.extend(log_section(log, in_bundle))
     learn_words(book, words)

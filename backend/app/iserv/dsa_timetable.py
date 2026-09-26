@@ -1,9 +1,8 @@
 from datetime import date, timedelta
 
 from .models import Lesson, TimetableWeek
-from .timetable import week_bounds
+from .timetable import DATE_FORMAT, week_bounds
 
-DATE_FORMAT = "%d.%m.%Y"
 QUERY_DATE_FORMAT = "%Y-%m-%d"
 WEEKDAY_OFFSET = 1
 

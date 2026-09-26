@@ -154,6 +154,22 @@ def test_a_stored_child_that_matches_no_current_child_is_left_alone(tmp_path):
     assert [child["child_id"] for child in stored[1:]] == ["500001"], "the listed child must become known too"
 
 
+def test_a_passing_school_account_outage_never_stores_the_child_twice(tmp_path):
+    app = SchoolApp()
+    service, store, _, _ = make(tmp_path, school_app=app, config={"children": [{"child_id": "500001", "name": "Kim Muster"}]})
+    for failing in (True, False, True, False):
+        app.me_fails = failing
+        service.children()
+    assert [entry["child_id"] for entry in store.load_config()["children"]] == ["500001"]
+
+
+def test_a_child_stored_twice_under_the_same_id_is_kept_once(tmp_path):
+    twice = [{"child_id": "500001", "name": "Kim Muster"}, {"child_id": "500001", "name": "Muster Kim", "class_name": "1D"}]
+    service, store, _, _ = make(tmp_path, config={"children": twice})
+    service.children()
+    assert store.load_config()["children"] == [{"child_id": "500001", "name": "Kim Muster", "class_name": "1D"}]
+
+
 def test_when_the_school_account_cannot_be_read_the_old_way_still_works(tmp_path):
     service, _, _, clients = make(tmp_path, school_app=SchoolApp(me_fails=True))
     children = service.children()

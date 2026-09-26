@@ -33,3 +33,12 @@ test("a week without lessons in either source shows the short hint", async ({ pa
   await expect(hint).toContainText(await message(page, "timetable.empty.text"));
   await expect(page.locator(".tt")).toHaveCount(0);
 });
+
+test("room changes and cancellations of the older time-table module show in the week", async ({ page }) => {
+  await openTimetable(page, "time-table-changes");
+  await expect(page.locator(".tt .tt-cell[data-subject]")).toHaveCount(WEEK_LESSONS);
+  await expect(page.locator(".tt .tt-cell.subbed[data-subject='D']")).toHaveCount(1);
+  await expect(page.locator(".tt .tt-cell.out[data-subject='KU']")).toHaveCount(1);
+  await page.locator(".tt .tt-cell.subbed[data-subject='D']").click();
+  await expect(page.locator(".sheet")).toContainText("R305");
+});
