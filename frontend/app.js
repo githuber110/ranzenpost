@@ -3358,7 +3358,8 @@ function changesChapter(size) {
     const lesson = entry.lesson;
     const title = lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback");
     const who = entry.kind === "cancelled" ? "" : [teacherSurname(lesson), lesson.room].filter(Boolean).join(" ");
-    const detail = [periodShort(lesson.period), lessonTime(lesson, periodTimes(entry.week, entry.child.key)), who].filter(Boolean).join(" · ");
+    const moved = lessonMove(lesson, entry.kind);
+    const detail = [periodShort(lesson.period), lessonTime(lesson, periodTimes(entry.week, entry.child.key)), who, moved ? moveCellLabel(moved) : ""].filter(Boolean).join(" · ");
     const node = sizedRow(size, title, detail, lessonDayLabel(entry.iso, entry.date), false, () => openTimetableOf(entry.child.key), [
       childTag(entry.child),
       schoolTag({ connection_id: connectionOfKey(entry.child.key) }),
@@ -4362,6 +4363,7 @@ function timetableView() {
       el("div", { class: "legend" }, [
         legendItem("var(--warn)", t("timetable.legend.changed"), true),
         legendSymbol("var(--danger)", t("timetable.legend.cancelled"), "×"),
+        ...movedLegendItems(data),
         ...planLegendItems(data, state.childId),
       ])
     );
@@ -4500,6 +4502,12 @@ function timetableStamp(data, monday, fullWeek) {
   if (uncertain) parts.push(t("holidays.day.uncertain"));
   if (!parts.length) return null;
   return el("div", { class: "stamp" }, parts.join(" · "));
+}
+
+function movedLegendItems(data) {
+  const lessons = data && Array.isArray(data.lessons) ? data.lessons : [];
+  const moved = lessons.some((lesson) => lessonMove(lesson, lesson.change_kind));
+  return moved ? [legendItem("var(--moved)", t("timetable.change.moved"), true)] : [];
 }
 
 function legendItem(color, text, dot) {
@@ -5705,24 +5713,72 @@ function gridCell(lessons, time, childId, weekLessons, courses) {
   );
 }
 
+function moveSlot(move, long, origin) {
+  const date = parseAnyDate(move && move.date);
+  if (!date || !move.period) return "";
+  const end = Number(move.period_end || move.period);
+  const ranged = end !== Number(move.period);
+  const vars = {
+    day: long ? formatWeekdayDate(move.date) : formatWeekdayShort(date),
+    period: formatNumber(Number(move.period)),
+    end: formatNumber(end),
+  };
+  const base = origin ? "timetable.move.fromSlotLong" : "timetable.move.slotLong";
+  const key = long
+    ? ranged ? `${base}Range` : base
+    : ranged ? "timetable.move.slotRange" : "timetable.move.slot";
+  return t(key, vars);
+}
+
+function lessonMove(lesson, kind) {
+  if (!lesson || !kind) return null;
+  if (kind === "cancelled") {
+    return lesson.change_kind === "cancelled" && moveSlot(lesson.moved_to) ? { to: true, move: lesson.moved_to } : null;
+  }
+  return moveSlot(lesson.moved_from) ? { to: false, move: lesson.moved_from } : null;
+}
+
+function moveCellLabel(moved) {
+  return t(moved.to ? "timetable.cell.movedTo" : "timetable.cell.movedFrom", { slot: moveSlot(moved.move, false) });
+}
+
+function moveBannerText(moved) {
+  return t(moved.to ? "timetable.banner.movedTo" : "timetable.banner.movedFrom", { slot: moveSlot(moved.move, true, !moved.to) });
+}
+
+function bareChange(lesson, kind) {
+  return kind === "changed" && lesson.change_kind === "changed" && lesson.no_details === true;
+}
+
+function changeNoteOf(lesson) {
+  return String((lesson && lesson.change_note) || "").trim();
+}
+
 function lessonCell(lesson, time, compact, childId, weekLessons) {
   const owner = childId || state.childId;
   const week = weekLessons || timetableWeekLessons();
   const kind = displayChangeKind(lesson, owner);
   const mark = markOfLesson(lesson, owner);
+  const moved = lessonMove(lesson, kind);
+  const note = kind ? changeNoteOf(lesson) : "";
   const base = kind === "cancelled" ? "tt-cell out" : kind ? "tt-cell subbed" : "tt-cell";
-  const roomLabel = kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : "";
+  const shown = moved ? `${base} moved` : base;
+  const roomLabel = moved
+    ? moveCellLabel(moved)
+    : bareChange(lesson, kind) ? t("timetable.cell.school")
+    : kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : "";
   const subject = lessonSubjectKey(lesson);
   const cell = el("button", {
-    class: compact ? `${base} compact` : base,
+    class: compact ? `${shown} compact` : shown,
     type: "button",
     "data-subject": subject || null,
-    "aria-label": lessonAriaLabel(lesson, kind, mark),
+    "aria-label": lessonAriaLabel(lesson, kind, mark, moved, note),
     onclick: () => openLessonSheet(lesson, time, owner, week),
   }, [
     kind && kind !== "cancelled" ? el("span", { class: "bar" }) : null,
     iservText("span", { class: "sub" }, lesson.subject_code || lesson.subject_label || "?"),
     roomLabel ? el("span", { class: "room" }, roomLabel) : null,
+    note ? el("span", { class: "note-flag", html: iconSvg("info", 11) }) : null,
     mark ? el("span", { class: "exam-flag", html: iconSvg("exam", 11) }) : null,
   ]);
   if (mark) cell.classList.add("marked");
@@ -5732,32 +5788,57 @@ function lessonCell(lesson, time, compact, childId, weekLessons) {
   return cell;
 }
 
-function lessonAriaLabel(lesson, kind, mark) {
+function lessonAriaLabel(lesson, kind, mark, moved, note) {
   const subject = lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback");
-  const base = kind
-    ? t("timetable.aria.lessonChange", { subject, change: changeLabel(kind) })
+  let base = kind
+    ? t("timetable.aria.lessonChange", { subject, change: bareChange(lesson, kind) ? t("timetable.change.school") : changeLabel(kind) })
     : t("timetable.aria.lesson", { subject });
+  if (moved) base = t("timetable.aria.lessonChange", { subject: base, change: moveCellLabel(moved) });
+  if (note) base = t("timetable.aria.lessonChange", { subject: base, change: t("timetable.aria.note", { note }) });
   return mark ? `${base} · ${t("marks.aria.marked", { name: markLabel(mark) })}` : base;
 }
 
-const FIELD_KEYS = { subject: "timetable.field.subject", teacher: "timetable.field.teacher", room: "timetable.field.room" };
+const FIELD_KEYS = {
+  subject: "timetable.field.subject",
+  teacher: "timetable.field.teacher",
+  room: "timetable.field.room",
+  class: "timetable.field.class",
+};
 const FIELD_VALUES = {
   subject: (lesson) => lesson.subject_label || lesson.subject_code || "",
-  teacher: (lesson) => lesson.teacher_label || lesson.teacher_code || "",
+  teacher: (lesson) => lesson.teacher_label || lesson.teacher_code || (lesson.teacher_hidden ? t("timetable.teacher.hidden") : ""),
   room: (lesson) => lesson.room || "",
+  class: (lesson) => lesson.classes || "",
 };
+
+const BANNER_KEYS = {
+  cancelled: "timetable.banner.cancelled",
+  added: "timetable.banner.added",
+};
+
+function bannerKey(lesson, kind) {
+  if (BANNER_KEYS[kind]) return BANNER_KEYS[kind];
+  if (lesson.teacher_hidden) return "timetable.banner.hiddenTeacher";
+  return bareChange(lesson, kind) ? "timetable.banner.school" : "timetable.banner.changed";
+}
 
 function changeBanner(lesson) {
   const kind = lesson.change_kind;
   if (!kind) return null;
+  const moved = lessonMove(lesson, kind);
   const dot = el("span", { class: `mark ${kind}` });
-  const text =
-    kind === "cancelled"
-      ? t("timetable.banner.cancelled")
-      : kind === "added"
-        ? t("timetable.banner.added")
-        : t("timetable.banner.changed");
-  return el("div", { class: `banner ${kind}` }, [dot, el("b", {}, changeLabel(kind)), el("span", {}, text)]);
+  const text = moved ? moveBannerText(moved) : t(bannerKey(lesson, kind));
+  const label = moved ? t("timetable.change.moved") : bareChange(lesson, kind) ? t("timetable.change.school") : changeLabel(kind);
+  return el("div", { class: moved ? `banner ${kind} moved` : `banner ${kind}` }, [dot, el("b", {}, label), el("span", {}, text)]);
+}
+
+function changeNoteBlock(lesson) {
+  const note = lesson.change_kind ? changeNoteOf(lesson) : "";
+  if (!note) return [];
+  return [
+    el("div", { class: "section-head", style: "margin-top:16px" }, [el("span", { class: "overline" }, t("timetable.schoolNote"))]),
+    iservText("p", { class: "dlg-text change-note" }, note),
+  ];
 }
 
 function changeDetails(lesson) {
@@ -5798,7 +5879,7 @@ function lessonSheet(lesson, time, childId, weekLessons) {
     [t("timetable.field.subject"), lesson.subject_label || lesson.subject_code || t("common.none")],
     [t("timetable.fact.period"), lessonPeriodFact(lesson, time)],
     [t("timetable.field.room"), lesson.room || t("common.none")],
-    [t("timetable.field.teacher"), lesson.teacher_label || lesson.teacher_code || t("common.none")],
+    [t("timetable.field.teacher"), lesson.teacher_label || lesson.teacher_code || t(lesson.teacher_hidden ? "timetable.teacher.hidden" : "common.none")],
   ];
   if (lesson.date) facts.splice(1, 0, [t("timetable.fact.day"), showDate(lesson.date)]);
   if (lesson.is_class_teacher) facts.push([t("timetable.fact.role"), t("timetable.fact.classTeacher")]);
@@ -5814,6 +5895,7 @@ function lessonSheet(lesson, time, childId, weekLessons) {
   }
   const banner = changeBanner(lesson);
   if (banner) body.push(banner);
+  body.push(...changeNoteBlock(lesson));
   if (cancellation) body.push(cancellationPanel());
   if (mark) body.push(markPanel(mark, childId, lesson, time));
   const details = changeDetails(lesson);

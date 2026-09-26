@@ -346,9 +346,9 @@ def _school_app_timetable_probe(today):
     return (DSA_TIMETABLE_PATH, {"date": query_date(today), "week": "true", "substitutions": "false"})
 
 
-def probes_of(name, today):
+def probes_of(name, today, school_app_timetable=True):
     if name == TIMETABLE:
-        return (_school_app_timetable_probe(today), PROBES[name])
+        return ((_school_app_timetable_probe(today),) if school_app_timetable else ()) + (PROBES[name],)
     return (PROBES[name],)
 
 
@@ -359,13 +359,13 @@ def _probe(fetch, path, params):
         return None
 
 
-def _probe_all(fetch, today):
+def _probe_all(fetch, today, school_app_timetable=True):
     outcomes = {}
     records = {}
     pages = []
     for name in MODULES:
         outcome = MISSING
-        for path, params in probes_of(name, today):
+        for path, params in probes_of(name, today, school_app_timetable):
             response = _probe(fetch, path, params)
             if response is not None and not path.startswith(DSA_API):
                 pages.append(response)
@@ -407,10 +407,10 @@ def _linked_modules(links):
     return linked
 
 
-def detect(html, fetch, previous, clock=time.time, login_html=""):
+def detect(html, fetch, previous, clock=time.time, login_html="", school_app_timetable=True):
     earlier = normalize(previous) if previous else None
     links = harvest_links(html)
-    outcomes, probes = _probe_all(fetch, date.fromtimestamp(clock()))
+    outcomes, probes = _probe_all(fetch, date.fromtimestamp(clock()), school_app_timetable)
     linked = _linked_modules(links)
     flags = {}
     for name in MODULES:
@@ -502,6 +502,11 @@ def summary(registry):
         f"unknown: {len(segments)}" + (f" ({', '.join(segments)})" if segments else ""),
     ]
     return "; ".join(parts)
+
+
+def school_app_timetable_served(registry):
+    record = normalize(registry)["probes"].get(TIMETABLE) or {}
+    return record.get("verdict") == AVAILABLE and record.get("path", "").startswith(DSA_API)
 
 
 def available(registry, name):

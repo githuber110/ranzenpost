@@ -511,11 +511,81 @@ def test_an_unknown_letter_reads_the_list_once_and_then_opens(tmp_path):
     assert len(client.opened()) == 1
 
 
-def test_the_search_index_opens_the_letters_it_just_listed_without_another_list(tmp_path):
+def test_reading_the_list_and_its_confirmations_opens_no_letter(tmp_path):
     service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
-    assert service.enrich_letters_search("current") == 3
-    assert client.reads(INDEX_PATH) == 1
-    assert client.reads(ARCHIVE_PATH) == 0
+    service.letters("current")
+    service.letters("archive")
+    assert client.opened() == []
+
+
+def search_entry(service, title):
+    return next(entry for entry in service.letters("current")["letters"] if entry["title"] == title)
+
+
+def test_a_letter_nobody_opened_carries_only_its_list_fields(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    entry = search_entry(service, "Informationen zum Wandertag")
+    assert entry["body_text"] == ""
+    assert entry["attachments"] == []
+    assert entry["confirmation"] is None
+    assert (entry["sender"], entry["child"], entry["recipients"]) == ("S. Sample", "Robin Example", "Klasse 02B")
+    assert client.opened() == []
+
+
+def test_opening_a_letter_stores_its_full_text_and_attachments_for_the_search(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    opened = search_entry(service, "Einladung zum Schulfest")
+    assert "herzlich zum Schulfest" in opened["body_text"]
+    assert [item["filename"] for item in opened["attachments"]] == ["einladung.pdf", "anmeldung.docx"]
+    assert search_entry(service, "Persoenliche Mitteilung")["body_text"] == ""
+    assert len(client.opened()) == 1
+
+
+def test_opening_a_letter_again_refreshes_its_stored_text(tmp_path):
+    first = _fixture_text("letter_detail.html")
+    service, client = letter_school(tmp_path, pages=[first])
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    client.pages = [first.replace("herzlich zum Schulfest", "herzlich zum Sommerfest")]
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
+    assert "Sommerfest" in search_entry(service, "Einladung zum Schulfest")["body_text"]
+
+
+OPEN_CONFIRMATION = {"type": "seen", "sendable": True, "can_reply": False}
+
+
+def with_open_confirmation(service):
+    service._letters().connection.store.save_letters_search_cache(
+        {LISTED_KEY: {"body_text": "old index text", "attachments": [], "confirmation": dict(OPEN_CONFIRMATION)}}
+    )
+
+
+def test_an_open_confirmation_from_an_older_cache_stays_until_the_letter_is_opened(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    with_open_confirmation(service)
+    shown = search_entry(service, "Einladung zum Schulfest")
+    assert shown["unread"] is False
+    assert shown["confirmation"]["open"] is True
+    assert client.opened() == []
+
+
+def test_opening_the_letter_clears_a_confirmation_that_was_done_on_the_school_website(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    with_open_confirmation(service)
+    assert service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)["confirmation"] is None
+    shown = search_entry(service, "Einladung zum Schulfest")
+    assert shown["confirmation"] is None
+    assert "herzlich zum Schulfest" in shown["body_text"]
+    assert len(client.opened()) == 1
+
+
+def test_a_search_entry_from_before_the_change_is_still_served(tmp_path):
+    service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
+    service._letters().connection.store.save_letters_search_cache(
+        {LISTED_KEY: {"body_text": "old index text", "attachments": [], "confirmation": None}}
+    )
+    assert search_entry(service, "Einladung zum Schulfest")["body_text"] == "old index text"
+    assert client.opened() == []
 
 
 def test_opening_a_letter_of_another_school_is_refused(tmp_path):
@@ -553,9 +623,9 @@ def test_an_attachment_of_an_opened_letter_is_fetched(tmp_path):
     assert attachment_fetches(client) == [f"/iserv/parentletter/attachment/{SEEN_ATTACHMENT}"]
 
 
-def test_an_attachment_from_the_search_index_is_fetched_after_a_restart(tmp_path):
+def test_an_attachment_of_an_opened_letter_is_fetched_after_a_restart(tmp_path):
     service, _ = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
-    service.enrich_letters_search("current")
+    service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
     service._letters().forget_listed()
     client = LetterSchool(pages=[_fixture_text("letter_detail.html")])
     service.client_factory = lambda url: client
@@ -634,7 +704,7 @@ def one_letter_school(tmp_path):
 
 def test_an_attachment_of_the_previous_account_is_refused_after_an_account_switch(tmp_path):
     service, store, school, clients = one_letter_school(tmp_path)
-    service.connection(school).enrich_letters_search("current")
+    service.letter_detail(school, CONFIRM_LETTER, CONFIRM_RECIPIENT)
     service.letter_attachment(school, SEEN_ATTACHMENT)
     clients[SCHOOL_ONE_URL] = LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")], current=EMPTY_LIST)
     store.update_connection(school, login_revision=1)
@@ -644,9 +714,9 @@ def test_an_attachment_of_the_previous_account_is_refused_after_an_account_switc
     assert attachment_fetches(clients[SCHOOL_ONE_URL]) == []
 
 
-def test_the_search_index_still_serves_an_attachment_after_a_restart_with_the_same_account(tmp_path):
+def test_an_opened_letter_still_serves_its_attachment_after_a_restart_with_the_same_account(tmp_path):
     service, store, school, clients = one_letter_school(tmp_path)
-    service.connection(school).enrich_letters_search("current")
+    service.letter_detail(school, CONFIRM_LETTER, CONFIRM_RECIPIENT)
     clients[SCHOOL_ONE_URL] = LetterSchool(SCHOOL_ONE_URL, pages=[_fixture_text("letter_detail.html")])
     store.update_connection(school, login_revision=1)
     service.letter_attachment(school, SEEN_ATTACHMENT)
@@ -655,7 +725,6 @@ def test_the_search_index_still_serves_an_attachment_after_a_restart_with_the_sa
 
 def test_an_attachment_of_a_letter_deleted_at_the_school_is_refused(tmp_path):
     service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
-    service.enrich_letters_search("current")
     service.letter_detail(CONFIRM_LETTER, CONFIRM_RECIPIENT)
     client.lists[INDEX_PATH] = EMPTY_LIST
     service.letters("current")

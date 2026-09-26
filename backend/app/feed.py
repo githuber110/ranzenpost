@@ -46,17 +46,25 @@ FIELD_LABEL_KEYS = {
     "subject": "timetable.field.subject",
     "teacher": "timetable.field.teacher",
     "room": "timetable.field.room",
+    "class": "timetable.field.class",
 }
 FIELD_VALUE_SOURCES = {
     "subject": ("subject_label", "subject_code"),
     "teacher": ("teacher_surname", "teacher_label", "teacher_code"),
     "room": ("room",),
+    "class": ("classes",),
 }
 PREVIOUS_VALUE_SOURCES = {
     "subject": ("subject",),
     "teacher": ("teacher_surname", "teacher"),
     "room": ("room",),
+    "class": ("class",),
 }
+SCHOOL_CHANGE_KEY = "timetable.change.school"
+SCHOOL_STATUS_KEY = "timetable.banner.school"
+MOVE_SUMMARY_KEYS = {"moved_to": "calendar.event.summary.movedTo", "moved_from": "calendar.event.summary.movedFrom"}
+MOVE_DETAIL_KEYS = {"moved_to": "calendar.detail.movedTo", "moved_from": "calendar.detail.movedFrom"}
+HIDDEN_TEACHER_KEY = "timetable.teacher.hidden"
 HOLIDAY_FALLBACK_KEYS = {
     holidays.KIND_SCHOOL: "holidays.day.free",
     holidays.KIND_PUBLIC: "holidays.day.public",
@@ -208,6 +216,36 @@ def lesson_start(day, start_time):
     return _lesson_start(day, start_time)
 
 
+def bare_change(lesson):
+    return lesson.get("change_kind") == "changed" and bool(lesson.get("no_details"))
+
+
+def _status_key(lesson):
+    return SCHOOL_STATUS_KEY if bare_change(lesson) else CHANGE_STATUS_KEYS.get(lesson.get("change_kind") or "")
+
+
+def _move(lesson, name):
+    value = lesson.get(name)
+    return value if isinstance(value, dict) and value.get("date") and value.get("period") else None
+
+
+def move_target(language, moved, origin=False):
+    day = holidays.parse_day(moved.get("date"))
+    shown = day.strftime("%d.%m.") if day else str(moved.get("date") or "")
+    period = moved.get("period")
+    end = moved.get("period_end") or period
+    base = "calendar.move.fromTarget" if origin else "calendar.move.target"
+    key = base if end == period else base + "Range"
+    return _text(language, key, {"date": shown, "period": period, "end": end})
+
+
+def _moved_summary(language, lesson, name, title):
+    moved = _move(lesson, name)
+    if moved is None:
+        return None
+    return _text(language, MOVE_SUMMARY_KEYS[name], {"target": move_target(language, moved, name == "moved_from"), "title": title})
+
+
 def lesson_summary(language, lesson, exam=None):
     subject = _subject_of(language, lesson)
     teacher = _field_value(lesson, "teacher")
@@ -218,12 +256,15 @@ def lesson_summary(language, lesson, exam=None):
         {"period": lesson.get("period", ""), "subject": subject, "teacher": teacher},
     )
     if lesson.get("change_kind") == "cancelled":
-        return _text(language, DROPPED_SUMMARY_KEY, {"title": title})
+        return _moved_summary(language, lesson, "moved_to", title) or _text(language, DROPPED_SUMMARY_KEY, {"title": title})
     if exam is not None:
         name = str(exam.get("name") or "")
         key = EXAM_SUMMARY_NAMED_KEY if name else EXAM_SUMMARY_KEY
         return _text(language, key, {"title": title, "name": name})
-    prefix_key = CHANGE_PREFIX_KEYS.get(lesson.get("change_kind") or "")
+    moved = _moved_summary(language, lesson, "moved_from", title)
+    if moved:
+        return moved
+    prefix_key = SCHOOL_CHANGE_KEY if bare_change(lesson) else CHANGE_PREFIX_KEYS.get(lesson.get("change_kind") or "")
     if not prefix_key:
         return title
     return _text(
@@ -263,7 +304,7 @@ def lesson_description(language, lesson, day, parallel_count, start_time=None, e
         rows.append(
             _detail_line(language, "timetable.fact.role", _text(language, "timetable.fact.classTeacher"))
         )
-    status_key = CHANGE_STATUS_KEYS.get(lesson.get("change_kind") or "")
+    status_key = _status_key(lesson)
     if status_key:
         rows.append(_detail_line(language, "calendar.detail.status", _text(language, status_key)))
     rows.extend(_change_rows(language, lesson, none_text))
@@ -295,11 +336,18 @@ def change_note(language, lesson):
     return "\n".join(_change_lines(language, lesson, _text(language, "common.none")))
 
 
+def _after_value(language, lesson, name, none_text):
+    value = _field_value(lesson, name)
+    if value:
+        return value
+    if name == "teacher" and lesson.get("teacher_hidden"):
+        return _text(language, HIDDEN_TEACHER_KEY)
+    return none_text
+
+
 def _change_lines(language, lesson, none_text):
-    fields = [name for name in (lesson.get("changed_fields") or []) if name in FIELD_LABEL_KEYS]
-    if not fields:
-        return []
     previous = lesson.get("previous") or {}
+    fields = [name for name in (lesson.get("changed_fields") or []) if name in FIELD_LABEL_KEYS]
     rows = []
     for name in fields:
         rows.append(
@@ -309,10 +357,17 @@ def _change_lines(language, lesson, none_text):
                 {
                     "field": _text(language, FIELD_LABEL_KEYS[name]),
                     "before": _previous_value(previous, name) or none_text,
-                    "after": _field_value(lesson, name) or none_text,
+                    "after": _after_value(language, lesson, name, none_text),
                 },
             )
         )
+    for name, key in MOVE_DETAIL_KEYS.items():
+        moved = _move(lesson, name)
+        if moved is not None:
+            rows.append(_text(language, key, {"target": move_target(language, moved, name == "moved_from")}))
+    note = str(lesson.get("change_note") or "").strip()
+    if note:
+        rows.append(_text(language, "calendar.detail.note", {"note": note}))
     return rows
 
 
@@ -587,7 +642,7 @@ def mark_description(language, config, entry, day, start_time, lesson):
         rows.append(
             _detail_line(language, "timetable.field.room", _field_value(lesson, "room") or none_text)
         )
-        status_key = CHANGE_STATUS_KEYS.get(lesson.get("change_kind") or "")
+        status_key = _status_key(lesson)
         if status_key:
             rows.append(_detail_line(language, "calendar.detail.status", _text(language, status_key)))
     notice = _translated(language, MARK_NOTICE_KEY)

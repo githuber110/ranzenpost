@@ -35,4 +35,4 @@ class TimetableWeek:
     combined: list
     plain: list
     changes: list = field(default_factory=list)
-    applied_changes: Optional[list] = None
+    change_items: Optional[list] = None

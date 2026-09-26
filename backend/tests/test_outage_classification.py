@@ -249,8 +249,6 @@ def test_a_server_error_on_a_data_page_of_a_signed_in_session_is_an_outage(statu
         client.get_children()
     assert caught.value.reason == f"status:{status}"
     with pytest.raises(OutageError):
-        client.get_timetable("child-1")
-    with pytest.raises(OutageError):
         client.fetch_or_raise("/iserv/auth/settings/twofactor/")
     assert not isinstance(caught.value, DataError)
 

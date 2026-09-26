@@ -46,7 +46,7 @@ class LegacyClient:
     def get_children(self):
         return [Child("uuid-old", "Kim Muster")]
 
-    def get_timetable(self, child_id, reference=None):
+    def read_time_table_week(self, child_id, reference=None):
         self.timetable_calls.append((child_id, reference))
         lesson = Lesson("07.09.2026", 1, 1, "D", "BEI", "R1", "1a")
         return TimetableWeek("07.09.2026", "13.09.2026", "old", [lesson], [lesson], [])
@@ -55,6 +55,7 @@ class LegacyClient:
 class SchoolApp:
     def __init__(self, me=ME, timetable=FIXTURE, settings=None, me_fails=False):
         self.me = me
+        self.last_status = 0
         self.timetable = timetable
         self.settings = settings if settings is not None else {
             "timetable_availableForGuardiansAndStudents": True,

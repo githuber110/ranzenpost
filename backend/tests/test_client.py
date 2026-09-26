@@ -96,15 +96,15 @@ def test_get_children_after_login():
     assert [child.name for child in children] == ["Alex Example", "Robin Example"]
 
 
-def test_get_timetable_after_login():
+def test_read_time_table_week_after_login():
     client, _ = make_client()
     client.login("parent", "secret", lambda: "451884")
-    week = client.get_timetable("11111111-1111-4111-8111-111111111111")
+    week = client.read_time_table_week("11111111-1111-4111-8111-111111111111")
     assert week.last_updated == "22.07.2026 12:25"
     assert len(week.combined) == 2
 
 
-def test_get_timetable_always_sends_child_id_for_a_two_child_account():
+def test_the_week_reader_always_sends_the_child_id_for_a_two_child_account():
     calls = []
 
     class RecordingSession(FakeSession):
@@ -118,15 +118,15 @@ def test_get_timetable_always_sends_child_id_for_a_two_child_account():
     children = client.get_children()
     assert len(children) == 2
     for child in children:
-        client.get_timetable(child.child_id)
+        client.read_time_table_week(child.child_id)
     assert len(calls) == 2
     for params, child in zip(calls, children):
         assert params["childId"] == child.child_id
         assert json.loads(params["filter"])["child"] == child.child_id
 
 
-def test_get_timetable_reports_a_403_as_area_forbidden_not_a_login_failure():
-    from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+def test_the_week_reader_reports_a_403_as_an_unreadable_module_not_a_login_failure():
+    from app.iserv.timetable import TIMETABLE_SHAPE_KEY
 
     class ForbiddenSession(FakeSession):
         def get(self, url, timeout=None, params=None):
@@ -137,12 +137,13 @@ def test_get_timetable_reports_a_403_as_area_forbidden_not_a_login_failure():
     client = IServClient(BASE, session=ForbiddenSession())
     client.login("parent", "secret", lambda: "451884")
     with pytest.raises(DataError) as excinfo:
-        client.get_timetable("22222222-2222-4222-8222-222222222222")
-    assert excinfo.value.message_key == CHILD_PAGE_FORBIDDEN_KEY
+        client.read_time_table_week("22222222-2222-4222-8222-222222222222")
+    assert excinfo.value.message_key == TIMETABLE_SHAPE_KEY
+    assert excinfo.value.detail["status"] == 403
     assert not isinstance(excinfo.value, LoginError)
 
 
-def test_get_timetable_reports_a_401_as_a_lost_session_not_a_refused_area():
+def test_the_week_reader_reports_a_401_as_a_lost_session_not_a_refused_area():
     from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY
     from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY
 
@@ -155,7 +156,7 @@ def test_get_timetable_reports_a_401_as_a_lost_session_not_a_refused_area():
     client = IServClient(BASE, session=ExpiredSession())
     client.login("parent", "secret", lambda: "451884")
     with pytest.raises(DataError) as excinfo:
-        client.get_timetable("22222222-2222-4222-8222-222222222222")
+        client.read_time_table_week("22222222-2222-4222-8222-222222222222")
     assert excinfo.value.message_key == SCHOOL_APP_EXPIRED_KEY
     assert excinfo.value.message_key != CHILD_PAGE_FORBIDDEN_KEY
 

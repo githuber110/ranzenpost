@@ -133,8 +133,6 @@ ROLE_WORD_ALLOWED_KEYS = {
     "notify.conferences.new.other": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
     "notify.letters.new.one": "IServ module name (Elternbriefe / Parent letters)",
     "notify.letters.new.other": "IServ module name (Elternbriefe / Parent letters)",
-    "notify.letters.newConfirm.one": "IServ module name (Elternbriefe / Parent letters)",
-    "notify.letters.newConfirm.other": "IServ module name (Elternbriefe / Parent letters)",
     "overview.all.letters": "IServ module name (Elternbriefe / Parent letters)",
     "overview.chapter.letters": "IServ module name (Elternbriefe / Parent letters)",
     "overview.letters.none": "IServ module name (Elternbriefe / Parent letters)",
@@ -256,7 +254,31 @@ def test_every_translation_key_used_in_the_frontend_exists_in_the_base_bundle():
     assert missing == []
 
 
-DASH_CONNECTOR = re.compile(r"\s[–—]\s")
+BACKEND_APP = ROOT / "backend" / "app"
+
+
+def orphaned_notification_keys(bundle, sources):
+    return sorted({base_key(key) for key in bundle if key.startswith("notify.")} - {
+        family for family in {base_key(key) for key in bundle} if f'"{family}"' in sources
+    })
+
+
+def notification_sources():
+    texts = [path.read_text(encoding="utf-8") for path in sorted(BACKEND_APP.rglob("*.py"))]
+    texts += [(FRONTEND / name).read_text(encoding="utf-8") for name in SCANNED_FILES()]
+    return "\n".join(texts)
+
+
+def test_every_notification_text_is_still_sent_by_some_code():
+    assert orphaned_notification_keys(load_bundle(BASE_LANGUAGE), notification_sources()) == []
+
+
+def test_the_orphan_tripwire_still_catches_a_planted_notification_text():
+    planted = {"notify.sample.gone.one": "x", "notify.sample.gone.other": "x", "notify.sample.kept": "x"}
+    assert orphaned_notification_keys(planted, 'KEY = "notify.sample.kept"') == ["notify.sample.gone"]
+
+
+DASH_CONNECTOR =re.compile(r"\s[–—]\s")
 RANGE_DASH = re.compile(r"(?:\{\w+\}|\d+)\s*[–—]\s*(?:\{\w+\}|\d+)")
 
 DASH_ALLOWED_KEYS = {

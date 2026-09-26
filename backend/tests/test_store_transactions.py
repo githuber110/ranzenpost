@@ -211,7 +211,7 @@ def test_a_course_choice_saved_while_the_timetable_learns_period_times_is_kept(t
         return {"1": "08:00"}
 
     service._cached_child = lambda child_id: None
-    service._session = lambda: type("Session", (), {"get_timetable": lambda self, child_id, target: week})()
+    service._session = lambda: type("Session", (), {"read_time_table_week": lambda self, child_id, target: week})()
     service._school_period_times = school_times
     service._substitutions_released = lambda: False
     service._timetable_payload("c1")

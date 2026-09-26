@@ -31,6 +31,8 @@ elternsprechtage elternsprechtag nachrichten nachricht aktionen aktion typ art s
 bemerkungen kommentar kommentare stunde stunden zeit uhrzeit fach faecher fächer lehrer lehrkraft lehrkräfte raum
 räume klasse klassen kurs kurse vertretung vertretungen entfall ausfall aenderung änderung aenderungen änderungen
 kombiniert woche wochen diese nächste naechste letzte tag tage heute von bis ab uhr gelesen ungelesen neu alle keine
+verlegung verlegungen wegverlegung verlegt verschoben hierhin raumänderung raumaenderung raumwechsel zusatzstunde
+zusätzlich zusaetzlich betreuung klausur sondereinsatz statt entfällt entfaellt
 anhang anhänge anhaenge datei dateien grund zeitraum eingereicht gemeldet bestätigt bestaetigt offen erledigt ja nein
 montag dienstag mittwoch donnerstag freitag samstag sonntag januar februar märz maerz april mai juni juli august
 september oktober november dezember termin termine ort raumnummer eltern schüler schueler schülerin schuelerin
@@ -41,6 +43,8 @@ title sender recipient recipients published date subject time room teacher class
 note notes comment comments reason period from to until all none new read unread yes no open done
 monday tuesday wednesday thursday friday saturday sunday january february march may june july october december
 """.split()
+
+CHANGE_TYPE_WORDS = ("entfall", "vertretung", "verlegung", "verschoben")
 
 MARKER_WORDS = """
 child teacher school user secret host email phone name key word seg file uuid date hex n expr hash root query

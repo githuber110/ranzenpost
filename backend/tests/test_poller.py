@@ -394,47 +394,25 @@ def test_module_poll_survives_a_failing_module():
     assert any(item.get("module") == "pinboard" for item in events)
 
 
-class ConfirmModuleService(ModuleService):
-    def __init__(self, store, letters, pending):
+class CountingLetterService(ModuleService):
+    def __init__(self, store, letters):
         super().__init__([], {}, store=store, letters=letters)
-        self._pending = set(pending)
+        self.letter_reads = 0
 
-    def pending_confirmation_keys(self, tab="current"):
-        return set(self._pending)
+    def letters(self, tab="current"):
+        self.letter_reads += 1
+        return super().letters(tab)
 
 
-def test_a_new_letter_with_an_open_receipt_says_so_in_the_push():
+def test_a_new_letter_gets_the_plain_push_from_one_list_read():
     store = FakeStore()
     sent = []
     notifiers = {"letters": lambda n, m: sent.append(m)}
-    first = ConfirmModuleService(store, {"letters": [_letter("a")]}, set())
-    Poller(first, store=store, notifiers=notifiers).poll_once()
-    assert sent == []
-
-    second = ConfirmModuleService(
-        store, {"letters": [_letter("a"), _letter("b")]}, {"b:r"}
-    )
+    Poller(CountingLetterService(store, {"letters": [_letter("a")]}), store=store, notifiers=notifiers).poll_once()
+    second = CountingLetterService(store, {"letters": [_letter("a"), _letter("b")]})
     Poller(second, store=store, notifiers=notifiers).poll_once()
-    assert len(sent) == 1
-    assert sent[0] == messages.text_count("de", "notify.letters.newConfirm", 1)
-    assert sent[0] != messages.text_count("de", "notify.letters.new", 1)
-
-
-def test_a_new_letter_without_an_open_receipt_keeps_the_plain_push():
-    store = FakeStore()
-    sent = []
-    notifiers = {"letters": lambda n, m: sent.append(m)}
-    Poller(
-        ConfirmModuleService(store, {"letters": [_letter("a")]}, set()),
-        store=store,
-        notifiers=notifiers,
-    ).poll_once()
-    Poller(
-        ConfirmModuleService(store, {"letters": [_letter("a"), _letter("b")]}, {"a:r"}),
-        store=store,
-        notifiers=notifiers,
-    ).poll_once()
     assert sent == [messages.text_count("de", "notify.letters.new", 1)]
+    assert second.letter_reads == 1
 
 
 def test_base_plan_rebuild_without_marked_changes_pushes_plan_key():

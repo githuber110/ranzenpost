@@ -2,6 +2,7 @@ import contextvars
 import os
 import re
 import shutil
+import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -413,9 +414,10 @@ COURSES_COOKIE = "e2e_courses"
 COURSES = contextvars.ContextVar("e2e_courses", default="")
 TIMETABLE_SOURCE_COOKIE = "e2e_timetable_source"
 TIMETABLE_SOURCE = contextvars.ContextVar("e2e_timetable_source", default="")
-TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty", "time-table-changes": "changes"}
+TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty", "time-table-changes": "changes", "school-app-refused": "refused"}
 TIMETABLE_SOURCE_OPTION = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
 TIMETABLE_SOURCE_SCHOOLS = {}
+TIMETABLE_SOURCE_LOCK = threading.Lock()
 COURSE_PERIODS = {
     3: [("E1", "CCC", "R201"), ("E2", "DDD", "R202"), ("F1", "EEE", "R203"), ("L1", "FFF", "R204"), ("SP", "GGG", "GYM1"), ("SP", "HHH", "GYM2")],
     4: [("REV", "III", "R301"), ("RKA", "JJJ", "R302"), ("WN", "KKK", "R303")],
@@ -646,9 +648,14 @@ def time_table_changes(start_text):
 
 
 def timetable_source_school(mode):
+    with TIMETABLE_SOURCE_LOCK:
+        return _timetable_source_school(mode)
+
+
+def _timetable_source_school(mode):
     from app.service import ConnectionService
     from app.store import ConnectionStore
-    from tests.time_table_school import TimeTableSchool, client_factory
+    from tests.time_table_school import TimeTableSchool, client_factory, withheld_school
 
     entry = TIMETABLE_SOURCE_SCHOOLS.get(mode)
     if entry is not None:
@@ -658,13 +665,15 @@ def timetable_source_school(mode):
     store = Store(directory)
     created = store.add_connection(SCHOOL_ONE_URL, setup_complete=True)
     store.save_secrets(created["id"], {"username": "parent", "password": "fixture"})
-    school = TimeTableSchool(
-        child_id="child-1",
-        child_name=("Mia", "Musterkind"),
-        options=((TIMETABLE_SOURCE_OPTION, "Musterkind, Mia"),),
-        time_table="lessons" if mode == "changes" else mode,
-        changes=time_table_changes if mode == "changes" else (),
-    )
+    child = dict(child_id="child-1", child_name=("Mia", "Musterkind"), options=((TIMETABLE_SOURCE_OPTION, "Musterkind, Mia"),))
+    if mode == "refused":
+        school = withheld_school(**child)
+    else:
+        school = TimeTableSchool(
+            time_table="lessons" if mode == "changes" else mode,
+            changes=time_table_changes if mode == "changes" else (),
+            **child,
+        )
     entry = ConnectionService(ConnectionStore(store, created["id"]), client_factory=client_factory(school))
     TIMETABLE_SOURCE_SCHOOLS[mode] = entry
     return entry

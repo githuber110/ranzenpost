@@ -73,6 +73,8 @@
   --warn: #6e4409;
   --warn-soft: #faeedd;
   --warn-tint: #f7e3c2;
+  --moved: #6a3fb8;
+  --moved-tint: #ebe2fa;
   --danger: #b03a2e;
   --danger-soft: #fae7e4;
   --accent-inverse: #4fbdba;
@@ -216,6 +218,8 @@
     --warn: #e0a45c;
     --warn-soft: #31251a;
     --warn-tint: #31251a;
+    --moved: #b89cf0;
+    --moved-tint: #2a2140;
     --danger: #ef8074;
     --danger-soft: #33201d;
     --accent-inverse: #0e6b70;
@@ -329,6 +333,8 @@
   --warn: #e0a45c;
   --warn-soft: #31251a;
   --warn-tint: #31251a;
+  --moved: #b89cf0;
+  --moved-tint: #2a2140;
   --danger: #ef8074;
   --danger-soft: #33201d;
   --accent-inverse: #0e6b70;
@@ -1891,6 +1897,23 @@ button.section-head {
 .tt-cell.compact .bar { width: 2px; }
 .tt-cell.compact.subbed::after { top: 3px; inset-inline-end: 3px; width: 6px; height: 6px; }
 .tt-cell.compact.out::after { top: 0; inset-inline-end: 3px; font-size: 0.625rem; }
+.tt-cell.subbed.moved { background: var(--moved-tint); }
+.tt-cell.subbed.moved .bar, .tt-cell.subbed.moved::after { background: var(--moved); }
+.tt-cell.out.moved { outline: 1.5px dashed var(--moved); outline-offset: -1.5px; }
+.tt-cell.out.moved:not(.marked) { box-shadow: none; }
+.tt-cell.out.moved::after { color: var(--moved); }
+.tt-cell.moved .room { color: var(--moved); font-weight: 600; }
+.tt-cell .note-flag {
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 5px;
+  display: block;
+  line-height: 0;
+  color: var(--ink-3);
+}
+.tt-cell.compact .note-flag { inset-block-end: 1px; inset-inline-start: 4px; }
+.banner.moved.changed, .banner.moved.cancelled, .banner.moved.added { background: var(--moved-tint); color: var(--moved); }
+.change-note { white-space: pre-line; }
 .tt-cell.courses {
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -2388,6 +2411,7 @@ button.section-head {
 .mark { width: 10px; height: 10px; border-radius: 50%; flex: none; display: block; }
 .mark.changed, .mark.added { background: var(--warn); }
 .mark.cancelled { background: var(--danger); }
+.banner.moved .mark { background: var(--moved); }
 
 .swap { display: flex; align-items: baseline; gap: var(--s-4); flex-wrap: wrap; font-size: 0.9375rem; margin-top: var(--s-1); }
 .swap s { color: var(--ink-3); text-decoration-thickness: 1.5px; overflow-wrap: anywhere; min-inline-size: 0; }

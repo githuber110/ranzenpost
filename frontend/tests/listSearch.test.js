@@ -57,6 +57,27 @@ describe("pinboard full-text search", () => {
   });
 });
 
+describe("letters search on list fields", () => {
+  test("a letter nobody opened yet is found by sender, child and recipients without any body text", () => {
+    const { window } = loadApp();
+    const data = {
+      tab: "current",
+      letters: [
+        { letter_id: "1", recipient_id: "a", title: "Infobrief", sender: "Frau Muster", child: "Alex Sample", recipients: "Klasse 03B", unread: true },
+        { letter_id: "2", recipient_id: "b", title: "Elternsprechtag", sender: "Herr Beispiel", child: "Robin Sample", recipients: "Jahrgang 01", body_text: "Klasse 03B trifft sich", unread: false },
+      ],
+    };
+    const view = renderLetters(window, data);
+    const input = view.querySelector(".search-input");
+    for (const query of ["frau muster", "alex", "jahrgang 01"]) {
+      typeInto(window, input, query);
+      expect(view.querySelectorAll(".rows .row").length).toBe(1);
+    }
+    typeInto(window, input, "klasse 03b");
+    expect(view.querySelectorAll(".rows .row").length).toBe(2);
+  });
+});
+
 describe("letters full-text search", () => {
   test("typing filters by title+sender+child, clearing restores it, matching is case-insensitive", () => {
     const { window } = loadApp();

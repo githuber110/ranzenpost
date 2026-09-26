@@ -453,12 +453,21 @@ def teacher_surname(config, code):
 
 def _previous_display(config, previous):
     previous = previous or {}
-    return {
+    shown = {
         "subject": subject_label(config, previous.get("subject", "")),
         "teacher": teacher_label(config, previous.get("teacher", "")),
         "teacher_surname": teacher_surname(config, previous.get("teacher", "")),
         "room": previous.get("room", "") or "",
     }
+    if previous.get("class"):
+        shown["class"] = str(previous["class"])
+    return shown
+
+
+def _moved(value):
+    if not isinstance(value, dict):
+        return None
+    return {"date": str(value.get("date") or ""), "period": value.get("period"), "period_end": value.get("period_end")}
 
 
 def to_display(lesson, config, change=None):
@@ -484,4 +493,10 @@ def to_display(lesson, config, change=None):
         "change_kind": change.get("kind") or "",
         "changed_fields": list(change.get("fields") or []),
         "previous": _previous_display(config, change.get("previous")),
+        "classes": str(change.get("classes") or ""),
+        "teacher_hidden": bool(change.get("teacher_hidden")),
+        "no_details": bool(change.get("no_details")),
+        "change_note": str(change.get("note") or ""),
+        "moved_to": _moved(change.get("moved_to")),
+        "moved_from": _moved(change.get("moved_from")),
     }

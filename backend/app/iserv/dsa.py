@@ -27,6 +27,8 @@ PINBOARD_FIELDS = (
 )
 PINBOARD_PARAMS = {"fields": PINBOARD_FIELDS}
 REFUSED_STATUSES = (403,)
+TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
+SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 EXPIRED_STATUS = 401
 NAME_WORD_CATEGORIES = ("L", "M", "N")
 

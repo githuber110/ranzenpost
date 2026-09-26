@@ -258,6 +258,10 @@ class ChildService:
                 cached = self._children_cache[1]
         return len(cached)
 
+    def course_ids_known(self):
+        _, cached = self._children_cache
+        return any(child.get("course_ids") for child in cached.values())
+
     def _cached_child(self, child_id):
         stamp, cached = self._children_cache
         if time.time() - stamp > SCHOOL_CACHE_SECONDS or child_id not in cached:

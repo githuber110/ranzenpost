@@ -361,7 +361,7 @@ def color_api(tmp_path, codes):
         def get_children(self):
             return [Child("uuid-1", "Mia")]
 
-        def get_timetable(self, child_id, reference=None):
+        def read_time_table_week(self, child_id, reference=None):
             lessons = [
                 Lesson("31.08.2026", 1, index + 1, code, "BEH", "R1", "1a")
                 for index, code in enumerate(codes)
