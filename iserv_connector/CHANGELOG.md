@@ -13,7 +13,7 @@ fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below 
 - Timetables from the school app mark cover lessons, cancelled lessons and moved lessons when the school releases
   substitutions, and send the usual change notification.
 - The card editor sets the order of the blocks with up and down buttons, so no YAML is needed.
-- The card's links open the right place in the app: "Zum Stundenplan" the timetable, the letters and pinboard blocks
+- The card's links open the right place in the app: "Open the timetable" the timetable, the letters and pinboard blocks
   their tab, absences and conferences their page.
 - A new sensor names the next free day, school holidays or a public holiday. The holiday sensor is now called "Next
   school holidays", because it only counts school holidays.
@@ -36,7 +36,7 @@ fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below 
 
 ### Fixed
 
-- "Zum Stundenplan", "Alle ansehen" and the device link open the app again on Home Assistant versions that call add-ons
+- "Open the timetable", "Show all" and the device link open the app again on Home Assistant versions that call add-ons
   apps, instead of the default dashboard.
 - The card editor no longer stays empty when Home Assistant's form cannot be built; it shows simple fields instead.
 - Marking a lesson as an exam or as cancelled only marks that subject when several courses share the lesson. Marks keep
