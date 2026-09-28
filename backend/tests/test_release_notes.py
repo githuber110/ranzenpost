@@ -1,3 +1,4 @@
+import json
 import re
 import sys
 from pathlib import Path
@@ -35,3 +36,20 @@ def test_fails_on_a_version_the_changelog_does_not_have():
     text = CHANGELOG.read_text(encoding="utf-8")
     with pytest.raises(SectionNotFound):
         extract_section(text, "0.0.0-does-not-exist")
+
+
+def _german_only_labels():
+    german = json.loads((REPO_ROOT / "frontend" / "i18n" / "de.json").read_text(encoding="utf-8"))
+    english = json.loads((REPO_ROOT / "frontend" / "i18n" / "en.json").read_text(encoding="utf-8"))
+    card = (REPO_ROOT / "custom_components" / "ranzenpost" / "frontend" / "ranzenpost-card.js").read_text(encoding="utf-8")
+    card_german = card[: card.index('"block.showAll": "Show all"')]
+    labels = {value for key, value in german.items() if value != english.get(key)}
+    labels |= set(re.findall(r'"block\.\w+": "([^"]+)"', card_german))
+    return {label for label in labels if len(label) > 3}
+
+
+def test_the_current_release_notes_quote_english_labels_only():
+    text = CHANGELOG.read_text(encoding="utf-8")
+    section = extract_section(text, _top_heading(text))
+    quoted = set(re.findall(r'"([^"]+)"', section))
+    assert sorted(quoted & _german_only_labels()) == []
