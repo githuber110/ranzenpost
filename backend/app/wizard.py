@@ -167,8 +167,6 @@ class Wizard:
             code = result.get("error", "url_unreachable")
             if result.get("message_key"):
                 return self._error(state, code, result["message_key"])
-            if result.get("message"):
-                return self._error_text(state, code, result["message"])
             return self._error(state, code, "api.wizard.urlNotIserv")
         host = result.get("host", base)
         entry = self._entry(state)
@@ -269,12 +267,8 @@ class Wizard:
             return self._wait_out(state, status, result.get("retry_after"))
         if status in UNCOUNTED_LOGIN_OUTCOMES:
             return self._error(state, status, lockout.human_message_key(status))
-        if status in ("ok", "ok_unverified"):
+        if status == "ok":
             self._edit_secrets(state, lambda secrets: _store_token(secrets, result))
-            if status == "ok_unverified":
-                state["unverified_reason"] = result.get("reason", "")
-            else:
-                state.pop("unverified_reason", None)
             self._clear_pause(state)
             state.pop("awaiting_confirm", None)
             state.pop("last_code", None)
@@ -309,7 +303,6 @@ class Wizard:
         if outcome != "ok":
             return outcome
         state["verified_2fa"] = True
-        state["reused_secret"] = True
         state["step"] = "child"
         state.pop("awaiting_confirm", None)
         state.pop("last_code", None)
@@ -496,10 +489,6 @@ class Wizard:
         error = {"code": code}
         error.update(messages.payload(key, variables))
         state["error"] = error
-        return self._save(state)
-
-    def _error_text(self, state, code, message):
-        state["error"] = {"code": code, "message": message}
         return self._save(state)
 
     def _sync_school_url(self, state):

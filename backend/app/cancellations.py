@@ -30,6 +30,7 @@ def slot_of(entry):
         str(entry.get("child_key") or ""),
         str(entry.get("date") or ""),
         int(entry.get("period") or 0),
+        marks.plain_code(entry.get("subject_code")),
     )
 
 
@@ -39,6 +40,7 @@ def public_view(entry):
         "child_key": entry.get("child_key", ""),
         "date": entry.get("date", ""),
         "period": int(entry.get("period") or 0),
+        "subject_code": str(entry.get("subject_code") or ""),
         "created_at": int(entry.get("created_at") or 0),
     }
 
@@ -73,7 +75,7 @@ class CancellationRegistry:
             "window": {"start": start.isoformat(), "end": end.isoformat()},
         }
 
-    def create(self, child_key, date_value, period):
+    def create(self, child_key, date_value, period, subject_code=""):
         config = self.store.load_config()
         if not known_child(config, child_key):
             raise CancellationError(ERROR_CHILD)
@@ -90,6 +92,7 @@ class CancellationRegistry:
             "child_key": child_key,
             "date": date,
             "period": number,
+            "subject_code": marks.normalize_subject(subject_code) if subject_code else "",
             "created_at": int(self.clock()),
         }
         with self._lock:
@@ -101,6 +104,20 @@ class CancellationRegistry:
             entries.append(entry)
             self._write(entries)
         return public_view(entry)
+
+    def move_child(self, old_key, new_key):
+        if not old_key or not new_key or old_key == new_key:
+            return 0
+        with self._lock:
+            entries = self._read()
+            moved = 0
+            for entry in entries:
+                if entry.get("child_key") == old_key:
+                    entry["child_key"] = new_key
+                    moved += 1
+            if moved:
+                self._write(entries)
+        return moved
 
     def delete(self, cancellation_id):
         with self._lock:

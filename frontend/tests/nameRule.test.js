@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
@@ -10,14 +10,14 @@ const CONNECTIONS = [
 ];
 
 function seed(window, children, schools = 2) {
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(CONNECTIONS.slice(0, schools))}, language: "de", notify_services: [] };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(children[0].key)};
+  evalWith(window, `
+    state.config = { connections: testArgs[0], language: "de", notify_services: [] };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
     state.schools = [];
     state.schoolStatus = {};
     state.loadedAt = {};
-  `);
+  `, CONNECTIONS.slice(0, schools), children, children[0].key);
 }
 
 function texts(nodes) {
@@ -46,7 +46,7 @@ describe("name helpers", () => {
   test("today rows show the teacher surname next to the subject, never the first name", () => {
     const { window } = loadApp();
     seed(window, [{ key: `${ONE}:c1`, connection_id: ONE, name: "Mia Musterkind", class_name: "7b" }], 1);
-    const row = window.eval(`compactLesson({ lesson: { period: 1, subject_code: "M", subject_label: "Mathe", teacher_label: "Anna Beispiel", teacher_surname: "Beispiel" }, time: "08:00", childId: ${JSON.stringify(`${ONE}:c1`)}, mark: null }, false)`);
+    const row = evalWith(window, 'compactLesson({ lesson: { period: 1, subject_code: "M", subject_label: "Mathe", teacher_label: "Anna Beispiel", teacher_surname: "Beispiel" }, time: "08:00", childId: testArgs[0], mark: null }, false)', `${ONE}:c1`);
     expect(row.querySelector(".row-sub").textContent).toBe("Beispiel");
   });
 });
@@ -61,7 +61,7 @@ describe("children are named by first name outside detail pages", () => {
   test("the overview chips carry the first name and the short name only on the two children who share it", () => {
     const { window } = loadApp();
     seed(window, CHILDREN);
-    const bar = window.eval(`overviewChips(${JSON.stringify(`${TWO}:c3`)})`);
+    const bar = evalWith(window, "overviewChips(testArgs[0])", `${TWO}:c3`);
     expect(texts(bar.querySelectorAll(".chip"))).toEqual(["Mia · gymsued", "Mia · GS Nord", "Lea"]);
     expect(bar.querySelector(".chip .chip-label").textContent).toBe(window.eval('t("child.labelWithSchool", { label: "Mia", school: "gymsued" })'));
   });
@@ -69,14 +69,14 @@ describe("children are named by first name outside detail pages", () => {
   test("with one school the chips are plain first names", () => {
     const { window } = loadApp();
     seed(window, [CHILDREN[0], Object.assign({}, CHILDREN[2], { key: `${ONE}:c3`, connection_id: ONE })], 1);
-    const bar = window.eval(`overviewChips(${JSON.stringify(`${ONE}:c1`)})`);
+    const bar = evalWith(window, "overviewChips(testArgs[0])", `${ONE}:c1`);
     expect(texts(bar.querySelectorAll(".chip"))).toEqual(["Mia", "Lea"]);
   });
 
   test("two children with the same first name at the same school fall back to the full name", () => {
     const { window } = loadApp();
     seed(window, [CHILDREN[0], Object.assign({}, CHILDREN[1], { key: `${ONE}:c9`, connection_id: ONE })], 1);
-    const bar = window.eval(`overviewChips(${JSON.stringify(`${ONE}:c1`)})`);
+    const bar = evalWith(window, "overviewChips(testArgs[0])", `${ONE}:c1`);
     expect(texts(bar.querySelectorAll(".chip"))).toEqual(["Mia Musterkind", "Mia Beispiel"]);
   });
 
@@ -101,11 +101,11 @@ describe("children are named by first name outside detail pages", () => {
   test("absence rows name the child by first name, the absence detail by full name", () => {
     const { window } = loadApp();
     seed(window, CHILDREN);
-    window.eval(`state.absence = { data: { entries: [], children: [{ id: "s1", name: "Mia Musterkind" }, { id: "s2", name: "Lea Beispiel" }], rules: {} }, connectionId: ${JSON.stringify(ONE)} };`);
+    evalWith(window, 'state.absence = { data: { entries: [], children: [{ id: "s1", name: "Mia Musterkind" }, { id: "s2", name: "Lea Beispiel" }], rules: {} }, connectionId: testArgs[0] };', ONE);
     const entry = { id: 7, student_id: "s2", from_date: "2026-09-08", till_date: "2026-09-08", kind: "sick", status: "accepted" };
-    expect(window.eval(`absenceRow(${JSON.stringify(entry)}).querySelector(".row-sub").textContent`)).toContain("Lea");
-    expect(window.eval(`absenceRow(${JSON.stringify(entry)}).querySelector(".row-sub").textContent`)).not.toContain("Beispiel");
-    expect(window.eval(`absenceChildName(${JSON.stringify(entry)}, true)`)).toBe("Lea Beispiel");
+    expect(evalWith(window, 'absenceRow(testArgs[0]).querySelector(".row-sub").textContent', entry)).toContain("Lea");
+    expect(evalWith(window, 'absenceRow(testArgs[0]).querySelector(".row-sub").textContent', entry)).not.toContain("Beispiel");
+    expect(evalWith(window, "absenceChildName(testArgs[0], true)", entry)).toBe("Lea Beispiel");
   });
 
   test("the letter child chip and the calendar card overline carry the first name", () => {
@@ -124,7 +124,7 @@ describe("children are named by first name outside detail pages", () => {
     const entries = window.eval("meTechEntries()");
     expect(entries.map((entry) => entry.value)).toContain("Musterkind-Langenscheidt");
     const letter = { key: "k", letter_id: "l1", recipient_id: "r1", connection_id: ONE, title: "Trip", sender: "Anna Beispiel", published: "01.09.2026", child: "Lea Beispiel" };
-    window.eval(`state.letterDetail = { letter: ${JSON.stringify(letter)}, detail: { body_html: "" }, loading: false, error: null };`);
+    evalWith(window, 'state.letterDetail = { letter: testArgs[0], detail: { body_html: "" }, loading: false, error: null };', letter);
     const meta = window.eval("letterDetailView().querySelector('.row-meta').textContent");
     expect(meta).toContain("Anna Beispiel");
   });

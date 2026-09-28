@@ -86,3 +86,23 @@ describe("wizard reset confirmation", () => {
     expect(resetCalled).toBe(true);
   });
 });
+
+describe("wizard login step", () => {
+  test("the privacy note uses the shared lock icon, not an emoji", async () => {
+    const { window, document } = loadApp();
+    window.fetch = (path) => {
+      if (String(path).includes("api/wizard")) return jsonResponse({ step: "login", school_url: "https://school.example", has_2fa: false });
+      return Promise.reject(new Error("unexpected fetch " + path));
+    };
+    const app = document.getElementById("app");
+    await flush();
+    window.renderWizard(app, () => {});
+    await flush();
+
+    const lock = app.querySelector(".wz-lock .wz-lock-icon");
+    expect(lock).toBeTruthy();
+    expect(lock.getAttribute("aria-hidden")).toBe("true");
+    expect(lock.querySelector("svg.ico")).toBeTruthy();
+    expect(app.querySelector(".wz-lock").textContent).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+});

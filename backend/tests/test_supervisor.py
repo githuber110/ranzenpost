@@ -3,6 +3,7 @@ import requests
 from fastapi.testclient import TestClient
 
 from app import supervisor
+from app.integration_api import INGRESS_PROXY_ADDRESS
 from app.server import create_app
 from app.store import Store
 from app.subscriptions import SubscriptionRegistry
@@ -117,7 +118,7 @@ def test_sanitize_host_reduces_every_input_to_a_bare_host(value, expected):
     assert sanitize_host(value) == expected
 
 
-def test_sanitize_host_fixes_the_regression_that_killed_the_calendar_link():
+def test_sanitize_host_keeps_the_calendar_link_to_a_single_port():
     typed = "192.168.0.42:8123"
     host = sanitize_host(typed)
     assert host == "192.168.0.42"
@@ -470,7 +471,7 @@ def _api(tmp_path):
         children=[{"child_id": CHILD_ID, "name": CHILD_NAME, "class_name": "5A"}],
     )
     registry = SubscriptionRegistry(store)
-    return TestClient(create_app(FakeService(store), registry=registry)), store
+    return TestClient(create_app(FakeService(store), registry=registry), client=(INGRESS_PROXY_ADDRESS, 50000)), store
 
 
 def test_the_subscription_listing_carries_the_resolved_host_and_the_port_state(

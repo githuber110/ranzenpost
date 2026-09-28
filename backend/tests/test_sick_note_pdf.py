@@ -256,9 +256,10 @@ def test_shipped_fonts_cover_the_scripts_the_app_promises():
     }
     for key in FONT_FILES:
         font = font_for(key)
-        assert font.embedding_allowed()
+        assert "OS/2" not in font.tables or not int.from_bytes(font.table("OS/2")[8:10], "big") & 0x0002
         for language, sample in samples.items():
-            assert font.missing_glyphs(sample) == [], f"{FONT_FILES[key]} misses glyphs for {language}"
+            missing = [char for char in sample if font.glyph_id(ord(char)) is None]
+            assert missing == [], f"{FONT_FILES[key]} misses glyphs for {language}"
 
 
 def test_shipped_fonts_are_present_and_stay_small_enough_to_package():

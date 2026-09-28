@@ -49,9 +49,7 @@ const MARK_NAMES_KEY = "markNames";
 const MARK_NAME_CHIPS = 12;
 const MARK_MAX_NAME_LENGTH = 60;
 const MARK_STATE_SUBSTITUTED = "substituted";
-const MARK_STATE_FOREIGN = "foreign";
 const MARK_STATE_CANCELLED = "cancelled";
-const MARK_STATE_ORPHANED = "orphaned";
 const MARK_CLARIFY_KEYS = {
   cancelled: { title: "marks.clarify.cancelled.title", text: "marks.clarify.cancelled.text" },
   foreign: { title: "marks.clarify.foreign.title", text: "marks.clarify.foreign.text" },
@@ -249,13 +247,8 @@ function navigationAreas() {
   return layoutBlocks().normalizeNavigation(raw).filter((area) => VIEW_BY_KEY[area] && viewAvailable(area));
 }
 
-function navigationBarLimit() {
-  const match = /(?:^|;\s*)e2e_bar_limit=(\d+)/.exec(document.cookie || "");
-  return match ? Number(match[1]) : layoutBlocks().BAR_LIMIT;
-}
-
 function navigationLayout() {
-  return layoutBlocks().barLayout(navigationAreas(), navigationBarLimit());
+  return layoutBlocks().barLayout(navigationAreas(), layoutBlocks().BAR_LIMIT);
 }
 
 function areaLabel(key) {
@@ -808,8 +801,6 @@ function leaveDirtyForms(after) {
   leaveAbsenceForm(() => leavePageForm(after));
 }
 
-const ALL_VIEWS = VIEWS.map((item) => item.key).concat(["settings"]);
-
 const VIEW_ENTRY_DEFAULTS = {
   overview: {
     _overviewAnchor: null,
@@ -1186,7 +1177,7 @@ function tabbar() {
   const bar = el("nav", { class: "tabbar", "aria-label": t("nav.aria") });
   bar.style.setProperty("--tabs", String(layout.bar.length));
   for (const key of layout.bar) {
-    if (key === MORE_VIEW.key) {
+    if (key === layoutBlocks().MORE_KEY) {
       const hiddenCount = layout.more.reduce((sum, area) => sum + badgeCount(area), 0);
       bar.append(navEntry("tab tab-more", MORE_VIEW, hiddenCount, layout.more.includes(state.view), () => openSheet(moreSheet), {
         "aria-haspopup": "dialog",
@@ -1967,6 +1958,31 @@ function techDetailsButton(entries) {
 
 let bootWatchdog = 0;
 
+const START_SEGMENTS = ["letters", "pinboard"];
+
+function startLinkParams() {
+  const own = new URLSearchParams(window.location.search);
+  if (own.has("view")) return own;
+  try {
+    return window.parent && window.parent !== window ? new URLSearchParams(window.parent.location.search) : own;
+  } catch (error) {
+    return own;
+  }
+}
+
+function startLink() {
+  const params = startLinkParams();
+  const view = params.get("view");
+  if (!view || !VIEW_BY_KEY[view] || !viewAvailable(view)) return null;
+  const segment = params.get("segment");
+  return { view, segment: view === "post" && START_SEGMENTS.includes(segment) ? segment : null };
+}
+
+function followStartLink(link) {
+  if (!link || link.view === state.view) return;
+  setView(link.view, link.segment ? { segment: link.segment } : undefined);
+}
+
 async function boot() {
   state.detached = false;
   window.clearTimeout(bootWatchdog);
@@ -2005,7 +2021,7 @@ async function bootOnce() {
     await loadChildren();
     if (state.childId && moduleOn("timetable")) {
       try {
-        await loadTimetable();
+        applyTimetable(await loadTimetable());
       } catch (error) {
         if (handleApiFailure(error)) return;
         state.timetable = { lessons: [], error: errorCode(error) };
@@ -2013,6 +2029,7 @@ async function bootOnce() {
     }
     render();
     loadRest();
+    followStartLink(startLink());
     setupVisibilityRefresh();
     resumeCalendarPage();
   } catch (error) {
@@ -2111,6 +2128,7 @@ function loadRest() {
 
 const VISIBILITY_REFRESH_MS = 5 * 60 * 1000;
 let lastVisibilityRefreshAt = Date.now();
+let visibilityRefreshBound = false;
 
 function hasOpenFormGuard() {
   return !!(state.sheet || state.detail || state.absenceForm || state.teacherRoom || state.letterDetail);
@@ -2160,6 +2178,8 @@ function flushDeferredRefresh() {
 }
 
 function setupVisibilityRefresh() {
+  if (visibilityRefreshBound) return;
+  visibilityRefreshBound = true;
   const maybeRefresh = () => {
     if (document.hidden) return;
     if (Date.now() - lastVisibilityRefreshAt < VISIBILITY_REFRESH_MS) return;
@@ -2459,8 +2479,14 @@ function renderReconnect(app, username, connectionId, reason) {
 }
 
 async function loadTimetable() {
-  state.timetable = await getJson(`api/timetable?child=${encodeURIComponent(state.childId)}&week=${state.weekOffset}`);
-  state.config = await getJson("api/config");
+  const timetable = await getJson(`api/timetable?child=${encodeURIComponent(state.childId)}&week=${state.weekOffset}`);
+  const config = await getJson("api/config");
+  return { timetable, config };
+}
+
+function applyTimetable(loaded) {
+  state.timetable = loaded.timetable;
+  state.config = loaded.config;
 }
 
 function viewFor(view) {
@@ -2529,7 +2555,6 @@ async function loadOverviewWeek(childId, week) {
   if (state.view === "overview" || state.view === "timetable") rerender();
 }
 
-const OVERVIEW_ENTRY_CAP = 12;
 const OVERVIEW_UPCOMING_DAYS = 14;
 const OVERVIEW_MAX_PAGES = 4;
 const OVERVIEW_MIN_BLOCKS_PER_PAGE = 3;
@@ -2823,7 +2848,7 @@ function todayChapter(size) {
       time: lessonTime(lesson, times),
       minutes: lessonTimeMinutes(lesson, times),
       childId: child.key,
-      mark: markAt(child.key, lessonIso(lesson), lesson.period),
+      mark: markAt(child.key, lessonIso(lesson), lesson.period, lesson),
     }));
     entries[0].when = isNow ? "now" : position === timeline.nextIndex ? "next" : null;
     const node = entries.length >= COURSE_CELL_MIN
@@ -3906,11 +3931,6 @@ function plainCard(text) {
   return el("div", { class: "card" }, [el("p", { class: "dlg-text", style: "margin:0" }, text)]);
 }
 
-function overviewToday(size) {
-  const chapter = todayChapter(size);
-  return chapter ? overviewPanel(chapter, 0, 1, chapter.blocks, 0, null, false, 0) : null;
-}
-
 function changeTag(kind) {
   if (!kind) return null;
   return el("span", { class: kind === "cancelled" ? "tag no" : "tag open" }, changeLabel(kind));
@@ -3944,14 +3964,14 @@ function compactLesson(entry, isPast) {
   const kind = displayChangeKind(lesson, entry.childId);
   const dot = el("span", { class: "row-dot" }, [el("i", {})]);
   dot.firstChild.style.background = subjectDotColor(lesson);
-  const sub = teacherSurname(lesson);
+  const sub = [lesson.room, teacherSurname(lesson)].filter(Boolean).join(" · ");
   const row = el("button", {
     class: rowClassNames(isPast),
     type: "button",
     onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
   }, [
     dot,
-    el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
+    el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? iservText("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
     el("div", { class: "row-side" }, [
       whenTag(entry.when),
       el("span", { class: "row-meta" }, entry.time || periodShort(lesson.period)),
@@ -4588,9 +4608,14 @@ async function setWeek(offset) {
 
 async function reloadTimetable() {
   const keep = !!(state.timetable && !state.timetable.error && Array.isArray(state.timetable.lessons));
-  const outcome = await reload("timetable", () => loadTimetable(), keep, currentConnectionId());
+  let loaded = null;
+  const outcome = await reload("timetable", async () => {
+    loaded = await loadTimetable();
+    return loaded.timetable;
+  }, keep, currentConnectionId());
   if (!outcome) return;
   if (outcome.error) state.timetable = { lessons: [], error: outcome.error };
+  else if (outcome.data) applyTimetable(loaded);
   rerender();
 }
 
@@ -4607,7 +4632,7 @@ function calendarDetectedHost() {
 function sanitizeCalendarHost(value) {
   let host = String(value || "").trim();
   if (!host) return "";
-  const schemeEnd = host.indexOf(":" + "//");
+  const schemeEnd = host.indexOf("://");
   if (schemeEnd > 0) host = host.slice(schemeEnd + 3);
   host = host.split("/")[0].split("?")[0].split("#")[0];
   if (host.startsWith("[")) {
@@ -5768,6 +5793,9 @@ function lessonCell(lesson, time, compact, childId, weekLessons) {
     : bareChange(lesson, kind) ? t("timetable.cell.school")
     : kind === "cancelled" ? t("timetable.change.cancelled") : kind === "changed" ? t("timetable.cell.substitute") : "";
   const subject = lessonSubjectKey(lesson);
+  const code = lesson.subject_code || lesson.subject_label || "?";
+  const surname = compact ? "" : teacherSurname(lesson);
+  const room = compact || roomLabel ? "" : lesson.room || "";
   const cell = el("button", {
     class: compact ? `${shown} compact` : shown,
     type: "button",
@@ -5776,10 +5804,13 @@ function lessonCell(lesson, time, compact, childId, weekLessons) {
     onclick: () => openLessonSheet(lesson, time, owner, week),
   }, [
     kind && kind !== "cancelled" ? el("span", { class: "bar" }) : null,
-    iservText("span", { class: "sub" }, lesson.subject_code || lesson.subject_label || "?"),
+    iservText("span", { class: "sub" }, code),
+    compact ? null : iservText("span", { class: "lname" }, lesson.subject_label || code),
     roomLabel ? el("span", { class: "room" }, roomLabel) : null,
+    room ? iservText("span", { class: "lroom" }, room) : null,
+    surname ? iservText("span", { class: "lteacher" }, surname) : null,
     note ? el("span", { class: "note-flag", html: iconSvg("info", 11) }) : null,
-    mark ? el("span", { class: "exam-flag", html: iconSvg("exam", 11) }) : null,
+    mark ? el("span", { class: "exam-flag", html: iconSvg("exam") }) : null,
   ]);
   if (mark) cell.classList.add("marked");
   if (subject && subject === state.spotlightSubject) cell.classList.add("spot");
@@ -5972,11 +6003,26 @@ function lessonIso(lesson) {
   return parsed ? isoDate(parsed) : "";
 }
 
-function markAt(childId, iso, period) {
+function plainCode(value) {
+  return String(value || "").split(/\s+/).filter(Boolean).join(" ");
+}
+
+function lessonMatchesCode(lesson, code) {
+  const wanted = plainCode(code);
+  return !!wanted && !!lesson && [lesson.subject_key, lesson.subject_code, lesson.subject_label].some((value) => plainCode(value) === wanted);
+}
+
+function slotEntryFor(entries, childId, iso, period, lesson) {
   if (!childId || !iso) return null;
-  return markList().find(
-    (entry) => entry.child_key === childId && entry.date === iso && Number(entry.period) === Number(period)
-  ) || null;
+  const inSlot = entries.filter((entry) => entry.child_key === childId && entry.date === iso && Number(entry.period) === Number(period));
+  if (!lesson) return inSlot[0] || null;
+  return inSlot.find((entry) => lessonMatchesCode(lesson, entry.subject_code))
+    || inSlot.find((entry) => !plainCode(entry.subject_code))
+    || null;
+}
+
+function markAt(childId, iso, period, lesson) {
+  return slotEntryFor(markList(), childId, iso, period, lesson);
 }
 
 function cancellationList() {
@@ -5993,15 +6039,12 @@ async function loadCancellations() {
   rerender();
 }
 
-function cancellationAt(childId, iso, period) {
-  if (!childId || !iso) return null;
-  return cancellationList().find(
-    (entry) => entry.child_key === childId && entry.date === iso && Number(entry.period) === Number(period)
-  ) || null;
+function cancellationAt(childId, iso, period, lesson) {
+  return slotEntryFor(cancellationList(), childId, iso, period, lesson);
 }
 
 function cancellationOfLesson(lesson, childId) {
-  return cancellationAt(markChildOf(childId), lessonIso(lesson), lesson && lesson.period);
+  return cancellationAt(markChildOf(childId), lessonIso(lesson), lesson && lesson.period, lesson);
 }
 
 function lessonDropped(lesson, childId) {
@@ -6036,7 +6079,7 @@ function addCancellation(childId, lesson) {
     () => cancellationRequest("api/cancellations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ child_key: anchor.child_key, date: anchor.date, period: anchor.period }),
+      body: JSON.stringify({ child_key: anchor.child_key, date: anchor.date, period: anchor.period, subject_code: anchor.subject_code }),
     }),
     "timetable.cancel.toast.saved"
   );
@@ -6061,12 +6104,12 @@ function markLessonAnchor(lesson, childId) {
   if (!iso || !childId) return null;
   const period = Number(lesson.period);
   if (!Number.isInteger(period) || period <= 0) return null;
-  const subject = lesson.subject_code || lesson.subject_label || "";
+  const subject = String(lesson.subject_key || "") || lessonSubjectKey(lesson);
   return subject ? { child_key: childId, date: iso, period, subject_code: subject } : null;
 }
 
 function markOfLesson(lesson, childId) {
-  return markAt(markChildOf(childId), lessonIso(lesson), lesson && lesson.period);
+  return markAt(markChildOf(childId), lessonIso(lesson), lesson && lesson.period, lesson);
 }
 
 function markLabel(mark) {
@@ -6187,10 +6230,10 @@ function markDayLessons(childId, iso) {
 
 function markMoveTargets(mark, childId) {
   return markDayLessons(childId, mark.date).filter((lesson) => {
-    if (Number(lesson.period) === Number(mark.period)) return false;
+    if (Number(lesson.period) === Number(mark.period) && lessonMatchesCode(lesson, mark.subject_code)) return false;
     if (displayChangeKind(lesson, childId) === MARK_STATE_CANCELLED) return false;
     if (!markLessonAnchor(lesson, childId)) return false;
-    return !markAt(childId, mark.date, lesson.period);
+    return !markAt(childId, mark.date, lesson.period, lesson);
   });
 }
 
@@ -6987,18 +7030,45 @@ function leaveLetterDetail() {
   loadLetters(state.lettersTab);
 }
 
+const unreadLetterOpens = new Map();
+
+function beginUnreadOpen(letter) {
+  const key = letterKey(letter);
+  const open = unreadLetterOpens.get(key) || (letter.unread ? { key, pending: 0, read: false } : null);
+  if (!open) return null;
+  open.pending += 1;
+  unreadLetterOpens.set(key, open);
+  return open;
+}
+
+function settleUnreadOpen(letter, open, arrived) {
+  if (!open) return;
+  open.pending -= 1;
+  const firstArrival = arrived && !open.read;
+  if (arrived) open.read = true;
+  if (open.pending === 0 && unreadLetterOpens.get(open.key) === open) unreadLetterOpens.delete(open.key);
+  if (firstArrival) markLetterSeen(letter);
+  else if (!open.read && open.pending === 0) restoreUnreadMark(letter);
+}
+
 async function openLetter(letter, origin) {
-  state.letterDetail = { letter, loading: true, origin: origin || null };
+  const pending = { letter, loading: true, origin: origin || null };
+  const unreadOpen = beginUnreadOpen(letter);
+  state.letterDetail = pending;
   dropSheet();
-  if (letter.unread) markLetterSeen(letter);
+  letter.unread = false;
   render();
   try {
     const detail = await getJson(
       `api/letters/detail?letter_id=${encodeURIComponent(letter.letter_id)}&recipient_id=${encodeURIComponent(letter.recipient_id)}&connection=${encodeURIComponent(letter.connection_id || "")}`
     );
+    settleUnreadOpen(letter, unreadOpen, true);
+    if (state.letterDetail !== pending) return;
     state.letterDetail = { letter, detail, origin: origin || null };
   } catch (error) {
+    settleUnreadOpen(letter, unreadOpen, false);
     if (handleApiFailure(error)) return;
+    if (state.letterDetail !== pending) return;
     const refused = !!(error && error.body && error.body.message_key === LETTER_UNKNOWN_KEY);
     state.letterDetail = { letter, error: errorCode(error), refused, origin: origin || null };
   }
@@ -10249,11 +10319,6 @@ function absenceProblemEntry(form, data) {
   return absenceProblems(form, data)[0] || null;
 }
 
-function absenceProblem(form, data) {
-  const entry = absenceProblemEntry(form, data);
-  return entry ? entry.text : "";
-}
-
 function absenceStepBlock(id, form, data) {
   return absenceProblems(form, data).find((entry) => entry.step === id) || null;
 }
@@ -10941,12 +11006,12 @@ async function saveCoursePage() {
   rerender();
   const result = await persistTo("api/timetable/courses", payload);
   page.saving = false;
-  if (!result.ok) {
+  if (!result.ok && !result.handled) {
     toast(result.message || t("common.saveFailed"), "bad");
     rerender();
     return;
   }
-  toast(result.message || t("api.courses.saved"), result.reloadFailed ? "bad" : "good");
+  announceSave(result, "api.courses.saved");
   if (state.coursesPage === page) closeCoursesPage();
 }
 
@@ -11607,7 +11672,7 @@ async function selectHolidayRegion(code) {
   if ((config.holiday_region || "") === (code || "")) return;
   const result = await persistConnection(editingConnectionId(), { holiday_region: code || "" });
   if (result.ok) await loadHolidays();
-  toast(result.message || t("common.saved"), result.ok && !result.reloadFailed ? "good" : "bad");
+  announceSave(result);
 }
 
 function languageLabel(choice) {
@@ -11642,8 +11707,8 @@ async function selectLanguage(choice) {
   if (!state.config) return;
   state.config.language = currentLanguageChoice();
   const result = await persistConfig();
-  rememberLanguageChoice(currentLanguageChoice(), !!result.ok);
-  if (!result.ok) toast(result.message, "bad");
+  rememberLanguageChoice(currentLanguageChoice(), !!(result.ok || result.handled));
+  if (!result.ok && !result.handled) toast(result.message, "bad");
 }
 
 function notifyOptions() {
@@ -11693,7 +11758,7 @@ function saveSheet(apply) {
     const result = patch && typeof patch === "object" ? await persistConnection(editingConnectionId(), patch) : await persistConfig();
     resetSheetForm();
     closeSheet();
-    toast(result.message || t("common.saved"), result.ok && !result.reloadFailed ? "good" : "bad");
+    announceSave(result);
   });
   return button;
 }
@@ -11718,11 +11783,16 @@ async function persistTo(path, payload) {
   try {
     state.config = await getJson("api/config");
   } catch (error) {
-    if (handleApiFailure(error)) return { ok: true };
+    if (handleApiFailure(error)) return { ok: false, handled: true };
     return { ok: true, message: t("settings.save.reloadFailed"), reloadFailed: true };
   }
   reloadTimetable();
   return { ok: true };
+}
+
+function announceSave(result, savedKey = "common.saved") {
+  if (result.handled) return;
+  toast(result.message || t(savedKey), result.ok && !result.reloadFailed ? "good" : "bad");
 }
 
 async function persistConfig() {
@@ -11784,12 +11854,12 @@ async function saveNamesPage() {
   rerender();
   const result = await persistConnection(page.connectionId, { subjects: draft.subjects, teachers: draft.teachers });
   page.saving = false;
-  if (!result.ok) {
+  if (!result.ok && !result.handled) {
     toast(result.message || t("common.saveFailed"), "bad");
     return;
   }
   if (state.namesPage === page) closeNamesPage();
-  toast(result.message || t("common.saved"), result.reloadFailed ? "bad" : "good");
+  announceSave(result);
 }
 
 function namesGroup(kind, entries, build) {
@@ -12073,7 +12143,7 @@ function phonesSheet() {
     const result = await persistConnection(editingConnectionId(), { phones: phones.filter((entry) => !phonesRowIsEmpty(entry)) });
     resetSheetForm();
     closeSheet();
-    toast(result.message || t("common.saved"), result.ok && !result.reloadFailed ? "good" : "bad");
+    announceSave(result);
   });
   return sheet(t("settings.phones.sheet"), [
     el("p", { class: "dlg-text" }, t("settings.phones.text")),
@@ -12446,10 +12516,6 @@ function schoolSessionMissing(id) {
 function schoolTroubled(id) {
   const status = schoolStatus(id);
   return status === ERROR_AUTH_FAILED || status === ERROR_NETWORK;
-}
-
-function troubledSchools() {
-  return connections().filter((entry) => schoolTroubled(entry.id));
 }
 
 async function refreshOutageStatus() {
@@ -13279,7 +13345,7 @@ async function toggleOwnEntriesHa(id, on) {
   focusAfterRender(".periods-ha .switch");
   const result = await persistConnection(id, { own_entries_ha: on });
   rerender();
-  toast(result.message || t("common.saved"), result.ok && !result.reloadFailed ? "good" : "bad");
+  announceSave(result);
 }
 
 function periodsRolloverNote(id, rollover) {

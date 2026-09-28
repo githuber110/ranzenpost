@@ -76,7 +76,7 @@ def test_disconnect_without_a_stored_uuid_never_attempts_a_delete(tmp_path):
     result = service.disconnect()
     assert result["attempted"] is False
     assert result["removed"] is False
-    assert "selbst entfernen" in result["message"]
+    assert "in IServ selbst" in result["message"]
     assert client.deleted_args is None
 
 

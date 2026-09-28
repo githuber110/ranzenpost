@@ -71,9 +71,16 @@ def create_app(
     mark_registry=None,
     calendar_warmer=None,
     integration_access=None,
+    ingress_only=None,
 ):
     app = FastAPI(title="Ranzenpost")
-    from .integration_api import IntegrationAccess, register_integration_routes, register_status_routes
+    from .integration_api import (
+        IntegrationAccess,
+        ingress_only_from_env,
+        register_ingress_guard,
+        register_integration_routes,
+        register_status_routes,
+    )
     from .supervisor import clear_restart_pending
 
     clear_restart_pending(service.store)
@@ -99,6 +106,7 @@ def create_app(
     register_integration_routes(app, service, service.store, holiday_source, access, warm=warm)
     register_status_routes(app, access)
     app.state.integration_access = access
+    register_ingress_guard(app, ingress_only_from_env() if ingress_only is None else ingress_only)
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const CHILDREN = [
   { key: "a1b2c3d4:c1", child_id: "c1", connection_id: "a1b2c3d4", name: "Mia Example", class_name: "3b" },
@@ -8,14 +8,14 @@ const CHILDREN = [
 ];
 
 function seed(window) {
-  window.eval(`
-    state.children = ${JSON.stringify(CHILDREN)};
+  evalWith(window, `
+    state.children = testArgs[0];
     state.childId = "a1b2c3d4:c1";
     state.config = { connections: [
       { id: "a1b2c3d4", subjects: { D: { label: "German" } }, period_times: { "1": "08:00" }, holiday_region: "DE-NI" },
       { id: "b2c3d4e5", subjects: { D: { label: "Deutsch" } }, period_times: { "1": "07:45" }, holiday_region: "DE-BY" },
     ] };
-  `);
+  `, CHILDREN);
 }
 
 describe("children of several schools are told apart by their key", () => {

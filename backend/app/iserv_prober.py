@@ -14,7 +14,6 @@ from .iserv.errors import (
 from .iserv.forms import find_client_redirect, find_login_form, find_two_factor_form, parse_forms
 from .iserv.totp import generate_code
 from .iserv.twofactor import setup_required
-from . import messages
 from .lockout import TWOFACTOR_REQUIRED_SETUP, classify_login_response, login_refusal
 
 
@@ -44,16 +43,12 @@ class IServProber:
         try:
             response = requests.Session().get(f"{base}/iserv/", timeout=self.timeout)
         except requests.RequestException:
-            return {"ok": False, "error": "url_unreachable",
-                    "message_key": "api.wizard.urlUnreachable",
-                    "message": messages.text("api.wizard.urlUnreachable")}
+            return {"ok": False, "error": "url_unreachable", "message_key": "api.wizard.urlUnreachable"}
         forms = parse_forms(response.text, response.url)
         looks_iserv = "/iserv/" in response.text or "iserv" in response.url.lower()
         if find_login_form(forms) is not None and looks_iserv:
             return {"ok": True, "host": base}
-        return {"ok": False, "error": "not_iserv",
-                "message_key": "api.wizard.notIserv",
-                "message": messages.text("api.wizard.notIserv")}
+        return {"ok": False, "error": "not_iserv", "message_key": "api.wizard.notIserv"}
 
     def verify_login(self, url, username, password):
         self.retry_after = None
@@ -181,9 +176,3 @@ class IServProber:
         if len(new_uuids) == 1:
             result["uuid"] = new_uuids.pop()
         return result
-
-    def register_2fa(self, url, username, password, code, name="ISERV-Connector"):
-        started = self.begin_2fa(url, username, password, code)
-        if started.get("status") != "awaiting_confirm":
-            return started
-        return self.confirm_2fa(url, username, password, code, name)

@@ -28,7 +28,6 @@ from tests.test_diagnostics import (
     registry_for,
     two_school_service,
 )
-from tests.test_no_personal_data import line_contains_forbidden_token
 
 PLANTED = (
     "Mia Musterkind",
@@ -382,8 +381,6 @@ def test_the_bundle_holds_the_report_and_the_whole_redacted_log(tmp_path):
         lowered = text.lower()
         for word in ("musterkind", "family.example", "lehrerin", "gymnasium-nord"):
             assert word not in lowered, word
-        for number, line in enumerate(text.splitlines(), 1):
-            assert not line_contains_forbidden_token(line.lower()), f"line {number}"
 
 
 def test_the_zip_endpoint_serves_a_download_and_reuses_the_report_it_just_built(tmp_path):

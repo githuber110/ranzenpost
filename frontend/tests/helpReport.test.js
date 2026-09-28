@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const MODULES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger"];
 const ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new?";
@@ -11,7 +11,7 @@ const DAY = 86400;
 function seed(window, extra = "") {
   const available = {};
   for (const name of MODULES) available[name] = true;
-  window.eval(`
+  evalWith(window, `
     state.children = [{ key: "c1", name: "Alice", class_name: "3b" }];
     state.childId = "c1";
     state.me = { forename: "Alice" };
@@ -24,7 +24,7 @@ function seed(window, extra = "") {
     state.absence = { data: { entries: [], children: [] } };
     state.messengerRooms = { rooms: [] };
     state.modules = applyModules({
-      modules: ${JSON.stringify(available)},
+      modules: testArgs[0],
       unsupported: [{ segment: "calendar", slug: "calendar", label: "Kalender", name: "Kalender" }],
       unknown: [{ segment: "mail", label: "E-Mail" }],
       checked_at: 10,
@@ -36,12 +36,12 @@ function seed(window, extra = "") {
     state.helpFailed = false;
     state.helpBundle = null;
     state.helpBundleFailed = false;
-    ${extra}
-  `);
+  `, available);
+  evalWith(window, ...[].concat(extra));
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || null)})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || null);
 }
 
 function fakeFetch(window, calls, bundleOk = true) {
@@ -207,7 +207,7 @@ describe("the help page", () => {
 
   test("the save button says it is preparing while the file is built", async () => {
     const { window, document } = await app();
-    seed(window, `state.helpReport = ${JSON.stringify(REPORT)};`);
+    seed(window, ["state.helpReport = testArgs[0];", REPORT]);
     let release;
     window.URL.createObjectURL = () => "blob:report";
     window.fetch = () => new Promise((resolve) => { release = resolve; });

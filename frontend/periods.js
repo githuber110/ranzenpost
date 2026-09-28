@@ -9,7 +9,6 @@
   const REPEAT_DAILY = "daily";
   const REPEAT_WEEKLY = "weekly";
   const REPEAT_WEEKS = "weeks";
-  const REPEATS = [REPEAT_ONCE, REPEAT_DAILY, REPEAT_WEEKLY, REPEAT_WEEKS];
   const SCHOOL_DAYS = [0, 1, 2, 3, 4];
   const STATE_OK = "ok";
   const STATE_CUT = "cut";
@@ -222,10 +221,6 @@
     return cut >= 0 ? text.slice(cut + 1) : text;
   }
 
-  function overlaps(firstStart, firstEnd, secondStart, secondEnd) {
-    return firstStart < secondEnd && secondStart < firstEnd;
-  }
-
   function limits(candidate, entries, rows, profiles, children) {
     const start = startOf(candidate);
     const weekdays = weekdaysOf(candidate);
@@ -293,33 +288,22 @@
     REPEAT_DAILY,
     REPEAT_WEEKLY,
     REPEAT_WEEKS,
-    REPEATS,
     SCHOOL_DAYS,
     STATE_OK,
     STATE_CUT,
     STATE_HIDDEN,
     minutesOf,
     clockOf,
-    dayNumber,
-    isoOfDay,
     weekdayOf,
     addDaysIso,
-    lessonIso,
     startOf,
-    endOf,
-    occursOn,
-    weekdaysOf,
     occurrenceDays,
-    appliesTo,
-    clip,
-    pauseCounts,
     resolveDay,
     gridRows,
     spansFor,
     profileDays,
     entryStatus,
     rawChild,
-    overlaps,
     limits,
     defaultDuration,
     regularPeriods,

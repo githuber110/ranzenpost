@@ -29,7 +29,7 @@ function renderOverviewTodayAt(window, fixedDate, week) {
       Date = FixedDate;
       state.weekOffset = 0;
       state.timetable = week;
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })

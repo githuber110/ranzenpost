@@ -42,7 +42,7 @@ function overviewWithMark(window) {
         { id: "m1", child_key: "c1", date: "2026-09-02", period: 2, kind: "exam", label: "" },
         { id: "m2", child_key: "c1", date: "2026-09-02", period: 3, kind: "exam", label: "" }
       ] } };
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })

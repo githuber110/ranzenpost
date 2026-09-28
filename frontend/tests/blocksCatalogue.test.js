@@ -32,8 +32,6 @@ describe("the block catalogue is one shared list with rules", () => {
     const items = ["a", "b", "c", "d"];
     expect(blocks.shownItems(blocks.blockOf("absences"), "compact", items)).toEqual({ items: ["a", "b"], more: true });
     expect(blocks.shownItems(blocks.blockOf("absences"), "normal", items)).toEqual({ items, more: false });
-    expect(blocks.hasContent([])).toBe(false);
-    expect(blocks.hasContent(["x"])).toBe(true);
   });
 
   test("only blocks of modules the account has are offered, per surface", () => {

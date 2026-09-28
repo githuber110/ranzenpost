@@ -166,12 +166,13 @@ test.describe("the More sheet and the module switches @ 390", () => {
 
   test("a lowered bar limit folds more areas under More", async ({ page }) => {
     await page.context().clearCookies();
-    await page.context().addCookies([
-      { name: "e2e_lang", value: "de", url: BASE_URL },
-      { name: "e2e_bar_limit", value: "3", url: BASE_URL },
-    ]);
+    await page.context().addCookies([{ name: "e2e_lang", value: "de", url: BASE_URL }]);
     await goto(page);
     await page.waitForSelector(".overview", { timeout: 10000 });
+    await page.evaluate(() => {
+      RanzenpostBlocks.BAR_LIMIT = 3;
+      render();
+    });
     const tabs = await page.locator(".tabbar .tab").evaluateAll((nodes) => nodes.map((node) => node.dataset.view));
     expect(tabs).toEqual(["overview", "timetable", "more"]);
     await page.locator(".tabbar .tab-more").click();

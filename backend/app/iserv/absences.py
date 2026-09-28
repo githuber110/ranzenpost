@@ -279,15 +279,6 @@ def normalize_user_request(raw, kind, target=""):
     }
 
 
-def seed_absence_history(history, entry):
-    history = dict(history or {})
-    entry_id = entry.get("id")
-    if entry_id is None:
-        return history
-    history.setdefault(str(entry_id), dict(entry))
-    return history
-
-
 def record_absence_history(history, entries, seen_at=None):
     seen_at = seen_at or datetime.now(timezone.utc).isoformat()
     history = dict(history or {})
@@ -535,13 +526,16 @@ def _date_part(value):
         return ""
     if isinstance(value, bool):
         return ""
-    if isinstance(value, (int, float)):
-        utc_naive = datetime.fromtimestamp(value, timezone.utc).replace(tzinfo=None)
-        return _berlin_date_from_utc(utc_naive).isoformat()
     text = str(value)
-    if "T" in text and text.endswith("Z"):
-        utc_naive = datetime.fromisoformat(text[:-1])
-        return _berlin_date_from_utc(utc_naive).isoformat()
+    try:
+        if isinstance(value, (int, float)):
+            utc_naive = datetime.fromtimestamp(value, timezone.utc).replace(tzinfo=None)
+            return _berlin_date_from_utc(utc_naive).isoformat()
+        if "T" in text and text.endswith("Z"):
+            utc_naive = datetime.fromisoformat(text[:-1])
+            return _berlin_date_from_utc(utc_naive).isoformat()
+    except (ValueError, OverflowError, OSError):
+        return ""
     return text[:10]
 
 

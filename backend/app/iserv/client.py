@@ -4,7 +4,7 @@ import socket
 import time
 from collections import namedtuple
 from datetime import date
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse, urlsplit
 
 import requests
 
@@ -182,6 +182,10 @@ def redirect_kind(url, status, location, base_url):
 CHAIN_REFUSED = "target refused"
 CHAIN_TOO_LONG = "too many redirects"
 CHAIN_OUT_OF_TIME = "time budget reached"
+CHAIN_ISERV_PAGE = "chain stopped at an IServ page"
+CHAIN_ISERV_SIGN_IN = "chain stopped at the IServ sign-in page"
+ISERV_SIGN_IN_PATHS = ("/iserv/auth/auth",)
+ISERV_LOGIN_PREFIX = "/iserv/auth/login"
 CHAIN_BLOCKED_HOSTS = ("localhost",)
 CHAIN_BLOCKED_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa")
 ChainHop = namedtuple("ChainHop", "status where")
@@ -214,10 +218,32 @@ def _public_address(address):
         return False
 
 
+def _plain_url(text):
+    return bool(text) and "\\" not in text and not any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in text)
+
+
+def _origin_of(parts):
+    if parts.scheme.lower() != "https" or not parts.hostname or "@" in parts.netloc:
+        return None
+    return parts.hostname.lower(), parts.port or 443
+
+
+def _https_origin(url):
+    text = str(url or "")
+    if not _plain_url(text):
+        return None
+    try:
+        written = _origin_of(urlsplit(text))
+        sent = _origin_of(urlsplit(requests.Request("GET", text).prepare().url))
+    except (requests.RequestException, ValueError, UnicodeError):
+        return None
+    return written if written is not None and written == sent else None
+
+
 def chain_target_allowed(url, resolver=resolve_host):
-    parts = urlparse(str(url or ""))
-    host = (parts.hostname or "").lower()
-    if parts.scheme != "https" or "." not in host or host in CHAIN_BLOCKED_HOSTS or host.endswith(CHAIN_BLOCKED_SUFFIXES):
+    origin = _https_origin(url)
+    host = origin[0] if origin is not None else ""
+    if "." not in host or host in CHAIN_BLOCKED_HOSTS or host.endswith(CHAIN_BLOCKED_SUFFIXES):
         return False
     try:
         ipaddress.ip_address(host)
@@ -229,6 +255,40 @@ def chain_target_allowed(url, resolver=resolve_host):
     except (OSError, UnicodeError, ValueError):
         return False
     return bool(addresses) and all(_public_address(address) for address in addresses)
+
+
+def iserv_sign_in_step(url):
+    text = str(url or "")
+    try:
+        path = urlsplit(text).path
+        return path in ISERV_SIGN_IN_PATHS and urlsplit(requests.Request("GET", text).prepare().url).path == path
+    except (requests.RequestException, ValueError, UnicodeError):
+        return False
+
+
+def iserv_stop(url):
+    try:
+        path = urlsplit(str(url or "")).path
+    except ValueError:
+        path = ""
+    return CHAIN_ISERV_SIGN_IN if path.startswith(ISERV_LOGIN_PREFIX) else CHAIN_ISERV_PAGE
+
+
+class ChainSessions:
+    def __init__(self, home_url, home, own):
+        self.home_origin = _https_origin(home_url)
+        self.home = home
+        self.own = own
+
+    def at_home(self, url):
+        origin = _https_origin(url)
+        return origin is not None and origin == self.home_origin
+
+    def session_for(self, url):
+        return self.home if self.at_home(url) and iserv_sign_in_step(url) else self.own
+
+    def get(self, url, **kwargs):
+        return self.session_for(url).get(url, **kwargs)
 
 
 class ChainReader:
@@ -283,7 +343,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.3.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.4.0")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -381,13 +441,16 @@ class IServClient:
         target = getattr(answer, "next_url", "")
         if getattr(answer, "redirect", REDIRECT_NONE) != REDIRECT_OTHER_HOST or not target:
             return RedirectChain(hops, None, CHAIN_REFUSED, None)
-        chain = requestlog.install(self.new_chain_session(), urlparse(self.base_url).hostname or "")
-        chain.headers["User-Agent"] = self.session.headers.get("User-Agent", "")
+        own = requestlog.install(self.new_chain_session(), urlparse(self.base_url).hostname or "")
+        own.headers["User-Agent"] = self.session.headers.get("User-Agent", "")
+        chain = self.chain_sessions(own)
         for _ in range(max_hops):
             if expired is not None and expired():
                 return RedirectChain(hops, None, CHAIN_OUT_OF_TIME, None)
             if not chain_target_allowed(target, self.resolve_host):
                 return RedirectChain(hops, None, CHAIN_REFUSED, None)
+            if chain.at_home(target) and not iserv_sign_in_step(target):
+                return RedirectChain(hops, None, iserv_stop(target), None)
             try:
                 reply = unfollowed_get(chain, target, limit, timeout, self.base_url, expired)
             except requests.RequestException as error:
@@ -395,8 +458,12 @@ class IServClient:
             hops.append(ChainHop(reply.status_code, host_kind(target, self.base_url)))
             target = reply.next_url
             if not target:
-                return RedirectChain(hops, reply, "", ChainReader(self.base_url, chain, reply.url))
+                reader = None if chain.at_home(reply.url) else ChainReader(self.base_url, own, reply.url)
+                return RedirectChain(hops, reply, "", reader)
         return RedirectChain(hops, None, CHAIN_TOO_LONG, None)
+
+    def chain_sessions(self, own):
+        return ChainSessions(self.base_url, self.session, own)
 
     def fetch_or_raise(self, path, params=None):
         response = self._get(path, params=params)
@@ -462,10 +529,6 @@ class IServClient:
             detail=registration_shape(result, name),
         )
 
-    def register_totp(self, name, verification_code, at=None):
-        registration = self.start_totp_registration()
-        return self.confirm_totp_registration(registration, name, verification_code, at=at)
-
     def change_password(self, current, new):
         response = self.get_security_page()
         form = parse_password_form(response.text, response.url)
@@ -479,11 +542,13 @@ class IServClient:
         accepts_new = self.accepts_password(new)
         if accepts_new is True:
             return True
+        errors = extract_form_errors(html)
+        rejection = errors[0] if errors else "password change was rejected"
         if accepts_new is False:
-            raise PasswordError(extract_form_errors(html) or "password change was rejected")
+            raise PasswordError(rejection)
         self.sleeper(LOGIN_RETRY_SECONDS)
         if self.accepts_password(current) is True:
-            raise PasswordError(extract_form_errors(html) or "password change was rejected")
+            raise PasswordError(rejection)
         if password_changed(html):
             return True
         raise PasswordError(PASSWORD_UNVERIFIED)

@@ -3,6 +3,61 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2609.4.0
+
+### New
+
+- Lesson tiles show the subject name, the room and the teacher when the tile has room for them. Tablets and laptops show
+  the name and room, wide screens also the teacher, with taller rows. Phones keep the short code. Your own subject names
+  from the settings come first. Today's rows name room and teacher. The dashboard card does the same.
+- Timetables from the school app mark cover lessons, cancelled lessons and moved lessons when the school releases
+  substitutions, and send the usual change notification.
+- The card editor sets the order of the blocks with up and down buttons, so no YAML is needed.
+- The card's links open the right place in the app: "Zum Stundenplan" the timetable, the letters and pinboard blocks
+  their tab, absences and conferences their page.
+- A new sensor names the next free day, school holidays or a public holiday. The holiday sensor is now called "Next
+  school holidays", because it only counts school holidays.
+
+### Changed
+
+- The holidays block of the card lists free days such as public holidays as well as school holidays, like the app. It
+  has no "Show all" link, because the app keeps no separate list.
+- Three or more courses in the same lesson show as one course tile on the card, as they do in the app.
+- The older IServ absence page no longer counts as an unsupported module when sick notes go through the school app.
+- Fewer requests per update: school-wide settings and lesson times are shared for two minutes, and a timetable page
+  that refuses the child list is not asked again for an hour.
+- As an add-on, the app answers only through Home Assistant Ingress. The integration keeps its token access.
+- Notifications reach only Home Assistant notify services, also when the service list is unavailable.
+- Texts in all six languages are shorter and use one name for each thing.
+- The problem report describes every entry of a list, not only the first, and reads the request page of a module.
+- The problem report reads modules run by other providers, such as Klassengeld, one level deeper and still shows only
+  how their data is built, within its own time limit. It names a missing timetable as missing, lists the school's
+  absence settings and never counts sick notes.
+
+### Fixed
+
+- "Zum Stundenplan", "Alle ansehen" and the device link open the app again on Home Assistant versions that call add-ons
+  apps, instead of the default dashboard.
+- The card editor no longer stays empty when Home Assistant's form cannot be built; it shows simple fields instead.
+- Marking a lesson as an exam or as cancelled only marks that subject when several courses share the lesson. Marks keep
+  their lesson when you rename a subject code.
+- Exam marks stay visible on coloured subject tiles.
+- The problem report follows the Klassengeld sign-in through IServ instead of stopping at the sign-in page.
+- Request lines in the log show real sizes again.
+- Lesson, exam, school-end and absence times in Home Assistant follow the school's own lesson length.
+- Absences show an error instead of no children when the school app does not answer. One bad date no longer breaks the
+  list.
+- The diagnostics download no longer carries child names in its keys.
+- Removing one Ranzenpost entry keeps the dashboard card for the others.
+- Notices name the given name of a child written "Surname, Given name".
+- A refused password change shows the school's message.
+- Switching weeks or children quickly no longer shows an older timetable.
+- Going back while a letter loads, or opening another one, no longer shows the wrong letter.
+- A save that ends on the sign-in screen no longer reports "Saved".
+- The message at the bottom stays centred when reduced motion is on.
+- The card links only to the app's own pages.
+- Opening an unread letter asks the school once, so the letter opens on the first tap.
+
 ## 2609.3.0
 
 ### New
@@ -166,587 +221,9 @@ Ranzenpost signs in less often when something is wrong, so the school is less li
   Home Assistant and reload the page. A repair tells you when one of them is a release behind.
 - The first start moves children to a new internal key made of school and child. Calendar subscriptions keep working.
 
-## 2609.01.30
-
-- A subscribed calendar is now called "Ranzenpost – <first name of the child>" unless it has a
-  label of its own. The class used to be the suggestion, and a class name is wrong a year later.
-  A label that only repeats the class counts as no label, so an existing subscription takes the
-  new name without being set up again. The label may carry the child's name; the earlier refusal
-  is gone on the family's decision - the link stays protected by its token inside the home network.
-- Calendar events name the teacher by surname wherever one is known, the way the timetable rows
-  do: in the title, in the details and in the before/after line of a substitution. Without a
-  surname the full label is used as before.
-
-## 2609.01.29
-
-- Subscribing from the Home Assistant app no longer ends in "verification failed". iOS puts the
-  address the app opened, with its subscribe marker, into its own subscription sheet, and the feed
-  server answered that address with a hand-off to the calendar app instead of the calendar itself.
-  The hand-off now goes only to a caller that prefers a web page over a calendar, the way a
-  browser asks; a calendar app asking for that same address gets the calendar, and its fetch
-  counts as a fetch. The two-step hint says what to do with the sheet.
-
-## 2609.01.28
-
-- A read confirmation for a letter that also offers a message to the school now goes through. Such
-  a letter carries IServ's own text editor in its form. In a browser that editor adds three hidden
-  fields when it appears, for its formatted text, its plain text and its mode, and sends them even
-  when nothing was typed. The app did not know the editor and left all three out, so the school
-  server showed the letter again without taking the confirmation. The app now sends them the way
-  the editor does.
-
-## 2609.01.27
-
-- In the Home Assistant app, "Add to calendar" is back. It opens the calendar through the phone's
-  browser, and the feed server hands the browser on to the calendar app's subscription dialog.
-  Opening the plain address in Safari only imported the events once, as a copy that never changed.
-- Copying the address in the Home Assistant app copies that same subscription link. A note tells
-  anyone who added the calendar through Safari before that those events may be a frozen copy, and
-  how to replace them with a subscription.
-- The iPhone hint names the setting Apple documents: Settings, Apps, Calendar, Calendar Accounts,
-  Fetch New Data.
-- A read confirmation is sent the way a browser sends it: to the button's own target when it has
-  one, and with the page's origin and address. Its technical details also show the structure of the
-  form, the attributes of the button and the scripts of the page, still without any value or letter
-  text.
-
-## 2609.01.26
-
-- Opening a view shows what was loaded before and fetches it fresh in the background once it is
-  older than two minutes. A pinboard left open in the Home Assistant app kept showing its old state
-  for hours, so a push about new entries led to a list with nothing new at the top.
-- Switching between letters and the pinboard does the same.
-- A refresh that was due when the app came back to the foreground, but was held back by an open
-  sheet or form, now runs as soon as that is closed instead of being dropped.
-- The app also refreshes when its window inside Home Assistant gets the focus. Switching panels in
-  Home Assistant may never hide the page, so coming back that way went unnoticed.
-- When a read confirmation for a parent letter is not taken over, the card keeps the message and
-  offers the technical details: what the school server answered and how the confirmation form
-  looked afterwards. A letter that asks for a confirmation shows how its form is built behind the
-  same button, with field names only and never their content. The app still sends nothing on its
-  own.
-
-## 2609.01.25
-
-- In the Home Assistant app the subscription card no longer offers "Add to calendar". The app
-  swallows that hand-off on the iPhone, which a tap in 2609.01.24 proved once more; copying the
-  address and the two manual steps lead instead.
-- A subscription shows one button in the primary style at most. Two equally loud buttons had been
-  stacked without a gap; a guard now keeps it from happening again.
-- The fetch line always carries a date: when a calendar app last fetched the address and how long
-  ago that was, or since when none has. For a subscription older than this record, "since" starts at
-  its first listing, because nothing earlier can be proven. Renewing the link starts the record anew.
-- Instead of only saying that the calendar app decides, the card names the one-time setting that
-  makes changes arrive on their own; on an iPhone that is fetching new data every 15 minutes. The
-  feed now asks to be reloaded every 15 minutes instead of every hour.
-
-## 2609.01.24
-
-- Each calendar subscription says when a calendar app last fetched it, or that none ever has. A
-  subscribed calendar that silently stops updating was impossible to tell apart from one that had
-  nothing new; now the answer is on the screen.
-- The subscription card says plainly that the calendar app decides when changes arrive. The feed
-  asks to be reloaded every hour, but no calendar app is obliged to follow that.
-- "Add to calendar" hands the address over through a link rather than a page navigation, which more
-  devices pass on to their calendar app. If nothing opens and the page keeps the focus, the app says
-  what to do instead of leaving the tap unanswered.
-- In the Home Assistant app, subscribing is offered first. Copying the address and the two manual
-  steps stay underneath for the cases where the system does not take the hand-off.
-
-## 2609.01.23
-
-- A calendar subscription is filled the moment it is created. The lessons behind a subscription
-  used to arrive only with the next background poll, up to half an hour later, so the first fetch
-  by a calendar app carried holidays and the note "no data yet" but no lessons, and an app that
-  refreshes a subscribed calendar rarely kept showing that first empty version. Creating a
-  subscription, or ticking the timetable or exams on an existing one, now fetches the child's weeks
-  right away.
-- An exam no longer appears in the calendar as a second event beside the lesson. The lesson itself
-  is titled "Exam: 1st period Maths (teacher)", or "Exam Dictation: ..." when the exam has a name,
-  and the details say so. An exam entered for a period that has no lesson of that subject stays an
-  event of its own.
-- A cancelled lesson is titled "Dropped: ..." instead of "Cancelled · ...", whether the school
-  cancelled it or the lesson was marked as dropped in the app. A dropped exam keeps the exam in the
-  details.
-- A tap on an attachment asks what to do with it: open, save or print. Saving goes through the
-  system's own save dialog where the browser offers one, through the share sheet on a phone, and
-  otherwise through a plain download under the file's name. Printing opens the system print dialog
-  for PDFs and pictures; a file the browser cannot print is saved instead, and the app says so.
-- The viewer carries save and print beside its close button, and a right click on the picture or
-  document opens the app's own menu with those two actions instead of the browser's "save image".
-  Tab cycles through the viewer's controls.
-- When the school server withholds the chat credentials, the chat shows a calm empty state with
-  the way to a teacher room, instead of a warning with a retry button that could never help.
-
-## 2609.01.22
-
-- The lesson times entered in the settings apply everywhere. Since the school server started
-  sending its own time for each lesson, that time had quietly won over the entered one in the
-  overview, the "now" and "next" markers, the greying of past lessons, the end-of-day line, the
-  lesson detail sheet, the sheet for moving an exam, the period choice in a sick note and the
-  DTSTART of every event in a calendar subscription. Only the week grid still read the settings.
-  An entered time now comes first, the school server's time only fills a period left empty, and
-  an entry that is not a clock time is ignored rather than shown. When an entered time differs
-  from the school's, the lesson ends 45 minutes after it instead of at the school's unrelated end.
-- The settings card for lesson times says what is true now: the entered times apply everywhere,
-  the school's times are shown beneath them as a fallback. A difference is a plain note, not a
-  warning.
-- An empty state no longer inflates every icon it contains. The big round icon at the top used to
-  be styled by a rule that also caught the plus in "Write to a teacher" and the info glyph of the
-  technical-details button, which swelled both to 64 px on a grey disc and pushed the details
-  button off centre. Stacked buttons in an empty state share one width, and the details button is
-  centred.
-- When the messages cannot be read, "Write to a teacher" is the main button and "Try again" the
-  quiet one beneath it. Without the privilege to write to a teacher, "Try again" stays the main
-  button.
-
-## 2609.01.21
-
-- Marking a lesson as an exam and subscribing to a calendar no longer answer "this child is not
-  known". A setup that finished without picking a child stored no child at all, so every action
-  tied to one was refused even though the overview listed the children. The app now remembers
-  every child the school server hands it.
-- The absence summary always names the child the report is for. With a single child it used to
-  leave the name out entirely, which is where a wrong choice would be least noticeable.
-- Teachers are named first name first. The school server delivers the name parts separately now,
-  so the app builds the name itself instead of taking the surname-first display string. A name
-  typed in the settings is never overwritten.
-- Today's plan shows the subject and the teacher's surname, without the room.
-- Every period in the week grid is the same height. A period with two subjects splits that height
-  between them instead of stretching the whole row, and the tiles carry the subject code alone.
-  The two halves stay separate buttons, but they are smaller than the minimum tap size the rest of
-  the app keeps to.
-- The last lesson's end time reads "the last lesson ends at ...".
-- The note about substitutions not being released for parents is gone.
-- A chat room with a teacher can now be created from the app. The teacher is found by
-  autocompletion from the first letter, the children are the ones the school server itself offers
-  on that form, and other parents of the same child can be invited along.
-- The children on that form come from the school server instead of from the app's own list. The
-  app used to send its own identifiers, which the form does not know, so the choice could not
-  reach the school server.
-- Whether an account may write to a teacher is now read from the messenger page alone. It used to
-  be learned on the way to the message history, so an account that cannot fetch its chat
-  credentials never got as far as the question.
-- When the message history cannot be read, the room list no longer collapses into a single error.
-  It says why the messages are missing, keeps the technical detail one tap away, and leaves the
-  way to a new teacher room open.
-- The answer to a room request is only read as success when the school server names the room or
-  sends the browser onward to it. An answer that hands the form back is reported as a refusal, and
-  an answer nobody can interpret is reported as unconfirmed instead of being claimed as done.
-
-## 2609.01.20
-
-- Archiving a letter, putting one back, and marking letters as read now check that the school
-  server actually accepted the change. They used to send it and report success without ever
-  looking at the answer, so a refused change still read as done. A refusal is now named, and the
-  count of letters that could not be opened is reported instead of quietly dropped.
-- A list the school server refused to serve is no longer shown as an empty one. The letter list and
-  the pinboard say that they could not be read; an inbox or a board that is genuinely empty still
-  reads as empty.
-- Marks and calendar links follow a child when it is carried over to the school-app identifier, so
-  nothing that was noted on a lesson is lost in the move.
-
-## 2609.01.19
-
-- The timetable and the children are back. The school server moved its timetable to a new module,
-  and the old address the app had always read now refuses this account - which is why the timetable
-  and, with it, the children had gone. The app now reads both from the school-app interface it
-  already uses for letters and absences: the children come with their class and their courses, and
-  the timetable comes per child with the same fields as before plus the ones the new source adds -
-  the subject's full name and colour, the teacher's full name, and the start and end time of every
-  lesson. Holiday weeks now come named from the source itself.
-- A child that was set up under the old address is carried over to the new one automatically,
-  keeping its marks-free calendar links pointing at the right child.
-- Substitutions are only shown as absent when the school actually releases them to parents. This
-  school does not, so the timetable says so plainly instead of pretending there are simply no
-  changes today.
-
-## 2609.01.18
-
-- Setting up the app's own access to the school server no longer counts as done just because the
-  answer did not contain a known error sentence. It used to check by counting the authenticators
-  before and after, and when that list could not be read - which happens on exactly the accounts
-  that have trouble - anything that was not a recognisable rejection passed as success. The app
-  then kept a key the school server had never accepted, and every later sign-in failed on the
-  second factor with no hint as to why. Success now has to be shown: the new authenticator has to
-  appear, either in the count or in the answer itself. If it does not, the setup says so and asks
-  for a look in the school server's own settings.
-- A failed sign-in now says at which step it failed - the password, the second factor, or a session
-  that never opened - instead of one sentence for all three. The details carry the shape of the
-  answer and, when the server refused, the heading it used.
-
-## 2609.01.17
-
-- When the school server refuses a page, the details now also carry what it called the refusal -
-  the heading of its own error page. A refusal has a reason written on it, and knowing whether it
-  reads as a missing permission or as something else decides what can be done about it. Only
-  headings are taken, only from an answer the server refused, and only up to a short length, so no
-  content of the page can travel with it.
-
-## 2609.01.16
-
-- Setting the app up can be finished even when the school server will not hand out the children.
-  The last step of the setup could only be left by picking a child or by being told the account has
-  none, and a refusal counted as neither - so the button did nothing and the setup could not be
-  completed at all. The step now names what the server answered, offers another attempt, and lets
-  the setup be finished without a child; the children appear on their own once the server hands
-  them out again.
-- That step also stopped saying the account has no child when the truth is that the app was not
-  allowed to look. The old wording sent people to the school office over something the school
-  office cannot see.
-
-## 2609.01.15
-
-- When the school server refuses a whole area to this account, the app says that instead of saying
-  the page came back in an unexpected shape. The children are listed inside the timetable area, so
-  a refusal there leaves the app without a single child even though everything else still works -
-  and the message now names the reason rather than the symptom.
-
-## 2609.01.14
-
-- Disconnecting the app no longer claims the school server forgot this device when it did not know.
-  Removing the authenticator from IServ was judged by looking at the token list afterwards, and
-  neither the removal nor that list was checked for having been answered at all - so a refused
-  request read as "removed", the local credentials were erased, and the authenticator quietly
-  stayed on the school account with no way left to point at it. All three answers are now checked,
-  and an unconfirmed removal says so.
-- The password check no longer treats every answer without one particular error sentence as proof
-  that the password is right. A block page, a server error or a maintenance page counted as
-  "correct" and could get a wrong password stored as verified. It now needs a positive sign - the
-  next step of the sign-in, or a session that really was opened - and answers "cannot tell"
-  otherwise. A password change the server refused is reported as refused instead of being kept as
-  probably done.
-
-## 2609.01.13
-
-- The overview no longer claims that no child is selected when it simply could not read the child
-  list. The app takes the children from the timetable page, and it used to treat that page as
-  authoritative whatever came back: a sign-in page, an error page, a page from a different part of
-  IServ - all of them silently became "this family has no children". It now checks that the page is
-  the one it asked for, and if it is not, it says so, offers another attempt, and can show what
-  came back instead - page shape only, never its content.
-- The detail sheet behind the small info button now serves every part of the app, not only the
-  messenger, so failures elsewhere can carry the same kind of explanation.
-
-## 2609.01.12
-
-- The messenger now says the true reason it stays shut. IServ hands the messenger's credentials to
-  its own web app in a data block inside the page, and for this account that block says plainly
-  that there are none. The app used to answer that with a general "IServ replied unexpectedly" and
-  then made two further calls that could not help. It now reads the data block the way IServ's own
-  app reads it, recognises withheld credentials as their own case, names it, and stops.
-- The test data this part was built against had been written by hand rather than taken from a real
-  IServ page, and it was wrong in every checkable detail - the name of the data block, the address
-  it claimed, and the shape of the answer. It has been replaced by the real structure, in two
-  variants: with credentials and without.
-- A guard now fails the build if any detail the messenger can report lacks its wording in one of
-  the six languages, so no detail can reach the reader as a bare English field name.
-- Correction to 2609.01.11: that entry read the diagnosis as saying the page carries only a
-  yes/no flag. It does not. The page carries the full data block, and the credentials in it are
-  empty - which is why the app can now name that case instead of guessing around it.
-
-## 2609.01.11
-
-- The messenger diagnosis now also lists the addresses the page itself points at. The address
-  that had looked like an interface simply returns the web page again, so whatever really hands
-  out the credentials had to be named elsewhere - this lists the candidates, paths only, never a
-  query or a value.
-  (Corrected in 2609.01.12: this entry also claimed the page carries nothing but a yes/no flag
-  saying the messenger exists. That was a misreading. The page carries the whole data block in the
-  expected shape; the credentials inside it are simply empty.)
-
-## 2609.01.10
-
-- Inside Home Assistant the app no longer keeps space free for the edges of the phone screen. It
-  was reserving room for the notch at the top and the home indicator at the bottom, but in that
-  frame those edges belong to Home Assistant, not to the app - so the greeting started too far
-  down and the bar left an odd band underneath. Both ends came from the same reserve, and the app
-  now only claims it when it really is the thing at the edge of the screen.
-- The messenger diagnosis now describes how IServ delivers its credentials, not just that the app
-  could not read them: whether the marker sits in a script or in an attribute, how often it occurs,
-  and what an endpoint answered with when it was not the expected data. Shapes and types only -
-  never the content itself. Reading the credentials still fails; this is what tells us why.
-
-## 2609.01.09
-
-- The pale strip below the tab bar is gone. The bar is deliberately frosted, but in the last few
-  pixels - the safe area an iPhone keeps free for its home indicator - there is nothing behind it
-  to frost, and frosting over nothing came out lighter and uneven. Those pixels now have a solid
-  ground of their own; everywhere the content really scrolls behind, the bar stays frosted.
-  The strip had been there all along and simply could not be seen until the filled tab pill was
-  added next to it - a strong shape makes a faint edge readable. So it looked like a new fault,
-  and in effect it was one.
-- The messenger reads the credentials IServ actually sends. It ships them under names in the other
-  spelling convention than the one this app looked for, so the app found the marker in the page,
-  reached an endpoint that answered perfectly well, and still concluded it had found nothing. Both
-  spellings are now accepted, and if it ever fails again the diagnosis names the fields that were
-  actually delivered - the names, never their values - instead of leaving the next person to guess.
-
-## 2609.01.08
-
-- Every parent letter now says which child it is about. The child's first name sits beside the
-  class as a chip - in the letter list, in the letter itself, and in the overview where new
-  letters appear. Before this the name was hidden behind a rule that only showed it to households
-  with more than one child, and in the letter itself it was buried in the grey line of sender and
-  date, where nobody looks.
-- The overview now tells you the same things about a letter as the list does. It used to leave out
-  why a letter was there at all: a letter also appears when only a reading confirmation is still
-  open, and the row said nothing about it. All three views now build their chips from one place,
-  so they cannot drift apart again.
-- The document also names its own background colour on the canvas. This alone did not remove the
-  pale strip below the tab bar - see 2609.01.09, where the real cause is fixed.
-
-## 2609.01.07
-
-- Wherever the app says "this is where you are" or "this is what you picked", it now says it
-  loudly: the current tab, the open segment, the chosen chip and the selected row in every picker
-  all sit on a filled accent surface with inverted text, in the light theme as much as the dark
-  one. Before this, that mark was a tint with barely more contrast than the background it sat on -
-  in the light theme 1.08:1, which is close to invisible - so the app quietly relied on colour
-  hue alone to tell you where you were.
-- The mark never rests on colour alone any more: every selected control also carries a heavier
-  label, so it still reads for anyone who cannot separate the two hues.
-- The "Now" mark on the running lesson became a filled pill, and "Next" finally looks like a mark
-  at all - it used to render in the same grey as any other row detail, which meant the word was
-  there but nobody could see it.
-- A lesson you marked yourself showed no ring when it happened to sit inside a double period. The
-  rule that draws the ring could never match those rows, so the mark was silently invisible in
-  exactly the case where two lessons share one slot.
-- Styling that no longer belonged to anything - a highlight for a row class that is never set, and
-  two leftovers from an older wizard - is gone rather than lying in wait to be picked up by
-  accident, which is how a stacked lesson silently inherited the wrong tap area last time.
-
-## 2609.01.06
-
-- The overview says again what is happening right now. The lesson you are in carries a quiet
-  "Now", and in the gap between two lessons the coming one carries "Next" - words, not colour.
-- A lesson counts as over 45 minutes after it started, not when the next one begins. That was the
-  actual defect: at 09:38 the 08:45 sport lesson stayed bright while the 09:00 lesson was already
-  greyed out. The rule now holds for the last lesson of the day and across free periods too.
-- The end time no longer hangs off the last lesson. Every row shows its start time, and where the
-  "lessons are over" line appears there now stands, beforehand, the sentence that answers the real
-  question: school is out today at HH:MM.
-- A lesson can be marked as cancelled by hand for the case where the school informs parents but
-  does not maintain the timetable. It looks like a school cancellation in the grid and in the
-  overview, says openly in its sheet that only this app knows about it, can be taken back, and is
-  left out when the end of the school day is worked out. The marker lives beside the colours and
-  the exam marks and never touches the data that comes from IServ, so marking something never
-  sends a push.
-- Tapping a lesson now only opens its details. The spotlight across the week comes from a press
-  and hold, or from a named action in the detail sheet; while a spotlight stands, the first tap
-  anywhere clears it and does nothing else.
-- Every view is entered in a defined state: scrolled to the top, sub-tabs on their default, Post
-  always on Letters. Switching between Letters and the noticeboard scrolls back up as well.
-- Inbox and archive stand side by side as two chips - one tap switches, no intermediate sheet.
-- The noticeboard filter reads "All folders" behind a funnel icon; a chosen folder replaces the
-  label and a long folder name is cut with an ellipsis instead of wrapping.
-- The tab you are in is unmistakable now: the active tab sits on a filled pill and carries a
-  heavier label, in the light theme as much as the dark one, so the mark never rests on colour
-  alone.
-- One pull refreshes the whole app, not just the tab you pulled in. When it works, the "could not
-  refresh" note goes away everywhere at once instead of having to be pulled away tab by tab - and
-  where a part really did fail, its note honestly stays.
-- The calendar subscription now fits the device it is shown on. Inside the Home Assistant app,
-  where the direct handover is swallowed, copying is the main path with a two-step instruction
-  that names the browser the phone actually has; the direct button appears only in a real browser.
-  Where no address can be worked out at all, it says so instead of offering a dead button.
-- The messenger says what actually went wrong instead of one card for everything: module not
-  available, sign-in refused, unexpected answer, network, timeout - each with a diagnosis that can
-  be shown to someone. Retrying keeps a visible loading state and owns up when it fails again.
-  Every messenger path logs its failures with a stack trace, and a guard now fails the suite when
-  a module that talks to a foreign system carries no logger at all.
-- The messenger bootstrap now survives IServ's own sign-in detour. IServ does not hand the
-  messenger over with a plain redirect: it answers with a page that forwards itself, and the app
-  used to stop there and report a refused sign-in. It now follows that forwarding page - only on
-  the school's own host, and only a few hops - recognises a real login page for what it is, and
-  falls back to fetching the credentials over the authenticate endpoint when the page embeds none.
-  The Matrix homeserver from well-known is accepted only over https and only on the school host,
-  so the access token can never be sent somewhere else in the clear, and the diagnosis no longer
-  carries the address's query string, where a one-time sign-in code would have been sitting.
-- Two lessons in one slot are two real tap targets again at 320 px, and the test fixture numbers
-  its weekdays the way the app does, so Friday is no longer structurally empty.
-- The guards find the files they watch by glob instead of a hand-kept list, with a named,
-  reasoned exemption for third-party code, and a further guard fails when a shipped file is
-  watched by none of them.
-
-## 2609.01.05
-
-- The overview opens what you tap: a noticeboard post now unfolds in place over the overview and
-  a parent letter opens its page with a back button that leads back to the overview instead of
-  stranding you in the Post tab. Chat rows still jump into the room, because that is where the
-  conversation continues.
-- The timetable can be paged week by week with a horizontal swipe. Hairline arrows sit in the
-  margin beside the grid, appear only in a direction that actually exists, and mirror themselves
-  in Arabic; the grid itself keeps its full width. Swiping never interferes with scrolling, with
-  pull-to-refresh, or with tapping a lesson.
-- Tapping a lesson now also spotlights that subject across the whole week: the other cells dim
-  while the subject keeps its colour and gains a fine outline, without any pulsing. The detail
-  sheet still opens as before and stays; closing it keeps the spotlight, tapping an empty slot
-  clears it, tapping another subject moves it, and switching tabs resets it. The spotlight
-  follows the subject when the week is swiped, and the sheet quietly says which of the week's
-  occurrences you are looking at.
-- The overview no longer highlights the running or the next lesson. Lessons that are over stay
-  greyed out as before, and the entry position when the overview opens still follows the current
-  hour.
-- The "until HH:MM" in the overview head is gone. Instead the last lesson that actually takes
-  place shows its time as a span, which answers the question parents really ask - when is school
-  out. If the last lesson is cancelled, the span moves to the one before it.
-- The chapter head of the overview lost its bullet. It was reading like a list entry next to the
-  subject dots below it; heading and entries are now told apart typographically instead.
-- "Upcoming" only appears when there is something upcoming. With content it sits directly behind
-  "Today", its duplicate "Report" button is gone - that function lives in the Absence tab and
-  nowhere else - and an empty chapter no longer takes up a screen. A load failure is still shown
-  rather than swallowed.
-- The overview sorts itself: sections with something new move up behind "Today", which always
-  stays the anchor. The order is settled when the overview is entered, never while a thumb is
-  scrolling. The peek arrow at the bottom carries the same counter pill as the tab badges, from
-  the same source, and only when there is something to count.
-- The notification settings were cleared out. The "Notification in Home Assistant" row and the
-  free-text field for a custom target are gone - the app can only send to notify entities, so it
-  now says so by offering exactly those, in a selection dialog with search, grouped and with
-  their friendly names. Chosen targets appear as removable chips. Without a target nothing is
-  pushed any more instead of disappearing into an invisible default.
-- The spinner on the test button no longer spins wrongly the first time. There is now a single
-  spinner definition with one fixed rotation, and it can no longer be squashed out of round by
-  its surroundings; spinners outside a button had in fact not been animated at all.
-- Timetable pushes close two gaps. A rebuilt timetable without any marked change now sends a
-  plain "timetable changed", and when the last change is withdrawn the app says so instead of
-  going quiet - the very message that prevents a missed lesson. The signature behind it is built
-  from the IServ fields alone, so recolouring a subject never triggers a push.
-- Subscribing to the calendar no longer asks for an address. The app asks Home Assistant where
-  it lives and builds the address itself; a previously typed address is cleaned up. This also
-  fixes the dead "add to calendar" button, which came from an address that carried a port twice
-  and therefore produced an invalid link. The feed port is opened automatically on the first
-  subscription, and the restart it needs is one button in the sheet: the app says plainly that
-  it will be unreachable for a few seconds, restarts on the tap, waits until it answers again,
-  reloads and puts the subscription sheet back on screen. It never restarts by itself - a guard
-  refuses any restart that does not come from that button, and a tripwire keeps every background
-  module away from the endpoint. A Nabu Casa address still cannot work here, because the remote
-  connection only
-  forwards the Home Assistant port and no add-on ports - the address therefore stays local, and
-  the existing note about home network and VPN stays as it is.
-- Navigation rework decided by the design round: parent letters and the noticeboard share one
-  "Post" tab with a segment that carries a separate unread counter per side, the letter archive
-  moved from a second segment into a folder row, and the freed place became a "Chat" tab. The
-  provisional header entry for the messenger is gone; the tab bar derives its column count from
-  the number of tabs, which also fixes the gap when the school has no timetable.
-- The overview shows unread chat rooms in a chapter of their own, but only while something is
-  unread, and each row jumps straight into that room.
-- Create a room with a teacher: search over the IServ autocomplete (debounced, older requests
-  cancelled), child selection when there is more than one, an optional invitation for the other
-  parents that stays switched off by default, a duplicate check against the local room list, an
-  explicit summary with the teacher's name as the dominant element, and a single form POST with
-  a freshly fetched CSRF token. A failed attempt re-syncs and re-checks for duplicates before it
-  offers a retry; the POST is never repeated on its own.
-- "Mark as read" per room: one deliberate action sends the Matrix read marker up to the newest
-  message. It is the only sanctioned way the app may ever touch a receipt route - the guard now
-  allows exactly one path from exactly one function, and the tripwires prove it stays that way.
-- Marking a parent letter as read no longer reports success for letters that still wait for a
-  read confirmation; IServ does not accept the read there. The app now checks the answer instead
-  of assuming it, names the blocked letters, and offers the confirmation instead of a mark that
-  cannot work.
-
-## 2609.01.04
-
-- School messenger (read and reply): room list with filter and unread badges, chronological room
-  view with day separators, images opening in the file viewer, attachments via the regular
-  attachment flow, paging into older messages, and a compose bar that only ever sends on an
-  explicit tap. The app never emits read receipts - teachers never see a read status you did not
-  cause yourself. Entry point is provisional (header action) while the navigation rework decided
-  by the design round ships with the next release together with room creation.
-
-## 2609.01.03
-
-- In-app file viewer: images open in a full-screen overlay with pinch and double-tap zoom, PDFs
-  try the platform's inline renderer and fall back to the download automatically when it is not
-  available; other file types download as before. This replaces the new-window approach that the
-  Home Assistant companion app does not support.
-- Groundwork for the school messenger (Matrix-based): backend client that reads rooms and
-  messages without ever emitting read receipts, encrypted token handling, and a send endpoint
-  that only ever fires on an explicit user action. No UI yet - it ships with the next release.
-
-## 2609.01.02
-
-- Read confirmations for parent letters: letters that request a confirmation are marked in the
-  list, the detail view explains what is asked and sends the confirmation after an explicit
-  prompt, and the push notification mentions an outstanding confirmation. Accept/decline replies
-  and questionnaires are shown as requiring IServ directly - their submit format is not verifiable
-  yet and nothing is guessed.
-
-## 2609.01.01
-
-- Attachments and the sick-note PDF now open directly in a viewer where the platform allows it
-  (PDF and images); anything else, blocked pop-ups and failures fall back to the download.
-- Absence wizard polish: dependent inputs (lesson range for a part-day sick note, pick-up time for
-  daycare) reveal inline below the choice instead of forming an extra step; the notifiable-disease
-  notice on the review page opens in full instead of being truncated; date and time fields are
-  clamped so native WebKit widths cannot overflow the step.
-- The settings screen uses the same compact header as every other screen.
-- README with feature overview and example screens (fictional fixture data only).
-
-## 2609.01.00
-
-- Subscribable calendar: per-child feeds (timetable, school holidays, public holidays, exam marks,
-  approved absences) served token-protected on a separate, off-by-default port, with a QR code and
-  webcal link in the timetable view; cancelled lessons are included and labelled, never hidden.
-- Holiday calendar for all 16 German federal states with a suggestion derived from the school's
-  postal code where available; full holiday weeks replace the timetable grid, single free days are
-  shown by their full name; lessons are only ever overridden when the source proves the day is
-  school-free.
-- Exam marks: tap a lesson to mark it as a test with a free-form name and self-learning name chips;
-  marks are highlighted in the timetable and today view, and a clarification panel handles
-  cancelled, moved or substituted lessons instead of silently guessing.
-- Guided step-by-step flows: absence reporting rebuilt as a wizard for all four types (4 taps for
-  the common sick-note case, no scrolling on any step, honest progress dots), and the setup wizard
-  moved onto the same scaffold; password and 2FA fields are never retained when navigating back.
-- Overview rebuilt as four fixed chapters with snapping pages, per-child pills, a now-anchor and a
-  self-disabling fallback to free scrolling; every lesson row is provably on exactly one page.
-- New subject colour palette (14 colours, colour-blind-checked) and a fix for user-chosen colours
-  being silently overwritten by the auto-assignment.
-- Full script coverage for the shipped UI fonts: Cyrillic and Arabic faces load on demand, a guard
-  test compares every language bundle against the shipped font tables.
-- Sick-note PDF now embeds a Unicode font subset so non-Latin names render correctly; unsupported
-  scripts are refused instead of printing replacement characters.
-- Attachments and the sick-note PDF open reliably under Home Assistant ingress (same-context
-  download instead of a new tab).
-- Notification settings rebuilt: targets grouped by category with friendly device names and a
-  per-target test button; push messages are localised into all six languages with correct plurals.
-- Unified API error responses distinguishing auth, configuration and network failures; the UI
-  routes expired sessions to reconnect instead of showing empty screens.
-- Crash-safe persistence: every settings write is atomic, corrupted files are quarantined instead
-  of wiping user data.
-- Sidebar entry is visible to all household users (was admin-only by default).
-- Accessibility and i18n hardening: logical CSS everywhere, direction-safe rendering of school
-  content, complete plural categories for Arabic, Russian and Ukrainian, larger tap targets and
-  WCAG-checked text contrast in both themes.
-
-## 2609.00.02
-
-- Multilingual UI: German, English, Arabic (RTL), Turkish, Russian and Ukrainian, with a language
-  picker in the setup wizard and Settings; dates, times and numbers follow the active language.
-- Leave-request attachments: upload with a per-file and a total-size limit, enforced both in the
-  UI and on the server.
-- Sick-note confirmation as a printable PDF.
-- Disconnect now also clears the stored school URL, children, phone numbers and credentials from
-  the app, not only its local caches.
-- Responsive-layout guard (Playwright) across the app's breakpoints, larger tap targets.
-
-## 2609.00.01
-
-First release under the Ranzenpost name.
-
-- Guided setup: school address, parent login, invisible two-factor registration (one code from the
-  authenticator app you already use), child selection, optional school phone numbers. Back and
-  start-over available in every step; the app re-checks its access on every launch and offers to
-  set up again when it was revoked.
-- Timetable per child with substitutions and cancellations marked, week navigation, lesson times
-  read from IServ, and configurable subject/teacher names and colours.
-- Parent letters: current and archived, app-side read/unread state with swipe, attachments,
-  archiving.
-- Pinboards: merged newest-first feed with source badges, per-board view with swimlanes, full-text
-  search, attachments, app-side read state.
-- Absences: all four IServ types, calendar range picker, notifiable-disease hint, school phone
-  numbers as tap-to-call.
-- Parent-teacher conference days, overview dashboard with unread badges.
-- Notifications for every timetable change, with a freely configurable notify service and a test
-  button.
+## Earlier test builds
+
+Internal test builds under version 2609.00 and 2609.01, before the first public release.
+Covered the initial guided setup, timetable, parent letters, absences, messenger, noticeboard
+and calendar subscription features, together with a long series of small fixes to
+notifications, calendar naming, module detection and the settings pages.

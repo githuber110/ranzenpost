@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import timedelta
 
 from bs4 import BeautifulSoup
 
@@ -14,6 +15,7 @@ from .iserv.dsa import (
     parse_children_from_me,
     parse_students,
 )
+from .iserv.dsa_substitutions import comparison_of, describe as describe_substitutions
 from .iserv.dsa_timetable import course_filter, query_date
 from .iserv.letters import parse_letter_list
 from .iserv.timetable import DATE_FORMAT, week_bounds
@@ -32,7 +34,21 @@ SCHOOL_SETTINGS_PATH = modules.DSA_API + "/school-settings/"
 CURRENT_TIMETABLE_QUERY_PATH = modules.DSA_API + "/" + CURRENT_TIMETABLE_PATH
 TIMETABLE_SLOTS_PATH = modules.DSA_API + "/timetable-slots/"
 KNOWN_SETTINGS = (TIMETABLE_SETTING, SUBSTITUTIONS_SETTING)
+ABSENCE_SETTING_PREFIXES = ("sickNotes_", "requestToSchools_", "dayCare_")
+CLOCK_VALUE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+OLDER_ABSENCE_SLUG = "absence_obsolete"
+OLDER_ABSENCE_PAGE = "/iserv/absence/"
+SICK_NOTES_PATH = modules.DSA_API + "/sickNotes/"
+EVIDENCE_DAYS = 120
+SMALL_SETTING_MAX = 100
+LIST_DATE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b")
 RELEASE_OFF_LINE = "- Timetable release: off, the app reads the time-table module instead of the school app"
+TIME_TABLE_PRESENT = "supported"
+FALLBACK_NOTES = {
+    TIME_TABLE_PRESENT: "the app reads the time-table module instead",
+    "missing": "the time-table module is absent too, so no timetable is available",
+}
+UNCHECKED_FALLBACK = "the time-table module was not checked"
 LETTER_ACTION = re.compile(r"\[actions\]\[([^\]]+)\]")
 SUBMIT_TYPES = ("submit", "image")
 MAX_LETTER_ACTIONS = 20
@@ -41,6 +57,7 @@ VERSION_SOURCES = (
     ("start page", MENU_LINK_PREFIX),
     ("legal page", modules.ISERV_ROOT + "/app/legal"),
 )
+VERSION_PLACES_LINE = "- Looked in: generator tag, footer, page text, scripts, response headers"
 
 
 def listed_children(children):
@@ -175,14 +192,23 @@ def _entries_fact(payload):
     return "students %d, entries per student %s" % (len(counts), ", ".join(str(count) for count in counts) or "-")
 
 
-def _child_query_fact(client, child, today, substitutions):
-    course_ids = child.get("course_ids")
+def _fallback_note(time_table):
+    return FALLBACK_NOTES.get(time_table, UNCHECKED_FALLBACK)
+
+
+def _child_query(client, child, account, today, substitutions, time_table=TIME_TABLE_PRESENT):
+    if account is None:
+        return "course ids not read, the school account did not answer", None
+    listed = account.get(str(child.get("child_id") or ""))
+    if listed is None:
+        return "not in the school account, " + _fallback_note(time_table), None
+    course_ids = listed.get("course_ids")
     if not course_ids:
-        return "no course ids stored, the app reads the time-table module instead"
+        return "no course ids in the school account, " + _fallback_note(time_table), None
     try:
         selector = course_filter(course_ids)
     except (TypeError, ValueError):
-        return "stored course ids are unreadable"
+        return "course ids are unreadable", None
     params = {"date": query_date(today), "week": "true", "substitutions": "true" if substitutions else "false"}
     if selector:
         params["filterBy"] = selector
@@ -190,26 +216,65 @@ def _child_query_fact(client, child, today, substitutions):
     status, payload = fetch_answer(client, CURRENT_TIMETABLE_QUERY_PATH, params)
     if not isinstance(payload, dict):
         refused = ", answer %d" % status if status and status != 200 else ""
-        return "courses in filter %d, not read%s" % (count, refused)
-    return "courses in filter %d, %s" % (count, _entries_fact(payload))
+        return "courses in filter %d, not read%s" % (count, refused), None
+    return "courses in filter %d, %s" % (count, _entries_fact(payload)), (params, payload)
 
 
-def school_app_query_lines(client, config, today):
+def _substitutions_fact(client, answered, today):
+    params, payload = answered
+    status, regular = fetch_answer(client, CURRENT_TIMETABLE_QUERY_PATH, dict(params, substitutions="false"))
+    comparison = comparison_of(payload, regular if isinstance(regular, dict) else None, today)
+    if not isinstance(regular, dict):
+        comparison = comparison._replace(failure="answer %s" % (status or "-"))
+    return describe_substitutions(comparison)
+
+
+def _setting_fact(value):
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (int, float)):
+        return str(value) if 0 <= value <= SMALL_SETTING_MAX else "number"
+    if isinstance(value, (list, dict)):
+        return "list %d" % len(value)
+    if value is None or str(value).strip() == "":
+        return "empty"
+    text = str(value).strip()
+    return text if CLOCK_VALUE.match(text) else "text"
+
+
+def absence_settings_line(settings):
+    if not isinstance(settings, dict):
+        return "- Absence settings: not read"
+    keys = sorted(key for key in settings if str(key).startswith(ABSENCE_SETTING_PREFIXES))
+    facts = ", ".join("%s=%s" % (key, _setting_fact(settings[key])) for key in keys)
+    return "- Absence settings: " + (facts or "none")
+
+
+def school_app_query_lines(client, config, today, time_table=TIME_TABLE_PRESENT):
     lines = ["### School app"]
     settings = _school_settings(client) if client is not None else None
     lines.append("- Settings: " + ", ".join("%s=%s" % (key, _switch(settings, key)) for key in KNOWN_SETTINGS))
+    lines.append(absence_settings_line(settings))
     if isinstance(settings, dict) and settings.get(TIMETABLE_SETTING) is False:
-        lines.append(RELEASE_OFF_LINE)
+        lines.append(RELEASE_OFF_LINE if time_table == TIME_TABLE_PRESENT else "- Timetable release: off, " + _fallback_note(time_table))
     if client is None:
         lines.append("- Timetable query: not read, no session")
         return lines
     substitutions = isinstance(settings, dict) and settings.get(SUBSTITUTIONS_SETTING) is True
-    lines.append("- Timetable query: week=true, substitutions=%s, one query per child" % ("true" if substitutions else "false"))
+    if substitutions:
+        lines.append("- Timetable query: week=true, substitutions=true, one query per child, and one with substitutions=false for the regular plan")
+    else:
+        lines.append("- Timetable query: week=true, substitutions=false, one query per child")
     children = listed_children(config.get("children"))
     if not children:
         lines.append("- Children: none stored")
+    account = _school_account_children(client) if children else None
+    by_id = {child["child_id"]: child for child in account} if account is not None else None
     for number, child in enumerate(children, 1):
-        lines.append("- Child %d: %s" % (number, _child_query_fact(client, child, today, substitutions)))
+        fact, answered = _child_query(client, child, by_id, today, substitutions, time_table)
+        lines.append("- Child %d: %s" % (number, fact))
+        if substitutions and answered is not None:
+            lines.append("- Child %d substitutions: %s" % (number, _substitutions_fact(client, answered, today)))
     slots = fetch_json(client, TIMETABLE_SLOTS_PATH, {"filterBy": LESSON_FILTER})
     lines.append("- Timetable slots: %s" % (len(slots) if isinstance(slots, list) else "not read"))
     start, end = week_bounds(today)
@@ -285,4 +350,70 @@ def iserv_version_lines(client):
         if version and not found:
             found = version
     lines.append("- Chosen: %s" % (found or "unknown"))
+    if not found:
+        lines.append(VERSION_PLACES_LINE)
     return lines
+
+
+def _older_list_dates(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    table = soup.find("table", id="crud-table")
+    rows = []
+    for row in table.find_all("tr") if table is not None else []:
+        cells = row.find_all("td")
+        if len(cells) < 2:
+            continue
+        found = {"%s-%s-%s" % (year, month, day) for day, month, year in LIST_DATE.findall(row.get_text(" "))}
+        rows.append(found)
+    return rows
+
+
+def _sick_note_dates(notes):
+    dates = []
+    for note in notes:
+        if not isinstance(note, dict):
+            continue
+        wanted = (note.get("sickFromDateAsString") or note.get("sickFromDate"), note.get("sickTillDateAsString") or note.get("sickTillDate"))
+        dates.append({str(value)[:10] for value in wanted if value})
+    return dates
+
+
+def absence_evidence_lines(client, today):
+    lines = ["### Absence lists"]
+    if client is None:
+        lines.append("- Not read, no session")
+        return lines
+    try:
+        response = client.fetch(OLDER_ABSENCE_PAGE)
+    except Exception:
+        response = None
+    status = status_of(response) if response is not None else 0
+    older = _older_list_dates(getattr(response, "text", "")) if status == 200 else None
+    if older is None:
+        lines.append("- Older absence page: not read, answer %d" % status)
+    else:
+        lines.append("- Older absence page: entries %s, with a date %s" % (_amount(len(older)), _amount(sum(1 for dates in older if dates))))
+    since = (today - timedelta(days=EVIDENCE_DAYS)).isoformat()
+    notes = fetch_json(client, SICK_NOTES_PATH, {"filterBy": "sickTillDateAsString:greaterOrEqualThan(%s)" % since})
+    if not isinstance(notes, list):
+        lines.append("- School app sick notes: not read")
+        return lines
+    school_app = _sick_note_dates(notes)
+    lines.append("- School app sick notes in the last %d days: %s" % (EVIDENCE_DAYS, _amount(len(school_app))))
+    dated = [dates for dates in (older or []) if dates]
+    if dated:
+        known = set().union(*school_app) if school_app else set()
+        shared = sum(1 for dates in dated if dates & known)
+        lines.append("- Older page entries sharing a date with a school app sick note: %s" % _share(shared, len(dated)))
+    return lines
+
+
+def _amount(count):
+    return "none" if count == 0 else "some"
+
+
+def _share(part, whole):
+    if part == 0:
+        return "none"
+    return "all" if part == whole else "some"
+

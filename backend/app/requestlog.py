@@ -79,11 +79,11 @@ def _body_unread(response):
 
 
 def body_length(response):
-    if _body_unread(response):
-        return 0
     declared = str((getattr(response, "headers", None) or {}).get("Content-Length") or "").strip()
     if declared.isdigit():
         return int(declared)
+    if _body_unread(response):
+        return 0
     content = getattr(response, "content", None)
     return len(content) if isinstance(content, (bytes, bytearray)) else 0
 
@@ -133,6 +133,8 @@ def describe(response, own_host=""):
 
 
 def log_response(response, *args, own_host="", **kwargs):
+    if kwargs.get("stream") is False and _body_unread(response) and not getattr(response, "is_redirect", False):
+        response.content
     try:
         facts = describe(response, own_host)
         line = "%s %s %s %s %s %sB %sms" % (
@@ -157,7 +159,7 @@ class HostLog:
         self.own_host = str(own_host or "").lower()
 
     def __call__(self, response, *args, **kwargs):
-        return log_response(response, own_host=self.own_host)
+        return log_response(response, *args, own_host=self.own_host, **kwargs)
 
     def __eq__(self, other):
         return isinstance(other, HostLog) and other.own_host == self.own_host

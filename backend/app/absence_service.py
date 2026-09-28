@@ -133,12 +133,13 @@ class AbsenceService:
 
     def absences_overview(self):
         dsa = self.connection._dsa()
-        settings = dsa.school_settings()
+        settings = dsa.school_settings_or_raise()
+        children = dsa.sick_note_children_or_raise()
         config = self.connection.store.load_config()
         periods = dsa.lesson_slots()
         targets = deregister_options(settings)
         return {
-            "children": dsa.sick_note_children(),
+            "children": children,
             "types": enabled_absence_types(settings),
             "deregister_options": targets,
             "periods": periods,

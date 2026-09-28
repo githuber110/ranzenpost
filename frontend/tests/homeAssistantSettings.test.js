@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 const NEW_TOKEN = "ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210zyxwvut";
@@ -32,7 +32,7 @@ async function setup({ answer = status(), rotated = { ok: true, message_key: "ap
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || null)})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || null);
 }
 
 async function openSheet(app) {

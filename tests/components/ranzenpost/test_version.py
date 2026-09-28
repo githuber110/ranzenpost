@@ -72,3 +72,9 @@ def test_the_minimum_addon_version_is_a_real_version_not_ahead_of_the_manifest()
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))["version"]
     assert parse_version(MIN_ADDON_VERSION) is not None
     assert parse_version(MIN_ADDON_VERSION) <= parse_version(manifest)
+
+
+def test_the_minimum_addon_version_is_written_without_padding():
+    assert MIN_ADDON_VERSION == "{}.{}.{}".format(*parse_version(MIN_ADDON_VERSION)[:3])
+    assert version_mismatch("2609.02.00", "2609.02.00", False) is None
+    assert version_mismatch("2609.01.99", "2609.02.00", False) == ADDON_TOO_OLD

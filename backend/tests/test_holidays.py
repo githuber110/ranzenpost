@@ -115,9 +115,13 @@ def test_the_autumn_break_starts_and_ends_on_the_exact_source_days(tmp_path):
     assert payload["days"]["2026-10-25"]["free"] is False
 
 
-def test_day_info_names_the_period_and_offers_a_translation_key(tmp_path):
+def day_entry(calendar, day):
+    return calendar.range_info(day, day)["days"][day.isoformat()]
+
+
+def test_a_holiday_day_names_the_period_and_offers_a_translation_key(tmp_path):
     calendar = make_calendar(tmp_path)[0]
-    info = calendar.day_info(date(2026, 10, 12))
+    info = day_entry(calendar, date(2026, 10, 12))
     assert info["free"] is True
     assert info["kind"] == holidays.KIND_SCHOOL
     assert info["type"] == "autumn"
@@ -127,7 +131,7 @@ def test_day_info_names_the_period_and_offers_a_translation_key(tmp_path):
 
 def test_a_regular_school_day_is_not_free(tmp_path):
     calendar = make_calendar(tmp_path)[0]
-    info = calendar.day_info(date(2026, 9, 14))
+    info = day_entry(calendar, date(2026, 9, 14))
     assert info["free"] is False
     assert info["name_key"] == ""
     assert info["name"] == ""
@@ -495,7 +499,6 @@ def test_the_outgoing_request_carries_only_the_region_and_the_period(monkeypatch
     assert len(seen) == 2
     for call in seen:
         assert call["url"].startswith(holidays.SOURCE_BASE_URL)
-        assert set(call["params"]) == set(holidays.REQUEST_PARAM_KEYS)
         assert call["params"] == {
             "countryIsoCode": "DE",
             "subdivisionCode": "DE-NI",
@@ -709,21 +712,21 @@ def test_a_local_public_holiday_never_reaches_the_payload(tmp_path):
 
 
 def test_a_state_wide_public_holiday_may_override_the_lessons(tmp_path):
-    info = by_calendar(tmp_path).day_info(date(2026, 11, 1))
+    info = day_entry(by_calendar(tmp_path), date(2026, 11, 1))
     assert info["free"] is True
     assert info["kind"] == holidays.KIND_PUBLIC
     assert info["overrides_lessons"] is True
 
 
 def test_a_school_free_day_without_a_public_holiday_may_override(tmp_path):
-    info = by_calendar(tmp_path).day_info(date(2026, 11, 18))
+    info = day_entry(by_calendar(tmp_path), date(2026, 11, 18))
     assert info["free"] is True
     assert info["kind"] == holidays.KIND_SCHOOL
     assert info["overrides_lessons"] is True
 
 
 def test_the_very_same_day_stays_a_school_day_in_another_state(tmp_path):
-    info = make_calendar(tmp_path)[0].day_info(date(2026, 11, 18))
+    info = day_entry(make_calendar(tmp_path)[0], date(2026, 11, 18))
     assert info["free"] is False
     assert info["overrides_lessons"] is False
 
@@ -773,7 +776,7 @@ def test_a_day_free_for_every_school_type_may_hide_lessons(tmp_path):
 
 
 def test_a_single_day_listed_for_all_groups_may_hide_lessons(tmp_path):
-    info = mv_calendar(tmp_path).day_info(date(2026, 11, 26))
+    info = day_entry(mv_calendar(tmp_path), date(2026, 11, 26))
     assert info["free"] is True
     assert info["overrides_lessons"] is True
 

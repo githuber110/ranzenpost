@@ -36,7 +36,8 @@ from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY
 from .iserv.conferences import parse_conferences
-from .iserv.dsa import SUBSTITUTIONS_SETTING, TIMETABLE_SETTING, DieSchulAppClient
+from .iserv.dsa import REGULAR_PLAN_SECONDS, SUBSTITUTIONS_SETTING, TIMETABLE_SETTING, DieSchulAppClient, SharedReads
+from .iserv import dsa_substitutions
 from .iserv.client import (
     LOGIN_TWOFACTOR_SETUP_KEY,
     PASSWORD_UNVERIFIED,
@@ -68,7 +69,6 @@ from .sign_in import SignInService, next_totp_code, sign_in_failure_reason
 from .timetable_source import TimetableSources, has_lessons
 
 CONFERENCES_PATH = "/iserv/parentconference/attendee/"
-NAV_BADGES_PATH = "/iserv/app/navigation/badges"
 START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
 MODULES_RECHECKED_KEY = "api.modules.rechecked"
@@ -139,6 +139,8 @@ class ConnectionService:
         self._child_service = ChildService(self)
         self._timetable_sources = TimetableSources(self)
         self.clock = time.time
+        self._shared_reads = SharedReads(lambda: self.clock())
+        self._regular_plans = SharedReads(lambda: self.clock(), seconds=REGULAR_PLAN_SECONDS)
 
     def is_configured(self):
         config = self.store.load_config()
@@ -515,6 +517,7 @@ class ConnectionService:
             self._absence_service = None
             self._child_service = ChildService(self)
             self._timetable_sources.reset()
+            self._regular_plans.clear()
 
     def children(self):
         try:
@@ -560,16 +563,32 @@ class ConnectionService:
 
     def _school_timetable(self, target, course_ids):
         school_app = self._dsa()
-        payload = school_app.current_timetable(
-            target, course_ids, substitutions=self._substitutions_released() is True
-        )
+        released = self._substitutions_released() is True
+        payload = school_app.current_timetable(target, course_ids, substitutions=released)
         if payload is None:
             raise DataError(
                 "timetable was not readable",
                 message_key=TIMETABLE_UNREADABLE_KEY,
                 detail={"source": "school-app", "date": target.isoformat(), "status": school_app.last_status},
             )
-        return parse_current_timetable(payload, target)
+        week = parse_current_timetable(payload, target)
+        regular, failure = self._regular_timetable(school_app, target, course_ids, payload) if released else (dsa_substitutions.NOT_ASKED, "")
+        week.substitutions = dsa_substitutions.mark(week, payload, regular, target, failure)
+        return week
+
+    @staticmethod
+    def _regular_timetable(school_app, target, course_ids, current):
+        try:
+            regular = school_app.regular_timetable(target, course_ids, current)
+        except OutageError as error:
+            if error.reason == REASON_RATE_LIMITED:
+                raise
+            return None, type(error).__name__
+        except Exception as error:
+            return None, type(error).__name__
+        if regular is None:
+            return None, "answer %s" % (getattr(school_app, "last_status", 0) or "-")
+        return regular, ""
 
     def _dsa(self):
         client = self._session()
@@ -578,6 +597,8 @@ class ConnectionService:
             client.session,
             on_expired=lambda: self._forget_session(client),
             on_answered=self._trust_school_app,
+            shared=self._shared_reads,
+            regular_plans=self._regular_plans,
         )
 
     def school_profile(self):
@@ -742,18 +763,6 @@ class ConnectionService:
         except DataError:
             return {"error": "unavailable", "items": []}
         return parse_conferences(response.text, response.url)
-
-    def iserv_badges(self):
-        response = self._session().fetch(NAV_BADGES_PATH)
-        if getattr(response, "status_code", 0) != 200:
-            return {}
-        try:
-            payload = response.json()
-        except ValueError:
-            return {}
-        if not isinstance(payload, dict):
-            return {}
-        return {str(key): value for key, value in payload.items() if isinstance(value, int)}
 
     def timetable_available(self):
         return self.module_available(modules.TIMETABLE)
@@ -954,9 +963,6 @@ class IServService:
     def is_configured(self):
         return any(connection.is_configured() for connection in self.connections())
 
-    def many(self):
-        return len(self.store.connections()) > 1
-
     def annotate(self, connection, item):
         item = dict(item)
         item["connection_id"] = connection.id
@@ -1081,7 +1087,7 @@ class IServService:
         merged["modules"] = {
             name: any(registry["modules"].get(name, True) for registry in registries) for name in modules.MODULES
         }
-        for field in ("unsupported", "unknown"):
+        for field in ("unsupported", "covered", "unknown"):
             seen = set()
             for registry in registries:
                 for entry in registry[field]:

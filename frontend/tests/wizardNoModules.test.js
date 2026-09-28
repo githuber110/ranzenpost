@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function jsonResponse(body) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
@@ -35,7 +35,7 @@ async function bootChildStep(app, window, available) {
 }
 
 function label(window, key) {
-  return window.eval(`t(${JSON.stringify(key)})`);
+  return evalWith(window, "t(testArgs[0])", key);
 }
 
 describe("the wizard child step without a child source", () => {

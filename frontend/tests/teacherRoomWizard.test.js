@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const TEACHER_A = { value: "userid:11111111-2222-3333-4444-555555555555", label: "Hr. Osterkamp", extra: "" };
 const TEACHER_B = { value: "userid:66666666-7777-8888-9999-000000000000", label: "Fr. Behrend", extra: "" };
@@ -21,13 +21,13 @@ const ROOMS = {
 };
 
 function seed(window, children, rooms) {
-  window.eval(`
+  evalWith(window, `
     state.config = {};
     state.absence = { data: { children: [], rules: {} } };
-    state.children = ${JSON.stringify(children)};
-    state.messengerRooms = ${JSON.stringify(rooms === undefined ? ROOMS : rooms)};
+    state.children = testArgs[0];
+    state.messengerRooms = testArgs[1];
     state.view = "messenger";
-  `);
+  `, children, rooms === undefined ? ROOMS : rooms);
 }
 
 const ONE_CHILD = [{ key: "c1", name: "Mia", class_name: "3b" }];
@@ -131,7 +131,7 @@ describe("the wizard path", () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);
     await openWizard(window, [MIA, TOM]);
-    window.eval(`(function () { state.teacherRoom.childIds = ["${TOM.id}"]; })`)();
+    evalWith(window, "(function () { state.teacherRoom.childIds = [testArgs[0]]; })", TOM.id)();
     window.eval("teacherRoomFlow.go('children')");
     const boxes = window.eval("teacherRoomFlow.node").querySelectorAll(".sw-body input[type=checkbox]");
     expect([boxes[0].checked, boxes[1].checked]).toEqual([false, true]);
@@ -354,7 +354,7 @@ describe("the one POST", () => {
     await openWizard(window, offered || [MIA]);
     window.eval("(function (hit) { chooseTeacher(hit); })")(TEACHER_A);
     if ((offered || [MIA]).length > 1) {
-      window.eval(`(function () { state.teacherRoom.childIds = ${JSON.stringify([MIA.id, TOM.id])}; })`)();
+      evalWith(window, "(function () { state.teacherRoom.childIds = testArgs[0]; })", [MIA.id, TOM.id])();
     }
     window.eval("teacherRoomFlow.go('review')");
     return window.eval("teacherRoomFlow.node");

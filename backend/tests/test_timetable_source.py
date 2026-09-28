@@ -1,9 +1,10 @@
 import logging
+import time
 from datetime import date
 
 import pytest
 
-from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY
+from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY, SHARED_READ_SECONDS
 from app.iserv.errors import DataError, LoginError, TwoFactorError
 from app.iserv.timetable import TIMETABLE_SHAPE_KEY
 from app.store import Store
@@ -186,8 +187,11 @@ def test_the_school_app_takes_over_again_once_it_lists_lessons(tmp_path):
 def test_the_school_app_takes_over_again_once_slots_appear(tmp_path):
     school = TimeTableSchool()
     service = make(tmp_path, school)
+    start = time.time()
+    service.clock = lambda: start
     service.timetable(CHILD, reference=WEDNESDAY)
     school.slots = True
+    service.clock = lambda: start + SHARED_READ_SECONDS
     result = service.timetable(CHILD, reference=WEDNESDAY)
     assert result["source"] == "school-app"
     assert result["no_lessons"] is True

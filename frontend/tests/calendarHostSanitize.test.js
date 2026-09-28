@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const SUBSCRIPTION = { id: "sub-1", path: "/calendar/token-1.ics" };
 
@@ -19,7 +19,7 @@ const CASES = [
 describe("sanitizeCalendarHost", () => {
   test.each(CASES)("%s -> %s", (input, expected) => {
     const { window } = loadApp();
-    expect(window.eval(`sanitizeCalendarHost(${JSON.stringify(input)})`)).toBe(expected);
+    expect(evalWith(window, "sanitizeCalendarHost(testArgs[0])", input)).toBe(expected);
   });
 
   test("a bare IPv6 host is not truncated at its first colon", () => {
@@ -27,12 +27,12 @@ describe("sanitizeCalendarHost", () => {
     expect(window.eval('sanitizeCalendarHost("fd00::1")')).toBe("fd00::1");
   });
 
-  test("the regression host composes a feed URL with exactly one port", () => {
+  test("a host with a port composes a feed URL with exactly one port", () => {
     const { window } = loadApp();
     window.eval(
       `state.calendar = { data: { host: "192.168.0.42:8123", port: 8100, subscriptions: [] }, error: false };`
     );
-    const url = window.eval(`calendarFeedUrl(${JSON.stringify(SUBSCRIPTION)}, "http")`);
+    const url = evalWith(window, 'calendarFeedUrl(testArgs[0], "http")', SUBSCRIPTION);
 
     expect(url).toBe("http://192.168.0.42:8100/calendar/token-1.ics");
     expect((url.match(/:\d+/g) || [])).toHaveLength(1);
@@ -42,7 +42,7 @@ describe("sanitizeCalendarHost", () => {
     window.eval(
       `state.calendar = { data: { host: "[fd00::1]", port: 8100, subscriptions: [] }, error: false };`
     );
-    const url = window.eval(`calendarFeedUrl(${JSON.stringify(SUBSCRIPTION)}, "webcal")`);
+    const url = evalWith(window, 'calendarFeedUrl(testArgs[0], "webcal")', SUBSCRIPTION);
 
     expect(url).toBe("webcal://[fd00::1]:8100/calendar/token-1.ics");
     expect(() => new URL(url.replace("webcal:", "http:"))).not.toThrow();
@@ -54,7 +54,7 @@ describe("sanitizeCalendarHost", () => {
     window.eval(
       `state.calendar = { data: { host: "192.168.0.42", port: 8100, subscriptions: [] }, error: false };`
     );
-    const url = window.eval(`calendarFeedUrl(${JSON.stringify(SUBSCRIPTION)}, "http")`);
+    const url = evalWith(window, 'calendarFeedUrl(testArgs[0], "http")', SUBSCRIPTION);
 
     expect(url).toBe("http://192.168.0.42:8100/calendar/token-1.ics");
     expect(url).not.toContain("[");
@@ -64,9 +64,7 @@ describe("sanitizeCalendarHost", () => {
 describe("the fallback host never overrules a host the browser can actually reach", () => {
   function withHost(hostname, data) {
     const { window } = loadApp({ url: `http://${hostname}/` });
-    window.eval(
-      `state.calendar = { data: ${JSON.stringify(Object.assign({ port: 8100, subscriptions: [] }, data))}, error: false };`
-    );
+    evalWith(window, "state.calendar = { data: testArgs[0], error: false };", Object.assign({ port: 8100, subscriptions: [] }, data));
     return window;
   }
 

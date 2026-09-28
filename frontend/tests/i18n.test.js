@@ -45,7 +45,7 @@ describe("t() lookup layer", () => {
     const { window } = loadApp();
     window.setLanguageBundle("en", { "absence.title": "Absence" }, base);
     expect(window.t("absence.title")).toBe("Absence");
-    expect(window.t("letters.title")).toBe(base["letters.title"]);
+    expect(window.t("blocks.letters.title")).toBe(base["blocks.letters.title"]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
@@ -9,7 +9,7 @@ function tick() {
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 async function prepare(window, { many = false } = {}) {
@@ -23,15 +23,15 @@ async function prepare(window, { many = false } = {}) {
     connections.push({ id: TWO, school_name: "School Two", setup_complete: true, phones: [], subjects: { M: { label: "Mathe", color: "" } }, teachers: {} });
     children.push({ key: `${TWO}:c1`, child_id: "c1", connection_id: TWO, name: "Tom Example", class_name: "3a" });
   }
-  window.eval(`
+  evalWith(window, `
     state.detached = false;
-    state.config = { connections: ${JSON.stringify(connections)}, notify_services: [], notify_events: {} };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(`${ONE}:c1`)};
-    state.schools = ${JSON.stringify(connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true })))};
+    state.config = { connections: testArgs[0], notify_services: [], notify_events: {} };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
+    state.schools = testArgs[3];
     state.haStatus = { data: { connected: true }, error: false };
     state.calendar = { data: { port: 8100, port_open: true, subscriptions: [] }, error: false };
-  `);
+  `, connections, children, `${ONE}:c1`, connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true })));
   const posts = [];
   window.fetch = (url, options) => {
     const target = String(url);
@@ -77,7 +77,7 @@ describe("subjects and teachers are a full settings page", () => {
   test("opened from a school page it edits that school and goes back to it", async () => {
     const { window, document } = loadApp();
     const posts = await prepare(window, { many: true });
-    window.eval(`state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)}; render();`);
+    evalWith(window, 'state.view = "settings"; state.settingsSchoolId = testArgs[0]; render();', TWO);
     document.querySelector(".names-setting").click();
 
     expect(window.eval("state.settingsPage")).toBe("names");
@@ -133,6 +133,43 @@ describe("subjects and teachers are a full settings page", () => {
     window.eval('setView("overview");');
     expect(window.eval("state.view")).toBe("overview");
     expect(window.eval("state.sheet")).toBe(null);
+  });
+
+  test("a failed save frees the save button again and keeps the draft", async () => {
+    const { window, document } = loadApp();
+    await prepare(window);
+    window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    window.eval('state.view = "settings"; render(); openNamesPage();');
+    type(window, document.querySelector(".names-page .subject-name input"), "Deutsch LK");
+    document.querySelector(".names-save").click();
+    expect(document.querySelector(".names-save").disabled).toBe(true);
+    for (let round = 0; round < 6; round += 1) await tick();
+
+    const save = document.querySelector(".names-save");
+    expect(save.disabled).toBe(false);
+    expect(save.textContent).toBe(label(window, "common.save"));
+    expect(window.eval("state.settingsPage")).toBe("names");
+    expect(document.querySelector(".names-page .subject-name input").value).toBe("Deutsch LK");
+  });
+
+  test("a save that ends on the login screen does not claim it was saved", async () => {
+    const { window, document } = loadApp();
+    const posts = await prepare(window);
+    const post = window.fetch;
+    window.fetch = (url, options) => {
+      if (String(url).includes("api/config") && !(options && options.method === "POST")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ error: "auth_failed" }) });
+      }
+      return post(url, options);
+    };
+    window.eval('state.view = "settings"; render(); openNamesPage();');
+    type(window, document.querySelector(".names-page .subject-name input"), "Deutsch LK");
+    document.querySelector(".names-save").click();
+    for (let round = 0; round < 6; round += 1) await tick();
+
+    expect(posts.length).toBe(1);
+    expect(window.eval("state.detached")).toBe(true);
+    expect(window.eval("state.toast")).toBe(null);
   });
 
   test("a new visit starts from the stored names, not from an old draft", async () => {

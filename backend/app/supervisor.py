@@ -145,11 +145,6 @@ def ingress_path():
     return f"{INGRESS_PANEL_PREFIX}{slug}"
 
 
-def addon_hostname():
-    info = _addon_info() or {}
-    return str(info.get("hostname") or "").strip()
-
-
 def host_state():
     config = _core_config()
     for field, source in (

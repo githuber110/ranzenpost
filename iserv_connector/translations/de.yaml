@@ -1,2 +1,6 @@
 network:
-  "8100/tcp": "Kalender-Abo (ICS). Ohne eingetragenen Port bleibt der Kalender aus. Wer hier einen Port einträgt, macht die Kalender-Adresse im Heimnetz ohne Passwort erreichbar — der Link ist das Passwort. Niemals im Router nach außen weiterleiten; von unterwegs stattdessen einen Reverse-Proxy mit HTTPS oder ein VPN benutzen."
+  "8100/tcp": "Kalender-Abo (ICS). Ohne eingetragenen Port bleibt der Kalender aus. Wer hier einen Port einträgt, macht die Kalender-Adresse im Heimnetz ohne Passwort erreichbar. Der Link selbst ist das Passwort. Niemals im Router nach außen weiterleiten; von unterwegs stattdessen einen Reverse-Proxy mit HTTPS oder ein VPN benutzen."
+configuration:
+  passphrase:
+    name: Passwortsatz
+    description: Verschlüsselt die gespeicherten Zugangsdaten und den Zwei-Faktor-Schlüssel mit diesem Satz statt mit einem festen Schlüssel auf der Festplatte. Ohne ihn kann jeder mit einer Kopie eines Backups die Geheimnisse lesen.

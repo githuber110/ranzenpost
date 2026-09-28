@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const WITHHELD = {
   self_user_id: "",
@@ -22,12 +22,12 @@ const BROKEN = {
 };
 
 function seed(window, data) {
-  window.eval(`
+  evalWith(window, `
     state.config = {};
     state.children = [];
-    state.messengerRooms = ${JSON.stringify(data)};
+    state.messengerRooms = testArgs[0];
     state.view = "messenger";
-  `);
+  `, data);
   return window.eval("(function () { return messengerView(); })")();
 }
 

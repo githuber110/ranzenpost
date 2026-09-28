@@ -270,6 +270,12 @@ def test_unread_notices_keep_only_unread_entries_and_squeeze_whitespace():
     ]
 
 
+def test_a_notice_names_the_given_name_of_a_surname_first_child():
+    entry = {"title": "Brief", "published": "02.09.2026", "child": "Quastenflosser,  Zwiebelfisch", "unread": True}
+
+    assert integration.notice_of(entry)["child"] == "Zwiebelfisch"
+
+
 def test_a_lesson_on_a_school_morning_names_period_weekday_kind_and_the_change(tmp_path):
     body = _state(tmp_path, _today_snapshot, NOW_EPOCH)
 
@@ -362,3 +368,22 @@ def test_exam_and_absence_events_name_the_mark_and_the_kind(tmp_path):
     assert exams[0]["name"] == "Diktat" and exams[0]["kind"] == ""
     assert absences[0]["kind"] == "sick" and absences[0]["name"] == ""
     assert all(event["name"] == "" and event["kind"] == "" for event in lessons)
+
+def _hour_school_snapshot(store):
+    store.update_connection(SCHOOL, period_grid={"lessons": {"1": {"duration": 60}}})
+    lessons = [
+        _lesson(day=WEDNESDAY, period=1),
+        dict(_lesson(day=WEDNESDAY, period=3, subject_code="MA", subject_label="Mathe", start_time="09:45"), end_time="10:55"),
+    ]
+    store.save_calendar_snapshot(_snapshot(lessons))
+    MarkRegistry(store, clock=lambda: NOW_EPOCH).create(CHILD_ID, "2026-09-09", 1, "D", "Diktat")
+
+
+def test_lesson_and_exam_ends_follow_the_school_lesson_length(tmp_path):
+    body = _state(tmp_path, _hour_school_snapshot, NOW_EPOCH)
+
+    assert body["now_lesson"]["end"] == "2026-09-02T09:00:00+02:00"
+    assert body["now_lesson"]["minutes_left"] == 50
+    assert body["next_lesson"]["end"] == "2026-09-02T10:55:00+02:00"
+    assert body["school_end_today"] == "2026-09-02T10:55:00+02:00"
+    assert body["next_exam"]["end"] == "2026-09-09T09:00:00+02:00"

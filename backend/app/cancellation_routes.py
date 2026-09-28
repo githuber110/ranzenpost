@@ -19,6 +19,7 @@ def register_routes(app, cancellation_registry):
                 body.get("child_key", ""),
                 body.get("date", ""),
                 body.get("period"),
+                body.get("subject_code", ""),
             )
         except cancellations.CancellationError as error:
             return _cancellation_error(error)

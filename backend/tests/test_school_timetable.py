@@ -1,14 +1,16 @@
 import json
+import logging
 import pathlib
 from datetime import date
 
 import pytest
 
-from app.iserv.errors import DataError
+from app.iserv.errors import REASON_RATE_LIMITED, REASON_TIMEOUT, DataError, OutageError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.service import TIMETABLE_UNREADABLE_KEY, IServService
 from app.store import Store
 from tests.support import add_school, connection_service
+from tests.time_table_school import SCHOOL_APP_REGULAR, SCHOOL_APP_SUBSTITUTED, school_app_plan
 
 FIXTURE = json.loads(
     (pathlib.Path(__file__).resolve().parent / "fixtures" / "dsa_current_timetable.json").read_text(encoding="utf-8")
@@ -258,4 +260,95 @@ def test_no_change_is_invented_when_the_school_delivers_no_substitutions(tmp_pat
     service, _, _, _ = make(tmp_path)
     result = service.timetable("500001", reference=date(2026, 9, 7))
     assert result["change_count"] == 0
+    assert all(lesson["change_kind"] == "" for lesson in result["lessons"])
+
+
+RELEASED = {"timetable_availableForGuardiansAndStudents": True, "substitutions_availableForGuardiansAndStudents": True}
+
+
+def plan_answer(rows):
+    return {"vacations": [], "schoolEvents": [], "students": [{"student": {"id": 500001}, "entries": school_app_plan(rows)}]}
+
+
+class SubstitutingSchoolApp(SchoolApp):
+    def __init__(self, regular=SCHOOL_APP_REGULAR, current=SCHOOL_APP_SUBSTITUTED, failure=None):
+        super().__init__(timetable=plan_answer(current), settings=dict(RELEASED))
+        self.regular = plan_answer(regular) if regular is not None else None
+        self.failure = failure
+        self.regular_calls = []
+
+    def regular_timetable(self, reference, course_ids, current=None):
+        self.regular_calls.append((reference, list(course_ids)))
+        if self.failure is not None:
+            raise self.failure
+        return self.regular
+
+
+def test_released_substitutions_are_marked_against_the_regular_plan(tmp_path, caplog):
+    app = SubstitutingSchoolApp()
+    service, _, _, _ = make(tmp_path, school_app=app)
+    with caplog.at_level(logging.INFO):
+        result = service.timetable("500001", reference=date(2026, 9, 9))
+    kinds = sorted(lesson["change_kind"] for lesson in result["lessons"] if lesson["change_kind"])
+    assert kinds == ["added", "cancelled", "cancelled", "changed"]
+    assert result["changes_format"] == "lessons"
+    assert result["change_count"] == 4
+    assert len(result["changes"]) == 4
+    assert app.regular_calls == [(date(2026, 9, 9), [7001, 7002])]
+    lines = [record.getMessage() for record in caplog.records if "substitutions for the week" in record.getMessage()]
+    assert len(lines) == 1
+    assert lines[0].endswith(
+        "child#500001 substitutions for the week of 07.09.2026: regular plan 10 lessons, current 9, changed 1, "
+        "only in the regular plan 2, only in the current plan 1, marked by the school 0, marks shown"
+    )
+
+
+def test_a_failing_regular_plan_keeps_the_week_as_today_and_logs_why(tmp_path, caplog):
+    app = SubstitutingSchoolApp(failure=RuntimeError("down"))
+    service, _, _, _ = make(tmp_path, school_app=app)
+    with caplog.at_level(logging.INFO):
+        result = service.timetable("500001", reference=date(2026, 9, 9))
+    assert len(result["lessons"]) == 9
+    assert all(lesson["change_kind"] == "" for lesson in result["lessons"])
+    assert result["changes_format"] == ""
+    assert result["changes"] == []
+    assert any(
+        record.levelno == logging.INFO and record.getMessage().endswith("the regular plan was not read (RuntimeError)")
+        for record in caplog.records
+    )
+
+
+def test_a_regular_plan_that_differs_in_most_lessons_marks_nothing(tmp_path, caplog):
+    other = tuple(row[:4] + ("ZZZ",) + row[5:] for row in SCHOOL_APP_REGULAR)
+    app = SubstitutingSchoolApp(regular=other, current=SCHOOL_APP_REGULAR)
+    service, _, _, _ = make(tmp_path, school_app=app)
+    with caplog.at_level(logging.INFO):
+        result = service.timetable("500001", reference=date(2026, 9, 9))
+    assert all(lesson["change_kind"] == "" for lesson in result["lessons"])
+    assert result["changes_format"] == ""
+    assert any("changed 10" in record.getMessage() and "more than half" in record.getMessage() for record in caplog.records)
+
+
+def test_the_regular_plan_is_not_asked_when_the_school_keeps_substitutions_back(tmp_path):
+    app = SubstitutingSchoolApp()
+    app.settings = {"timetable_availableForGuardiansAndStudents": True, "substitutions_availableForGuardiansAndStudents": False}
+    service, _, _, _ = make(tmp_path, school_app=app)
+    result = service.timetable("500001", reference=date(2026, 9, 9))
+    assert app.regular_calls == []
+    assert result["changes_format"] == ""
+
+
+def test_a_rate_limited_regular_plan_is_not_swallowed_so_the_poll_backs_off(tmp_path):
+    app = SubstitutingSchoolApp(failure=OutageError(REASON_RATE_LIMITED, retry_after=120))
+    service, _, _, _ = make(tmp_path, school_app=app)
+    with pytest.raises(OutageError) as raised:
+        service.timetable("500001", reference=date(2026, 9, 9))
+    assert (raised.value.reason, raised.value.retry_after) == (REASON_RATE_LIMITED, 120)
+
+
+def test_a_regular_plan_that_times_out_keeps_the_week_unmarked(tmp_path):
+    app = SubstitutingSchoolApp(failure=OutageError(REASON_TIMEOUT))
+    service, _, _, _ = make(tmp_path, school_app=app)
+    result = service.timetable("500001", reference=date(2026, 9, 9))
+    assert len(result["lessons"]) == 9
     assert all(lesson["change_kind"] == "" for lesson in result["lessons"])

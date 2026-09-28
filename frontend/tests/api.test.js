@@ -37,7 +37,7 @@ function setup({ reply = () => answer({}), signals = { timeout: (ms) => ({ ms })
       return reply(url, options);
     },
     base,
-    t: (key, vars) => (vars ? `${key}:${JSON.stringify(vars)}` : `t:${key}`),
+    t: (key, vars) => (vars ? [key, JSON.stringify(vars)].join(":") : `t:${key}`),
     abortSignal: () => signals,
     formData: () => {
       const form = fakeForm();

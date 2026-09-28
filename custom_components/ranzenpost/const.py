@@ -75,7 +75,7 @@ LOGIN_ISSUE_KEYS = {
     "code_step_failed": "login_code_refused",
 }
 NO_SCHOOL_ISSUE_KEY = "no_school_yet"
-MIN_ADDON_VERSION = "2609.02.00"
+MIN_ADDON_VERSION = "2609.2.0"
 UNKNOWN_VERSION = "unknown"
 
 CHANGE_SUBSTITUTION = "substitution"
@@ -140,6 +140,7 @@ KEY_SCHOOL_DAY_TODAY = "school_day_today"
 KEY_TIMETABLE_CHANGED_TODAY = "timetable_changed_today"
 KEY_TIMETABLE_CHANGED = "timetable_changed"
 KEY_NEXT_HOLIDAY = "next_holiday"
+KEY_NEXT_FREE_DAY = "next_free_day"
 KEY_NEXT_CONFERENCE = "next_conference"
 KEY_CONNECTION = "connection"
 

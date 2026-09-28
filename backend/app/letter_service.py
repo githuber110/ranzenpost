@@ -338,8 +338,6 @@ class LetterService:
     def _open_letter(self, letter_id, recipient_id):
         letter_id = _clean_id(letter_id)
         recipient_id = _clean_id(recipient_id)
-        if not letter_id or not recipient_id:
-            return LETTER_OPEN_FAILED
         response = self.connection._session().fetch(
             LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id)
         )

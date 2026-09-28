@@ -9,4 +9,4 @@ fi
 export ISERV_ENABLE_POLLER="${ISERV_ENABLE_POLLER:-1}"
 export ISERV_ENABLE_CALENDAR="${ISERV_ENABLE_CALENDAR:-1}"
 export ISERV_CALENDAR_PORT="${ISERV_CALENDAR_PORT:-8100}"
-exec uvicorn app.main:app --host 0.0.0.0 --port 8099
+exec uvicorn app.main:app --host 0.0.0.0 --port 8099 --no-proxy-headers

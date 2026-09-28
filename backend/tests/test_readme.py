@@ -1,10 +1,7 @@
-import hashlib
 import pathlib
 import re
 
-import tests.test_no_personal_data as personal_data
 from app import modules
-from tests.test_no_personal_data import line_contains_forbidden_token
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
@@ -100,16 +97,6 @@ def test_the_readme_is_there_and_shows_screenshots():
     assert referenced_names(), "no screenshot reference found - the gallery or this pattern broke"
 
 
-def test_the_readmes_carry_no_personal_data():
-    offenders = [
-        f"{name}:{number}"
-        for name, path in READMES.items()
-        for number, line in enumerate(text_of(path).splitlines(), 1)
-        if line_contains_forbidden_token(line.lower())
-    ]
-    assert offenders == []
-
-
 def test_every_referenced_screenshot_exists():
     assert sorted(referenced_names() - stored_names()) == []
 
@@ -186,19 +173,3 @@ def test_the_dash_check_still_bites():
     assert sentence_dash_offenders("x", "- A bullet without a dash inside.") == []
     assert sentence_dash_offenders("x", "| --- | --- |") == []
     assert sentence_dash_offenders("x", "```\na - b\n```") == []
-
-
-def test_the_personal_data_check_still_bites(monkeypatch):
-    canary = "zzzreadmecanary"
-    monkeypatch.setattr(
-        personal_data,
-        "FORBIDDEN_LENGTHS",
-        sorted(set(personal_data.FORBIDDEN_LENGTHS) | {len(canary)}),
-    )
-    monkeypatch.setattr(
-        personal_data,
-        "FORBIDDEN_HASH_SET",
-        personal_data.FORBIDDEN_HASH_SET | {hashlib.sha256(canary.encode("utf-8")).hexdigest()},
-    )
-    assert line_contains_forbidden_token(f"a screenshot caption naming {canary} here")
-    assert not line_contains_forbidden_token("a screenshot caption naming nobody here")

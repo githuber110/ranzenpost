@@ -20,7 +20,7 @@ entities for automations.
   deregistration from bus/kindergarten/lunch, and day-care deregistration), with your school's
   phone numbers one tap away. Leave requests can carry file attachments; a sick-note report can be
   saved or printed as a confirmation PDF.
-- **Parent-teacher conference days**, an overview dashboard with unread badges, and settings for
+- **Parent-teacher conferences**, an overview dashboard with unread badges, and settings for
   subject/teacher names and colours, lesson times, phone numbers and notifications.
 - **Six languages**: German, English, Arabic (right-to-left), Turkish, Russian and Ukrainian.
   Pick one in the setup wizard or under Settings; the default follows your device.
@@ -35,7 +35,7 @@ entities for automations.
 ## Which IServ modules are supported
 
 Ranzenpost reads the timetable ("Stunden- und Vertretungsplan"), parent letters, pinboards,
-absences, parent-teacher conference days and the messenger. If the Schul-App timetable lists no
+absences, parent-teacher conferences and the messenger. If the Schul-App timetable lists no
 lessons and the school has no lesson slots there, Ranzenpost reads the older timetable module at
 `/iserv/time-table/` instead and remembers that for the school. A week in which IServ lists no
 lessons shows a short note instead of an empty grid. A school with only the older
@@ -96,6 +96,7 @@ integration by hand.
 token with a copy button, a **Regenerate** button that invalidates the old token after a confirmation,
 and the install link for the integration. Calls through the Ingress proxy cannot use the API, a wrong
 or missing token answers 401, and ten failed attempts a minute from one source are answered 429.
+Every other route on that port only answers the Supervisor's Ingress proxy.
 
 Install the integration itself through HACS: add this repository as a custom repository (category
 **Integration**) or use the button in the main
@@ -141,8 +142,8 @@ Per child:
   otherwise the app's last successful fetch; the attribute `source` says which (`iserv` or `app`).
 - `binary_sensor.ranzenpost_<child>_school_day_today`, `binary_sensor.ranzenpost_<child>_timetable_changed_today`.
 - `calendar.ranzenpost_<child>_lessons`, `calendar.ranzenpost_<child>_exams`, `calendar.ranzenpost_<child>_absences`: on while an
-  event runs, and the next event under `summary`, `start`, `end`, `subject`, `subject_code`, the
-  exam `name` or the absence `kind`.
+  event runs, and the next event under `summary`, `start`, `end`, `subject`, `subject_code`, `name`
+  and `kind`.
 - `calendar.ranzenpost_<child>_own_entries`: own clubs and appointments, only while the school's switch on the
   lesson times page is on. Breaks never leave the app.
 - `event.ranzenpost_<child>_timetable_changed`: fires with `child`, `summary`, `date`, `period`.
@@ -150,6 +151,8 @@ Per child:
 Per school:
 
 - `sensor.ranzenpost_school_next_holiday`: the name, with `start`, `end`, `days_until` (0 while running).
+- `sensor.ranzenpost_school_next_free_day`: the name of the next day off, school holidays or a public
+  holiday, with `start`, `end`, `days_until`.
 - `sensor.ranzenpost_school_next_conference`: the date, with `title`, `details` (every cell of the IServ row
   except the date) and `days_until`.
 - `sensor.ranzenpost_school_connection`: `ok`, `error`, `unconfigured`, `unreachable` or

@@ -14,7 +14,7 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
       state.weekOffset = 0;
       state.timetable = week;
       state.config = { period_times: configPeriodTimes || {} };
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })
@@ -22,7 +22,7 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
   return run(fixedDate, week, configPeriodTimes);
 }
 
-describe("overviewToday renders every lesson as a tile", () => {
+describe("the today block renders every lesson as a tile", () => {
   test("no lead heading: all today's lessons (including the next one) are .row tiles", () => {
     const { window } = loadApp();
     const week = {
@@ -205,16 +205,16 @@ describe("the today card marks the running and the upcoming lesson in words", ()
     expect(rows.filter((row) => row.querySelector(".row-when.now")).length).toBe(0);
   });
 
-  test("the reported bug: at 09:38 the 08:45 lesson is past and the 09:00 lesson is the running one", () => {
+  test("at 09:38 the 08:45 lesson is past and the 09:00 lesson is the running one", () => {
     const { window } = loadApp();
-    const reported = {
+    const week = {
       lessons: [
         { day_of_week: 2, period: 1, start_time: "08:45", subject_code: "SP" },
         { day_of_week: 2, period: 2, start_time: "09:00", subject_code: "M" },
       ],
       period_times: {},
     };
-    const section = renderOverviewTodayAt(window, "2026-09-01T09:38:00", reported, { 1: "08:45", 2: "09:00" });
+    const section = renderOverviewTodayAt(window, "2026-09-01T09:38:00", week, { 1: "08:45", 2: "09:00" });
     const rows = [...section.querySelectorAll(".rows.flat .row:not(.row-note)")];
     expect(rows[0].classList.contains("past")).toBe(true);
     expect(rows[1].classList.contains("past")).toBe(false);

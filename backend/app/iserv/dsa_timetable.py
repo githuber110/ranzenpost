@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from .models import Lesson, TimetableWeek
 from .timetable import DATE_FORMAT, week_bounds
@@ -91,15 +91,20 @@ def parse_vacations(items):
     return vacations
 
 
-def parse_current_timetable(payload, reference):
-    monday, sunday = week_bounds(reference)
-    lessons = []
+def entry_lessons(payload, monday):
+    pairs = []
     for block in (payload or {}).get("students") or []:
         for entry in block.get("entries") or []:
             if not isinstance(entry, dict):
                 continue
-            lessons.append(entry_to_lesson(entry, monday))
-    lessons.sort(key=lambda lesson: (lesson.day_of_week, lesson.period, lesson.subject))
+            pairs.append((entry_to_lesson(entry, monday), entry))
+    pairs.sort(key=lambda pair: (pair[0].day_of_week, pair[0].period, pair[0].subject))
+    return pairs
+
+
+def parse_current_timetable(payload, reference):
+    monday, sunday = week_bounds(reference)
+    lessons = [lesson for lesson, _ in entry_lessons(payload, monday)]
     week = TimetableWeek(
         start_date=monday.strftime(DATE_FORMAT),
         end_date=sunday.strftime(DATE_FORMAT),
@@ -112,7 +117,3 @@ def parse_current_timetable(payload, reference):
     week.cancelled = []
     week.vacations = parse_vacations((payload or {}).get("vacations"))
     return week
-
-
-def reference_or_today(reference):
-    return reference or date.today()

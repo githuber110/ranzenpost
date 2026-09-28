@@ -1,19 +1,19 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 
 function single(window, connection = {}, extra = "") {
-  window.eval(`
-    state.config = { connections: [Object.assign({ id: ${JSON.stringify(ONE)}, setup_complete: true, phones: [], subjects: {}, teachers: {} }, ${JSON.stringify(connection)})], notify_services: [], notify_events: {} };
-    state.children = [{ key: ${JSON.stringify(`${ONE}:c1`)}, child_id: "c1", connection_id: ${JSON.stringify(ONE)}, name: "Mia Example", class_name: "7b" }];
-    state.childId = ${JSON.stringify(`${ONE}:c1`)};
+  evalWith(window, `
+    state.config = { connections: [Object.assign({ id: testArgs[0], setup_complete: true, phones: [], subjects: {}, teachers: {} }, testArgs[1])], notify_services: [], notify_events: {} };
+    state.children = [{ key: testArgs[2], child_id: "c1", connection_id: testArgs[3], name: "Mia Example", class_name: "7b" }];
+    state.childId = testArgs[4];
     ${extra}
-  `);
+  `, ONE, connection, `${ONE}:c1`, ONE, `${ONE}:c1`);
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 describe("a subject's code sits behind Change code", () => {

@@ -6,7 +6,7 @@ import { i18nGlobals } from "../lib/i18nGlobals.js";
 import { SELECTION_KEYS as MODULE_SELECTION_KEYS, selectionGlobals } from "../lib/selection.js";
 import { SHEET_KEYS, shellGlobals } from "../lib/shell.js";
 import { storeGlobals } from "../lib/store.js";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { readShipped, scriptNames } from "./shippedSources.js";
 
 const BROWSER_GLOBAL =
@@ -467,7 +467,7 @@ describe("the lib folder stays free of the browser", () => {
       expect(window.eval(`typeof ${name}`), name).toBe(name === "sheets" ? "object" : "function");
       expect(Object.prototype.hasOwnProperty.call(window, name), name).toBe(false);
     }
-    for (const key of SHEET_KEYS) expect(window.eval(`"${key}" in state`), key).toBe(true);
+    for (const key of SHEET_KEYS) expect(evalWith(window, "testArgs[0] in state", key), key).toBe(true);
     window.eval("state.sheetFocused = true; openSheet(() => sheet('Probe', ['body']))");
     expect(window.eval("typeof state.sheet")).toBe("function");
     expect(window.eval("state.sheetFocused")).toBe(false);
@@ -562,8 +562,8 @@ describe("the lib folder stays free of the browser", () => {
     window.eval("state.heardKeys = []; stateStore.subscribe((keys) => state.heardKeys.push(...keys));");
     for (const view of views) {
       window.eval("state.heardKeys = []");
-      window.eval(`applyViewEntryDefaults(${JSON.stringify(view)})`);
-      expect(window.eval("state.heardKeys"), view).toEqual(window.eval(`Object.keys(VIEW_ENTRY_DEFAULTS[${JSON.stringify(view)}])`));
+      evalWith(window, "applyViewEntryDefaults(testArgs[0])", view);
+      expect(window.eval("state.heardKeys"), view).toEqual(evalWith(window, "Object.keys(VIEW_ENTRY_DEFAULTS[testArgs[0]])", view));
     }
     expect(window.eval("Object.keys(VIEW_ENTRY_DEFAULTS.post)")).toEqual(expect.arrayContaining(SELECTION_KEYS));
     window.eval("state.lettersSelected = ['1:2']; applyViewEntryDefaults('post')");

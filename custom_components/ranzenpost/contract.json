@@ -645,7 +645,8 @@
         "subject_code",
         "subject",
         "name",
-        "kind"
+        "kind",
+        "teacher"
       ],
       "properties": {
         "uid": {
@@ -691,6 +692,10 @@
         "kind": {
           "type": "string",
           "description": "The kind of absence for absences, own_entries for clubs and appointments, empty otherwise."
+        },
+        "teacher": {
+          "type": "string",
+          "description": "The surname of the teacher for lessons when IServ names it, otherwise the label or code; empty for other events."
         }
       },
       "additionalProperties": false,
@@ -750,6 +755,7 @@
       "type": "object",
       "required": [
         "next_holiday",
+        "next_free_day",
         "next_conference",
         "region"
       ],
@@ -786,6 +792,40 @@
               "type": "null"
             }
           ]
+        },
+        "next_free_day": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "name",
+                "start",
+                "end",
+                "days_until"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "start": {
+                  "$ref": "#/$defs/date"
+                },
+                "end": {
+                  "$ref": "#/$defs/date"
+                },
+                "days_until": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "0 while the holiday is running."
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The next day off of any kind, school holidays or a public holiday, null when none is known."
         },
         "next_conference": {
           "oneOf": [

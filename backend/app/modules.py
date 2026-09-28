@@ -17,17 +17,7 @@ from .iserv.messenger import (
 )
 from .iserv.pages import path_of
 from .pathpattern import path_pattern
-from .module_catalogue import (
-    CATALOGUE,
-    CURRENT,
-    NEW,
-    OBSOLETE,
-    SEGMENT_SLUGS,
-    edition_of,
-    english_label,
-    official_name,
-    slug_of,
-)
+from .module_catalogue import official_name, slug_of
 
 TIMETABLE = "timetable"
 LETTERS = "letters"
@@ -100,6 +90,7 @@ LEGACY_TIMETABLE = "timetable-legacy"
 LEGACY_TIMETABLE_SEGMENT = "timetable"
 LEGACY_TIMETABLE_PATH = "/iserv/timetable/"
 PROBE_KEYS = MODULES + (LEGACY_TIMETABLE,)
+COVERED_BY = {"absence_obsolete": ABSENCES}
 HISTORY_LIMIT = 30
 
 
@@ -107,6 +98,7 @@ def default_registry():
     return {
         "modules": {name: True for name in MODULES},
         "unsupported": [],
+        "covered": [],
         "unknown": [],
         "probes": {},
         "checked_at": 0,
@@ -192,6 +184,11 @@ def _unsupported_entry(entry):
     }
 
 
+def _covered(entry, flags):
+    covering = COVERED_BY.get(entry.get("slug"))
+    return bool(covering) and bool(flags.get(covering))
+
+
 def split_links(links):
     unsupported = []
     unknown = []
@@ -212,11 +209,13 @@ def normalize(registry):
         return base
     flags = registry.get("modules") if isinstance(registry.get("modules"), dict) else {}
     base["modules"] = {name: bool(flags.get(name, True)) for name in MODULES}
-    base["unsupported"] = [
+    present = [
         _unsupported_entry(entry)
-        for entry in registry.get("unsupported") or []
+        for entry in (registry.get("unsupported") or []) + (registry.get("covered") or [])
         if isinstance(entry, dict) and str(entry.get("segment") or "").strip()
     ]
+    base["unsupported"] = [entry for entry in present if not _covered(entry, base["modules"])]
+    base["covered"] = [entry for entry in present if _covered(entry, base["modules"])]
     base["unknown"] = [
         _unknown_entry(entry)
         for entry in registry.get("unknown") or []
@@ -427,7 +426,7 @@ def detect(html, fetch, previous, clock=time.time, login_html="", school_app_tim
             flags[name] = True
     unsupported, unknown = split_links(links)
     if not links and earlier is not None:
-        unsupported = earlier["unsupported"]
+        unsupported = earlier["unsupported"] + earlier["covered"]
         unknown = earlier["unknown"]
     if legacy_timetable_served(probes, outcomes):
         unsupported = with_legacy_timetable(unsupported)
@@ -447,6 +446,7 @@ def _signature(registry):
     return (
         tuple(normalized["modules"][name] for name in MODULES),
         tuple(entry["segment"] for entry in normalized["unsupported"]),
+        tuple(entry["segment"] for entry in normalized["covered"]),
         tuple(entry["segment"] for entry in normalized["unknown"]),
     )
 
@@ -495,12 +495,15 @@ def summary(registry):
     missing = [name for name in MODULES if not normalized["modules"][name]]
     unsupported = [entry["slug"] or entry["segment"] for entry in normalized["unsupported"]]
     segments = [entry["segment"] for entry in normalized["unknown"]]
+    covered = [entry["slug"] or entry["segment"] for entry in normalized["covered"]]
     parts = [
         "modules available: " + (", ".join(available) or "none"),
         "missing: " + (", ".join(missing) or "none"),
         f"not supported: {len(unsupported)}" + (f" ({', '.join(unsupported)})" if unsupported else ""),
         f"unknown: {len(segments)}" + (f" ({', '.join(segments)})" if segments else ""),
     ]
+    if covered:
+        parts.append(f"covered by another module: {len(covered)} ({', '.join(covered)})")
     return "; ".join(parts)
 
 
@@ -511,7 +514,3 @@ def school_app_timetable_served(registry):
 
 def available(registry, name):
     return normalize(registry)["modules"].get(name, True)
-
-
-def any_available(registry):
-    return any(normalize(registry)["modules"].values())

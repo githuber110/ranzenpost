@@ -99,6 +99,38 @@ def test_notify_falls_back_to_format_check_when_supervisor_unreachable(monkeypat
     assert calls == ["http://supervisor/core/api/services/notify/mobile_app_phone"]
 
 
+@pytest.mark.parametrize("service", ["light.turn_on", "homeassistant.restart", "persistent_notification.create"])
+def test_notify_refuses_other_domains_when_supervisor_unreachable(monkeypatch, service):
+    calls = []
+    monkeypatch.setattr("requests.post", lambda url, **k: calls.append(url))
+    monkeypatch.setattr(
+        "app.haservices.list_notify_services",
+        lambda: {"supervisor": False, "services": []},
+    )
+
+    assert hanotify.notify("hi", service=service) is False
+    assert calls == []
+
+
+def test_notify_refuses_other_domains_even_when_listed(monkeypatch):
+    calls = []
+    monkeypatch.setattr("requests.post", lambda url, **k: calls.append(url))
+    monkeypatch.setattr(
+        "app.haservices.list_notify_services",
+        lambda: {"supervisor": True, "services": ["light.turn_on"]},
+    )
+
+    assert hanotify.notify("hi", service="light.turn_on") is False
+    assert calls == []
+
+
+def test_notify_service_list_keeps_only_notify_services():
+    values = ["notify.phone", " notify.tablet ", "light.turn_on", "notify.phone", 7, None, "notify.", "../x"]
+    assert hanotify.notify_service_list(values) == ["notify.phone", "notify.tablet"]
+    assert hanotify.notify_service_list("notify.phone") == []
+    assert hanotify.notify_service_list(None) == []
+
+
 def test_notify_allows_a_service_from_the_enriched_allowlist(monkeypatch):
     calls = []
     monkeypatch.setattr("requests.post", lambda url, **k: calls.append(url))

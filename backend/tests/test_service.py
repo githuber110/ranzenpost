@@ -797,6 +797,9 @@ class FakeAbsenceDsa:
     def school_settings(self):
         return self._settings
 
+    def school_settings_or_raise(self):
+        return self.school_settings()
+
     def sick_notes(self, since=None):
         return self._notes
 
@@ -847,6 +850,23 @@ def with_absences(tmp_path, dsa):
     service, store = make(tmp_path)
     service._dsa = lambda: dsa
     return service, store
+
+
+class SilentSettingsAbsenceDsa(FakeAbsenceDsa):
+    def school_settings_or_raise(self):
+        raise DataError("settings unreadable", message_key="api.data.absences")
+
+
+class SilentChildrenAbsenceDsa(FakeAbsenceDsa):
+    def sick_note_children_or_raise(self):
+        raise DataError("children unreadable", message_key="api.data.absences")
+
+
+@pytest.mark.parametrize("dsa_class", [SilentSettingsAbsenceDsa, SilentChildrenAbsenceDsa])
+def test_absences_overview_reports_a_silent_school_app_instead_of_empty_data(tmp_path, dsa_class):
+    service, _ = with_absences(tmp_path, dsa_class())
+    with pytest.raises(DataError):
+        service.absences_overview()
 
 
 def test_absences_overview_exposes_leave_min_days(tmp_path):
@@ -1163,7 +1183,7 @@ def test_report_absence_names_the_missing_subject(tmp_path):
     assert result == {
         "ok": False,
         "message_key": "api.absence.error.subject",
-        "message": "Bitte einen Betreff für den Antrag angeben.",
+        "message": "Bitte gib einen Betreff für den Antrag an.",
     }
     assert dsa.sent is None
 
@@ -1173,13 +1193,13 @@ def test_report_absence_names_the_missing_body(tmp_path):
     result = service.report_absence(
         {"type": "leave", "student_id": 7, "from_date": "2026-09-10", "subject": "Arzt", "body": "  "}
     )
-    assert result["message"] == "Bitte den Antragstext ausfüllen."
+    assert result["message"] == "Bitte fülle den Antragstext aus."
 
 
 def test_report_absence_names_the_invalid_deregister_target(tmp_path):
     service, _ = with_absences(tmp_path, FakeAbsenceDsa())
     result = service.report_absence({"type": "deregister", "student_id": 7, "date": "2026-09-04"})
-    assert result["message"] == "Bitte auswählen, wovon abgemeldet werden soll (Bus, Kindergarten oder Mittagessen)."
+    assert result["message"] == "Bitte wähle aus, wovon abgemeldet werden soll (Bus, Kindergarten oder Mittagessen)."
 
 
 def test_report_absence_names_the_invalid_daycare_kind(tmp_path):
@@ -1187,7 +1207,7 @@ def test_report_absence_names_the_invalid_daycare_kind(tmp_path):
     result = service.report_absence(
         {"type": "daycare", "student_id": 7, "date": "2026-09-05", "repeat": "once"}
     )
-    assert result["message"] == "Bitte die Art der Abmeldung wählen (abmelden oder vorzeitiges Ende)."
+    assert result["message"] == "Bitte wähle die Art der Abmeldung (abmelden oder vorzeitiges Ende)."
 
 
 def test_report_absence_names_the_invalid_repeat(tmp_path):
@@ -1201,7 +1221,7 @@ def test_report_absence_names_the_invalid_repeat(tmp_path):
             "repeat": "monatlich",
         }
     )
-    assert result["message"] == "Bitte die Wiederholung wählen (einmalig oder wöchentlich)."
+    assert result["message"] == "Bitte wähle die Wiederholung (einmalig oder wöchentlich)."
 
 
 def test_report_absence_rejects_unknown_kind(tmp_path):
@@ -1296,40 +1316,6 @@ def test_delete_absence_does_not_delete_when_the_list_cannot_be_read(tmp_path):
     with pytest.raises(DataError):
         service.delete_absence({"type": "leave", "id": 42})
     assert dsa.deleted is None
-
-
-def test_iserv_badges_reads_native_unread_counts(tmp_path):
-    class BadgeClient(FakeClient):
-        def fetch(self, path, params=None):
-            class R:
-                status_code = 200
-
-                @staticmethod
-                def json():
-                    return {"parentletter": 1, "other": "nope"}
-
-            return R()
-
-    service, _ = make(tmp_path)
-    service.client_factory = lambda url: BadgeClient(url)
-    assert service.iserv_badges() == {"parentletter": 1}
-
-
-def test_iserv_badges_tolerates_bad_responses(tmp_path):
-    class BrokenClient(FakeClient):
-        def fetch(self, path, params=None):
-            class R:
-                status_code = 500
-
-                @staticmethod
-                def json():
-                    raise ValueError("no json")
-
-            return R()
-
-    service, _ = make(tmp_path)
-    service.client_factory = lambda url: BrokenClient(url)
-    assert service.iserv_badges() == {}
 
 
 def test_check_connection_reuses_a_live_session_instead_of_logging_in_again(tmp_path):

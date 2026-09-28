@@ -24,7 +24,6 @@ from app.iserv.absences import (
     prune_absence_history,
     record_absence_history,
     resolve_day,
-    seed_absence_history,
     sick_day_options,
     _date_part,
     _epoch,
@@ -556,6 +555,19 @@ def test_date_part_keeps_a_plain_date_string_untouched():
     assert _date_part("2026-09-01") == "2026-09-01"
 
 
+@pytest.mark.parametrize("value", ["2026-13-45T25:00:00Z", "kaputtTZ", float("nan"), 10**20])
+def test_date_part_turns_a_malformed_date_into_no_date(value):
+    assert _date_part(value) == ""
+
+
+def test_one_malformed_date_does_not_break_the_list():
+    entries = [
+        normalize_user_request({"id": 1, "absentDate": "2026-99-99T00:00:00Z"}, KIND_LEAVE),
+        normalize_user_request({"id": 2, "absentDate": "2026-09-03T22:00:00Z"}, KIND_LEAVE),
+    ]
+    assert [entry["from_date"] for entry in entries] == ["", "2026-09-04"]
+
+
 def test_record_absence_history_keys_by_id():
     history = record_absence_history({}, [{"id": 5, "kind": KIND_SICK, "till_date": "2026-09-01"}])
     assert "5" in history
@@ -619,24 +631,6 @@ def test_merge_absence_history_drops_history_entries_older_than_30_days():
     history = {"7": {"id": 7, "till_date": "2026-07-01"}}
     merged = merge_absence_history(live, history, today=date(2026, 9, 2))
     assert merged == []
-
-
-def test_seed_absence_history_adds_a_given_entry_once():
-    entry = {"id": 42, "kind": KIND_SICK, "till_date": "2026-09-01"}
-    history = seed_absence_history({}, entry)
-    assert history["42"] == entry
-    again = seed_absence_history(history, entry)
-    assert again["42"] == entry
-
-
-def test_seed_absence_history_does_not_override_an_already_recorded_entry():
-    history = record_absence_history({}, [{"id": 42, "status": "changed"}])
-    seeded = seed_absence_history(history, {"id": 42, "status": "seed-default"})
-    assert seeded["42"]["status"] == "changed"
-
-
-def test_seed_absence_history_ignores_an_entry_without_id():
-    assert seed_absence_history({}, {"status": "no id"}) == {}
 
 
 def _iso(day):

@@ -21,7 +21,7 @@ function baseFetch(mePromise) {
   };
 }
 
-describe("Begruessung: Vorname aus Cache, kein Nachflackern", () => {
+describe("greeting shows the cached forename without a later flicker", () => {
   test("cached forename is already in the first render, before /api/me responds", async () => {
     const { window, document } = loadApp();
     window.localStorage.setItem("meForename", "Alex");

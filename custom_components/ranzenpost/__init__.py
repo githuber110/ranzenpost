@@ -218,7 +218,8 @@ async def async_remove_config_entry_device(
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -> None:
-    await async_remove_card(hass)
+    if not any(other.entry_id != entry.entry_id for other in hass.config_entries.async_entries(DOMAIN)):
+        await async_remove_card(hass)
     for school_id in _known_schools(hass).pop(entry.entry_id, ()):
         ir.async_delete_issue(hass, DOMAIN, login_issue_id(entry.entry_id, school_id))
     for key in ENTRY_ISSUE_KEYS:

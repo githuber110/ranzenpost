@@ -126,6 +126,9 @@ class FakeDsa:
     def school_settings(self):
         return {"requestToSchools_studentAbsence_isActive": True, "requestToSchools_studentAbsence_minDays": 1}
 
+    def school_settings_or_raise(self):
+        return self.school_settings()
+
     def students(self):
         return [{"id": STUDENT_ID, "name": CHILD_NAME, "class_name": "5A"}]
 

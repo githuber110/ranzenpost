@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const READY = `
   state.children = [{ key: "c1", name: "Alice", class_name: "3b" }];
@@ -19,11 +19,11 @@ function renderOverview(window, seed) {
   const run = window.eval(`
     (function (seed) {
       ${READY}
-      window.eval(seed);
+      seed();
       return overviewView();
     })
   `);
-  return run(seed || "");
+  return run(() => evalWith(window, ...[].concat(seed || "")));
 }
 
 function areas(view) {
@@ -101,7 +101,7 @@ describe("the overview only shows chapters that have something to say", () => {
           c2: { 0: { lessons: [{ day_of_week: weekdayIndex(new Date()), period: 1, subject_code: "M" }], period_times: {} } },
         };
         reloadTimetable = () => Promise.resolve();
-        const panel = overviewToday();
+        const panel = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
         panel.querySelector(".panel-link").click();
         return { view: state.view, childId: state.childId };
       })()
@@ -180,7 +180,7 @@ describe("the item limit of every block", () => {
       letters.push({ letter_id: `l${index}`, recipient_id: "r", title: `Brief ${index}`, unread: true });
     }
     letters.push({ letter_id: "read", recipient_id: "r", title: "Gelesen", unread: false });
-    const view = renderOverview(window, `state.letters = { tab: "current", letters: ${JSON.stringify(letters)} };`);
+    const view = renderOverview(window, ['state.letters = { tab: "current", letters: testArgs[0] };', letters]);
     const panel = [...view.querySelectorAll(".panel")].find((node) => node.dataset.area === "letters");
     const rows = panel.querySelectorAll(".rows .row");
     expect(rows.length).toBe(6);
@@ -195,10 +195,10 @@ describe("the item limit of every block", () => {
     for (let index = 0; index < 5; index += 1) {
       letters.push({ letter_id: `l${index}`, recipient_id: "r", title: `Brief ${index}`, sender: "Schule", unread: true });
     }
-    const view = renderOverview(window, `
-      state.letters = { tab: "current", letters: ${JSON.stringify(letters)} };
+    const view = renderOverview(window, [`
+      state.letters = { tab: "current", letters: testArgs[0] };
       state.config = { overview_blocks: [{ key: "letters", size: "compact" }] };
-    `);
+    `, letters]);
     const panel = view.querySelector(".panel[data-area='letters']");
     const rows = panel.querySelectorAll(".rows .row:not(.row-all)");
     expect(rows.length).toBe(3);
@@ -213,7 +213,7 @@ describe("the item limit of every block", () => {
       { id: 1, title: "Gelesen", text: "", unread: false, folder_title: "A" },
       { id: 2, title: "Neu", text: "", unread: true, folder_title: "B" },
     ];
-    const view = renderOverview(window, `state.pinboard = { folders: [], feed: ${JSON.stringify(feed)} };`);
+    const view = renderOverview(window, ["state.pinboard = { folders: [], feed: testArgs[0] };", feed]);
     const panel = [...view.querySelectorAll(".panel")].find((node) => node.dataset.area === "noticeboard");
     const titles = [...panel.querySelectorAll(".rows .row-title")].map((node) => node.textContent);
     expect(titles).toEqual(["Neu", window.eval('t("overview.all.pinboard")')]);
@@ -238,11 +238,11 @@ describe("the item limit of every block", () => {
   test("today in compact skips past lessons and stops at three", () => {
     const { window } = loadApp();
     const lessons = [1, 2, 3, 4, 5, 6].map((period) => ({ day_of_week: 4, period, start_time: `${String(6 + period).padStart(2, "0")}:00`, subject_code: `F${period}` }));
-    const view = renderOverview(window, `
-      state.timetable = { lessons: ${JSON.stringify(lessons)}, period_times: {} };
+    const view = renderOverview(window, [`
+      state.timetable = { lessons: testArgs[0], period_times: {} };
       state.config = { overview_blocks: [{ key: "today", size: "compact" }] };
       ${fixedDate("2026-09-03T09:30:00")}
-    `);
+    `, lessons]);
     const panel = view.querySelector(".panel[data-area='today']");
     const titles = [...panel.querySelectorAll(".rows .row-title")].map((node) => node.textContent);
     expect(titles).toEqual(["F3", "F4", "F5"]);

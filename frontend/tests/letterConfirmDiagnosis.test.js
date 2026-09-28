@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const OPEN = { type: "seen", open: true, done: false, sendable: true, confirmed_at: "" };
 const FACT_KEYS = [
@@ -79,6 +79,6 @@ describe("the confirmation card can show what the school server did", () => {
 
   test("every fact carries a label in the reader's language", () => {
     const { window } = loadApp();
-    for (const key of FACT_KEYS) expect(window.eval(`diagnosisLabel("${key}")`)).not.toBe(key);
+    for (const key of FACT_KEYS) expect(evalWith(window, "diagnosisLabel(testArgs[0])", key)).not.toBe(key);
   });
 });

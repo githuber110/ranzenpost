@@ -80,7 +80,10 @@ run at all. For a single card file use `npm run test:card:focused -- tests/card/
 - Code is English and comment-free.
 - No user-visible text lives in the code. German (`frontend/i18n/de.json`) is the source of truth;
   the UI reads every string through `t(key, vars)`, the API answers with a `message_key`. A new
-  string needs all six languages (de, en, ar, tr, ru, uk) or the parity test goes red.
+  string needs all six languages (de, en, ar, tr, ru, uk) or the parity test goes red. The
+  dashboard card is the one exception: it keeps its own `TEXTS` table in
+  `custom_components/ranzenpost/frontend/ranzenpost-card.js`, checked by its own parity test in
+  `tests/card/i18n.test.js`.
 - CSS uses logical properties only (`margin-inline-start`, `text-align: start`, …) so the Arabic
   layout mirrors correctly. Direction-dependent icons get a class and a `[dir="rtl"]` rule.
 - Dates, times and numbers go through `Intl` with the active language; the school timezone stays

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function openPhones(window, phones, onPost) {
   window.fetch = (url, options) => {
@@ -9,11 +9,11 @@ function openPhones(window, phones, onPost) {
     }
     return Promise.reject(new Error("network disabled in tests"));
   };
-  window.eval(`
-    state.config = { connections: [{ id: "s1", phones: ${JSON.stringify(phones)} }] };
+  evalWith(window, `
+    state.config = { connections: [{ id: "s1", phones: testArgs[0] }] };
     state.sheetForm = null;
     openSheet(phonesSheet);
-  `);
+  `, phones);
   return window.document.querySelector(".sheet");
 }
 
@@ -49,7 +49,7 @@ describe("phones sheet drops empty rows and blocks half-filled ones", () => {
     await settle();
 
     expect(sheet.querySelector(".err").textContent).toBe(
-      "Bitte bei jeder Nummer sowohl Beschreibung als auch Nummer ausfüllen, oder beide Felder leer lassen."
+      "Bitte fülle bei jeder Nummer sowohl Beschreibung als auch Nummer aus, oder lass beide Felder leer."
     );
     expect(window.eval("state.sheet === phonesSheet")).toBe(true);
     expect(posted).toEqual([]);

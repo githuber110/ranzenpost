@@ -30,10 +30,6 @@ class StubClient:
             raise self.confirm_exc
         return self.register
 
-    def register_totp(self, name, code):
-        registration = self.start_totp_registration()
-        return self.confirm_totp_registration(registration, name, code)
-
     def is_authenticated(self):
         return self._authed
 
@@ -49,25 +45,32 @@ def patch(monkeypatch, stubs):
     monkeypatch.setattr(prober_mod, "IServClient", lambda url, timeout=None: next(iterator))
 
 
+def register_2fa(prober, code):
+    started = prober.begin_2fa("https://x", "u", "p", code)
+    if started.get("status") != "awaiting_confirm":
+        return started
+    return prober.confirm_2fa("https://x", "u", "p", code)
+
+
 def test_register_2fa_success(monkeypatch):
     patch(monkeypatch, [StubClient(register=VALID_SECRET, authed=True), StubClient(authed=True)])
-    result = IServProber().register_2fa("https://x", "u", "p", "123456")
+    result = register_2fa(IServProber(), "123456")
     assert result == {"status": "ok", "secret": VALID_SECRET}
 
 
 def test_register_2fa_bad_login_code(monkeypatch):
     patch(monkeypatch, [StubClient(login_exc=TwoFactorError("no"))])
-    assert IServProber().register_2fa("https://x", "u", "p", "000000")["status"] == "bad_code"
+    assert register_2fa(IServProber(), "000000")["status"] == "bad_code"
 
 
 def test_register_2fa_bad_credentials(monkeypatch):
     patch(monkeypatch, [StubClient(login_exc=LoginError("no"))])
-    assert IServProber().register_2fa("https://x", "u", "p", "000000")["status"] == "bad_credentials"
+    assert register_2fa(IServProber(), "000000")["status"] == "bad_credentials"
 
 
 def test_register_2fa_confirm_rejected(monkeypatch):
     patch(monkeypatch, [StubClient(register=VALID_SECRET, confirm_exc=TwoFactorError("rejected"))])
-    assert IServProber().register_2fa("https://x", "u", "p", "000000")["status"] == "code_rejected"
+    assert register_2fa(IServProber(), "000000")["status"] == "code_rejected"
 
 
 def test_begin_2fa_reports_missing_form(monkeypatch):
@@ -81,7 +84,7 @@ def test_confirm_without_begin_is_expired():
 
 def test_a_created_token_always_yields_its_secret(monkeypatch):
     patch(monkeypatch, [StubClient(register=VALID_SECRET, authed=True)])
-    result = IServProber().register_2fa("https://x", "u", "p", "123456")
+    result = register_2fa(IServProber(), "123456")
     assert result["status"] == "ok"
     assert result["secret"] == VALID_SECRET
 
@@ -95,7 +98,7 @@ def test_registration_does_not_burn_a_second_login_on_verification(monkeypatch):
             return super().login(username, password, provider)
 
     patch(monkeypatch, [Counting(register=VALID_SECRET, authed=True)])
-    IServProber().register_2fa("https://x", "u", "p", "123456")
+    register_2fa(IServProber(), "123456")
     assert len(calls) == 1
 
 

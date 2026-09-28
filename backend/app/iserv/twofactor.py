@@ -14,7 +14,6 @@ CONFIRM_TOKEN = "confirm[_token]"
 PASSWORD_CURRENT = "password_change[current]"
 PASSWORD_FIRST = "password_change[new][first]"
 PASSWORD_SECOND = "password_change[new][second]"
-PASSWORD_TOKEN = "password_change[_token]"
 
 OTPAUTH_SECRET = re.compile(r"otpauth://[^\s\"'<>]*[?&]secret=([A-Za-z2-7]+)", re.IGNORECASE)
 DATA_SECRET = re.compile(r"data-secret=[\"']([A-Za-z2-7 ]+)[\"']", re.IGNORECASE)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const BASE = [470, 520, 585, 635, 695, 745, 830, 880];
@@ -54,15 +54,15 @@ async function setup({ width = 390, data = view(), answer = null } = {}) {
     const body = answer ? answer(String(url), options || {}) : Object.assign({ ok: true, message_key: "api.periods.saved" }, data);
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
   };
-  window.eval(`
-    state.config = { connections: [{ id: ${JSON.stringify(ONE)}, setup_complete: true, phones: [], subjects: {}, teachers: {}, period_times: ${JSON.stringify(Object.fromEntries(GRID.map((row) => [String(row.number), row.start])))} }], notify_services: [], notify_events: {} };
+  evalWith(window, `
+    state.config = { connections: [{ id: testArgs[0], setup_complete: true, phones: [], subjects: {}, teachers: {}, period_times: testArgs[1] }], notify_services: [], notify_events: {} };
     state.children = [
-      { key: ${JSON.stringify(`${ONE}:sam`)}, child_id: "sam", connection_id: ${JSON.stringify(ONE)}, name: "Sam Example", class_name: "5a" },
-      { key: ${JSON.stringify(`${ONE}:mika`)}, child_id: "mika", connection_id: ${JSON.stringify(ONE)}, name: "Mika Example", class_name: "3b" },
+      { key: testArgs[2], child_id: "sam", connection_id: testArgs[3], name: "Sam Example", class_name: "5a" },
+      { key: testArgs[4], child_id: "mika", connection_id: testArgs[5], name: "Mika Example", class_name: "3b" },
     ];
-    state.childId = ${JSON.stringify(`${ONE}:sam`)};
-    state.periods = { ${JSON.stringify(ONE)}: ${JSON.stringify(data)} };
-  `);
+    state.childId = testArgs[6];
+    state.periods = { [testArgs[7]]: testArgs[8] };
+  `, ONE, Object.fromEntries(GRID.map((row) => [String(row.number), row.start])), `${ONE}:sam`, ONE, `${ONE}:mika`, ONE, `${ONE}:sam`, ONE, data);
   return { window, calls, doc: window.document };
 }
 
@@ -73,25 +73,26 @@ async function settle() {
 }
 
 function openPage(window) {
-  window.eval(`state.view = "settings"; state.periodsPage = { school: ${JSON.stringify(ONE)}, adjusting: false, returnSchool: null }; state.settingsPage = SETTINGS_PAGE_PERIODS; render();`);
+  evalWith(window, 'state.view = "settings"; state.periodsPage = { school: testArgs[0], adjusting: false, returnSchool: null }; state.settingsPage = SETTINGS_PAGE_PERIODS; render();', ONE);
 }
 
 function tr(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 function atDay(window, iso, run) {
-  return window.eval(`
-    (function () {
+  const [code, ...values] = [].concat(run);
+  return evalWith(window, `
+    (function (run) {
       const RealDate = Date;
-      function FixedDate(...args) { return args.length ? new RealDate(...args) : new RealDate(${JSON.stringify(iso)}); }
+      function FixedDate(...args) { return args.length ? new RealDate(...args) : new RealDate(testArgs[0]); }
       FixedDate.prototype = RealDate.prototype;
-      FixedDate.now = () => new RealDate(${JSON.stringify(iso)}).getTime();
+      FixedDate.now = () => new RealDate(testArgs[1]).getTime();
       FixedDate.UTC = RealDate.UTC;
       Date = FixedDate;
-      try { return (${run})(); } finally { Date = RealDate; }
+      try { return run(); } finally { Date = RealDate; }
     })
-  `)();
+  `, iso, iso)(() => evalWith(window, `(${code})()`, ...values));
 }
 
 
@@ -101,8 +102,8 @@ describe("lesson times page", () => {
     window.eval('state.view = "settings"; render();');
     const row = doc.querySelector(".periods-setting");
     expect(row.querySelector(".lbl").textContent).toBe(tr(window, "settings.periods.sheet"));
-    window.eval("state.periods = { [" + JSON.stringify(ONE) + "]: " + JSON.stringify(view()) + " };");
-    window.eval(`state.periodsPage = { school: ${JSON.stringify(ONE)}, adjusting: false, returnSchool: null }; state.settingsPage = SETTINGS_PAGE_PERIODS; render();`);
+    evalWith(window, "state.periods = { [testArgs[0]]: testArgs[1] };", ONE, view());
+    evalWith(window, "state.periodsPage = { school: testArgs[0], adjusting: false, returnSchool: null }; state.settingsPage = SETTINGS_PAGE_PERIODS; render();", ONE);
     expect(doc.querySelectorAll(".periods-list .prow")).toHaveLength(8);
     expect(doc.querySelectorAll("button.prow")).toHaveLength(0);
     expect(doc.querySelector(".periods-lead b").textContent).toBe(tr(window, "settings.periods.asIserv"));
@@ -246,7 +247,7 @@ describe("entry editor", () => {
 
   test("a new entry from the plan tap on a day lands from and until on that day only", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "pause", start: 14 * 60, date: "2026-09-24" })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "pause", start: 14 * 60, date: "2026-09-24" })', ONE);
     const form = window.eval("state.periodsDetail.form");
     expect(form.repeat).toBe("daily");
     expect(form.from).toBe("2026-09-24");
@@ -262,7 +263,7 @@ describe("entry editor", () => {
 
   test("a new appointment from settings also starts from = until = today, once by default", async () => {
     const { window, doc } = await setup();
-    atDay(window, "2026-09-23T09:30:00", `() => { openEntryForm({ school: ${JSON.stringify(ONE)}, type: "appointment" }); }`);
+    atDay(window, "2026-09-23T09:30:00", ['() => { openEntryForm({ school: testArgs[0], type: "appointment" }); }', ONE]);
     const form = window.eval("state.periodsDetail.form");
     expect(form.repeat).toBe("once");
     expect(form.date).toBe("2026-09-23");
@@ -273,7 +274,7 @@ describe("entry editor", () => {
 
   test("the limit names what ends the entry and the duration controls move together", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 14 * 60, date: "2026-09-23" })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "club", start: 14 * 60, date: "2026-09-23" })', ONE);
     const form = () => window.eval("state.periodsDetail.form");
     expect(form().days).toEqual([2]);
     expect(doc.querySelector(".entry-duration .maxline").textContent).toContain("Choir");
@@ -295,18 +296,18 @@ describe("entry editor", () => {
 
   test("adding Wednesday for a Tuesday afternoon club hits the choir and a lesson blocks the start", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 16 * 60, date: "2026-09-29" })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "club", start: 16 * 60, date: "2026-09-29" })', ONE);
     expect(window.eval("state.periodsDetail.form.days")).toEqual([1]);
     doc.querySelector(".entry-until-summer").click();
     doc.querySelector('.entry-days [data-day="2"]').click();
     expect(doc.querySelector(".periods-problem").textContent).toBe(tr(window, "periods.problem.conflict", { day: window.eval("weekdayLabel(2)"), time: window.eval("clockLabel(960)"), what: "Choir" }));
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 14 * 60, date: "2026-09-29" })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "club", start: 14 * 60, date: "2026-09-29" })', ONE);
     expect(doc.querySelector(".periods-problem").textContent).toContain(tr(window, "settings.periods.label", { number: "7" }));
   });
 
   test("a break defaults to every school day for everyone and the once repetition hides the holiday tick", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)} })`);
+    evalWith(window, "openEntryForm({ school: testArgs[0] })", ONE);
     doc.querySelector('.entry-type [data-value="pause"]').click();
     let form = window.eval("state.periodsDetail.form");
     expect(form.repeat).toBe("daily");
@@ -344,7 +345,7 @@ describe("entry editor", () => {
   test("a refused entry keeps the form open and shows the reason", async () => {
     const { window, doc } = await setup({ answer: (url, options) => (options.method === "POST" ? { ok: false, message_key: "api.ownEntries.error.taken", message_vars: { name: "Choir" } } : view()) });
     window.fetch = (url, options) => Promise.resolve({ ok: !(options && options.method === "POST"), status: options && options.method === "POST" ? 400 : 200, json: () => Promise.resolve(options && options.method === "POST" ? { ok: false, message_key: "api.ownEntries.error.taken", message_vars: { name: "Choir" } } : view()) });
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 17 * 60 })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "club", start: 17 * 60 })', ONE);
     const name = doc.querySelector(".entry-name");
     name.value = "Chess";
     name.dispatchEvent(new window.Event("input"));
@@ -379,7 +380,7 @@ describe("entry editor", () => {
     const long = GRID.map((row) => (row.number === 5 ? Object.assign({}, row, { end: "13:05", duration: 90, own_duration: true }) : row));
     const late = Object.assign({}, ENTRIES[2], { id: "c2", start: "12:30", end: "13:30", duration: 60, days: [2], status: { state: "cut", number: 5, start: "13:05", end: "13:30" } });
     const { window, doc } = await setup({ data: view({ grid: long, entries: [late] }) });
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, entry: state.periods[${JSON.stringify(ONE)}].entries[0] })`);
+    evalWith(window, "openEntryForm({ school: testArgs[0], entry: state.periods[testArgs[1]].entries[0] })", ONE, ONE);
     const name = doc.querySelector(".entry-name");
     name.value = "Choir two";
     name.dispatchEvent(new window.Event("input"));
@@ -392,7 +393,7 @@ describe("entry editor", () => {
   test("a copy in the next school year keeps its dates inside that year", async () => {
     const copy = Object.assign({}, ENTRIES[2], { id: "c9", from: "2027-08-12", until: "2028-07-05", from_min: "2027-07-01", until_max: "2028-07-05" });
     const { window, doc } = await setup({ data: view({ entries: [ENTRIES[2], copy] }) });
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, entry: state.periods[${JSON.stringify(ONE)}].entries[1] })`);
+    evalWith(window, "openEntryForm({ school: testArgs[0], entry: state.periods[testArgs[1]].entries[1] })", ONE, ONE);
     const from = doc.querySelector(".entry-from");
     const until = doc.querySelector(".entry-until");
     expect([from.value, from.min, from.max, until.value, until.max]).toEqual(["2027-08-12", "2027-07-01", "2028-07-05", "2028-07-05", "2028-07-05"]);
@@ -404,14 +405,14 @@ describe("entry editor", () => {
     moved.value = "2027-06-01";
     moved.dispatchEvent(new window.Event("change"));
     expect(window.eval("state.periodsDetail.form.from")).toBe("2027-07-01");
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, entry: state.periods[${JSON.stringify(ONE)}].entries[0] })`);
+    evalWith(window, "openEntryForm({ school: testArgs[0], entry: state.periods[testArgs[1]].entries[0] })", ONE, ONE);
     const plain = doc.querySelector(".entry-from");
     expect([plain.hasAttribute("min"), plain.max, doc.querySelector(".entry-until").max]).toEqual([false, "2027-06-30", "2027-06-30"]);
   });
 
   test("a series without a single date explains itself", async () => {
     const { window, doc } = await setup();
-    window.eval(`openEntryForm({ school: ${JSON.stringify(ONE)}, type: "club", start: 17 * 60, date: "2026-09-23" })`);
+    evalWith(window, 'openEntryForm({ school: testArgs[0], type: "club", start: 17 * 60, date: "2026-09-23" })', ONE);
     window.eval('state.periodsDetail.form.from = "2026-09-21"; state.periodsDetail.form.until = "2026-09-25"; state.periodsDetail.form.days = [6]; rerender();');
     expect(doc.querySelector(".periods-problem").textContent).toBe(tr(window, "periods.problem.empty"));
   });
@@ -454,7 +455,7 @@ describe("plan and today", () => {
 
   test("breaks become thin separators and the choir its own row on Wednesday only", async () => {
     const { window } = await setup();
-    const grid = atDay(window, "2026-09-23T09:30:00", `() => { state.weekOffset = 0; return timetableGrid(${JSON.stringify(week())}, ${JSON.stringify(`${ONE}:sam`)}); }`);
+    const grid = atDay(window, "2026-09-23T09:30:00", ["() => { state.weekOffset = 0; return timetableGrid(testArgs[0], testArgs[1]); }", week(), `${ONE}:sam`]);
     const strips = [...grid.querySelectorAll(".tt-strip")].map((node) => node.textContent);
     expect(strips.some((text) => text.includes("Lunch"))).toBe(true);
     const own = [...grid.querySelectorAll(".tt-own")];
@@ -469,7 +470,7 @@ describe("plan and today", () => {
 
   test("tapping a free slot starts an entry at that lesson on that day", async () => {
     const { window, doc } = await setup();
-    const grid = atDay(window, "2026-09-23T09:30:00", `() => { state.weekOffset = 0; return timetableGrid(${JSON.stringify(week())}, ${JSON.stringify(`${ONE}:sam`)}); }`);
+    const grid = atDay(window, "2026-09-23T09:30:00", ["() => { state.weekOffset = 0; return timetableGrid(testArgs[0], testArgs[1]); }", week(), `${ONE}:sam`]);
     doc.body.append(grid);
     const slot = [...grid.querySelectorAll(".tt-free-slot")].find((node) => node.style.gridColumn === "4");
     atDay(window, "2026-09-23T09:30:00", "() => { document.querySelector('.tt-free-slot[style*=\"grid-column: 4\"]').click(); }");
@@ -496,13 +497,13 @@ describe("plan and today", () => {
       days[iso] = holidayDay(freeDays.includes(iso));
     }
     const weeks = [{ week: 39, iso_year: 2026, start: "2026-09-21", end: "2026-09-27", coverage: fullWeek ? "full" : "partial", label_key: "holidays.week.partial", school_days: 5, free_school_days: freeDays.length, override_school_days: freeDays.length, overrides_lessons: true, primary: AUTUMN, periods: [AUTUMN] }];
-    window.eval(`state.holidays = { ${JSON.stringify(ONE)}: ${JSON.stringify({ status: "ok", stale: false, days, weeks, periods: [AUTUMN] })} };`);
+    evalWith(window, "state.holidays = { [testArgs[0]]: testArgs[1] };", ONE, { status: "ok", stale: false, days, weeks, periods: [AUTUMN] });
   }
 
   test("on a holiday the plan keeps ticked clubs over the holiday field and drops the rest", async () => {
     const { window } = await setup({ data: view({ entries: ENTRIES.concat([RIDING, TICKED_BREAK]) }) });
     holidays(window, ["2026-09-23"], false);
-    const grid = atDay(window, "2026-09-22T09:30:00", `() => { state.weekOffset = 0; return timetableGrid(${JSON.stringify(week())}, ${JSON.stringify(`${ONE}:sam`)}); }`);
+    const grid = atDay(window, "2026-09-22T09:30:00", ["() => { state.weekOffset = 0; return timetableGrid(testArgs[0], testArgs[1]); }", week(), `${ONE}:sam`]);
     const own = [...grid.querySelectorAll(".tt-own")];
     expect(own.map((node) => node.dataset.entry)).toEqual(["r1"]);
     expect(own[0].classList.contains("on-hol")).toBe(true);
@@ -515,7 +516,7 @@ describe("plan and today", () => {
   test("a whole holiday week still lists the ticked clubs under the holiday field", async () => {
     const { window } = await setup({ data: view({ entries: ENTRIES.concat([RIDING]) }) });
     holidays(window, ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"], true);
-    const grid = atDay(window, "2026-09-22T09:30:00", `() => { state.weekOffset = 0; return timetableGrid(${JSON.stringify(week())}, ${JSON.stringify(`${ONE}:sam`)}); }`);
+    const grid = atDay(window, "2026-09-22T09:30:00", ["() => { state.weekOffset = 0; return timetableGrid(testArgs[0], testArgs[1]); }", week(), `${ONE}:sam`]);
     expect(grid.querySelector(".tt-hol.full")).not.toBeNull();
     const own = [...grid.querySelectorAll(".tt-own")];
     expect(own.map((node) => node.dataset.entry)).toEqual(["r1"]);
@@ -526,7 +527,7 @@ describe("plan and today", () => {
   test("today on a holiday shows the holiday and the ticked clubs only", async () => {
     const { window } = await setup({ data: view({ entries: ENTRIES.concat([RIDING]) }) });
     holidays(window, ["2026-09-23"], false);
-    const chapter = atDay(window, "2026-09-23T07:00:00", `() => { state.weekOffset = 0; state.timetable = ${JSON.stringify(week())}; return todayChapter("normal"); }`);
+    const chapter = atDay(window, "2026-09-23T07:00:00", ['() => { state.weekOffset = 0; state.timetable = testArgs[0]; return todayChapter("normal"); }', week()]);
     const keys = chapter.blocks.map((block) => block.key);
     expect(keys[0]).toBe(`today:holiday:${ONE}:sam`);
     expect(chapter.blocks[0].node.textContent).toContain("Herbstferien");
@@ -540,7 +541,7 @@ describe("plan and today", () => {
   test("today on a holiday without ticked entries stays the plain holiday card", async () => {
     const { window } = await setup();
     holidays(window, ["2026-09-23"], false);
-    const chapter = atDay(window, "2026-09-23T07:00:00", `() => { state.weekOffset = 0; state.timetable = ${JSON.stringify(week())}; return todayChapter("normal"); }`);
+    const chapter = atDay(window, "2026-09-23T07:00:00", ['() => { state.weekOffset = 0; state.timetable = testArgs[0]; return todayChapter("normal"); }', week()]);
     expect(chapter.bodyClass).toBe("panel-rest");
     expect(chapter.blocks).toHaveLength(1);
     expect(chapter.blocks[0].node.classList.contains("card")).toBe(true);
@@ -548,7 +549,7 @@ describe("plan and today", () => {
 
   test("today lists the choir between the lessons' end and shows the next appointment", async () => {
     const { window } = await setup({ data: view({ entries: ENTRIES.concat([Object.assign({ id: "a1", type: "appointment", name: "Dentist", start: "16:00", duration: 30, end: "16:30", repeat: "once", days: [], interval: 1, date: "2026-09-24", from: "", until: "", holidays: true, child: "sam", child_key: `${ONE}:sam`, status: OK })]) }) });
-    const chapter = atDay(window, "2026-09-23T09:30:00", `() => { state.weekOffset = 0; state.timetable = ${JSON.stringify(week())}; return todayChapter("normal"); }`);
+    const chapter = atDay(window, "2026-09-23T09:30:00", ['() => { state.weekOffset = 0; state.timetable = testArgs[0]; return todayChapter("normal"); }', week()]);
     const keys = chapter.blocks.map((block) => block.key);
     const own = keys.indexOf(`${ONE}:sam:own:c1`);
     expect(own).toBeGreaterThan(keys.indexOf(`${ONE}:sam:5`));

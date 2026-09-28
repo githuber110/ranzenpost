@@ -111,6 +111,7 @@ function toApiEvent(event) {
     cancelled: event.cancelled,
     subject_code: event.subject_code || "",
     subject: event.subject || "",
+    teacher: event.teacher || "",
   };
 }
 
@@ -305,6 +306,7 @@ export function makeHass(overrides = {}) {
     language,
     locale: { language },
     config: { time_zone: "Europe/Berlin" },
+    panels: overrides.panels || {},
     states,
     calls,
     async callWS(message) {

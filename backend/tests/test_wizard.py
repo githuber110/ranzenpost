@@ -36,7 +36,7 @@ class FakeProber:
     def probe_url(self, base):
         if self.url_ok:
             return {"ok": True, "host": base}
-        return {"ok": False, "error": "url_unreachable", "message": "x"}
+        return {"ok": False, "error": "url_unreachable", "message_key": "api.wizard.urlUnreachable"}
 
     def verify_login(self, url, username, password):
         self.login_calls += 1
@@ -54,11 +54,6 @@ class FakeProber:
         self.register_calls += 1
         return self.register
 
-    def register_2fa(self, url, username, password, code, name="ISERV-Connector"):
-        started = self.begin_2fa(url, username, password, code, name)
-        if started.get("status") != "awaiting_confirm":
-            return started
-        return self.confirm_2fa(url, username, password, code, name)
 
 
 class WizardStore:
@@ -450,7 +445,6 @@ def test_existing_working_secret_is_reused_without_creating_a_new_token(tmp_path
     prober.register_calls = 0
     state = wizard.connect(CODE)
     assert state["step"] == "child"
-    assert state["reused_secret"] is True
     assert prober.begin_calls == 0
     assert prober.register_calls == 0
 
@@ -490,17 +484,6 @@ def test_stale_token_count_is_reported_to_the_user(tmp_path):
     done = wizard.connect(CODE2)
     assert done["step"] == "child"
     assert "stale_tokens" not in done
-
-
-def test_a_created_token_is_kept_even_when_the_check_login_fails(tmp_path):
-    wizard, store, _, _ = make(tmp_path, register={"status": "ok_unverified", "secret": VALID_SECRET, "reason": "login_refused"})
-    wizard.set_url("myschool.example")
-    wizard.set_login("p", "s")
-    wizard.connect(CODE)
-    state = wizard.connect(CODE2)
-    assert state["step"] == "child"
-    assert store.load_secrets()["totp_secret"] == VALID_SECRET
-    assert state["unverified_reason"] == "login_refused"
 
 
 def test_school_url_is_written_into_the_config_not_only_the_wizard_state(tmp_path):

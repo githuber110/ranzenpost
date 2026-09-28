@@ -108,6 +108,7 @@ class FeedEvent:
     subject: str = ""
     name: str = ""
     kind: str = ""
+    teacher: str = ""
 
 
 def child_tag(child_key):
@@ -163,7 +164,7 @@ def _clock(span):
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
-def _lesson_start(day, start_time):
+def lesson_start(day, start_time):
     hour, minute = (int(part) for part in str(start_time).split(":"))
     return datetime(day.year, day.month, day.day, hour, minute)
 
@@ -176,44 +177,20 @@ def _first_value(source, keys):
     return ""
 
 
-def _field_value(lesson, name):
+def field_value(lesson, name):
     return _first_value(lesson, FIELD_VALUE_SOURCES[name])
 
 
-def _previous_value(previous, name):
+def previous_value(previous, name):
     return _first_value(previous, PREVIOUS_VALUE_SOURCES[name])
 
 
-def _subject_of(language, lesson):
+def subject_of(language, lesson):
     return (
         lesson.get("subject_label")
         or lesson.get("subject_code")
         or _text(language, "timetable.lesson.fallback")
     )
-
-
-def subject_of(language, lesson):
-    return _subject_of(language, lesson)
-
-
-def field_value(lesson, name):
-    return _field_value(lesson, name)
-
-
-def previous_value(previous, name):
-    return _previous_value(previous, name)
-
-
-def mark_subject(language, config, entry):
-    return _mark_subject(language, config, entry)
-
-
-def last_success(snapshot, child_id):
-    return _last_success(snapshot, child_id)
-
-
-def lesson_start(day, start_time):
-    return _lesson_start(day, start_time)
 
 
 def bare_change(lesson):
@@ -247,8 +224,8 @@ def _moved_summary(language, lesson, name, title):
 
 
 def lesson_summary(language, lesson, exam=None):
-    subject = _subject_of(language, lesson)
-    teacher = _field_value(lesson, "teacher")
+    subject = subject_of(language, lesson)
+    teacher = field_value(lesson, "teacher")
     key = "calendar.event.summary" if teacher else "calendar.event.summary.noTeacher"
     title = _text(
         language,
@@ -295,11 +272,11 @@ def lesson_description(language, lesson, day, parallel_count, start_time=None, e
             _text(language, "timetable.fact.periodValue", {"period": lesson.get("period", "")}),
         )
     )
-    rows.append(_detail_line(language, "timetable.field.subject", _subject_of(language, lesson)))
+    rows.append(_detail_line(language, "timetable.field.subject", subject_of(language, lesson)))
     rows.append(
-        _detail_line(language, "timetable.field.teacher", _field_value(lesson, "teacher") or none_text)
+        _detail_line(language, "timetable.field.teacher", field_value(lesson, "teacher") or none_text)
     )
-    rows.append(_detail_line(language, "timetable.field.room", _field_value(lesson, "room") or none_text))
+    rows.append(_detail_line(language, "timetable.field.room", field_value(lesson, "room") or none_text))
     if lesson.get("is_class_teacher"):
         rows.append(
             _detail_line(language, "timetable.fact.role", _text(language, "timetable.fact.classTeacher"))
@@ -337,7 +314,7 @@ def change_note(language, lesson):
 
 
 def _after_value(language, lesson, name, none_text):
-    value = _field_value(lesson, name)
+    value = field_value(lesson, name)
     if value:
         return value
     if name == "teacher" and lesson.get("teacher_hidden"):
@@ -356,7 +333,7 @@ def _change_lines(language, lesson, none_text):
                 "calendar.detail.changeLine",
                 {
                     "field": _text(language, FIELD_LABEL_KEYS[name]),
-                    "before": _previous_value(previous, name) or none_text,
+                    "before": previous_value(previous, name) or none_text,
                     "after": _after_value(language, lesson, name, none_text),
                 },
             )
@@ -444,7 +421,7 @@ def subject_color(config, lesson):
 
 
 def subject_category(language, lesson):
-    return _subject_of(language, lesson)
+    return subject_of(language, lesson)
 
 
 def dropped_slots(entries, child_key):
@@ -455,8 +432,15 @@ def dropped_slots(entries, child_key):
         day = holidays.parse_day(entry.get("date"))
         if day is None:
             continue
-        slots.add((day, int(entry.get("period") or 0)))
+        slots.add((day, int(entry.get("period") or 0), marks.plain_code(entry.get("subject_code"))))
     return slots
+
+
+def lesson_dropped(dropped, day, lesson):
+    period = int(lesson.get("period") or 0)
+    if (day, period, "") in dropped:
+        return True
+    return any(slot_day == day and slot_period == period and marks.same_subject(code, lesson) for slot_day, slot_period, code in dropped if code)
 
 
 def exams_on_lessons(collected, entries, child_key):
@@ -467,14 +451,13 @@ def exams_on_lessons(collected, entries, child_key):
         day = holidays.parse_day(entry.get("date"))
         if day is None:
             continue
-        by_slot[(day, int(entry.get("period") or 0), str(entry.get("subject_code") or ""))] = entry
+        by_slot.setdefault((day, int(entry.get("period") or 0)), []).append(entry)
     attached = {}
     for identity, (day, lesson) in collected.items():
-        entry = by_slot.get(
-            (day, int(lesson.get("period") or 0), str(lesson.get("subject_code") or ""))
-        )
-        if entry is not None:
-            attached[identity] = entry
+        for entry in by_slot.get((day, int(lesson.get("period") or 0)), ()):
+            if marks.same_subject(entry.get("subject_code"), lesson):
+                attached[identity] = entry
+                break
     return attached
 
 
@@ -510,10 +493,10 @@ def timetable_events(
     for (day, period), slot in sorted(_grouped_lessons(collected).items()):
         if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
             continue
-        own_drop = (day, period) in off
         start_time = configured_time(settings, period) or lesson_start_of(slot)
         minutes = lesson_minutes(settings, period, slot)
         for index, (identity, lesson) in enumerate(slot):
+            own_drop = lesson_dropped(off, day, lesson)
             uid = f"{tag}-{day.strftime('%Y%m%d')}-p{period}-{index}@{UID_DOMAIN}"
             if not start_time:
                 unscheduled.setdefault(day, []).append(lesson)
@@ -522,7 +505,7 @@ def timetable_events(
             exam = attached.get(identity)
             if exam is not None:
                 rendered.add(exam.get("id"))
-            start = _lesson_start(day, start_time)
+            start = lesson_start(day, start_time)
             description = lesson_description(language, shown, day, len(slot), start_time, exam, minutes)
             if own_drop:
                 notice = _translated(language, OWN_DROP_NOTICE_KEY)
@@ -543,6 +526,7 @@ def timetable_events(
                     cancelled=shown.get("change_kind") == "cancelled",
                     subject_code=str(lesson.get("subject_code") or ""),
                     subject=subject_of(language, lesson),
+                    teacher=str(field_value(shown, "teacher") or ""),
                 )
             )
     events.extend(_unscheduled_events(language, tag, unscheduled))
@@ -573,12 +557,12 @@ def mark_window(today):
     return today - timedelta(days=MARK_DAYS_BACK), today + timedelta(days=HOLIDAY_DAYS_AHEAD)
 
 
-def _mark_subject(language, config, entry):
+def mark_subject(language, config, entry):
     code = str(entry.get("subject_code") or "")
     subjects = config.get("subjects") or {}
     stored = subjects.get(code)
     label = stored.get("label") if isinstance(stored, dict) else ""
-    return _subject_of(language, {"subject_code": code, "subject_label": label or ""})
+    return subject_of(language, {"subject_code": code, "subject_label": label or ""})
 
 
 def _mark_color(config, entry):
@@ -588,7 +572,7 @@ def _mark_color(config, entry):
 
 
 def mark_summary(language, config, entry):
-    subject = _mark_subject(language, config, entry)
+    subject = mark_subject(language, config, entry)
     period = int(entry.get("period") or 0)
     name = str(entry.get("name") or "")
     variables = {"subject": subject, "period": period, "name": name}
@@ -631,16 +615,16 @@ def mark_description(language, config, entry, day, start_time, lesson):
         )
     )
     rows.append(
-        _detail_line(language, "timetable.field.subject", _mark_subject(language, config, entry))
+        _detail_line(language, "timetable.field.subject", mark_subject(language, config, entry))
     )
     if lesson is not None:
         rows.append(
             _detail_line(
-                language, "timetable.field.teacher", _field_value(lesson, "teacher") or none_text
+                language, "timetable.field.teacher", field_value(lesson, "teacher") or none_text
             )
         )
         rows.append(
-            _detail_line(language, "timetable.field.room", _field_value(lesson, "room") or none_text)
+            _detail_line(language, "timetable.field.room", field_value(lesson, "room") or none_text)
         )
         status_key = _status_key(lesson)
         if status_key:
@@ -671,9 +655,10 @@ def mark_events(language, config, snapshot, entries, child_key, today, now_epoch
         uid = f"mark-{entry.get('id', '')}@{UID_DOMAIN}"
         location = (lesson or {}).get("room") or ""
         if start_time:
-            opening = _lesson_start(day, start_time)
+            opening = lesson_start(day, start_time)
             begin = opening
-            finish = opening + timedelta(minutes=LESSON_MINUTES)
+            minutes = lesson_minutes(config, entry.get("period"), [(None, lesson)] if lesson else [])
+            finish = opening + timedelta(minutes=minutes)
             all_day = False
         else:
             begin = day
@@ -690,9 +675,9 @@ def mark_events(language, config, snapshot, entries, child_key, today, now_epoch
                 all_day=all_day,
                 transparent=False,
                 color=_mark_color(config, entry),
-                category=_mark_subject(language, config, entry),
+                category=mark_subject(language, config, entry),
                 subject_code=str(entry.get("subject_code") or ""),
-                subject=_mark_subject(language, config, entry),
+                subject=mark_subject(language, config, entry),
                 name=str(entry.get("name") or ""),
             )
         )
@@ -798,10 +783,10 @@ def absence_events(language, tag, config, snapshot, child_id, today):
         summary = absence_summary(language, entry)
         description = absence_description(language, config, entry, first, last)
         if first == last and begin_time and end_time:
-            begin = _lesson_start(first, begin_time)
-            finish = _lesson_start(first, end_time) + timedelta(minutes=LESSON_MINUTES)
+            begin = lesson_start(first, begin_time)
+            finish = lesson_start(first, end_time) + timedelta(minutes=lesson_minutes(config, closing, []))
             if finish <= begin:
-                finish = begin + timedelta(minutes=LESSON_MINUTES)
+                finish = begin + timedelta(minutes=lesson_minutes(config, opening, []))
             all_day = False
         else:
             begin = first
@@ -1100,7 +1085,7 @@ def build_events(
                 today,
                 blocked,
                 window,
-                _last_success(snapshot, child_id),
+                last_success(snapshot, child_id),
                 now_epoch,
             )
         )
@@ -1138,7 +1123,7 @@ def _sort_day(value):
     return value.date() if isinstance(value, datetime) else value
 
 
-def _last_success(snapshot, child_id):
+def last_success(snapshot, child_id):
     child = (snapshot.get("children") or {}).get(child_id) or {}
     value = child.get("last_success")
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0

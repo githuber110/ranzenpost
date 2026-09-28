@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const WEEK = {
   lessons: [
@@ -269,7 +269,7 @@ describe("the week count uses the right child, week and school days", () => {
       { day_of_week: 1, period: 1, subject_code: "D", start_time: "08:00" },
       { day_of_week: 4, period: 2, subject_code: "D", start_time: "08:50" },
     ];
-    const position = window.eval(`lessonWeekPosition(${JSON.stringify(otherWeek[1])}, ${JSON.stringify(otherWeek)})`);
+    const position = evalWith(window, "lessonWeekPosition(testArgs[0], testArgs[1])", otherWeek[1], otherWeek);
     expect(position).toEqual({ position: 2, total: 2 });
   });
 
@@ -286,12 +286,12 @@ describe("the week count uses the right child, week and school days", () => {
       { day_of_week: 1, period: 1, subject_code: "D", start_time: "08:00", date: "01.09.2026" },
       { day_of_week: 5, period: 1, subject_code: "D", start_time: "08:00", date: "04.09.2026" },
     ];
-    window.eval(`
-      state.timetable = { lessons: ${JSON.stringify(lessons)}, period_times: { 1: "08:00" } };
+    evalWith(window, `
+      state.timetable = { lessons: testArgs[0], period_times: { 1: "08:00" } };
       state.config = { period_times: { 1: "08:00" } };
       holidayBlocksLessons = function (iso) { return iso === "2026-09-04"; };
-    `);
-    const position = window.eval(`lessonWeekPosition(${JSON.stringify(lessons[0])}, state.timetable.lessons)`);
+    `, lessons);
+    const position = evalWith(window, "lessonWeekPosition(testArgs[0], state.timetable.lessons)", lessons[0]);
     expect(position).toEqual({ position: 1, total: 1 });
   });
 });

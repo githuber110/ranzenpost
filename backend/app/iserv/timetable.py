@@ -207,10 +207,10 @@ def _take_partner(lesson, bucket, flags, rule):
     return None
 
 
-def _pair_with_plain(combined, plain_by_slot, taken):
+def _pair_with_plain(combined, plain_by_slot, taken, rules=PAIRING_RULES):
     partners = [None] * len(combined)
     pending = list(range(len(combined)))
-    for rule in PAIRING_RULES:
+    for rule in rules:
         unmatched = []
         for index in pending:
             slot = _lesson_slot(combined[index])
@@ -286,14 +286,14 @@ def _absorb(orphans, combined, entries, unexplained):
     return merged, cancelled
 
 
-def _analyse(combined, plain, raw_changes):
+def _analyse(combined, plain, raw_changes, first_rules=()):
     plain_by_slot = {}
     for lesson in plain:
         plain_by_slot.setdefault(_lesson_slot(lesson), []).append(lesson)
     taken = {slot: [False] * len(bucket) for slot, bucket in plain_by_slot.items()}
     crowded = crowded_keys(combined, plain)
     refined_by_index, refined_by_slot = _refinement_maps(raw_changes, combined, crowded)
-    partners = _pair_with_plain(combined, plain_by_slot, taken)
+    partners = _pair_with_plain(combined, plain_by_slot, taken, tuple(first_rules) + PAIRING_RULES)
     entries, unexplained = _combined_entries(combined, partners, bool(plain_by_slot), refined_by_index, refined_by_slot)
     merged, cancelled = _absorb(_orphans(plain, taken), combined, entries, unexplained)
 
@@ -320,6 +320,62 @@ def _analyse(combined, plain, raw_changes):
 def detect_changes(combined, plain, raw_changes=None):
     lesson_changes, cancelled, _ = _analyse(combined, plain, raw_changes)
     return lesson_changes, cancelled
+
+
+def compare_plans(current, regular, first_rules=()):
+    return _analyse(current, regular, None, first_rules)
+
+
+def with_markers(rows, marker_of):
+    result = []
+    for lesson, entry in rows:
+        kind = marker_of(lesson)
+        shown = (entry or {}).get("kind") or ""
+        if kind == "cancelled" and shown != "cancelled":
+            entry = _cancelled_entry()
+        elif kind == "changed" and not shown:
+            entry = dict(_entry("changed", [], _previous_values(None)), no_details=True)
+        result.append((lesson, entry))
+    return result
+
+
+def _places(rows, spots):
+    return [(rows[spot][0].date, rows[spot][0].period) for spot in spots]
+
+
+def with_moves(rows, course_of):
+    groups = {}
+    for spot, (lesson, entry) in enumerate(rows):
+        kind = (entry or {}).get("kind")
+        course = course_of(lesson)
+        if kind in ("cancelled", "added") and course is not None:
+            groups.setdefault(course, {"cancelled": [], "added": []})[kind].append(spot)
+    result = list(rows)
+    for group in groups.values():
+        away, here = _places(rows, group["cancelled"]), _places(rows, group["added"])
+        if not away or not here or len({day for day, _ in away}) != 1 or len({day for day, _ in here}) != 1:
+            continue
+        for spot in group["cancelled"]:
+            lesson, entry = result[spot]
+            result[spot] = (lesson, dict(entry, moved_to=_span(here)))
+        for spot in group["added"]:
+            lesson, entry = result[spot]
+            result[spot] = (lesson, dict(entry, moved_from=_span(away)))
+    return result
+
+
+def row_changes(rows, combined, plain):
+    crowded = crowded_keys(combined, plain)
+    shown = {id(lesson) for lesson in combined}
+    combined_keys = {change_key(lesson, crowded) for lesson in combined}
+    lesson_changes = {}
+    for lesson, entry in rows:
+        if not entry:
+            continue
+        key = change_key(lesson, crowded)
+        if id(lesson) in shown or key not in combined_keys:
+            lesson_changes[key] = entry
+    return lesson_changes
 
 
 def display_rows(week):

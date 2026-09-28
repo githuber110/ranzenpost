@@ -43,7 +43,7 @@ describe("timetable: trailing empty rows are capped, legend drops 'frei'", () =>
     expect(grid.querySelectorAll(".tt-hour").length).toBe(6);
   });
 
-  test("the legend no longer has a 'frei' entry", () => {
+  test("the legend lists Entfaellt and Vertretung but not frei", () => {
     const { window } = loadApp();
     window.eval("state.timetable = { lessons: [], last_updated: null };");
     const view = window.eval("timetableView()");

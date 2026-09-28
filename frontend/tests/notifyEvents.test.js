@@ -2,13 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const styles = fs.readFileSync(path.join(dirname, "..", "styles.css"), "utf8");
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 function rule(selector) {
@@ -21,12 +21,12 @@ const PHONE = { service: "notify.mobile_app_phone", name: "Phone", name_source: 
 
 function openNotify(services) {
   const app = loadApp();
-  app.window.eval(`
-    state.config = { notify_services: ${JSON.stringify(services)}, notify_events: {} };
-    state.notifyServices = ${JSON.stringify([PHONE])};
+  evalWith(app.window, `
+    state.config = { notify_services: testArgs[0], notify_events: {} };
+    state.notifyServices = testArgs[1];
     state.notifySupervisor = true;
     openSheet(notifySheet);
-  `);
+  `, services, [PHONE]);
   return app;
 }
 
@@ -93,18 +93,18 @@ describe("the notification events explain why they wait", () => {
 
   test("a one-line hint shows while no device is chosen and goes once one is", () => {
     const { window, document } = loadApp();
-    window.eval(`
+    evalWith(window, `
       state.config = { notify_services: [], notify_events: {} };
-      state.notifyServices = ${JSON.stringify([PHONE])};
+      state.notifyServices = testArgs[0];
       state.notifySupervisor = true;
       openSheet(notifySheet);
-    `);
+    `, [PHONE]);
     const hint = document.querySelector(".notify-events-hint");
     expect(hint.textContent).toBe(label(window, "settings.notify.events.needDevice"));
     expect(hint.hidden).toBe(false);
     expect(hint.nextElementSibling.classList.contains("notify-events")).toBe(true);
     expect([...document.querySelectorAll(".notify-events input")].every((check) => check.disabled)).toBe(true);
-    window.eval(`state.sheetForm.services = [${JSON.stringify(PHONE.service)}]; rerender();`);
+    evalWith(window, "state.sheetForm.services = [testArgs[0]]; rerender();", PHONE.service);
     expect(document.querySelector(".notify-events-hint").hidden).toBe(true);
     expect([...document.querySelectorAll(".notify-events input")].some((check) => check.disabled)).toBe(false);
   });

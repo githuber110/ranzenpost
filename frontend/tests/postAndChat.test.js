@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const SELF = "@me:example.test";
 const TEACHER = "@teacher:example.test";
@@ -47,15 +47,15 @@ const ROOMS = {
 };
 
 function seed(window, extra) {
-  window.eval(`
+  evalWith(window, `
     state.config = {};
     state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
     state.absence = { data: { children: [], rules: {} } };
-    state.letters = ${JSON.stringify(LETTERS)};
-    state.pinboard = ${JSON.stringify(PINBOARD)};
-    state.messengerRooms = ${JSON.stringify(ROOMS)};
+    state.letters = testArgs[0];
+    state.pinboard = testArgs[1];
+    state.messengerRooms = testArgs[2];
     ${extra || ""}
-  `);
+  `, LETTERS, PINBOARD, ROOMS);
 }
 
 function tabs(window) {

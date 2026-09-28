@@ -945,6 +945,7 @@ const ACTIONS = [
       {
         name: "remove",
         change: async (page) => {
+          await openTab(page, TIMETABLE_TAB);
           await page.locator(".tt-cell.marked").first().click();
           await waitForSheetSettled(page);
           await page.locator(".sheet .btn.destructive").filter({ hasText: await text(page, "marks.action.remove") }).click();
@@ -993,13 +994,17 @@ const ACTIONS = [
           },
           feed: async (page, ctx) => {
             const listed = ctx.listed;
-            ctx.dropped = (await feedEvents(page)).find((event) => (event.UID || "").includes(`-${listed[0].date.replace(/-/g, "")}-p${listed[0].period}-`));
-            expect(ctx.dropped.TRANSP).toBe("TRANSPARENT");
+            const inSlot = (await feedEvents(page)).filter((event) => (event.UID || "").includes(`-${listed[0].date.replace(/-/g, "")}-p${listed[0].period}-`));
+            ctx.dropped = inSlot.find((event) => event.TRANSP === "TRANSPARENT");
+            expect(ctx.dropped).toBeTruthy();
+            expect(inSlot.filter((event) => event.TRANSP === "TRANSPARENT")).toHaveLength(1);
           },
           integration_events: async (page, ctx) => {
             const slot = (item) => item.uid.includes(`-p${ctx.listed[0].period}-`);
-            const lessons = await integrationEvents(page, "lessons", ctx.listed[0].date);
-            expect(lessons.filter(slot).every((item) => item.cancelled)).toBe(true);
+            const lessons = (await integrationEvents(page, "lessons", ctx.listed[0].date)).filter(slot);
+            expect(ctx.listed[0].subject_code).toBe("D");
+            expect(lessons.filter((item) => item.subject_code === "D").every((item) => item.cancelled)).toBe(true);
+            expect(lessons.filter((item) => item.subject_code !== "D").some((item) => item.cancelled)).toBe(false);
           },
         },
       },

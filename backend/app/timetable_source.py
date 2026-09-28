@@ -5,6 +5,7 @@ from collections import namedtuple
 
 from .child_service import connection_marker
 from .iserv.dsa import REFUSED_STATUSES, SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
+from .iserv.dsa_substitutions import NOT_ASKED, describe
 from .iserv.errors import DataError, OutageError
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows
 from .store import edit_config
@@ -170,7 +171,7 @@ class TimetableSources:
             logger.info("school#%s timetable slots unknown: %s", self.connection.id, type(error).__name__)
             return None
 
-    def _school_week(self, target, course_ids):
+    def _school_week(self, target, course_ids, child_id=""):
         try:
             school = self.connection._school_timetable(target, course_ids)
         except DataError as error:
@@ -181,6 +182,9 @@ class TimetableSources:
             self._checked_at = self.connection.clock()
             self._vacations = list(getattr(school, "vacations", None) or [])
             self._refused = False
+        comparison = getattr(school, "substitutions", None)
+        if comparison is not None and (comparison.outcome != NOT_ASKED or comparison.marked):
+            self._note("substitutions", "child#%s substitutions for the week of %s: %s", child_id, school.start_date, describe(comparison))
         return school
 
     def _note_refusal(self):
@@ -221,7 +225,7 @@ class TimetableSources:
             self._forget_time_table(request)
             remembered = False
         try:
-            school = self._school_week(target, course_ids)
+            school = self._school_week(target, course_ids, child_id)
         except DataError as error:
             if not school_app_refusal(error):
                 raise

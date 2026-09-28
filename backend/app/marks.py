@@ -106,11 +106,23 @@ def normalize_name(value, config):
     return text
 
 
+def plain_code(value):
+    return " ".join(str(value or "").split())
+
+
+def same_subject(code, lesson):
+    wanted = plain_code(code)
+    if not wanted or not isinstance(lesson, dict):
+        return False
+    return wanted in {plain_code(lesson.get("subject_key")), plain_code(lesson.get("subject_code"))}
+
+
 def slot_of(entry):
     return (
         str(entry.get("child_key") or ""),
         str(entry.get("date") or ""),
         int(entry.get("period") or 0),
+        plain_code(entry.get("subject_code")),
     )
 
 
@@ -184,8 +196,8 @@ def resolve_state(entry, week, now_epoch):
     slot = lessons_at(week, entry)
     if not slot:
         return STATE_ORPHANED
-    code = str(entry.get("subject_code") or "")
-    matching = [lesson for lesson in slot if str(lesson.get("subject_code") or "") == code]
+    code = entry.get("subject_code")
+    matching = [lesson for lesson in slot if same_subject(code, lesson)]
     if not matching:
         return STATE_FOREIGN
     if any(str(lesson.get("change_kind") or "") == "cancelled" for lesson in matching):
@@ -208,9 +220,9 @@ def resolved_lesson(snapshot, entry, now_epoch):
     week = week_for(child, entry.get("date"))
     if not is_fresh(week, now_epoch):
         return None
-    code = str(entry.get("subject_code") or "")
+    code = entry.get("subject_code")
     for lesson in lessons_at(week, entry):
-        if str(lesson.get("subject_code") or "") == code:
+        if same_subject(code, lesson):
             return lesson
     return None
 
@@ -331,11 +343,6 @@ class MarkRegistry:
                 raise MarkError(ERROR_NOT_FOUND)
             self._write(remaining)
         return {"deleted": mark_id}
-
-    def children_with_marks(self):
-        return {
-            entry.get("child_key") for entry in self._read() if entry.get("child_key")
-        }
 
     def _state_of(self, entry):
         return state_for(self.store.load_calendar_snapshot(), entry, int(self.clock()))

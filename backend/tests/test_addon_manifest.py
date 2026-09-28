@@ -23,7 +23,7 @@ def _text_files(root):
         yield path
 
 
-def test_nothing_but_the_changelog_still_mentions_mqtt():
+def test_nothing_but_the_changelog_mentions_mqtt():
     offenders = []
     for root in MQTT_FREE_ROOTS:
         for path in _text_files(REPO_ROOT / root):
@@ -59,7 +59,7 @@ def test_the_dockerfile_links_the_image_to_the_repository():
     assert 'LABEL org.opencontainers.image.source="https://github.com/githuber110/ranzenpost"' in text
 
 
-def test_the_requirements_no_longer_pull_an_mqtt_client():
+def test_the_requirements_do_not_pull_an_mqtt_client():
     text = (REPO_ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
     assert "paho" not in text.lower()
 

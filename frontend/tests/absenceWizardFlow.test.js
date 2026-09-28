@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { openWizard, wizard } from "./absenceWizard.js";
 
 function flush() {
@@ -35,7 +35,7 @@ describe("the 7:10 case costs four taps", () => {
     const { window, document } = loadApp();
     const day = today(window);
     const data = sickData(window, { types: ["sick", "leave", "deregister", "daycare"], deregister_options: ["bus"] });
-    window.eval(`state.absence = { data: ${JSON.stringify(data)} }`);
+    evalWith(window, "state.absence = { data: testArgs[0] }", data);
     window.eval("state.view = 'absence'; render();");
 
     let taps = 0;
@@ -79,7 +79,7 @@ describe("the 7:10 case costs four taps", () => {
 
   test("a school with only sick reporting drops the type step and costs one tap less", () => {
     const { window, document } = loadApp();
-    window.eval(`state.absence = { data: ${JSON.stringify(sickData(window))} }`);
+    evalWith(window, "state.absence = { data: testArgs[0] }", sickData(window));
     window.eval("state.view = 'absence'; render();");
     Array.from(document.querySelectorAll(".btn"))
       .find((node) => node.textContent.includes("Abwesenheit melden"))
@@ -146,7 +146,7 @@ describe("the review page shows every mandatory answer", () => {
   });
 });
 
-describe("regression: the three bugs the rebuild had to close", () => {
+describe("wizard review step keeps its state through a rejection, a reset and a reopen", () => {
   test("a rejection keeps the type-specific button label instead of silently resetting it", async () => {
     const { window } = loadApp();
     const wz = openWizard(window, "sick", sickData(window));
@@ -222,7 +222,7 @@ describe("regression: the three bugs the rebuild had to close", () => {
     wz.form.from_period = "3";
     wz.form.till_period = "";
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-    expect(entry.text).toBe("Bitte auch die Bis-Stunde wählen.");
+    expect(entry.text).toBe("Bitte wähle auch die Bis-Stunde.");
     expect(entry.step).toBe("sickHours");
   });
 });
@@ -263,7 +263,7 @@ describe("the wizard never leaves a lock without a step to jump to", () => {
       const wz = openWizard(window, type, data);
       mutate(wz.form);
       const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-      expect(entry, `${type} ${JSON.stringify(wz.form)}`).not.toBeNull();
+      expect(entry, [type, JSON.stringify(wz.form)].join(" ")).not.toBeNull();
       expect(entry.text.length).toBeGreaterThan(0);
       expect(entry.hint.length).toBeGreaterThan(0);
       wz.go("review");

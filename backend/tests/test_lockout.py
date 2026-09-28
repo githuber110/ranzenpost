@@ -1,4 +1,5 @@
-from app.lockout import classify_login_response, human_message
+from app import messages
+from app.lockout import classify_login_response, human_message_key
 
 LOCKED_EXAMPLE_HTML = (
     "<html><body><h1>Zugang gesperrt</h1><p>Ihr Konto wurde wegen zu vieler "
@@ -70,11 +71,11 @@ def test_only_the_page_text_tells_a_lock():
 
 def test_human_message_is_distinct_actionable_text_per_kind():
     kinds = ("locked", "captcha", "password_expired", "normal")
-    messages = {kind: human_message(kind) for kind in kinds}
-    assert len(set(messages.values())) == len(kinds)
-    for message in messages.values():
+    texts = {kind: messages.text(human_message_key(kind)) for kind in kinds}
+    assert len(set(texts.values())) == len(kinds)
+    for message in texts.values():
         assert len(message) > 20
 
 
 def test_human_message_falls_back_to_normal_for_unknown_kind():
-    assert human_message("unexpected_kind") == human_message("normal")
+    assert human_message_key("unexpected_kind") == human_message_key("normal")

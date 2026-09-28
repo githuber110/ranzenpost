@@ -89,7 +89,7 @@ The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](ise
 
 ### Dashboard card
 
-The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences` and `holidays`. Only blocks of modules your school has are offered. A block without content is not drawn, and every block opens the app with "Show all". With several children the day blocks sit side by side and the family blocks come once.
+The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences` and `holidays`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link, since the app keeps no separate list for it. With several children the day blocks sit side by side and the family blocks come once.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -140,10 +140,10 @@ The integration creates one device per school and one per child. Entity IDs use 
 
 | Entity | What it holds | Attributes |
 | --- | --- | --- |
-| `calendar.ranzenpost_mia_lessons` | Lessons, with substitutions and cancellations | The next lesson: `summary`, `start`, `end`, `subject`, `subject_code` |
-| `calendar.ranzenpost_mia_exams` | Marked exams | The next exam: `summary`, `start`, `end`, `subject`, `subject_code`, `name` |
-| `calendar.ranzenpost_mia_absences` | Approved absences | The next absence: `summary`, `start`, `end`, `kind` |
-| `calendar.ranzenpost_mia_own_entries` | Own clubs and appointments, while the school's switch on the lesson times page is on. Breaks never | The next entry: `summary`, `start`, `end`, `kind` |
+| `calendar.ranzenpost_mia_lessons` | Lessons, with substitutions and cancellations | The next lesson: `summary`, `start`, `end`, `subject`, `subject_code`, `name`, `kind` |
+| `calendar.ranzenpost_mia_exams` | Marked exams | The next exam: `summary`, `start`, `end`, `subject`, `subject_code`, `name`, `kind` |
+| `calendar.ranzenpost_mia_absences` | Approved absences | The next absence: `summary`, `start`, `end`, `subject`, `subject_code`, `name`, `kind` |
+| `calendar.ranzenpost_mia_own_entries` | Own clubs and appointments, while the school's switch on the lesson times page is on. Breaks never | The next entry: `summary`, `start`, `end`, `subject`, `subject_code`, `name`, `kind` |
 | `sensor.ranzenpost_mia_current_lesson` | The subject of the lesson running now, `none` outside lessons | `date`, `weekday`, `period`, `subject`, `subject_code`, `teacher`, `room`, `start`, `end`, `substitution`, `cancelled`, `kind`, `before`, `after`, `note`, `minutes_until`, `minutes_left` |
 | `sensor.ranzenpost_mia_next_lesson` | The subject of the next lesson, also across the weekend and the holidays | The same fields as the current lesson |
 | `sensor.ranzenpost_mia_school_end_today` | When the last lesson ends today, unknown on a free day | `school_day` |
@@ -165,7 +165,8 @@ Each school adds its own device. With several schools, the school's name joins t
 | Entity | What it holds | Attributes |
 | --- | --- | --- |
 | `calendar.ranzenpost_school_holidays` | School holidays and public holidays | The next holiday: `summary`, `start`, `end` |
-| `sensor.ranzenpost_school_next_holiday` | The name of the next holiday | `start`, `end`, `days_until` |
+| `sensor.ranzenpost_school_next_holiday` | The name of the next school holidays | `start`, `end`, `days_until` |
+| `sensor.ranzenpost_school_next_free_day` | The name of the next day off, school holidays or a public holiday | `start`, `end`, `days_until` |
 | `sensor.ranzenpost_school_next_conference` | The date of the next parent-teacher conference | `date`, `title`, `details`, `days_until` |
 | `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` or `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
 
@@ -322,7 +323,7 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message, a message to the school on a letter that offers a reply |
 | Noticeboards (`dieschulapp`) | Pinboards (Schul-App) | All boards, posts, attachments | Nothing. Read state stays in the app |
 | Absences (`dieschulapp`) | Absences (Schul-App). The older absences module is unverified | Reported absences and their status, the school's rules | Sick note, leave request with attachments, deregistration, day-care deregistration |
-| Parent-teacher conference days (`parentconference`) | Parent conferences | Dates and titles | Nothing |
+| Parent-teacher conferences (`parentconference`) | Parent conferences | Dates and titles | Nothing |
 | Chat (`messenger`) | Messenger, where the school opens it to parents | Rooms and messages | Send a message, mark as read, open a room with a teacher |
 
 A school that only offers the older timetable module, at `/iserv/timetable/`, shows it in the settings as present, not supported yet, instead of showing the timetable as missing. Modules Ranzenpost does not know yet appear in the settings by their IServ name, with a button that opens a prefilled issue.

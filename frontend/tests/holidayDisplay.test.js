@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const AUTUMN = {
   id: "p-autumn",
@@ -72,7 +72,7 @@ function weekRow(start, coverage, overrides, freeDays, primary) {
 }
 
 function apply(window, payload) {
-  window.eval(`state.holidays = { s1: ${JSON.stringify(payload)} };`);
+  evalWith(window, "state.holidays = { s1: testArgs[0] };", payload);
 }
 
 function fullLessons() {
@@ -344,8 +344,8 @@ describe("holiday display: week picker and today card", () => {
 
 describe("holiday settings: a suggestion is shown, never stored", () => {
   function prepare(window, region) {
-    window.eval(`
-      state.config = { connections: [{ id: "s1", holiday_region: ${JSON.stringify(region)} }] };
+    evalWith(window, `
+      state.config = { connections: [{ id: "s1", holiday_region: testArgs[0] }] };
       state.holidayRegions = [
         { code: "DE-NI", name_key: "holidays.region.ni" },
         { code: "DE-BY", name_key: "holidays.region.by" },
@@ -358,7 +358,7 @@ describe("holiday settings: a suggestion is shown, never stored", () => {
         origin_key: "holidays.suggestion.origin.iservPostalCode",
         reason: ""
       };
-    `);
+    `, region);
   }
 
   test("the suggested state leads the list, is badged, and is not marked as chosen", () => {

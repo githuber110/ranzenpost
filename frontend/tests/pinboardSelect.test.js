@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function pinboardData() {
   return {
@@ -41,10 +41,10 @@ describe("pinboard: Auswählen/Fertig toggle in the sticky toolbar", () => {
 describe("pinboard: long-press enters select mode", () => {
   test("enterPinboardSelectMode turns on select mode with the pressed tile selected", () => {
     const { window } = loadApp();
-    window.eval(`
-      state.pinboard = ${JSON.stringify(pinboardData())};
+    evalWith(window, `
+      state.pinboard = testArgs[0];
       enterPinboardSelectMode(1);
-    `);
+    `, pinboardData());
     expect(window.eval("state.pinboardSelectMode")).toBe(true);
     expect(window.eval("state.pinboardSelected")).toEqual([1]);
   });
@@ -72,11 +72,11 @@ describe("pinboard: bulk mark read/unread calls the seen API with the right keys
       calls.push({ url, body: JSON.parse(opts.body) });
       return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
     };
-    window.eval(`
-      state.pinboard = ${JSON.stringify(pinboardData())};
+    evalWith(window, `
+      state.pinboard = testArgs[0];
       state.pinboardSelectMode = true;
       state.pinboardSelected = [1, 2];
-    `);
+    `, pinboardData());
     await window.eval("bulkMarkPinboardRead()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
     expect(calls[0].body).toEqual({ keys: [1, 2], unseen: false });
@@ -91,11 +91,11 @@ describe("pinboard: bulk mark read/unread calls the seen API with the right keys
       calls.push({ url, body: JSON.parse(opts.body) });
       return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
     };
-    window.eval(`
-      state.pinboard = ${JSON.stringify(pinboardData())};
+    evalWith(window, `
+      state.pinboard = testArgs[0];
       state.pinboardSelectMode = true;
       state.pinboardSelected = [1];
-    `);
+    `, pinboardData());
     await window.eval("bulkMarkPinboardUnread()");
     expect(calls[0].url).toBe("http://localhost/api/pinboard/seen");
     expect(calls[0].body).toEqual({ keys: [1], unseen: true });

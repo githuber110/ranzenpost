@@ -22,7 +22,7 @@ function setup(initial = {}) {
     rerender: () => renders.push(held.lettersSelected.slice()),
     vibrate: (ms) => pulses.push(ms),
     progress: () => progress.value,
-    t: (key, vars) => (vars ? `${key} ${JSON.stringify(vars)}` : key),
+    t: (key, vars) => (vars ? [key, JSON.stringify(vars)].join(" ") : key),
     tCount: (key, count) => `${key}#${count}`,
     formatNumber: (value) => `n${value}`,
     dom: createDom({ page: window.document }),

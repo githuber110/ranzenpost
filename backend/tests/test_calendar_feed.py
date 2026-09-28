@@ -1001,3 +1001,28 @@ def test_a_cancelled_exam_is_titled_as_dropped_and_keeps_the_exam_in_the_details
     assert ics.count("BEGIN:VEVENT") == 1
     assert "SUMMARY:Fällt aus: 1. Stunde Deutsch (Behrens)" in ics
     assert "Prüfung Diktat" in ics
+
+def test_mark_and_absence_events_follow_the_own_lesson_length():
+    config = {
+        "language": "de",
+        "period_times": {"1": "08:00", "2": "09:10"},
+        "period_grid": {"lessons": {"1": {"duration": 60}, "2": {"duration": 70}}},
+    }
+    today = date(2026, 9, 2)
+    entry = {"id": "m1", "child_key": CHILD_ID, "date": "2026-09-03", "period": 2, "subject_code": "D", "name": ""}
+    absence = {
+        "id": 7,
+        "kind": "leave",
+        "status": "accepted",
+        "from_date": "2026-09-03",
+        "till_date": "2026-09-03",
+        "from_period": 1,
+        "till_period": 2,
+    }
+    snapshot = {"children": {CHILD_ID: {"absences": [absence]}}}
+
+    marked = feed.mark_events("de", config, {}, [entry], CHILD_ID, today, NOW_EPOCH)
+    absent = feed.absence_events("de", "tag", config, snapshot, CHILD_ID, today)
+
+    assert (marked[0].start, marked[0].end) == (datetime(2026, 9, 3, 9, 10), datetime(2026, 9, 3, 10, 20))
+    assert (absent[0].start, absent[0].end) == (datetime(2026, 9, 3, 8, 0), datetime(2026, 9, 3, 10, 20))

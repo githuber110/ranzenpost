@@ -435,3 +435,13 @@ async def test_removing_the_entry_deletes_its_version_repair(hass, aioclient_moc
     await hass.async_block_till_done()
 
     assert version_issue(hass, entry, "integration_too_old") is None
+
+
+async def test_devices_link_the_app_panel_when_home_assistant_names_add_ons_apps(hass, aioclient_mock, frozen_now):
+    hass.data["frontend_panels"] = {"app": object(), "local_ranzenpost": object()}
+    entry = await setup_entry(hass, aioclient_mock)
+    registry = dr.async_get(hass)
+    school = registry.async_get_device(identifiers={(DOMAIN, f"school:{entry.entry_id}:{SCHOOL}")})
+    assert school.configuration_url == "homeassistant://app/ranzenpost"
+    state = next(state for state in hass.states.async_all("sensor") if "ingress_path" in state.attributes)
+    assert state.attributes["ingress_path"] == "/app/ranzenpost"

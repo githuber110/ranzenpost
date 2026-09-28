@@ -3,7 +3,7 @@ from pathlib import Path
 
 import requests
 
-from app import modules
+from app import module_catalogue, modules
 from app.modules import (
     ABSENCES,
     AVAILABLE,
@@ -116,24 +116,24 @@ def test_the_module_map_names_the_segments_the_clients_use():
 
 
 def test_every_documented_slug_carries_an_official_name_a_label_and_an_edition():
-    assert len(modules.CATALOGUE) == 56
-    for slug, (name, label, edition) in modules.CATALOGUE.items():
+    assert len(module_catalogue.CATALOGUE) == 56
+    for slug, (name, label, edition) in module_catalogue.CATALOGUE.items():
         assert slug == slug.strip().lower(), slug
         assert name.strip() == name and name, slug
         assert label.strip() == label and label, slug
-        assert edition in (modules.CURRENT, modules.OBSOLETE, modules.NEW), slug
+        assert edition in (module_catalogue.CURRENT, module_catalogue.OBSOLETE, module_catalogue.NEW), slug
     assert modules.official_name("dsa-classregister") == "Klassenbuch"
-    assert modules.english_label("dsa-classregister") == "Class register"
+    assert module_catalogue.english_label("dsa-classregister") == "Class register"
     assert modules.official_name("nothing") == ""
-    assert modules.english_label("nothing") == ""
-    assert modules.edition_of("nothing") == ""
+    assert module_catalogue.english_label("nothing") == ""
+    assert module_catalogue.edition_of("nothing") == ""
 
 
 def test_the_two_editions_of_timetable_and_absences_are_told_apart():
-    assert modules.edition_of("timetable") == modules.OBSOLETE
-    assert modules.edition_of("dsa-timetable") == modules.NEW
-    assert modules.edition_of("absence") == modules.CURRENT
-    assert modules.edition_of("absence_obsolete") == modules.OBSOLETE
+    assert module_catalogue.edition_of("timetable") == module_catalogue.OBSOLETE
+    assert module_catalogue.edition_of("dsa-timetable") == module_catalogue.NEW
+    assert module_catalogue.edition_of("absence") == module_catalogue.CURRENT
+    assert module_catalogue.edition_of("absence_obsolete") == module_catalogue.OBSOLETE
     assert modules.official_name("timetable") == "Stundenplan (veraltet)"
     assert modules.official_name("dsa-timetable") == "Stunden- und Vertretungsplan (neu)"
     assert modules.official_name("absence_obsolete") == "Abwesenheiten (veraltet)"
@@ -142,9 +142,9 @@ def test_the_two_editions_of_timetable_and_absences_are_told_apart():
 def test_every_supported_segment_is_documented_or_is_the_school_app_host():
     for segment in modules.SEGMENTS:
         assert modules.slug_of(segment) or segment == "dieschulapp", segment
-    assert set(modules.SEGMENT_SLUGS.values()) <= set(modules.CATALOGUE)
+    assert set(module_catalogue.SEGMENT_SLUGS.values()) <= set(module_catalogue.CATALOGUE)
     for slug in ("timetable", "dsa-timetable", "absence", "absence_obsolete", "dsa-pinboard", "parentletter", "parentconference", "messenger"):
-        assert slug in modules.CATALOGUE, slug
+        assert slug in module_catalogue.CATALOGUE, slug
 
 
 def test_a_segment_resolves_to_its_documented_slug_or_to_nothing():
@@ -514,3 +514,39 @@ def test_a_withheld_school_app_timetable_is_not_probed_and_leaves_the_page_to_de
     missing = _timetable_answers(None, NATIVE_MISSING)
     assert modules.detect(START_PAGE, missing, None, school_app_timetable=False)["modules"][TIMETABLE] is False
     assert modules.DSA_TIMETABLE_PATH not in [path for path, _ in missing.calls]
+
+
+def old_absence_registry(absences_available):
+    flags = {name: True for name in MODULES}
+    flags[ABSENCES] = absences_available
+    return {
+        "modules": flags,
+        "unsupported": [{"segment": "absence", "slug": "absence", "label": "Abwesenheiten"}],
+        "unknown": [],
+        "checked_at": 1,
+    }
+
+
+def test_the_older_absence_page_is_named_as_the_obsolete_iserv_module():
+    registry = modules.normalize(old_absence_registry(True))
+    assert [entry["slug"] for entry in registry["covered"]] == ["absence_obsolete"]
+    assert registry["covered"][0]["name"] == "Abwesenheiten (veraltet)"
+
+
+def test_the_older_absence_page_is_not_offered_as_missing_while_the_school_app_covers_absences():
+    registry = modules.normalize(old_absence_registry(True))
+    assert registry["unsupported"] == []
+    assert "not supported: 0" in modules.summary(registry)
+    assert "covered by another module: 1 (absence_obsolete)" in modules.summary(registry)
+
+
+def test_the_older_absence_page_counts_as_unsupported_when_the_school_app_has_no_absences():
+    registry = modules.normalize(old_absence_registry(False))
+    assert [entry["slug"] for entry in registry["unsupported"]] == ["absence_obsolete"]
+    assert registry["covered"] == []
+
+
+def test_a_covered_module_that_disappears_is_a_change():
+    before = old_absence_registry(True)
+    after = dict(before, unsupported=[])
+    assert modules.changed(before, after) is True

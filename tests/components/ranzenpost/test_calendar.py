@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import timedelta
 
 from homeassistant.helpers import entity_registry as er
@@ -5,7 +7,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.ranzenpost.const import DOMAIN
 
-from . import CHILD_1, SCHOOL, setup_entry
+from . import CHILD_1, SCHOOL, route, setup_entry
 
 LESSONS = "calendar.ranzenpost_alex_lessons"
 EXAMS = "calendar.ranzenpost_alex_exams"
@@ -122,6 +124,7 @@ async def test_get_events_serves_all_day_events_with_exclusive_end(hass, aioclie
             "subject": "",
             "name": "",
             "kind": "",
+            "teacher": "",
         }
     ]
 
@@ -166,3 +169,33 @@ async def test_the_upcoming_window_is_refreshed_through_the_cache(hass, aioclien
     await hass.async_block_till_done()
     assert len(events_calls(aioclient_mock, "lessons", CHILD_1)) == 2
     assert hass.states.get(LESSONS).state == "on"
+
+
+async def test_a_malformed_events_answer_leaves_the_calendar_quietly_empty(hass, aioclient_mock, frozen_now, caplog):
+    aioclient_mock.get(route("events", child=CHILD_1, kind="lessons"), json=[{"summary": "no uid"}])
+    await setup_entry(hass, aioclient_mock)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert hass.states.get(LESSONS).state == "off"
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.ERROR] == []
+
+
+async def test_unloading_the_entry_cancels_a_pending_upcoming_refresh(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock)
+    started = asyncio.Event()
+    cancelled = []
+
+    async def hanging(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    entry.runtime_data.events.events = hanging
+    entry.runtime_data.async_update_listeners()
+    await asyncio.wait_for(started.wait(), 5)
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert cancelled

@@ -9,7 +9,6 @@ NOT_CONFIGURED = "not_configured"
 AUTH_FAILED = "auth_failed"
 NETWORK = "network"
 SCHOOL_REQUIRED = "school_required"
-UPSTREAM_ERROR_CODES = (NOT_CONFIGURED, AUTH_FAILED, NETWORK, SCHOOL_REQUIRED)
 UPSTREAM_ERROR_MESSAGE_KEYS = {
     NOT_CONFIGURED: "api.notConfigured",
     AUTH_FAILED: "api.authFailed",

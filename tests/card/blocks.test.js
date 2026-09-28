@@ -3,6 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { INGRESS_PATH, makeHass } from "./fakeHass.js";
 import { freezeClock, loadCard, mountCard, texts } from "./loadCard.js";
 
+const TARGETS = {
+  today: "view=timetable",
+  next_lesson: "view=timetable",
+  week: "view=timetable",
+  changes: "view=timetable",
+  letters: "view=post&segment=letters",
+  noticeboard: "view=post&segment=pinboard",
+  absences: "view=absence",
+  conferences: "view=conferences",
+};
 const ALL_CARD_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes"];
 
 beforeEach(async () => {
@@ -32,12 +42,37 @@ describe("the card renders the chosen blocks in order", () => {
       for (const block of root.querySelectorAll(".block")) {
         expect(block.querySelector(".panel-head .section-label"), block.dataset.block).not.toBeNull();
         expect(block.querySelector(".rows, .tt"), block.dataset.block).not.toBeNull();
-        expect(block.querySelector(".panel-link").getAttribute("href")).toBe(INGRESS_PATH);
+        const link = block.querySelector(".panel-link");
+        if (block.dataset.block === "holidays") expect(link).toBeNull();
+        else expect(link.getAttribute("href")).toBe(`${INGRESS_PATH}?${TARGETS[block.dataset.block]}`);
       }
       expect(root.querySelector('.block[data-block="today"] .panel-link').textContent).toBe("Zum Stundenplan");
       expect(root.querySelector('.block[data-block="letters"] .panel-link').textContent).toBe("Alle ansehen");
     });
   }
+
+  it("links the app panel when Home Assistant names add-ons apps", async () => {
+    const hass = makeHass({ panels: { app: {}, local_ranzenpost: {} } });
+    const card = await mountCard({ blocks: ["today", "letters"], children: ["alex"] }, hass);
+    const links = [...card.shadowRoot.querySelectorAll(".panel-link")].map((link) => link.getAttribute("href"));
+    expect(links).toEqual(["/app/ranzenpost?view=timetable", "/app/ranzenpost?view=post&segment=letters"]);
+  });
+
+  for (const path of ["javascript:alert(1)", "//elsewhere.example/app", "app/ranzenpost"]) {
+    it(`links nothing when the app path is not a local path: ${path}`, async () => {
+      const hass = makeHass();
+      const connection = hass.states["sensor.ranzenpost_school_connection"];
+      hass.states["sensor.ranzenpost_school_connection"] = { ...connection, attributes: { ...connection.attributes, ingress_path: path } };
+      const card = await mountCard({ blocks: ["today", "letters"], children: ["alex"] }, hass);
+      expect(card.shadowRoot.querySelector(".block")).not.toBeNull();
+      expect(card.shadowRoot.querySelectorAll("a[href]").length).toBe(0);
+    });
+  }
+
+  it("keeps the add-on panel path where Home Assistant still has it", async () => {
+    const card = await mountCard({ blocks: ["letters"], children: ["alex"] }, makeHass({ panels: { hassio: {}, app: {} } }));
+    expect(card.shadowRoot.querySelector(".panel-link").getAttribute("href")).toBe(`${INGRESS_PATH}?view=post&segment=letters`);
+  });
 
   it("keeps the configured order and skips blocks without content, head included", async () => {
     const hass = makeHass();
@@ -58,7 +93,7 @@ describe("the card renders the chosen blocks in order", () => {
     const compactRoot = compact.shadowRoot;
     expect(compactRoot.querySelectorAll(".row.compact").length).toBe(3);
     expect(compactRoot.querySelector(".row-sub")).toBeNull();
-    expect(compactRoot.querySelector(".row-all").getAttribute("href")).toBe(INGRESS_PATH);
+    expect(compactRoot.querySelector(".row-all").getAttribute("href")).toBe(`${INGRESS_PATH}?view=post&segment=letters`);
     expect(compactRoot.querySelector(".panel-head .count.fresh").textContent).toBe("7");
 
     const normal = await mountCard({ blocks: ["letters"], children: ["alex"] }, hass);
@@ -82,6 +117,25 @@ describe("the card renders the chosen blocks in order", () => {
     expect(root.querySelector(".row-title").textContent).toBe("English");
     expect(root.querySelector(".row-meta").textContent).toBe("Heute · 09:50");
     expect(root.querySelector(".row-sub").textContent).toBe("R202 · Mr Stand-in · in 35 Minuten");
+  });
+
+  it("lists free days and holidays from the holiday calendar like the app", async () => {
+    const holiday = (summary, start, end) => ({ uid: `${summary}@sample`, summary, start, end, all_day: true, cancelled: false });
+    const hass = makeHass({
+      events: {
+        holidays: [
+          holiday("Summer holidays", "2026-07-01", "2026-08-12"),
+          holiday("Tag der Deutschen Einheit", "2026-10-03", "2026-10-04"),
+          holiday("Autumn holidays", "2026-10-12", "2026-10-24"),
+        ],
+      },
+    });
+    const card = await mountCard({ blocks: [{ key: "holidays", size: "normal" }], children: ["alex"] }, hass);
+    const block = card.shadowRoot.querySelector('.block[data-block="holidays"]');
+    expect(texts(block, ".row-title")).toEqual(["Tag der Deutschen Einheit", "Autumn holidays"]);
+    expect(texts(block, ".row-meta")).toEqual(["in 31 Tagen", "in 40 Tagen"]);
+    expect(texts(block, ".row-sub")[1]).toBe("12.10. – 23.10.");
+    expect(block.querySelector(".panel-head .count").textContent).toBe("2");
   });
 
   it("shows the holiday with the days to go and the conference with its date", async () => {

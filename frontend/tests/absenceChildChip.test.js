@@ -50,11 +50,11 @@ describe(">1 child: the child question is a real wizard step, never a sheet", ()
     const { window } = loadApp();
     const wz = openWizard(window, "sick", data(twoChildren));
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-    expect(entry.text).toBe("Bitte auswählen, wer gemeint ist.");
+    expect(entry.text).toBe("Bitte wähle aus, wer gemeint ist.");
     expect(entry.step).toBe("child");
     wz.go("review");
     expect(wz.step).toBe("child");
-    expect(wz.status).toBe("Bitte auswählen, wer gemeint ist.");
+    expect(wz.status).toBe("Bitte wähle aus, wer gemeint ist.");
   });
 
   test("the chosen child rides in the progress row and the review facts, not in a dead chip", () => {

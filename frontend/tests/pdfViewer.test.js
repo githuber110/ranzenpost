@@ -29,7 +29,7 @@ function loadViewer() {
 }
 
 function label(key, vars) {
-  return vars ? key + ":" + JSON.stringify(vars) : key;
+  return vars ? [key, JSON.stringify(vars)].join(":") : key;
 }
 
 function stubPdfjs(spec) {

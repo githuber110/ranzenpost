@@ -189,7 +189,7 @@ describe("the shell behaves like an app, not a web page", () => {
     expect(selectable.flatMap((rule) => rule.selectors)).toContain(".body-html");
   });
 
-  test("the checks would really catch a regression", () => {
+  test("the scroll and zoom checks catch a planted violation", () => {
     const planted = parseRules(
       ".leak { overflow-y: auto; } .ok { overflow-y: auto; overscroll-behavior: contain; }",
       "planted"

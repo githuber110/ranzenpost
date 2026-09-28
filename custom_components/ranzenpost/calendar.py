@@ -58,6 +58,7 @@ class RanzenpostCalendarEvent(CalendarEvent):
     subject: str = ""
     name: str = ""
     kind: str = ""
+    teacher: str = ""
 
 
 def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
@@ -74,6 +75,7 @@ def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
         subject=event.subject,
         name=event.name,
         kind=event.kind,
+        teacher=event.teacher,
     )
 
 
@@ -144,12 +146,18 @@ class RanzenpostCalendarMixin(CalendarEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        self.hass.async_create_task(self._async_refresh_upcoming())
+        self._schedule_refresh()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         super()._handle_coordinator_update()
-        self.hass.async_create_task(self._async_refresh_upcoming())
+        self._schedule_refresh()
+
+    @callback
+    def _schedule_refresh(self) -> None:
+        self.coordinator.config_entry.async_create_background_task(
+            self.hass, self._async_refresh_upcoming(), f"upcoming events {self.entity_id}"
+        )
 
     async def _async_refresh_upcoming(self) -> None:
         today = dt_util.now().date()
@@ -157,7 +165,7 @@ class RanzenpostCalendarMixin(CalendarEntity):
             self._upcoming = await self.coordinator.events.events(
                 self.child_key, self.kind, today, today + timedelta(days=UPCOMING_WINDOW_DAYS), self.school_query
             )
-        except RanzenpostError as err:
+        except (RanzenpostError, KeyError, TypeError, ValueError) as err:
             _LOGGER.debug("the upcoming events for %s could not be refreshed: %s", self.entity_id, err)
         self.async_write_ha_state()
 

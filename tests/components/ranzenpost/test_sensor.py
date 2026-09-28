@@ -105,6 +105,11 @@ async def test_school_sensors_describe_holiday_conference_and_connection(hass, a
     assert holiday.attributes["start"] == "2026-10-12"
     assert holiday.attributes["end"] == "2026-10-23"
 
+    free_day = hass.states.get(f"{SCHOOL}_next_free_day")
+    assert free_day.state == "Tag der Deutschen Einheit"
+    assert free_day.attributes["start"] == "2026-10-03"
+    assert free_day.attributes["days_until"] == 31
+
     conference = hass.states.get(f"{SCHOOL}_next_conference")
     assert conference.state == "2026-11-04T23:00:00+00:00"
     assert conference.attributes["title"] == "Parent-teacher conference"
@@ -151,9 +156,9 @@ async def test_every_child_gets_the_full_sensor_set(hass, aioclient_mock, frozen
     for prefix in (ALEX, KIM):
         for key in keys:
             assert hass.states.get(f"{prefix}_{key}") is not None, key
-    for key in ("next_holiday", "next_conference", "connection"):
+    for key in ("next_holiday", "next_free_day", "next_conference", "connection"):
         assert hass.states.get(f"{SCHOOL}_{key}") is not None, key
-    assert len(hass.states.async_entity_ids("sensor")) == 2 * len(keys) + 3
+    assert len(hass.states.async_entity_ids("sensor")) == 2 * len(keys) + 4
 
 
 async def test_next_absence_sensor_reads_the_earliest_open_absence(hass, aioclient_mock, frozen_now):

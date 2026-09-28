@@ -38,7 +38,7 @@ async function settingRow(page, key) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`previously-uncovered sheets @ ${viewport.name}`, () => {
+  test.describe(`settings sheets fit the viewport @ ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     for (const lang of LANGUAGES) {

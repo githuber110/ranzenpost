@@ -2,7 +2,7 @@
   "config": {
     "flow_title": "Ranzenpost",
     "create_entry": {
-      "default": "Tamam. Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
+      "default": "Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
     },
     "step": {
       "hassio_confirm": {
@@ -163,7 +163,10 @@
         "name": "Ders programı son güncelleme"
       },
       "next_holiday": {
-        "name": "Sonraki tatil"
+        "name": "Sonraki okul tatili"
+      },
+      "next_free_day": {
+        "name": "Sonraki boş gün"
       },
       "next_conference": {
         "name": "Sonraki veli görüşme günü"
@@ -232,7 +235,7 @@
     },
     "no_school_yet": {
       "title": "Henüz giriş yapılmış okul yok",
-      "description": "Tamam. Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
+      "description": "Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
     }
   }
 }

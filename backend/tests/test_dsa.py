@@ -1,10 +1,15 @@
 import json
+from datetime import date
 from pathlib import Path
 
+import pytest
+
 from app.iserv.dsa import (
+    REGULAR_PLAN_SECONDS,
+    REGULAR_PLAN_TIMEOUT,
     DieSchulAppClient,
+    SharedReads,
     absence_rules,
-    class_for_name,
     deregister_options,
     enabled_absence_types,
     normalize_class,
@@ -12,6 +17,7 @@ from app.iserv.dsa import (
     parse_pinboards,
     parse_students,
 )
+from app.iserv.errors import DataError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE = "https://school.example"
@@ -69,13 +75,6 @@ def test_parse_students_extracts_name_and_class():
         "class_full": "Klasse 02B",
         "class_code": "klasse.02b",
     }]
-
-
-def test_class_for_name_matches_regardless_of_word_order():
-    students = parse_students(load("dsa_students.json"))
-    assert class_for_name(students, "Alex Example") == "2B"
-    assert class_for_name(students, "Example Alex") == "2B"
-    assert class_for_name(students, "Someone Else") == ""
 
 
 def test_parse_period_times():
@@ -306,3 +305,181 @@ def test_a_429_without_retry_after_on_a_single_dsa_fetch_still_backs_off():
         client.sick_notes()
     assert excinfo.value.reason == "rate_limited"
     assert excinfo.value.retry_after is None
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def shared_client(session, clock):
+    return DieSchulAppClient(BASE, session, shared=SharedReads(clock, seconds=120))
+
+
+def slot_calls(session):
+    return [url for url, _params in session.calls if "timetable-slots/" in url]
+
+
+def test_school_wide_reads_are_shared_between_clients_for_a_short_time():
+    session, clock = FakeSession(), Clock()
+    shared = SharedReads(clock, seconds=120)
+    DieSchulAppClient(BASE, session, shared=shared).lesson_slots()
+    DieSchulAppClient(BASE, session, shared=shared).period_times()
+    DieSchulAppClient(BASE, session, shared=shared).school_settings()
+    DieSchulAppClient(BASE, session, shared=shared).school_settings()
+    assert len(slot_calls(session)) == 1
+    assert len([url for url, _params in session.calls if "school-settings/" in url]) == 1
+    clock.now += 120
+    DieSchulAppClient(BASE, session, shared=shared).lesson_slots()
+    assert len(slot_calls(session)) == 2
+
+
+class TimetableSession(FakeSession):
+    def __init__(self, status_code=200):
+        super().__init__()
+        self.status_code = status_code
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append((url, params))
+        if "current-timetable/" in url:
+            return FakeResponse({"students": [], "flag": params.get("substitutions")}, status_code=self.status_code)
+        return super().get(url, params, timeout)
+
+
+def test_the_regular_plan_is_the_same_week_without_substitutions_and_kept_for_a_while():
+    session, clock = TimetableSession(), Clock()
+    plans = SharedReads(clock, seconds=REGULAR_PLAN_SECONDS)
+    reference = date(2026, 9, 9)
+    first = DieSchulAppClient(BASE, session, regular_plans=plans).regular_timetable(reference, [7001, 7002])
+    DieSchulAppClient(BASE, session, regular_plans=plans).regular_timetable(reference, [7001, 7002])
+    DieSchulAppClient(BASE, session, regular_plans=plans).current_timetable(reference, [7001, 7002], substitutions=True)
+    DieSchulAppClient(BASE, session, regular_plans=plans).current_timetable(reference, [7001, 7002], substitutions=True)
+    assert first["flag"] == "false"
+    assert [params["substitutions"] for _, params in session.calls] == ["false", "true", "true"]
+    assert session.calls[0][1] == {
+        "date": "2026-09-09",
+        "week": "true",
+        "substitutions": "false",
+        "filterBy": "courseSubject.course:in(7001|7002)",
+    }
+    clock.now += REGULAR_PLAN_SECONDS
+    DieSchulAppClient(BASE, session, regular_plans=plans).regular_timetable(reference, [7001, 7002])
+    assert [params["substitutions"] for _, params in session.calls] == ["false", "true", "true", "false"]
+
+
+def test_the_regular_plan_is_read_again_as_soon_as_the_substituted_answer_changes():
+    session, clock = TimetableSession(), Clock()
+    plans = SharedReads(clock, seconds=REGULAR_PLAN_SECONDS)
+    reference = date(2026, 9, 9)
+    client = DieSchulAppClient(BASE, session, regular_plans=plans)
+    client.regular_timetable(reference, [7001], {"students": [{"entries": [{"id": 1}]}]})
+    client.regular_timetable(reference, [7001], {"students": [{"entries": [{"id": 1}]}]})
+    assert len(session.calls) == 1
+    clock.now += 60
+    client.regular_timetable(reference, [7001], {"students": [{"entries": [{"id": 1, "teacher": "XYZ"}]}]})
+    assert len(session.calls) == 2
+
+
+def test_the_optional_regular_plan_waits_less_than_the_shown_week():
+    class Timed(TimetableSession):
+        def __init__(self):
+            super().__init__()
+            self.timeouts = []
+
+        def get(self, url, params=None, timeout=None):
+            self.timeouts.append(((params or {}).get("substitutions"), timeout))
+            return super().get(url, params, timeout)
+
+    session, clock = Timed(), Clock()
+    reference = date(2026, 9, 9)
+    DieSchulAppClient(BASE, session).current_timetable(reference, [7001], substitutions=True)
+    DieSchulAppClient(BASE, session).regular_timetable(reference, [7001])
+    DieSchulAppClient(BASE, session, regular_plans=SharedReads(clock)).regular_timetable(reference, [7002])
+    assert session.timeouts == [("true", 30), ("false", REGULAR_PLAN_TIMEOUT), ("false", REGULAR_PLAN_TIMEOUT)]
+    assert REGULAR_PLAN_TIMEOUT < 30
+
+
+def test_a_rate_limited_regular_plan_raises_the_outage():
+    from app.iserv.errors import OutageError
+
+    session, clock = TimetableSession(status_code=429), Clock()
+    client = DieSchulAppClient(BASE, session, regular_plans=SharedReads(clock))
+    with pytest.raises(OutageError) as raised:
+        client.regular_timetable(date(2026, 9, 9), [7001])
+    assert raised.value.reason == "rate_limited"
+
+
+def test_expired_kept_reads_are_dropped_when_a_new_one_is_kept():
+    clock = Clock()
+    plans = SharedReads(clock, seconds=REGULAR_PLAN_SECONDS)
+    plans.put("first", {"a": 1})
+    clock.now += REGULAR_PLAN_SECONDS
+    plans.put("second", {"b": 2})
+    assert list(plans._entries) == ["second"]
+
+
+def test_a_regular_plan_the_school_refuses_is_not_kept():
+    session, clock = TimetableSession(status_code=500), Clock()
+    plans = SharedReads(clock, seconds=REGULAR_PLAN_SECONDS)
+    reference = date(2026, 9, 9)
+    client = DieSchulAppClient(BASE, session, regular_plans=plans)
+    assert client.regular_timetable(reference, [7001]) is None
+    assert client.regular_timetable(reference, [7001]) is None
+    assert len(session.calls) == 2
+
+
+def test_a_failed_read_is_not_shared():
+    class Refusing(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            self.calls.append((url, params))
+            return FakeResponse(None, status_code=500)
+
+    session = Refusing()
+    client = shared_client(session, Clock())
+    assert client.school_settings() == {}
+    assert client.school_settings() == {}
+    assert len(session.calls) == 2
+
+
+def test_the_raising_settings_read_reports_a_school_app_without_answer():
+    class Failing(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            self.calls.append((url, params))
+            return FakeResponse(None, status_code=500)
+
+    assert DieSchulAppClient(BASE, FakeSession()).school_settings_or_raise() == DieSchulAppClient(
+        BASE, FakeSession()
+    ).school_settings()
+    with pytest.raises(DataError):
+        DieSchulAppClient(BASE, Failing()).school_settings_or_raise()
+
+
+def test_the_raising_settings_read_refuses_an_unknown_shape():
+    class Odd(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            return FakeResponse("settings")
+
+    with pytest.raises(DataError):
+        DieSchulAppClient(BASE, Odd()).school_settings_or_raise()
+
+
+def test_other_reads_and_other_parameters_are_not_mixed_up():
+    session, clock = FakeSession(), Clock()
+    client = shared_client(session, clock)
+    client._get("timetable-slots/", {"filterBy": "a"})
+    client._get("timetable-slots/", {"filterBy": "b"})
+    client.pinboards()
+    client.pinboards()
+    assert len(slot_calls(session)) == 2
+    assert len([url for url, _params in session.calls if "pinboards/" in url]) == 2
+
+
+def test_a_caller_changing_its_copy_does_not_change_the_shared_value():
+    session = FakeSession()
+    client = shared_client(session, Clock())
+    first = client._get("timetable-slots/")
+    first.append("changed")
+    assert client._get("timetable-slots/") == load("dsa_timetable_slots.json")

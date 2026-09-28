@@ -13,7 +13,6 @@ MULTI_FIELD = "iserv_crud_multi_select[multi][]"
 UNREAD_CLASS = "parent-index-table-unread"
 TOKEN_FIELD = "iserv_crud_multi_select[_token]"
 ACTION_FIELD_MARKER = "[actions]["
-ARCHIVE_ACTION = "iserv_crud_multi_select[actions][parent-archive-letter]"
 RESTORE_ACTION = "iserv_crud_multi_select[actions][parent-restore-letter]"
 SHOW_LINK_RE = re.compile(r"/parentletter/parent/show/([^/?#]+)/([^/?#]+)")
 MORE_SENDERS_RE = re.compile(r"^\+\s*\d+\s*weitere\b", re.IGNORECASE)
@@ -253,7 +252,6 @@ def build_hide_payload(form):
 CONFIRMATION_ATTR = "confirmation-type"
 CONFIRMATION_NONE = "none"
 CONFIRMATION_SEEN = "seen"
-CONFIRMATION_CHOICE = "confirmation"
 SENDABLE_CONFIRMATIONS = (CONFIRMATION_SEEN,)
 
 

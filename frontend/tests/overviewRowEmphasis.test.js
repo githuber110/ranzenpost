@@ -14,7 +14,7 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
       state.weekOffset = 0;
       state.timetable = week;
       state.config = { period_times: configPeriodTimes || {} };
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })
@@ -22,7 +22,7 @@ function renderOverviewTodayAt(window, fixedDate, week, configPeriodTimes) {
   return run(fixedDate, week, configPeriodTimes);
 }
 
-describe("the today card no longer paints the running or the next lesson", () => {
+describe("the today card marks the running or next lesson in words, not colour", () => {
   test("during a lesson the row carries a word mark but never the highlight class", () => {
     const { window } = loadApp();
     const week = {
@@ -64,7 +64,7 @@ describe("the today card no longer paints the running or the next lesson", () =>
     expect(rows[1].classList.contains("past")).toBe(false);
   });
 
-  test("the now detection survives as the entry anchor even though the styling is gone", () => {
+  test("the now detection sets the entry anchor via aria-current", () => {
     const { window } = loadApp();
     const week = {
       lessons: [

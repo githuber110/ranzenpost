@@ -34,7 +34,15 @@ from .reportcrawl import (
     start_page_links,
     unsupported_module_lines,
 )
-from .reportfacts import children_lines, iserv_version_lines, letters_summary_lines, listed_children, school_app_query_lines
+from .reportfacts import (
+    OLDER_ABSENCE_SLUG,
+    absence_evidence_lines,
+    children_lines,
+    iserv_version_lines,
+    letters_summary_lines,
+    listed_children,
+    school_app_query_lines,
+)
 from .requestlog import messenger_sync_lines, slow_request_lines
 from .scriptscan import SCRIPT_ROOT, change_type_label_line, change_type_labels, script_sources
 from .store import host_of
@@ -52,6 +60,7 @@ STATUS_ERROR = "error"
 STATUS_NOT_PROBED = "not probed"
 STATUS_ASSUMED = "assumed, never checked"
 STATUS_UNSUPPORTED = "present, not supported"
+STATUS_COVERED = "present, covered by the school app"
 VERDICT_STATUS = {modules.AVAILABLE: STATUS_SUPPORTED, modules.MISSING: STATUS_MISSING, modules.UNKNOWN: STATUS_UNKNOWN}
 LEGACY_TIMETABLE = modules.LEGACY_TIMETABLE
 KNOWN_ROWS = (
@@ -313,6 +322,19 @@ def _timetable_pair(registry, slug):
     return STATUS_SUPPORTED if registry["modules"][modules.TIMETABLE] else STATUS_MISSING, None
 
 
+def time_table_status(rows):
+    return next((row["status"] for row in rows if row["slug"] == TIME_TABLE_SLUG), STATUS_UNKNOWN)
+
+
+def timetable_source_fact(config, registry):
+    source = config.get(SOURCE_KEY)
+    if source:
+        return source
+    if not registry["modules"][modules.TIMETABLE]:
+        return "none, the school offers no timetable to this account"
+    return SCHOOL_APP_SOURCE
+
+
 def module_rows(registry):
     rows = []
     for name, slug, page in KNOWN_ROWS:
@@ -336,7 +358,9 @@ def module_rows(registry):
             "json": JSON_PROBES.get(slug),
             "data": DATA_PATHS.get(slug),
         })
-    for entry in registry["unsupported"]:
+    present = [(entry, STATUS_UNSUPPORTED) for entry in registry["unsupported"]]
+    present += [(entry, STATUS_COVERED) for entry in registry["covered"]]
+    for entry, status in present:
         if entry.get("segment") == modules.LEGACY_TIMETABLE_SEGMENT:
             continue
         slug = entry.get("slug") or entry.get("segment")
@@ -345,7 +369,7 @@ def module_rows(registry):
             "slug": slug,
             "segment": entry.get("segment"),
             "edition": edition_of(slug),
-            "status": STATUS_UNSUPPORTED,
+            "status": status,
             "probe": None,
             "page": "/iserv/%s/" % entry.get("segment"),
             "json": None,
@@ -669,18 +693,20 @@ def school_section(index, connection, structure, today, module="", budget=None):
     lines.append("- Modules checked: %s" % (_stamp(registry["checked_at"]) if registry["checked_at"] else "never"))
     client, session_state = _session_of(connection) if structure else (None, "not opened")
     lines.append("- Session: %s" % session_state)
-    lines.append("- Timetable source: %s" % (config.get(SOURCE_KEY) or SCHOOL_APP_SOURCE))
+    rows = module_rows(registry)
+    lines.append("- Timetable source: %s" % timetable_source_fact(config, registry))
     lines.append("### Modules")
     lines.append(TABLE_HEAD)
     lines.append(TABLE_RULE)
-    rows = module_rows(registry)
     for row in rows:
         lines.append(_module_row(row["name"], row["slug"], row["edition"], row["status"], row["probe"]))
     lines.extend(history_lines(connection))
     fetcher = ReportFetcher(client, budget) if structure and callable(getattr(client, "fetch", None)) else None
     lines.extend(children_lines(fetcher, config))
     if structure:
-        lines.extend(school_app_query_lines(fetcher, config, today))
+        lines.extend(school_app_query_lines(fetcher, config, today, time_table_status(rows)))
+        if any(row["slug"] == OLDER_ABSENCE_SLUG for row in rows):
+            lines.extend(absence_evidence_lines(fetcher, today))
         lines.extend(letters_summary_lines(fetcher))
         start = start_page_links(fetcher) if fetcher is not None else None
         nav_paths = menu_paths_by_segment(start[0]) if start is not None else {}

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const FRONTEND = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(FRONTEND, "styles.css"), "utf8");
@@ -43,15 +43,15 @@ function useWidth(window, width) {
 function seed(window, { schools = 2, extra = "" } = {}) {
   const connections = CONNECTIONS.slice(0, schools);
   const children = CHILDREN.filter((child) => connections.some((entry) => entry.id === child.connection_id));
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(connections)}, language: "de", notify_services: [] };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(children[0].key)};
-    state.schools = ${JSON.stringify(SCHOOLS.slice(0, schools))};
-    state.schoolStatus = { ${JSON.stringify(ONE)}: "ok", ${JSON.stringify(TWO)}: "ok" };
+  evalWith(window, `
+    state.config = { connections: testArgs[0], language: "de", notify_services: [] };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
+    state.schools = testArgs[3];
+    state.schoolStatus = { [testArgs[4]]: "ok", [testArgs[5]]: "ok" };
     state.loadedAt = {};
-    ${extra}
-  `);
+  `, connections, children, children[0].key, SCHOOLS.slice(0, schools), ONE, TWO);
+  evalWith(window, ...[].concat(extra));
 }
 
 function state(window) {
@@ -59,7 +59,7 @@ function state(window) {
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 function texts(nodes) {
@@ -96,9 +96,9 @@ describe("short names tell two schools apart", () => {
     expect(window.eval('hostShortName("https://iserv.gs-nord.example:8443/iserv/")')).toBe("iserv.gs-nord");
     expect(window.eval('hostShortName("localhost")')).toBe("localhost");
     expect(window.eval('hostShortName("")')).toBe("");
-    expect(window.eval(`schoolShortName(${JSON.stringify(ONE)})`)).toBe("gym-sued");
-    expect(window.eval(`schoolShortName(${JSON.stringify(TWO)})`)).toBe("GS Nord");
-    expect(window.eval(`schoolFullName(${JSON.stringify(TWO)})`)).toBe("Grundschule Nord");
+    expect(evalWith(window, "schoolShortName(testArgs[0])", ONE)).toBe("gym-sued");
+    expect(evalWith(window, "schoolShortName(testArgs[0])", TWO)).toBe("GS Nord");
+    expect(evalWith(window, "schoolFullName(testArgs[0])", TWO)).toBe("Grundschule Nord");
     expect(window.eval('schoolShortName("nope")')).toBe("");
   });
 
@@ -119,7 +119,7 @@ describe("school chips on rows, only from two schools", () => {
   test("a letter row carries the school chip first, grey, before class and child", () => {
     const { window } = loadApp();
     seed(window);
-    const row = window.eval(`letterRow(${JSON.stringify(LETTER)})`);
+    const row = evalWith(window, "letterRow(testArgs[0])", LETTER);
     const tags = row.querySelectorAll(".row-tags .tag");
     expect(tags[0].className).toBe("tag school");
     expect(texts(tags)).toEqual(["GS Nord", "1c", "Lea"]);
@@ -128,9 +128,9 @@ describe("school chips on rows, only from two schools", () => {
   test("a post row keeps its source badge after the school chip and a room row gets one too", () => {
     const { window } = loadApp();
     seed(window);
-    const post = window.eval(`postRow(${JSON.stringify(TILE)}, false, "")`);
+    const post = evalWith(window, 'postRow(testArgs[0], false, "")', TILE);
     expect(texts(post.querySelectorAll(".row-tags .tag"))).toEqual(["GS Nord", "Board", "News"]);
-    const room = window.eval(`messengerRoomRow(${JSON.stringify(ROOM)})`);
+    const room = evalWith(window, "messengerRoomRow(testArgs[0])", ROOM);
     expect(texts(room.querySelectorAll(".row-tags .tag"))).toEqual(["GS Nord"]);
   });
 
@@ -138,9 +138,9 @@ describe("school chips on rows, only from two schools", () => {
     const { window } = loadApp();
     seed(window, { schools: 1 });
     const letter = Object.assign({}, LETTER, { connection_id: ONE });
-    expect(window.eval(`letterRow(${JSON.stringify(letter)})`).querySelector(".tag.school")).toBeNull();
-    expect(window.eval(`postRow(${JSON.stringify(Object.assign({}, TILE, { connection_id: ONE }))}, false, "")`).querySelector(".tag.school")).toBeNull();
-    expect(window.eval(`messengerRoomRow(${JSON.stringify(Object.assign({}, ROOM, { connection_id: ONE }))})`).querySelector(".row-tags")).toBeNull();
+    expect(evalWith(window, "letterRow(testArgs[0])", letter).querySelector(".tag.school")).toBeNull();
+    expect(evalWith(window, 'postRow(testArgs[0], false, "")', Object.assign({}, TILE, { connection_id: ONE })).querySelector(".tag.school")).toBeNull();
+    expect(evalWith(window, "messengerRoomRow(testArgs[0])", Object.assign({}, ROOM, { connection_id: ONE })).querySelector(".row-tags")).toBeNull();
   });
 
   test("the school chip is neutral grey in the stylesheet", () => {
@@ -157,27 +157,27 @@ describe("the filter chip row appears once entries of two schools exist", () => 
   test("no bar when every entry comes from one school, a bar with All plus one chip per school otherwise", () => {
     const { window } = loadApp();
     seed(window);
-    expect(window.eval(`schoolFilterBar(${JSON.stringify([LETTERS[0]])}, "", () => {})`)).toBeNull();
-    const bar = window.eval(`schoolFilterBar(${JSON.stringify(LETTERS)}, "", () => {})`);
+    expect(evalWith(window, 'schoolFilterBar(testArgs[0], "", () => {})', [LETTERS[0]])).toBeNull();
+    const bar = evalWith(window, 'schoolFilterBar(testArgs[0], "", () => {})', LETTERS);
     const chips = bar.querySelectorAll(".chip");
     expect(texts(chips)).toEqual([label(window, "schools.filter.all"), "gym-sued", "GS Nord"]);
     expect(chips[0].getAttribute("aria-pressed")).toBe("true");
-    const active = window.eval(`schoolFilterBar(${JSON.stringify(LETTERS)}, ${JSON.stringify(TWO)}, () => {})`);
+    const active = evalWith(window, "schoolFilterBar(testArgs[0], testArgs[1], () => {})", LETTERS, TWO);
     expect(texts(active.querySelectorAll('.chip[aria-pressed="true"]'))).toEqual(["GS Nord"]);
   });
 
   test("filtering keeps only the chosen school's entries and a stale choice falls back to all", () => {
     const { window } = loadApp();
     seed(window);
-    const kept = window.eval(`filterBySchool(${JSON.stringify(LETTERS)}, ${JSON.stringify(TWO)})`);
+    const kept = evalWith(window, "filterBySchool(testArgs[0], testArgs[1])", LETTERS, TWO);
     expect(kept.map((entry) => entry.letter_id)).toEqual(["b"]);
-    const all = window.eval(`filterBySchool(${JSON.stringify(LETTERS)}, "gone")`);
+    const all = evalWith(window, 'filterBySchool(testArgs[0], "gone")', LETTERS);
     expect(all.length).toBe(2);
   });
 
   test("the letters view shows the bar and filters its rows through the state", () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.letters = { tab: "current", letters: ${JSON.stringify(LETTERS)} }; state.postSchoolFilter = ${JSON.stringify(TWO)};` });
+    seed(window, { extra: ['state.letters = { tab: "current", letters: testArgs[0] }; state.postSchoolFilter = testArgs[1];', LETTERS, TWO] });
     const view = window.eval("lettersView(null)");
     expect(view.querySelector(".chipbar.school-filter")).not.toBeNull();
     expect(texts(view.querySelectorAll(".rows .row .row-title"))).toEqual(["Fair"]);
@@ -193,7 +193,7 @@ describe("the filter chip row appears once entries of two schools exist", () => 
       { room_id: "!a:x", connection_id: ONE, name: "A", last_message_at: 1, unread_count: 0 },
       { room_id: "!b:x", connection_id: TWO, name: "B", last_message_at: 2, unread_count: 0 },
     ];
-    seed(window, { extra: `state.pinboard = { folders: [], feed: ${JSON.stringify(feed)} }; state.messengerRooms = { rooms: ${JSON.stringify(rooms)}, can_write_to_teacher: false }; state.messengerSchoolFilter = ${JSON.stringify(ONE)};` });
+    seed(window, { extra: ["state.pinboard = { folders: [], feed: testArgs[0] }; state.messengerRooms = { rooms: testArgs[1], can_write_to_teacher: false }; state.messengerSchoolFilter = testArgs[2];", feed, rooms, ONE] });
     const pinboard = window.eval("pinboardView(null)");
     expect(pinboard.querySelector(".chipbar.school-filter")).not.toBeNull();
     expect(texts(pinboard.querySelectorAll(".rows .row .row-title"))).toEqual(["Two", "One"]);
@@ -207,7 +207,7 @@ describe("pills name the child by first name and class, the school only on a sha
   test("one-line pills in the order of the children, in the timetable and the absence view", () => {
     const { window } = loadApp();
     seed(window);
-    const bar = window.eval(`childPills(${JSON.stringify(`${TWO}:c1`)}, () => {})`);
+    const bar = evalWith(window, "childPills(testArgs[0], () => {})", `${TWO}:c1`);
     const pills = bar.querySelectorAll(".chip");
     expect(pills.length).toBe(3);
     expect(bar.querySelector(".chip-child")).toBeNull();
@@ -241,13 +241,13 @@ describe("pills name the child by first name and class, the school only on a sha
 
   test("switching the child of another school drops the absences so they reload for that school", async () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.view = "absence"; state.absence = { data: { entries: [], children: [] }, connectionId: ${JSON.stringify(ONE)} }; state.timetable = { lessons: [] };` });
+    seed(window, { extra: ['state.view = "absence"; state.absence = { data: { entries: [], children: [] }, connectionId: testArgs[0] }; state.timetable = { lessons: [] };', ONE] });
     await settle(window);
     const calls = stubFetch(window, (path) => (path.startsWith("api/absences") ? { entries: [], children: [], phones: [] } : { lessons: [], connections: state(window).config.connections }));
-    window.eval(`selectChild(${JSON.stringify(`${TWO}:c1`)})`);
+    evalWith(window, "selectChild(testArgs[0])", `${TWO}:c1`);
     expect(window.eval("state.childId")).toBe(`${TWO}:c1`);
     expect(calls.some(([path]) => path === `api/absences?connection=${TWO}`)).toBe(true);
-    window.eval(`state.absence = { data: { entries: [] }, connectionId: ${JSON.stringify(ONE)} }`);
+    evalWith(window, "state.absence = { data: { entries: [] }, connectionId: testArgs[0] }", ONE);
     expect(window.eval("absenceView().querySelector('.spinner, .spin, .loading')")).not.toBeNull();
   });
 
@@ -271,10 +271,10 @@ describe("pills name the child by first name and class, the school only on a sha
   test("the timetable grid ends at the last period of the shown week", () => {
     const { window } = loadApp();
     seed(window);
-    const grid = window.eval(`timetableGrid({ lessons: [
+    const grid = evalWith(window, `timetableGrid({ lessons: [
       { day_of_week: 1, period: 1, subject_code: "D" },
       { day_of_week: 3, period: 3, subject_code: "M" },
-    ], period_times: {} }, ${JSON.stringify(`${ONE}:c1`)})`);
+    ], period_times: {} }, testArgs[0])`, `${ONE}:c1`);
     expect(grid.querySelectorAll(".tt-hour").length).toBe(3);
   });
 });
@@ -295,7 +295,7 @@ describe("the settings with one school stay as they were, plus one row", () => {
 
   test("two schools: the groups follow the single-school order, the schools block takes the school place, adding a school is an account row", () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.schoolStatus[${JSON.stringify(TWO)}] = "auth_failed";` });
+    seed(window, { extra: ['state.schoolStatus[testArgs[0]] = "auth_failed";', TWO] });
     const view = window.eval("settingsView()");
     const heads = texts(view.querySelectorAll(".settings-group .section-head .overline"));
     expect(heads).toEqual([
@@ -373,7 +373,7 @@ describe("the school page", () => {
 
   test("a school that needs a login shows the reconnect row and the sheet posts the repair with that school's id", async () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)}; state.schoolStatus[${JSON.stringify(TWO)}] = "auth_failed";` });
+    seed(window, { extra: ['state.view = "settings"; state.settingsSchoolId = testArgs[0]; state.schoolStatus[testArgs[1]] = "auth_failed";', TWO, TWO] });
     window.eval("render()");
     const root = window.document.getElementById("app");
     const row = [...root.querySelectorAll(".school-page .setting-row")].find((node) => node.querySelector(".lbl").textContent === label(window, "connection.reconnect"));
@@ -392,13 +392,13 @@ describe("the school page", () => {
     await flush();
     expect(calls.filter(([path]) => path === "api/password/repair")).toEqual([["api/password/repair", { password: "secret-pass", connection_id: TWO }]]);
     expect(calls.some(([path]) => path === "api/health")).toBe(true);
-    expect(window.eval(`state.schoolStatus[${JSON.stringify(TWO)}]`)).toBe("ok");
+    expect(evalWith(window, "state.schoolStatus[testArgs[0]]", TWO)).toBe("ok");
   });
 
   test("a school whose code IServ refused offers the new setup of that school and never the password sheet", async () => {
     const { window } = loadApp();
     seed(window, {
-      extra: `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)}; state.schoolStatus[${JSON.stringify(TWO)}] = "auth_failed"; state.schoolReasons = { ${JSON.stringify(TWO)}: "code_step_failed" };`,
+      extra: ['state.view = "settings"; state.settingsSchoolId = testArgs[0]; state.schoolStatus[testArgs[1]] = "auth_failed"; state.schoolReasons = { [testArgs[2]]: "code_step_failed" };', TWO, TWO, TWO],
     });
     window.eval("render()");
     const root = window.document.getElementById("app");
@@ -426,7 +426,7 @@ describe("the school page", () => {
 
   test("the short name sheet saves through the school's connection route", async () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)};` });
+    seed(window, { extra: ['state.view = "settings"; state.settingsSchoolId = testArgs[0];', TWO] });
     window.eval(`
       state.persisted = [];
       persistTo = async (path, payload) => { state.persisted.push([path, payload]); return { ok: true }; };
@@ -440,13 +440,13 @@ describe("the school page", () => {
     root.querySelector(".sheet .btn").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(window.eval("state.persisted")).toEqual([[`api/connections/${TWO}`, { short_name: "Nord" }]]);
-    expect(window.eval(`schoolShortName(${JSON.stringify(TWO)})`)).toBe("Nord");
+    expect(evalWith(window, "schoolShortName(testArgs[0])", TWO)).toBe("Nord");
   });
 
   test("at desk the school page lives in the detail pane and the open row is marked", () => {
     const { window } = loadApp();
     useWidth(window, 1440);
-    seed(window, { extra: `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(ONE)};` });
+    seed(window, { extra: ['state.view = "settings"; state.settingsSchoolId = testArgs[0];', ONE] });
     window.eval("render()");
     const root = window.document.getElementById("app");
     expect(root.getAttribute("data-shell")).toBe("rail-pane");
@@ -463,7 +463,7 @@ describe("the school page", () => {
 
   test("disconnecting one school calls its own route and keeps the app running when another remains", async () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)};` });
+    seed(window, { extra: ['state.view = "settings"; state.settingsSchoolId = testArgs[0];', TWO] });
     const remaining = [CONNECTIONS[0]];
     await settle(window);
     const calls = stubFetch(window, (path) => {
@@ -472,7 +472,7 @@ describe("the school page", () => {
       if (path === "api/health") return { connections: [{ id: ONE, status: "ok" }] };
       return { ok: true, removed: true, lessons: [], entries: [], letters: [], feed: [], folders: [], rooms: [], items: [] };
     });
-    const run = window.eval(`disconnectSchool(${JSON.stringify(TWO)})`);
+    const run = evalWith(window, "disconnectSchool(testArgs[0])", TWO);
     await flush();
     window.document.querySelector(".sheet-confirm .btn.destructive, .sheet .btn.destructive").click();
     await run;
@@ -537,9 +537,9 @@ describe("one failing school does not take the whole app down", () => {
       renderReconnect = () => { state.reconnectShown = true; };
       rerender = () => { state.rendered += 1; };
     `);
-    const handled = window.eval(`handleApiFailure(apiError("auth_failed", {}), ${JSON.stringify(TWO)})`);
+    const handled = evalWith(window, 'handleApiFailure(apiError("auth_failed", {}), testArgs[0])', TWO);
     expect(handled).toBe(false);
-    expect(window.eval(`state.schoolStatus[${JSON.stringify(TWO)}]`)).toBe("auth_failed");
+    expect(evalWith(window, "state.schoolStatus[testArgs[0]]", TWO)).toBe("auth_failed");
     expect(window.eval("!!state.reconnectShown")).toBe(false);
     expect(window.eval("state.detached")).toBe(false);
   });
@@ -554,12 +554,12 @@ describe("one failing school does not take the whole app down", () => {
 
   test("the banner names the failing school on views that include it and leads to its page", () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.schoolStatus[${JSON.stringify(TWO)}] = "auth_failed"; state.view = "timetable"; state.timetable = { lessons: [], period_times: {} };` });
-    expect(window.eval(`schoolIssueBanner([${JSON.stringify(ONE)}])`)).toBeNull();
-    const banner = window.eval(`schoolIssueBanner([${JSON.stringify(ONE)}, ${JSON.stringify(TWO)}])`);
+    seed(window, { extra: ['state.schoolStatus[testArgs[0]] = "auth_failed"; state.view = "timetable"; state.timetable = { lessons: [], period_times: {} };', TWO] });
+    expect(evalWith(window, "schoolIssueBanner([testArgs[0]])", ONE)).toBeNull();
+    const banner = evalWith(window, "schoolIssueBanner([testArgs[0], testArgs[1]])", ONE, TWO);
     expect(banner.textContent).toContain(label(window, "connection.banner.authFailed", { school: "Grundschule Nord" }));
     expect(window.eval("timetableView().querySelector('.school-banner')")).toBeNull();
-    window.eval(`state.childId = ${JSON.stringify(`${TWO}:c1`)};`);
+    evalWith(window, "state.childId = testArgs[0];", `${TWO}:c1`);
     expect(window.eval("timetableView().querySelector('.school-banner')")).not.toBeNull();
     window.eval("render()");
     const root = window.document.getElementById("app");
@@ -572,13 +572,13 @@ describe("one failing school does not take the whole app down", () => {
   test("a school whose sign-in opened no session says so and not that a login is needed", () => {
     const { window } = loadApp();
     seed(window);
-    window.eval(`applySchoolStatus([{ id: ${JSON.stringify(ONE)}, status: "ok" }, { id: ${JSON.stringify(TWO)}, status: "auth_failed", reason: "session_not_opened" }])`);
-    const banner = window.eval(`schoolIssueBanner([${JSON.stringify(ONE)}, ${JSON.stringify(TWO)}])`);
+    evalWith(window, 'applySchoolStatus([{ id: testArgs[0], status: "ok" }, { id: testArgs[1], status: "auth_failed", reason: "session_not_opened" }])', ONE, TWO);
+    const banner = evalWith(window, "schoolIssueBanner([testArgs[0], testArgs[1]])", ONE, TWO);
     expect(banner.textContent).toContain(label(window, "connection.banner.session", { school: "Grundschule Nord" }));
     expect(banner.textContent).not.toContain(label(window, "connection.banner.authFailed", { school: "Grundschule Nord" }));
-    expect(window.eval(`schoolStatusLabel(${JSON.stringify(TWO)})`)).toBe(label(window, "connection.status.session"));
-    window.eval(`applySchoolStatus([{ id: ${JSON.stringify(TWO)}, status: "auth_failed", reason: "bad_credentials" }])`);
-    expect(window.eval(`schoolStatusLabel(${JSON.stringify(TWO)})`)).toBe(label(window, "connection.status.authFailed"));
+    expect(evalWith(window, "schoolStatusLabel(testArgs[0])", TWO)).toBe(label(window, "connection.status.session"));
+    evalWith(window, 'applySchoolStatus([{ id: testArgs[0], status: "auth_failed", reason: "bad_credentials" }])', TWO);
+    expect(evalWith(window, "schoolStatusLabel(testArgs[0])", TWO)).toBe(label(window, "connection.status.authFailed"));
   });
 
   test("when every school fails to sign in the reconnect page names the reason of the first one", async () => {
@@ -630,28 +630,28 @@ describe("one failing school does not take the whole app down", () => {
   test("a retry answer replaces the reason the school had before", () => {
     const { window } = loadApp();
     seed(window);
-    window.eval(`applySchoolStatus([{ id: ${JSON.stringify(TWO)}, status: "auth_failed", reason: "session_not_opened" }])`);
-    window.eval(`state.schools = [{ id: ${JSON.stringify(TWO)}, status: "auth_failed", reason: "session_not_opened" }]`);
-    window.eval(`applyRetryAnswer(${JSON.stringify(TWO)}, { ok: true, status: "auth_failed", reason: "bad_credentials" })`);
-    expect(window.eval(`schoolReason(${JSON.stringify(TWO)})`)).toBe("bad_credentials");
-    expect(window.eval(`schoolStatusLabel(${JSON.stringify(TWO)})`)).toBe(label(window, "connection.status.authFailed"));
-    window.eval(`applyRetryAnswer(${JSON.stringify(TWO)}, { ok: true, status: "ok" })`);
-    expect(window.eval(`schoolReason(${JSON.stringify(TWO)})`)).toBe("");
+    evalWith(window, 'applySchoolStatus([{ id: testArgs[0], status: "auth_failed", reason: "session_not_opened" }])', TWO);
+    evalWith(window, 'state.schools = [{ id: testArgs[0], status: "auth_failed", reason: "session_not_opened" }]', TWO);
+    evalWith(window, 'applyRetryAnswer(testArgs[0], { ok: true, status: "auth_failed", reason: "bad_credentials" })', TWO);
+    expect(evalWith(window, "schoolReason(testArgs[0])", TWO)).toBe("bad_credentials");
+    expect(evalWith(window, "schoolStatusLabel(testArgs[0])", TWO)).toBe(label(window, "connection.status.authFailed"));
+    evalWith(window, 'applyRetryAnswer(testArgs[0], { ok: true, status: "ok" })', TWO);
+    expect(evalWith(window, "schoolReason(testArgs[0])", TWO)).toBe("");
   });
 
   test("health at boot seeds the per-school status", () => {
     const { window } = loadApp();
     seed(window);
-    window.eval(`applySchoolStatus([{ id: ${JSON.stringify(ONE)}, status: "ok" }, { id: ${JSON.stringify(TWO)}, status: "network" }])`);
-    expect(window.eval(`schoolStatus(${JSON.stringify(TWO)})`)).toBe("network");
-    expect(window.eval("troubledSchools().map((entry) => entry.id)")).toEqual([TWO]);
+    evalWith(window, 'applySchoolStatus([{ id: testArgs[0], status: "ok" }, { id: testArgs[1], status: "network" }])', ONE, TWO);
+    expect(evalWith(window, "schoolStatus(testArgs[0])", TWO)).toBe("network");
+    expect(evalWith(window, "testArgs.filter((id) => schoolTroubled(id))", ONE, TWO)).toEqual([TWO]);
   });
 });
 
 describe("the module switches are global, so they live once in the list of every school", () => {
   test("two schools: the settings list carries the switches with the every-school sentence, the school page only names what the school offers", () => {
     const { window } = loadApp();
-    seed(window, { extra: 'state.view = "settings"; state.schoolModules = { [' + JSON.stringify(TWO) + ']: applyModules({ modules: { timetable: true, letters: true, pinboard: false, absences: false, conferences: false, messenger: false } }) };' });
+    seed(window, { extra: ['state.view = "settings"; state.schoolModules = { [testArgs[0]]: applyModules({ modules: { timetable: true, letters: true, pinboard: false, absences: false, conferences: false, messenger: false } }) };', TWO] });
     window.eval("render()");
     const root = window.document.getElementById("app");
     const block = root.querySelector(".screen .modules-block");

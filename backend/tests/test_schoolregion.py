@@ -196,7 +196,6 @@ def test_only_the_postal_code_ever_leaves_the_box(monkeypatch):
     schoolregion.fetch_localities("30159")
     assert len(seen) == 1
     assert seen[0]["url"].startswith(schoolregion.SOURCE_BASE_URL)
-    assert set(seen[0]["params"]) == set(schoolregion.REQUEST_PARAM_KEYS)
     assert seen[0]["params"] == {"postalCode": "30159"}
 
 

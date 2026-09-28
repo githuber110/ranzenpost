@@ -40,10 +40,11 @@ def _sanitize_phones(phones):
             continue
         if not label or not number:
             return None
-        cleaned.append(entry)
+        cleaned.append({"label": label, "number": number})
     return cleaned
 
 
+LABEL_MAX_LENGTH = 60
 SHORT_NAME_MAX_LENGTH = 30
 
 RETRY_INTERVAL_SECONDS = 60
@@ -123,7 +124,7 @@ def register_routes(app, service, wizard, subscription_registry, holiday_source,
             config["phones"] = cleaned_phones
         if "label" in config:
             config = dict(config)
-            config["label"] = " ".join(str(config["label"] or "").split())[:60]
+            config["label"] = " ".join(str(config["label"] or "").split())[:LABEL_MAX_LENGTH]
         if "short_name" in config:
             config = dict(config)
             config["short_name"] = " ".join(str(config["short_name"] or "").split())[:SHORT_NAME_MAX_LENGTH]

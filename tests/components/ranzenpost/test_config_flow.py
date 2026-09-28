@@ -313,7 +313,7 @@ async def test_the_created_entry_tells_the_user_to_sign_in_through_the_sidebar(h
     translations = await async_get_translations(hass, "en", "config", {DOMAIN})
 
     assert translations[f"component.{DOMAIN}.config.create_entry.default"] == (
-        "Done. Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+        "Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
     )
 
 

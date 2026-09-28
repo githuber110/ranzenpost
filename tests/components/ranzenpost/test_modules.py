@@ -113,6 +113,7 @@ async def test_the_empty_set_sets_up_with_the_school_device_and_the_connection_s
     assert entities == [
         "calendar.ranzenpost_school_holidays",
         "sensor.ranzenpost_school_connection",
+        "sensor.ranzenpost_school_next_free_day",
         "sensor.ranzenpost_school_next_holiday",
     ]
     assert hass.states.get("sensor.ranzenpost_school_connection").state == "ok"

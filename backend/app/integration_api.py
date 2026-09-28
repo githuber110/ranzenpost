@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from hmac import compare_digest
@@ -8,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from . import holidays, integration, messages, supervisor
 from .calendar_server import RateLimiter
+from .subscriptions import known_child
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,9 @@ INGRESS_HEADER = "x-ingress-path"
 FAILED_ATTEMPT_LIMIT = 10
 FAILED_ATTEMPT_WINDOW_SECONDS = 60
 PORT_STATE_TTL_SECONDS = 60
+INGRESS_PROXY_ADDRESS = "172.30.32.2"
+INGRESS_ONLY_ENV = "ISERV_INGRESS_ONLY"
+SUPERVISOR_TOKEN_ENV = "SUPERVISOR_TOKEN"
 
 UNAUTHORIZED_KEY = "api.integration.unauthorized"
 INGRESS_REFUSED_KEY = "api.integration.ingressRefused"
@@ -137,6 +142,24 @@ def _refusal(status, error, key):
     return JSONResponse(status_code=status, content=body)
 
 
+def ingress_only_from_env():
+    setting = os.environ.get(INGRESS_ONLY_ENV, "").strip()
+    if setting in ("0", "1"):
+        return setting == "1"
+    return bool(os.environ.get(SUPERVISOR_TOKEN_ENV))
+
+
+def register_ingress_guard(app, active):
+    if not active:
+        return
+
+    @app.middleware("http")
+    async def ingress_only(request: Request, call_next):
+        if request.scope.get("path") not in ROUTES and _client_key(request) != INGRESS_PROXY_ADDRESS:
+            return _refusal(403, ERROR_FORBIDDEN, INGRESS_REQUIRED_KEY)
+        return await call_next(request)
+
+
 def _parse_range(start, end, today):
     default_start, default_end = integration.default_event_range(today)
     first = holidays.parse_day(start) if start else default_start
@@ -177,7 +200,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         refusal = denied(request)
         if refusal is not None:
             return refusal
-        if not integration.known_child(store.load_config(), child):
+        if not known_child(store.load_config(), child):
             return _refusal(404, ERROR_UNKNOWN_CHILD, UNKNOWN_CHILD_KEY)
         if not integration.has_snapshot(store, child):
             access.warm_once(child, warm)
@@ -204,7 +227,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
             child = ""
             if not _known_school(school):
                 return _refusal(404, ERROR_UNKNOWN_SCHOOL, UNKNOWN_SCHOOL_KEY)
-        elif not integration.known_child(store.load_config(), child):
+        elif not known_child(store.load_config(), child):
             return _refusal(404, ERROR_UNKNOWN_CHILD, UNKNOWN_CHILD_KEY)
         now = access.now()
         window = _parse_range(start, end, holidays.berlin_today(integration.utc_moment(now)))

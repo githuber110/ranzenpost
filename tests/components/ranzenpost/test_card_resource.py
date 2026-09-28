@@ -7,7 +7,7 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.ranzenpost.card import CARD_URL_PATH, DATA_CARD_REGISTERED, card_resource_url
 
-from . import setup_entry
+from . import make_entry, setup_entry
 
 MANIFEST = pathlib.Path(__file__).resolve().parents[3] / "custom_components" / "ranzenpost" / "manifest.json"
 VERSION = json.loads(MANIFEST.read_text(encoding="utf-8"))["version"]
@@ -115,6 +115,18 @@ async def test_removing_the_entry_deletes_only_the_card_resource(hass, aioclient
     await hass.async_block_till_done()
 
     assert resource_urls(hass) == ["/local/other-card.js"]
+
+
+async def test_removing_one_entry_keeps_the_card_for_the_remaining_entry(hass, aioclient_mock, frozen_now, hass_storage):
+    assert await async_setup_component(hass, "lovelace", {})
+    entry = await setup_entry(hass, aioclient_mock)
+    make_entry(host="second-host").add_to_hass(hass)
+
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert resource_urls(hass) == [CARD_URL]
+    assert hass.data[DATA_CARD_REGISTERED] is True
 
 
 async def test_removing_the_entry_survives_yaml_mode_and_a_missing_lovelace(hass, aioclient_mock, frozen_now):

@@ -8,7 +8,6 @@ from app.crypto import (
     generate_key,
     generate_salt,
     load_or_create_key,
-    looks_like_base32,
 )
 
 
@@ -29,12 +28,6 @@ def test_load_or_create_key_is_stable(tmp_path):
     path = str(tmp_path / "key")
     first = load_or_create_key(path)
     assert load_or_create_key(path) == first
-
-
-def test_looks_like_base32():
-    assert looks_like_base32("JBSWY3DPEHPK3PXP")
-    assert not looks_like_base32("123456")
-    assert not looks_like_base32("has spaces and punctuation!!!")
 
 
 def test_derive_key_is_deterministic():

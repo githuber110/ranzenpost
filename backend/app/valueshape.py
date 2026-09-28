@@ -5,6 +5,7 @@ from .vocabulary import known_identifier, known_word
 
 MAX_LINES = 600
 MAX_DEPTH = 12
+MAX_ITEMS = 50
 ROOT_LABEL = "(root)"
 KEY_MARK = "<key>"
 WORD_MARK = "<word>"
@@ -219,8 +220,11 @@ def _walk(value, path, depth, lines, seen, limit):
             _walk(child, _join(path, safe_key(key)), depth + 1, lines, seen, limit)
             if len(lines) >= limit:
                 return
-    elif isinstance(value, (list, tuple)) and value:
-        _walk(value[0], (path or "") + "[]", depth + 1, lines, seen, limit)
+    elif isinstance(value, (list, tuple)):
+        for item in value[:MAX_ITEMS]:
+            _walk(item, (path or "") + "[]", depth + 1, lines, seen, limit)
+            if len(lines) >= limit:
+                return
 
 
 def shape_lines(data, limit=MAX_LINES):

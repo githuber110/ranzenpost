@@ -30,10 +30,6 @@ async function openSettings(page, ariaLabel) {
   await page.waitForTimeout(50);
 }
 
-function collectViolations(kind, message) {
-  return { kind, message };
-}
-
 async function checkHorizontalOverflow(page) {
   return page.evaluate(() => {
     const root = document.scrollingElement || document.documentElement;

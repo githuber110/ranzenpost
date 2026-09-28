@@ -191,7 +191,7 @@ def test_the_calendar_feed_shows_an_own_marker_the_way_it_shows_a_school_cancell
     }
     collected = {("id", 3, "a"): (day, lesson)}
     plain = feed.timetable_events("de", "c1", collected, {}, False, {}, ())
-    dropped = feed.timetable_events("de", "c1", collected, {}, False, {}, {(day, 3)})
+    dropped = feed.timetable_events("de", "c1", collected, {}, False, {}, {(day, 3, "")})
     assert plain[0].transparent is False
     assert dropped[0].transparent is True
     assert dropped[0].summary != plain[0].summary
@@ -207,8 +207,8 @@ def test_the_feed_only_drops_the_child_and_slot_that_was_marked():
         {"child_key": "other-child", "date": WEDNESDAY_ISO, "period": 4},
         {"child_key": CHILD_ID, "date": "not-a-date", "period": 5},
     ]
-    assert feed.dropped_slots(entries, CHILD_ID) == {(day, 3)}
-    assert feed.dropped_slots(entries, "other-child") == {(day, 4)}
+    assert feed.dropped_slots(entries, CHILD_ID) == {(day, 3, "")}
+    assert feed.dropped_slots(entries, "other-child") == {(day, 4, "")}
     assert feed.dropped_slots([], CHILD_ID) == set()
 
 
@@ -219,9 +219,8 @@ def test_a_cancellation_stored_through_the_real_registry_reaches_the_built_feed(
 
     store = _store(tmp_path)
     store.save_calendar_snapshot(_snapshot([_lesson(period=3, start_time="09:45")]))
-    subscription = SubscriptionRegistry(store).create(
-        CHILD_ID, ["timetable"], "5A", "", require_region=False
-    )
+    store.update_connection(CHILD_ID.split(":")[0], holiday_region="DE-NI")
+    subscription = SubscriptionRegistry(store).create(CHILD_ID, ["timetable"], "5A", "")
     notice = feed_ics.escape_text(messages.text_in("de", "calendar.cancellation.notice"))
 
     before = _unfold(feed.build_feed(subscription, store, FakeHolidayCalendar(), now=NOW))
@@ -233,3 +232,72 @@ def test_a_cancellation_stored_through_the_real_registry_reaches_the_built_feed(
     after = _unfold(feed.build_feed(subscription, store, FakeHolidayCalendar(), now=NOW))
     assert "TRANSP:TRANSPARENT" in after
     assert notice in after
+
+
+def _parallel_lessons(day):
+    base = {"date": WEDNESDAY_ISO, "period": 3, "start_time": "09:45", "teacher_label": "Kluge", "room": "R204", "change_kind": ""}
+    return {
+        ("id", 3, "a"): (day, dict(base, subject_code="MA", subject_label="Mathe")),
+        ("id", 3, "b"): (day, dict(base, subject_code="D", subject_label="Deutsch")),
+    }
+
+
+def test_an_own_cancellation_drops_only_its_subject_when_two_share_the_period():
+    from app import feed, holidays
+
+    day = holidays.parse_day(WEDNESDAY_ISO)
+    events = feed.timetable_events("de", "c1", _parallel_lessons(day), {}, False, {}, {(day, 3, "MA")})
+    dropped = {event.subject_code: event.transparent for event in events}
+    assert dropped == {"MA": True, "D": False}
+
+
+def test_an_older_cancellation_without_a_subject_still_drops_the_whole_period():
+    from app import feed, holidays
+
+    day = holidays.parse_day(WEDNESDAY_ISO)
+    events = feed.timetable_events("de", "c1", _parallel_lessons(day), {}, False, {}, {(day, 3, "")})
+    assert all(event.transparent for event in events)
+
+
+def test_two_subjects_of_one_period_are_cancelled_separately(tmp_path):
+    store = _store(tmp_path)
+    registry = _registry(store)
+    first = registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA")
+    second = registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "D")
+    again = registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA")
+    assert first["subject_code"] == "MA" and second["subject_code"] == "D"
+    assert again["id"] == first["id"]
+    assert len(cancellations.entries_of(store.load_cancellations())) == 2
+
+
+def test_the_route_keeps_the_subject_of_a_marker(tmp_path):
+    store = _store(tmp_path)
+    client = _client(store)
+    created = client.post(
+        "/api/cancellations",
+        json={"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"},
+    ).json()
+    assert created["subject_code"] == "MA"
+    assert [entry["subject_code"] for entry in cancellations.entries_of(store.load_cancellations())] == ["MA"]
+
+
+def test_an_own_cancellation_follows_a_renamed_subject_code():
+    from app import feed, holidays
+
+    day = holidays.parse_day(WEDNESDAY_ISO)
+    renamed = {"date": WEDNESDAY_ISO, "period": 3, "subject_key": "MA", "subject_code": "M"}
+    other = {"date": WEDNESDAY_ISO, "period": 3, "subject_key": "D", "subject_code": "D"}
+    dropped = feed.dropped_slots([{"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"}], CHILD_ID)
+    assert feed.lesson_dropped(dropped, day, renamed) is True
+    assert feed.lesson_dropped(dropped, day, other) is False
+    spaced = feed.dropped_slots([{"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": " Info  7 "}], CHILD_ID)
+    assert feed.lesson_dropped(spaced, day, {"period": 3, "subject_key": "Info 7"}) is True
+
+
+def test_own_cancellations_follow_a_child_that_gets_a_new_id(tmp_path):
+    store = _store(tmp_path)
+    registry = _registry(store)
+    registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA")
+    assert registry.move_child(CHILD_ID, "new-id") == 1
+    assert [entry["child_key"] for entry in cancellations.entries_of(store.load_cancellations())] == ["new-id"]
+

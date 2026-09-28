@@ -595,7 +595,8 @@ def test_lesson_events_carry_the_feed_texts_and_the_cancelled_flag(tmp_path):
     assert timed[0]["uid"].endswith("@ranzenpost.local")
     assert "Deutsch" in timed[0]["summary"]
     assert "Datum" in timed[0]["description"]
-    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind"}
+    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind", "teacher"}
+    assert timed[0]["teacher"] == "Behrens"
 
 
 def test_events_are_cut_to_the_requested_range(tmp_path):
@@ -748,7 +749,7 @@ def test_school_admits_when_nothing_is_ahead(tmp_path):
 
     body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
 
-    assert body == {"next_holiday": None, "next_conference": None, "region": "DE-NI"}
+    assert body == {"next_holiday": None, "next_free_day": None, "next_conference": None, "region": "DE-NI"}
 
 
 def test_school_answers_per_school_and_refuses_an_unknown_one(tmp_path):
@@ -1037,3 +1038,36 @@ def test_a_week_from_the_time_table_module_reaches_the_integration_unchanged(tmp
     assert [event["cancelled"] for event in timed] == [False] * len(WEEK_PLAN)
     state = client.get(PREFIX + f"/state?{CHILD_QUERY}", headers=_auth(store)).json()
     assert state["school_day_today"] is True
+
+
+def test_an_own_marker_on_one_of_two_parallel_lessons_cancels_only_that_subject(tmp_path):
+    from app.cancellations import CancellationRegistry
+
+    client, store, _ = _app(tmp_path)
+    lessons = [
+        _lesson(day=WEDNESDAY, period=1, subject_code="REL", subject_label="Religion", teacher_code="KIR", teacher_label="Kirch"),
+        dict(_lesson(day=WEDNESDAY, period=1, subject_code="W", subject_label="Werte und Normen", teacher_code="WEN", teacher_label="Wendt"), subject_key="WN"),
+    ]
+    store.save_calendar_snapshot(_snapshot(lessons))
+    CancellationRegistry(store, clock=lambda: NOW_EPOCH).create(CHILD_ID, "2026-09-02", 1, "WN")
+
+    body = client.get(PREFIX + f"/state?{CHILD_QUERY}", headers=_auth(store)).json()
+
+    assert [(item["subject"], item["cancelled"]) for item in body["changes_today"]] == [("Werte und Normen", True)]
+
+
+def test_school_names_a_public_holiday_as_the_next_free_day_before_the_school_holidays(tmp_path):
+    calendar = FakeHolidayCalendar(
+        days={
+            "2026-10-03": _day(free=True, overrides=True, kind="public", name="Tag der Deutschen Einheit", period_id="p1"),
+            "2026-10-05": _day(free=True, overrides=True, kind="school", name="Herbstferien", period_id="h1"),
+            "2026-10-06": _day(free=True, overrides=True, kind="school", name="Herbstferien", period_id="h1"),
+        }
+    )
+    client, store, _ = _app(tmp_path, calendar=calendar)
+
+    body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
+
+    assert body["next_holiday"]["name"] == "Herbstferien"
+    assert body["next_free_day"] == {"name": "Tag der Deutschen Einheit", "start": "2026-10-03", "end": "2026-10-03", "days_until": 31}
+

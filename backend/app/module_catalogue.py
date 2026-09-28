@@ -17,7 +17,7 @@ CATALOGUE = {
     "restricted-shares": ("Eingeschränkte Netzlaufwerke", "Restricted network shares", CURRENT),
     "edupool": ("Edupool", "Edupool", CURRENT),
     "parentletter": ("Elternbriefe", "Parent letters", CURRENT),
-    "parentconference": ("Elternsprechtage", "Parent-teacher conference days", CURRENT),
+    "parentconference": ("Elternsprechtage", "Parent-teacher conferences", CURRENT),
     "europalehrmittel-europathek": ("Europathek", "Europathek", CURRENT),
     "forum": ("Forum", "Forum", CURRENT),
     "dsa-daycare": ("Ganztag", "All-day care", CURRENT),
@@ -62,6 +62,7 @@ CATALOGUE = {
 SEGMENT_SLUGS = {
     "time-table": "timetable",
     "dsa-absences": "absence",
+    "absence": "absence_obsolete",
 }
 
 

@@ -12,6 +12,7 @@
     "subject_code": "",
     "subject": "",
     "name": "",
-    "kind": "sick"
+    "kind": "sick",
+    "teacher": ""
   }
 ]

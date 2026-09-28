@@ -182,6 +182,49 @@ def school_app_entry():
     }
 
 
+SCHOOL_APP_REGULAR = (
+    (92001, 0, 1, "D", "KLE", "R101", 82001),
+    (92002, 0, 2, "M", "BRA", "R101", 82002),
+    (92003, 0, 3, "E", "WOL", "R204", 82003),
+    (92004, 1, 1, "M", "BRA", "R101", 82002),
+    (92005, 1, 2, "SP", "FUC", "GYM", 82004),
+    (92006, 2, 1, "D", "KLE", "R101", 82001),
+    (92007, 2, 2, "KU", "HAS", "R12", 82005),
+    (92008, 3, 1, "E", "WOL", "R204", 82003),
+    (92009, 3, 2, "BIO", "NEU", "R301", 82006),
+    (92010, 4, 1, "D", "KLE", "R101", 82001),
+)
+SCHOOL_APP_SUBSTITUTED = tuple(
+    row for row in SCHOOL_APP_REGULAR if row[0] not in (92003, 92005, 92007)
+) + (
+    (92003, 0, 3, "E", "VER", "R204", 82003),
+    (92007, 4, 3, "KU", "HAS", "R12", 82005),
+)
+
+
+def school_app_plan_entry(entry_id, weekday, period, subject, teacher, room, course_subject):
+    return {
+        "id": entry_id,
+        "courseSubject": {
+            "id": course_subject,
+            "teachers": [
+                {"id": 3000 + len(teacher), "forename": "Alex", "surname": teacher.title(), "displayname": teacher.title() + " Alex", "externalId": teacher}
+            ],
+            "subject": {"id": 70000 + course_subject % 1000, "name": subject, "acronym": subject, "hexColor": "#336699"},
+            "course": {"id": 7001, "name": "Klasse 5A", "externalId": "klasse.5a", "type": "class"},
+            "type": "lesson",
+        },
+        "timeTableSlot": {"id": period, "number": period, "startTime": "08:00", "endTime": "08:45", "type": "lesson", "name": "%d. Stunde" % period},
+        "weekday": weekday,
+        "room": {"id": 5000 + period, "name": room},
+        "timetableBlock": None,
+    }
+
+
+def school_app_plan(rows):
+    return [school_app_plan_entry(*row) for row in rows]
+
+
 class TimeTableSchool:
     def __init__(
         self,
@@ -201,8 +244,10 @@ class TimeTableSchool:
         plan=WEEK_PLAN,
         sick_notes=False,
         me_courses=True,
+        school_week=None,
     ):
         self.me_courses = me_courses
+        self.school_week = school_week
         self.sick_notes = sick_notes
         self.me_failures = 0
         self.school_app = school_app
@@ -242,7 +287,7 @@ class TimeTableSchool:
         children.extend(self.extra_children)
         return {"id": 900, "displayname": "Parent Example", "roles": ["guardian"], "children": children}
 
-    def _school_app(self, url, rest):
+    def _school_app(self, url, rest, params=None):
         if rest.startswith("users/me"):
             if self.me_failures:
                 self.me_failures -= 1
@@ -253,7 +298,10 @@ class TimeTableSchool:
             student = {"id": self.child_id, "displayname": "%s %s" % (surname, forename), "mainCourse": {"id": 7001, "name": "Klasse 5A", "externalId": "klasse.5a"}}
             return Answer(url, payload=[student], content_type="application/json")
         if rest.startswith("school-settings"):
-            settings = [{"timetable_availableForGuardiansAndStudents": self.released, "substitutions_availableForGuardiansAndStudents": False}]
+            settings = [{
+                "timetable_availableForGuardiansAndStudents": self.released,
+                "substitutions_availableForGuardiansAndStudents": self.school_week is not None,
+            }]
             return Answer(url, payload=settings, content_type="application/json")
         if rest.startswith("timetable-slots"):
             slots = [{"id": 1, "number": 1, "startTime": "08:00", "endTime": "08:45", "type": "lesson"}] if self.slots else []
@@ -264,6 +312,12 @@ class TimeTableSchool:
             forename, surname = self.child_name
             student = {"id": self.child_id, "forename": forename, "surname": surname}
             entries = [school_app_entry()] if self.school_lessons else []
+            if self.school_week is not None:
+                regular, current = self.school_week
+                wanted = regular if (params or {}).get("substitutions") == "false" else current
+                if wanted is None:
+                    return Answer(url, 500, "")
+                entries = school_app_plan(wanted)
             payload = {"students": [{"student": student, "entries": entries}], "vacations": list(self.vacations), "schoolEvents": []}
             return Answer(url, payload=payload, content_type="application/json")
         return Answer(url, 404, "")
@@ -301,7 +355,7 @@ class TimeTableSchool:
         path = urlsplit(url).path
         self.calls.append((path, dict(params or {})))
         if path.startswith(DSA_ROOT):
-            return self._school_app(url, path[len(DSA_ROOT):])
+            return self._school_app(url, path[len(DSA_ROOT):], params)
         if path == PAGE:
             return self._page(url)
         if path == DATA:

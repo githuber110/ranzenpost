@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 describe("settings orientation: remembers where it was opened from", () => {
   test("gear tap from timetable stores the origin, settings back returns there", () => {
@@ -46,7 +46,7 @@ describe("settings orientation: remembers where it was opened from", () => {
   test("the gear is shown on every other view", () => {
     const { window } = loadApp();
     for (const view of ["overview", "timetable", "absence", "post", "conferences"]) {
-      const gear = window.eval(`header(${JSON.stringify(view)}).querySelector('.icon-btn[aria-label="Einstellungen"]')`);
+      const gear = evalWith(window, `header(testArgs[0]).querySelector('.icon-btn[aria-label="Einstellungen"]')`, view);
       expect(gear).not.toBeNull();
     }
   });
@@ -69,13 +69,9 @@ describe("the settings wear the same compact head as every other screen", () => 
     expect(view.firstElementChild.className).toBe("settings-group");
   });
 
-  test("the old subpage head is gone for good", () => {
-    const { window } = loadApp();
-    expect(window.eval(`typeof subpageHead`)).toBe("undefined");
-  });
 });
 
-describe("Elternsprechtage: the Uebersicht tab stays aria-current", () => {
+describe("conferences view keeps the More tab marked as current", () => {
   test("conferences view marks the More tab current because conferences sit under More, settings has none active", () => {
     const { window } = loadApp();
     const conferencesTab = window.eval(`

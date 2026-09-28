@@ -456,6 +456,7 @@ class Event:
     subject: str = ""
     name: str = ""
     kind: str = ""
+    teacher: str = ""
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Event:
@@ -475,6 +476,7 @@ class Event:
             subject=str(data.get("subject") or ""),
             name=str(data.get("name") or ""),
             kind=str(data.get("kind") or ""),
+            teacher=str(data.get("teacher") or ""),
         )
 
 
@@ -494,27 +496,30 @@ class Conference:
     days_until: int = 0
 
 
+def _holiday(data: Any) -> Holiday | None:
+    if not data:
+        return None
+    return Holiday(
+        name=str(data.get("name") or ""),
+        start=parse_date(data["start"]),
+        end=parse_date(data["end"]),
+        days_until=int(data.get("days_until") or 0),
+    )
+
+
 @dataclass(frozen=True)
 class School:
     next_holiday: Holiday | None
     next_conference: Conference | None
     region: str
+    next_free_day: Holiday | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> School:
-        holiday = data.get("next_holiday")
         conference = data.get("next_conference")
         return cls(
-            next_holiday=(
-                Holiday(
-                    name=str(holiday.get("name") or ""),
-                    start=parse_date(holiday["start"]),
-                    end=parse_date(holiday["end"]),
-                    days_until=int(holiday.get("days_until") or 0),
-                )
-                if holiday
-                else None
-            ),
+            next_holiday=_holiday(data.get("next_holiday")),
+            next_free_day=_holiday(data.get("next_free_day")),
             next_conference=(
                 Conference(
                     date=parse_date(conference["date"]),
@@ -581,8 +586,10 @@ class RanzenpostApi:
     async def _get(self, route: str, params: dict[str, str] | None = None) -> Any:
         headers = {"Authorization": f"Bearer {self.token}"}
         try:
-            async with asyncio.timeout(self.timeout):
-                response = await self.session.get(self.base_url + route, params=params, headers=headers)
+            async with (
+                asyncio.timeout(self.timeout),
+                self.session.get(self.base_url + route, params=params, headers=headers) as response,
+            ):
                 if response.status in AUTH_STATUSES:
                     raise AuthError(f"{route} answered {response.status}")
                 if response.status != 200:

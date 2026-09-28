@@ -12,7 +12,8 @@
     "subject_code": "MA",
     "subject": "Maths",
     "name": "",
-    "kind": ""
+    "kind": "",
+    "teacher": "Example"
   },
   {
     "uid": "lesson-20260902-p4@sample",
@@ -27,7 +28,8 @@
     "subject_code": "AR",
     "subject": "Art",
     "name": "",
-    "kind": ""
+    "kind": "",
+    "teacher": ""
   },
   {
     "uid": "lesson-20260903-p1@sample",
@@ -42,6 +44,7 @@
     "subject_code": "BI",
     "subject": "Biology",
     "name": "",
-    "kind": ""
+    "kind": "",
+    "teacher": ""
   }
 ]

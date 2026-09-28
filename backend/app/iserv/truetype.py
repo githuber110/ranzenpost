@@ -241,16 +241,8 @@ class TrueTypeFont:
             return 400
         return _u16(self.table("OS/2"), 4)
 
-    def embedding_allowed(self):
-        if "OS/2" not in self.tables:
-            return True
-        return not _u16(self.table("OS/2"), 8) & 0x0002
-
     def glyph_id(self, codepoint):
         return self.cmap.get(codepoint)
-
-    def missing_glyphs(self, text):
-        return [char for char in text if ord(char) not in self.cmap]
 
     def scale(self, value):
         return value * 1000.0 / self.units_per_em

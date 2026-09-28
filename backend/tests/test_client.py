@@ -230,10 +230,10 @@ class SecuritySession:
         return FakeResponse("", url)
 
 
-def test_register_totp_submits_confirm_form_and_returns_secret():
+def test_totp_registration_submits_confirm_form_and_returns_secret():
     session = SecuritySession("security_2fa_add.html", "security_2fa_added.html")
     client = IServClient(BASE, session=session)
-    secret = client.register_totp("ISERV-Connector", "123456")
+    secret = client.confirm_totp_registration(client.start_totp_registration(), "ISERV-Connector", "123456")
     assert secret == "JBSWY3DPEHPK3PXP"
     assert session.posted["confirm[name]"] == "ISERV-Connector"
     assert session.posted["confirm[verification]"] == "123456"
@@ -243,27 +243,27 @@ def test_register_totp_submits_confirm_form_and_returns_secret():
     assert session.posted["confirm[code]"].isdigit()
 
 
-def test_register_totp_rejected_raises_with_the_server_message():
+def test_totp_registration_rejected_raises_with_the_server_message():
     session = SecuritySession("security_2fa_add.html", "security_2fa_rejected.html",
                               token_list="twofactor_list_empty.html")
     client = IServClient(BASE, session=session)
     with pytest.raises(TwoFactorError) as error:
-        client.register_totp("ISERV-Connector", "000000")
+        client.confirm_totp_registration(client.start_totp_registration(), "ISERV-Connector", "000000")
     assert "2FA-Code" in str(error.value)
 
 
-def test_register_totp_trusts_the_token_list_over_the_response_text():
+def test_totp_registration_trusts_the_token_list_over_the_response_text():
     session = SecuritySession("security_2fa_add.html", "security_2fa_rejected.html")
     client = IServClient(BASE, session=session)
-    assert client.register_totp("ISERV-Connector", "123456") == "JBSWY3DPEHPK3PXP"
+    assert client.confirm_totp_registration(client.start_totp_registration(), "ISERV-Connector", "123456") == "JBSWY3DPEHPK3PXP"
 
 
-def test_register_totp_fails_when_the_token_never_appears():
+def test_totp_registration_fails_when_the_token_never_appears():
     session = SecuritySession("security_2fa_add.html", "security_2fa_added.html",
                               token_list="twofactor_list_empty.html")
     client = IServClient(BASE, session=session)
     with pytest.raises(TwoFactorError):
-        client.register_totp("ISERV-Connector", "123456")
+        client.confirm_totp_registration(client.start_totp_registration(), "ISERV-Connector", "123456")
 
 
 def test_change_password_success():
@@ -283,10 +283,10 @@ def test_change_password_rejected_raises():
         client.change_password("wrong", "new-pass-123")
 
 
-def test_register_totp_reads_the_add_page_and_posts_to_the_htmx_target():
+def test_totp_registration_reads_the_add_page_and_posts_to_the_htmx_target():
     session = SecuritySession("security_2fa_add.html", "security_2fa_added.html")
     client = IServClient(BASE, session=session)
-    secret = client.register_totp("ISERV-Connector", "123456")
+    secret = client.confirm_totp_registration(client.start_totp_registration(), "ISERV-Connector", "123456")
     assert secret == "JBSWY3DPEHPK3PXP"
     assert session.requested[0] == BASE + "/iserv/auth/settings/twofactor/add"
     assert session.posted_url == BASE + "/iserv/auth/settings/twofactor/add/confirm"

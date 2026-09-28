@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const FRONTEND = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(FRONTEND, "styles.css"), "utf8");
@@ -34,21 +34,21 @@ function seed(window, { schools = 1, status = "outage", view = "overview", extra
   const rows = connections.map((entry, index) =>
     schoolRow(entry.id, index === 0 ? status : "ok", index === 0 ? { since: SINCE, last_success: LAST_SUCCESS } : {})
   );
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(connections)}, language: "de", notify_services: [] };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(children[0].key)};
-    state.schools = ${JSON.stringify(rows)};
+  evalWith(window, `
+    state.config = { connections: testArgs[0], language: "de", notify_services: [] };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
+    state.schools = testArgs[3];
     applySchoolStatus(state.schools);
     state.loadedAt = {};
-    state.view = ${JSON.stringify(view)};
+    state.view = testArgs[4];
     state.timetable = { lessons: [], period_times: {}, error: "network" };
     ${extra}
-  `);
+  `, connections, children, children[0].key, rows, view);
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 function stubFetch(window, answer) {
@@ -80,7 +80,7 @@ describe("an IServ outage is shown as a calm state, never as a login problem", (
     expect(banner).not.toBeNull();
     expect(banner.getAttribute("role")).toBe("status");
     expect(banner.textContent).toContain(label(window, "outage.banner.text"));
-    expect(banner.textContent).toContain(label(window, "outage.banner.lastUpdate", { time: window.eval(`formatIsoMoment(${JSON.stringify(LAST_SUCCESS)})`) }));
+    expect(banner.textContent).toContain(label(window, "outage.banner.lastUpdate", { time: evalWith(window, "formatIsoMoment(testArgs[0])", LAST_SUCCESS) }));
     expect(banner.querySelector(".btn").textContent).toBe(label(window, "outage.banner.retry"));
     expect(window.document.querySelector("#app .toast")).toBeNull();
   });
@@ -143,7 +143,7 @@ describe("an IServ outage is shown as a calm state, never as a login problem", (
     expect(view.textContent).toContain(label(window, "outage.empty.title"));
     expect(view.textContent).not.toContain(label(window, "timetable.error.title"));
     expect(view.querySelector(".empty.calm")).not.toBeNull();
-    window.eval(`state.letters = { error: "network", tab: "current" }; state.pinboard = { error: "network" }; state.absence = { error: "network", connectionId: ${JSON.stringify(ONE)} }; state.messengerRooms = { error: "network" };`);
+    evalWith(window, 'state.letters = { error: "network", tab: "current" }; state.pinboard = { error: "network" }; state.absence = { error: "network", connectionId: testArgs[0] }; state.messengerRooms = { error: "network" };', ONE);
     expect(window.eval("postView().textContent")).toContain(label(window, "outage.empty.title"));
     expect(window.eval("absenceView().textContent")).toContain(label(window, "outage.empty.title"));
     expect(window.eval("messengerView().textContent")).toContain(label(window, "outage.empty.title"));
@@ -164,7 +164,7 @@ describe("an IServ outage is shown as a calm state, never as a login problem", (
     window.eval("render()");
     const row = window.document.querySelector("#app .school-row");
     expect(row).not.toBeNull();
-    expect(row.textContent).toContain(label(window, "connection.status.outageSince", { time: window.eval(`formatIsoMoment(${JSON.stringify(SINCE)})`) }));
+    expect(row.textContent).toContain(label(window, "connection.status.outageSince", { time: evalWith(window, "formatIsoMoment(testArgs[0])", SINCE) }));
     expect(row.querySelector(".val.warn")).toBeNull();
     expect(row.querySelector(".school-dot.warn")).toBeNull();
   });
@@ -182,7 +182,7 @@ describe("an IServ outage is shown as a calm state, never as a login problem", (
     window.document.querySelector("#app .outage-banner .btn").click();
     await settle(window);
     expect(calls.filter(([path]) => path === `api/connections/${ONE}/retry`)).toHaveLength(1);
-    expect(window.eval(`schoolStatus(${JSON.stringify(ONE)})`)).toBe("ok");
+    expect(evalWith(window, "schoolStatus(testArgs[0])", ONE)).toBe("ok");
     expect(window.document.querySelector("#app .outage-banner")).toBeNull();
     expect(window.document.querySelector("#app .toast")).toBeNull();
   });
@@ -211,7 +211,7 @@ describe("the reconnect page is reserved for a rejected login", () => {
     expect(window.eval('handleApiFailure(apiError("network", {}))')).toBe(false);
     expect(window.eval("!!state.reconnectShown")).toBe(false);
     seed(window, { schools: 2 });
-    expect(window.eval(`handleApiFailure(apiError("outage", {}), ${JSON.stringify(ONE)})`)).toBe(false);
+    expect(evalWith(window, 'handleApiFailure(apiError("outage", {}), testArgs[0])', ONE)).toBe(false);
     expect(window.eval("!!state.reconnectShown")).toBe(false);
     expect(window.eval("state.detached")).toBe(false);
   });

@@ -212,25 +212,27 @@ def test_the_name_check_is_the_one_the_calendar_label_already_uses(tmp_path):
     assert marks.entries_of(store.load_marks())[0]["name"] == "Diktat"
 
 
-def test_the_same_slot_is_refused_twice_but_stays_free_for_the_sibling(tmp_path):
+def test_the_same_subject_is_refused_twice_but_a_parallel_subject_and_the_sibling_stay_free(tmp_path):
     store = _store(tmp_path)
     registry = _registry(store)
     registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA", "Diktat")
 
     with pytest.raises(MarkError) as error:
-        registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "D", "Zweites")
+        registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA", "Zweites")
     assert error.value.message_key == marks.ERROR_DUPLICATE
 
+    parallel = registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "D", "Vokabeln")
+    assert parallel["subject_code"] == "D"
     sibling = registry.create(SECOND_CHILD_ID, WEDNESDAY_ISO, 3, "MA", "Test")
     assert sibling["child_key"] == SECOND_CHILD_ID
-    assert len(marks.entries_of(store.load_marks())) == 2
+    assert len(marks.entries_of(store.load_marks())) == 3
 
 
 def test_re_anchoring_onto_a_taken_slot_is_refused_but_onto_a_free_one_keeps_the_identity(tmp_path):
     store = _store(tmp_path)
     registry = _registry(store)
     first = registry.create(CHILD_ID, WEDNESDAY_ISO, 3, "MA", "Diktat")
-    registry.create(CHILD_ID, WEDNESDAY_ISO, 4, "D", "Test")
+    registry.create(CHILD_ID, WEDNESDAY_ISO, 4, "MA", "Test")
 
     with pytest.raises(MarkError) as error:
         registry.update(first["id"], period=4)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
@@ -32,7 +32,7 @@ function tick() {
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 async function quiet(window) {
@@ -49,13 +49,13 @@ async function prepare(window, { many = false, subscriptions = [SUBSCRIPTION] } 
     connections.push({ id: TWO, school_name: "School Two", setup_complete: true, phones: [], subjects: {}, teachers: {} });
     children.push({ key: `${TWO}:c1`, child_id: "c1", connection_id: TWO, name: "Tom Example", class_name: "3a" });
   }
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(connections)}, notify_services: [], notify_events: {} };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(`${ONE}:c1`)};
-    state.schools = ${JSON.stringify(connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true })))};
+  evalWith(window, `
+    state.config = { connections: testArgs[0], notify_services: [], notify_events: {} };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
+    state.schools = testArgs[3];
     state.haStatus = { data: { connected: true }, error: false };
-  `);
+  `, connections, children, `${ONE}:c1`, connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true })));
   window.fetch = (url) => {
     const target = String(url);
     if (target.includes("api/calendar/subscriptions")) {
@@ -112,7 +112,7 @@ describe("the calendar subscription is a full settings page", () => {
   test("every child card carries at most one filled button in each state", async () => {
     const { window } = loadApp();
     await prepare(window, { many: true });
-    window.eval(`state.calendar = { data: ${JSON.stringify(payload([SUBSCRIPTION]))}, error: false };`);
+    evalWith(window, "state.calendar = { data: testArgs[0], error: false };", payload([SUBSCRIPTION]));
     const created = window.eval("calendarPageView()");
     const cards = [...created.querySelectorAll(".cal-card")];
     expect(cards.length).toBe(2);
@@ -127,8 +127,8 @@ describe("the calendar subscription is a full settings page", () => {
   test("a confirmation over the page leaves the page in place instead of reopening a sheet", async () => {
     const { window } = loadApp();
     await prepare(window);
-    window.eval(`state.calendar = { data: ${JSON.stringify(payload([SUBSCRIPTION]))}, error: false }; state.view = "settings"; state.settingsPage = "calendar"; render();`);
-    const pending = window.eval(`rotateCalendarSubscription(${JSON.stringify(SUBSCRIPTION)})`);
+    evalWith(window, 'state.calendar = { data: testArgs[0], error: false }; state.view = "settings"; state.settingsPage = "calendar"; render();', payload([SUBSCRIPTION]));
+    const pending = evalWith(window, "rotateCalendarSubscription(testArgs[0])", SUBSCRIPTION);
     const dialog = window.document.querySelector(".sheet");
     [...dialog.querySelectorAll("button")].find((node) => node.textContent === label(window, "common.cancel")).click();
     await pending;

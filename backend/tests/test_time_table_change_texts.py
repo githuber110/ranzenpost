@@ -87,7 +87,7 @@ def test_the_home_assistant_change_event_describes_the_move():
 
 def test_the_home_assistant_lesson_of_the_day_carries_the_move_and_the_note():
     shown = lesson(change_kind="changed", changed_fields=["subject"], moved_from={"date": "08.09.2026", "period": 6, "period_end": 6}, change_note="Material mitbringen")
-    item = integration._lesson_object("de", date(2026, 9, 10), shown, "11:40", False, datetime(2026, 9, 10, 8, 0))
+    item = integration._lesson_object("de", date(2026, 9, 10), shown, "11:40", False, datetime(2026, 9, 10, 8, 0), 45)
     assert item["substitution"] is True
     assert item["cancelled"] is False
     assert text("calendar.detail.movedFrom", target=text("calendar.move.fromTarget", date="08.09.", period=6, end=6)) in item["note"]

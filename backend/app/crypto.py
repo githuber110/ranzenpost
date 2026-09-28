@@ -85,14 +85,3 @@ def load_or_create_key(path):
     key = generate_key()
     atomic_write.write_text(path, key, encoding="ascii")
     return key
-
-
-def looks_like_base32(value):
-    cleaned = value.replace(" ", "").replace("-", "").upper()
-    if len(cleaned) < 16:
-        return False
-    try:
-        base64.b32decode(cleaned + "=" * (-len(cleaned) % 8), casefold=False)
-    except (ValueError, TypeError):
-        return False
-    return True

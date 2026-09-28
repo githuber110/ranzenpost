@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const FRONTEND = path.resolve(__dirname, "..");
 const styles = fs.readFileSync(path.join(FRONTEND, "styles.css"), "utf8");
@@ -69,17 +69,17 @@ function useWidth(window, width) {
 }
 
 function seed(window, extra) {
-  window.eval(`
+  evalWith(window, `
     state.config = {};
     state.children = [{ key: "c1", name: "Mia", class_name: "3b" }];
     state.childId = "c1";
-    state.absence = ${JSON.stringify(ABSENCE)};
-    state.letters = ${JSON.stringify(LETTERS)};
-    state.pinboard = ${JSON.stringify(PINBOARD)};
-    state.messengerRooms = ${JSON.stringify(ROOMS)};
+    state.absence = testArgs[0];
+    state.letters = testArgs[1];
+    state.pinboard = testArgs[2];
+    state.messengerRooms = testArgs[3];
     state.loadedAt = {};
-    ${extra || ""}
-  `);
+  `, ABSENCE, LETTERS, PINBOARD, ROOMS);
+  evalWith(window, ...[].concat(extra));
 }
 
 function app(window) {
@@ -89,7 +89,7 @@ function app(window) {
 function boot(width, view, extra) {
   const { window } = loadApp();
   useWidth(window, width);
-  seed(window, `state.view = ${JSON.stringify(view)}; ${extra || ""}`);
+  seed(window, [`state.view = testArgs[0]; ${extra || ""}`, view]);
   window.eval("render()");
   return window;
 }
@@ -117,7 +117,7 @@ describe("layout: width classification", () => {
 describe("layout: where a selection is shown", () => {
   test("a letter or a chat room is a page below the desk width and a pane on a desk", () => {
     const { window } = loadApp();
-    const place = (kind, layout, view) => window.eval(`detailPlacement(${JSON.stringify(kind)}, ${JSON.stringify(layout)}, ${JSON.stringify(view)})`);
+    const place = (kind, layout, view) => evalWith(window, "detailPlacement(testArgs[0], testArgs[1], testArgs[2])", kind, layout, view);
     expect(place("letter", "phone", "post")).toBe("page");
     expect(place("letter", "wide", "post")).toBe("page");
     expect(place("letter", "desk", "post")).toBe("pane");
@@ -127,7 +127,7 @@ describe("layout: where a selection is shown", () => {
 
   test("a pinboard post or an absence is a sheet below the desk width and a pane on a desk list view", () => {
     const { window } = loadApp();
-    const place = (kind, layout, view) => window.eval(`detailPlacement(${JSON.stringify(kind)}, ${JSON.stringify(layout)}, ${JSON.stringify(view)})`);
+    const place = (kind, layout, view) => evalWith(window, "detailPlacement(testArgs[0], testArgs[1], testArgs[2])", kind, layout, view);
     expect(place("post", "phone", "post")).toBe("sheet");
     expect(place("post", "wide", "post")).toBe("sheet");
     expect(place("post", "desk", "post")).toBe("pane");

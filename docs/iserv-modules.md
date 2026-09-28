@@ -3,12 +3,12 @@
 This page maps the IServ modules from the official user documentation to what Ranzenpost reads and
 writes. It is the source for the module registry in `backend/app/modules.py` and for the module
 section of the README. Everything marked "unverified" could not be confirmed from the documentation
-or from the code. Facts about a real instance come from the owner's own school and carry no school
+or from the code. Facts about a real instance come from one live school and carry no school
 name.
 
 Sources, all public:
 
-- Module index with slugs: <https://doku.iserv.de/modules/> (56 entries, read on 2026-09-19).
+- Module index with slugs: <https://doku.iserv.de/modules/> (56 entries).
   Two modules are marked "(veraltet)", obsolete: `timetable` and `absence_obsolete`.
   One is marked "(neu)", new: `dsa-timetable`.
 - Parent quick start, PDF "IServ-Schnelleinstieg für Eltern", 14 pages, dated July 2026:
@@ -17,8 +17,8 @@ Sources, all public:
   <https://iserv.de/downloads/29998666a590f5a114411d45e22f50ea/IServ-Einfach-mit-Eltern-kommunizieren-190x270mm_RZ_SCREEN.pdf>
 - Parent login: <https://doku.iserv.de/web/> (section "Anmeldung für Eltern") and
   <https://doku.iserv.de/manage/user/parentmanagement/>.
-- The parent communication overview <https://doku.iserv.de/parentinformationsystem/> answered 404
-  on 2026-09-19. Search engines still list it. Its content is not cited here.
+- The parent communication overview <https://doku.iserv.de/parentinformationsystem/> answers 404.
+  Search engines still list it. Its content is not cited here.
 
 ## What the parent documents say in general
 
@@ -36,7 +36,7 @@ The quick start and the brochure agree on these points.
   the web interface. Parents can switch the e-mail notifications per module.
 - Parents never see the data of the child's own account, for example the child's messenger rooms.
 - The brochure lists these modules for parents: parent letters, messenger, translation of parent
-  letters, absences, parent-teacher conference days, timetable with substitutions, class money and
+  letters, absences, parent-teacher conferences, timetable with substitutions, class money and
   the calendar. The calendar is marked as "in planning for parents".
 
 ## Module table
@@ -75,26 +75,18 @@ English label, so the settings hint can name them. None of them is read or writt
   obsolete module `timetable`. The documentation of that module describes the child selector for
   parents and the right "Eigenen Stundenplan einsehen". The URL path itself is not in the
   documentation. It is verified in the code (`backend/app/iserv/client.py`, `get_children` and
-  `get_timetable`) and on the owner's instance, where this path answers 403 since the school moved
+  `get_timetable`) and on a live instance, where this path answers 403 since the school moved
   to the new module.
 - The Schul-App API `/iserv/dieschulapp/api/1.0/` belongs to the new `dsa-*` modules. The
   `current-timetable/` endpoint is the new module `dsa-timetable`. The documentation of that
   module says the module settings decide whether parents and students may see timetable and
   substitutions. The code reads exactly that switch as `timetable_availableForGuardiansAndStudents`
-  from `school-settings/` (`backend/app/service.py`, `TIMETABLE_SETTING`). The start page of the
-  owner's instance links `/iserv/dsa-timetable/timetable`.
+  from `school-settings/` (`backend/app/service.py`, `TIMETABLE_SETTING`). The start page of a
+  live instance links `/iserv/dsa-timetable/timetable`.
 - The absences endpoints `sickNotes/` and `requestToSchools/` of the same API are the current
   module `absence`. The school settings the code reads, for example the note on a sick note, the
   report by lesson and the cut-off time, are the settings the documentation of the current module
   describes. The start page links `/iserv/dsa-absences/absence-parents`.
-- External confirmation (`docs/2026-09-23-iserv-github-recherche.md`, sick-note API research): the reverse
-  engineering project [chenning42/iserv-mcp](https://github.com/chenning42/iserv-mcp) independently
-  names `GET /iserv/dieschulapp/api/1.0/sickNotes/userSelection/` (child list for a sick note) and
-  `POST /iserv/dieschulapp/api/1.0/sickNotes/` (submit) as "the verified DieSchulApp guardian API".
-  Ranzenpost already calls exactly these two paths (`backend/app/iserv/dsa.py`,
-  `sick_note_children`/`sick_note_children_or_raise` and `sick_notes`; `backend/app/iserv/absences.py`,
-  `SICK_NOTES_PATH` used by `_sick_request` for the same `POST sickNotes/`). No deviation, no code
-  change needed.
 - `pinboards/` of the same API is `dsa-pinboard`. The start page links `/iserv/dsa-pinboard/pinboard`.
 - The obsolete `absence_obsolete` has no known path. Unverified.
 - The `dsa` prefix of the documented slugs and the `dieschulapp` API host both point at DieSchulApp,

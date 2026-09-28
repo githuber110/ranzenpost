@@ -271,8 +271,7 @@ def test_the_error_shape_stays_backward_compatible(tmp_path):
 
 
 def test_every_upstream_message_key_resolves_in_the_base_bundle():
-    for code in upstream.UPSTREAM_ERROR_CODES:
-        key = upstream.UPSTREAM_ERROR_MESSAGE_KEYS[code]
+    for key in upstream.UPSTREAM_ERROR_MESSAGE_KEYS.values():
         assert key in BUNDLE, f"{key} is not in frontend/i18n/de.json"
         assert BUNDLE[key].strip()
 

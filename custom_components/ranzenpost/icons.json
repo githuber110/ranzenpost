@@ -28,6 +28,7 @@
       "next_absence": { "default": "mdi:calendar-account" },
       "timetable_last_updated": { "default": "mdi:update" },
       "next_holiday": { "default": "mdi:beach" },
+      "next_free_day": { "default": "mdi:calendar-star" },
       "next_conference": { "default": "mdi:account-group" },
       "connection": { "default": "mdi:lan-connect", "state": { "error": "mdi:lan-disconnect", "unconfigured": "mdi:lan-pending" } }
     }

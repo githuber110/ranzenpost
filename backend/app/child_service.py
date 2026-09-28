@@ -20,6 +20,7 @@ LETTERS_CHILD_PREFIX = "letters:"
 UPSTREAM_SIGN_IN_ERRORS = (LoginError, TwoFactorError)
 CHILD_PAGE_KEYS = (CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY)
 SCHOOL_CACHE_SECONDS = 600
+PAGE_REFUSAL_SECONDS = 3600
 
 
 def letters_child_id(name):
@@ -81,6 +82,7 @@ class ChildService:
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
         self._page_ids = None
+        self._page_refusal = (0.0, None, None)
         self._retired = False
 
     def retire(self):
@@ -88,6 +90,17 @@ class ChildService:
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
         self._page_ids = None
+        self._page_refusal = (0.0, None, None)
+
+    def _remembered_page_refusal(self, client):
+        stamp, error, refused_client = self._page_refusal
+        if error is not None and refused_client is client and self.connection.clock() - stamp < PAGE_REFUSAL_SECONDS:
+            return error
+        return None
+
+    def _remember_page_refusal(self, error, client):
+        if error.message_key == CHILD_PAGE_FORBIDDEN_KEY and not self._retired:
+            self._page_refusal = (self.connection.clock(), error, client)
 
     def _marker(self):
         config = self.connection.store.load_config()
@@ -135,16 +148,21 @@ class ChildService:
             self._remember_page_ids({})
             return self._keep(self._as_stored(self._fallback_children(), "fallback"), marker, remember=True)
         client = self.connection._session()
-        try:
-            native = client.get_children()
-        except DataError as error:
-            if error.message_key == CHILD_PAGE_SESSION_KEY:
-                self.connection._forget_session(client)
-            if error.message_key not in CHILD_PAGE_KEYS:
-                raise
+        error = self._remembered_page_refusal(client)
+        if error is None:
+            try:
+                native = client.get_children()
+            except DataError as refused:
+                if refused.message_key == CHILD_PAGE_SESSION_KEY:
+                    self.connection._forget_session(client)
+                if refused.message_key not in CHILD_PAGE_KEYS:
+                    raise
+                self._remember_page_refusal(refused, client)
+                error = refused
+        if error is not None:
             fallback = self._children_from_school_app()
             if not fallback:
-                raise
+                raise error.with_traceback(None)
             logger.warning(
                 "the timetable page refused the child list, using the school app list instead: %s",
                 failure_cause(error),
@@ -312,6 +330,7 @@ class ChildService:
         edit_config(self.connection.store, change)
 
     def _move_child_subscriptions(self, old_id, new_id):
+        from .cancellations import CancellationRegistry
         from .marks import MarkRegistry
         from .subscriptions import SubscriptionRegistry
 
@@ -325,6 +344,10 @@ class ChildService:
             MarkRegistry(self.connection.store).move_child(old_key, new_key)
         except Exception:
             logger.warning("marks could not follow the child", exc_info=True)
+        try:
+            CancellationRegistry(self.connection.store).move_child(old_key, new_key)
+        except Exception:
+            logger.warning("own cancellations could not follow the child", exc_info=True)
 
     def _fallback_children(self):
         failures = []

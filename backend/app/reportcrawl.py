@@ -6,7 +6,8 @@ from urllib.parse import parse_qsl, urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from . import modules, valueshape
-from .iserv.client import REDIRECT_NONE, REDIRECT_OTHER_HOST
+from .iserv.client import REDIRECT_NONE, REDIRECT_OTHER_HOST, REDIRECT_SAME_HOST
+from .iserv.forms import find_login_form, parse_forms
 from .module_catalogue import slug_of
 from .pageshape import body_kind, code_text, response_skeleton, status_of
 from .pathpattern import path_only, placeholders
@@ -25,16 +26,24 @@ STOP_PAGES = "pages"
 STOP_TIME = "time"
 ID_MARKS = ("<n>", "<uuid>", "<hex>", "<date>")
 WORD = re.compile(r"[^\W\d_]+")
-READ_ROUTES = frozenset(
+SHARED_READ_ROUTES = frozenset(
     """
     index list lists overview archive archived parent parents attendee attendees page pages tab tabs home start
     current today week month day history all
     """.split()
 )
-PROVIDER_ROUTES = READ_ROUTES | frozenset(
+READ_ROUTES = SHARED_READ_ROUTES | frozenset("request requests".split())
+PROVIDER_ROUTES = SHARED_READ_ROUTES | frozenset(
     "dashboard overview projects project transactions transaction details detail statements statement invoices invoice".split()
 )
 API_ROUTES = frozenset("api items entries events data count counts meta list lists index".split())
+PROVIDER_API_ROUTES = API_ROUTES | PROVIDER_ROUTES | frozenset(
+    """
+    student students child children balance balances payment payments account accounts extra extras
+    me user users profile school schools class classes parent parents bank settings
+    """.split()
+)
+VERSION_PART = re.compile(r"^v\d{1,2}$")
 PAGE_WORDS = frozenset({"page", "pages"})
 QUERY_KEYS = frozenset({"page", "sort", "order", "dir", "direction", "tab", "limit", "year", "month", "week", "day"})
 BLOCKED_ATTRIBUTES = ("data-method", "data-confirm", "onclick", "data-action", "formaction")
@@ -53,6 +62,12 @@ SCRIPT_TIMEOUT = REQUEST_SECONDS
 MAX_PROBE_BYTES = 1024 * 1024
 PROBE_TIMEOUT = REQUEST_SECONDS
 MAX_CHAIN_HOPS = 5
+CrawlScope = namedtuple("CrawlScope", "pages scripts apis routes api_routes external")
+MODULE_SCOPE = CrawlScope(MAX_PAGES_PER_MODULE, MAX_SCRIPTS_PER_MODULE, MAX_APIS_PER_MODULE, READ_ROUTES, READ_ROUTES | API_ROUTES, False)
+PROVIDER_SCOPE = CrawlScope(8, 20, 15, PROVIDER_ROUTES, PROVIDER_API_ROUTES, True)
+PROVIDER_PAGES = 30
+PROVIDER_SECONDS = 45
+MAX_PROVIDER_LINES = 1200
 MENU_LINK_PREFIX = modules.ISERV_ROOT + "/"
 MENU_TABLE_HEAD = "| Path | Probed |"
 MENU_TABLE_RULE = "|---|---|"
@@ -71,7 +86,7 @@ def _is_id(part):
     return part.isdigit() or placeholders(part) in ID_MARKS
 
 
-def path_allowed(path, prefix, routes=READ_ROUTES, ids=True):
+def path_allowed(path, prefix, routes=READ_ROUTES, ids=True, external=False):
     if not path.startswith(prefix):
         return False
     previous = ""
@@ -83,9 +98,9 @@ def path_allowed(path, prefix, routes=READ_ROUTES, ids=True):
             previous = lowered
             continue
         if _is_id(part):
-            if not ids:
+            if not ids or (external and previous not in routes):
                 return False
-        elif lowered not in routes:
+        elif lowered not in routes and not (external and VERSION_PART.match(lowered)):
             return False
         previous = lowered
     return True
@@ -104,8 +119,12 @@ def text_allowed(text):
     return all(known_word(word) for word in WORD.findall(str(text or "")))
 
 
-def api_allowed(path, prefix):
-    return path_allowed(path, prefix, READ_ROUTES | API_ROUTES, ids=False)
+def api_allowed(path, prefix, routes=READ_ROUTES | API_ROUTES, external=False):
+    return path_allowed(path, prefix, routes, ids=False, external=external)
+
+
+def _shape_key(path):
+    return "/".join("<id>" if part and (part.isdigit() or _is_id(part)) else part for part in path.split("/"))
 
 
 def has_id(path):
@@ -121,7 +140,7 @@ def _query_keys(query):
     return tuple(sorted({key for key, _value in parse_qsl(query, keep_blank_values=True)}))
 
 
-def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES):
+def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES, external=False):
     soup = BeautifulSoup(html or "", "html.parser")
     page = urlsplit(page_url or "")
     chosen = []
@@ -144,10 +163,11 @@ def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES):
         if any(anchor.has_attr(name) for name in BLOCKED_ATTRIBUTES):
             skip(SKIP_ATTRIBUTE)
             continue
-        if has_id(target.path):
+        detail = has_id(target.path)
+        if detail and not external:
             skip(SKIP_DETAIL)
             continue
-        if not path_allowed(target.path, prefix, routes, ids=False):
+        if not path_allowed(target.path, prefix, routes, ids=detail, external=external):
             skip(SKIP_PATH)
             continue
         if not query_allowed(target.query, routes):
@@ -156,7 +176,7 @@ def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES):
         if not text_allowed(text):
             skip(SKIP_TEXT)
             continue
-        key = (placeholders(target.path), _query_keys(target.query))
+        key = (_shape_key(target.path) if external else placeholders(target.path), _query_keys(target.query))
         if key in seen:
             skip(SKIP_SAME)
             continue
@@ -251,7 +271,7 @@ class CrawlBudget:
         return "- %s stopped: the report page limit is reached" % what
 
 
-def _read_script(client, path, cache):
+def _read_script(client, path, cache, counted=False):
     if path in cache:
         return cache[path]
     reader = getattr(client, "fetch_capped", None)
@@ -260,6 +280,8 @@ def _read_script(client, path, cache):
         outcome = ("not read", None)
     elif budget.expired():
         outcome = ("not read, time budget reached", None)
+    elif counted and not budget.take():
+        outcome = ("not read, request budget reached", None)
     else:
         try:
             outcome = ("ok", reader(path, MAX_SCRIPT_BYTES, budget.timeout(SCRIPT_TIMEOUT), expired=budget.expired))
@@ -284,22 +306,22 @@ def script_section(client, response, cache, root=SCRIPT_ROOT, link_shape=None):
     return script_facts(client, response, cache, root, link_shape)[0]
 
 
-def script_facts(client, response, cache, root=SCRIPT_ROOT, link_shape=None):
+def script_facts(client, response, cache, root=SCRIPT_ROOT, link_shape=None, limit=MAX_SCRIPTS_PER_MODULE, counted=False):
     sources = script_sources(getattr(response, "text", "") or "", str(getattr(response, "url", "") or ""), root)
     if not sources:
         return [], {}
     lines = ["##### Script endpoints"]
     facts = []
     found = {}
-    for path in sources[:MAX_SCRIPTS_PER_MODULE]:
-        state, body = _read_script(client, path, cache)
+    for path in sources[:limit]:
+        state, body = _read_script(client, path, cache, counted)
         facts.append("%s (%s)" % (script_line(path, link_shape), _script_fact(state, body)))
         if body is not None and int(getattr(body, "status_code", 0) or 0) == 200:
             for key, keys in script_endpoints(body.text, script_label(path)).items():
                 found.setdefault(key, set()).update(keys)
     lines.append("- Scripts: " + " | ".join(facts))
-    if len(sources) > MAX_SCRIPTS_PER_MODULE:
-        lines.append("- Scripts skipped: %d beyond the limit of %d" % (len(sources) - MAX_SCRIPTS_PER_MODULE, MAX_SCRIPTS_PER_MODULE))
+    if len(sources) > limit:
+        lines.append("- Scripts skipped: %d beyond the limit of %d" % (len(sources) - limit, limit))
     if not found:
         lines.append("- Endpoints: none")
         return lines, found
@@ -324,6 +346,7 @@ def module_link_structure(client, row, nav_paths, cache):
             lines.extend(module_crawl(client, answer, module_prefix(path), menu_shape, cache, SCRIPT_ROOT))
     elif redirect_of(answer) == REDIRECT_OTHER_HOST and callable(getattr(client, "continue_chain", None)):
         lines.extend(external_chain_lines(client, answer))
+        return capped_module(lines, MAX_PROVIDER_LINES)
     return capped_module(lines)
 
 
@@ -332,8 +355,7 @@ def module_prefix(path):
     return MENU_LINK_PREFIX + segment + "/" if segment else MENU_LINK_PREFIX
 
 
-def capped_module(lines):
-    limit = MAX_MODULE_LINES
+def capped_module(lines, limit=MAX_MODULE_LINES):
     if len(lines) <= limit:
         return lines
     return lines[:limit] + ["- Module lines cut at %d" % limit]
@@ -366,23 +388,23 @@ def _write_entries(answer, found, link_shape):
     return entries, endpoints
 
 
-def _api_targets(endpoints, prefix):
+def _api_targets(endpoints, prefix, scope=MODULE_SCOPE):
     targets = []
     for method, pattern, _label in sorted(endpoints):
-        if method != "GET" or "<" in pattern or "?" in pattern or not api_allowed(pattern, prefix):
+        if method != "GET" or "<" in pattern or "?" in pattern or not api_allowed(pattern, prefix, scope.api_routes, scope.external):
             continue
         if pattern not in targets:
             targets.append(pattern)
-    return targets[:MAX_APIS_PER_MODULE]
+    return targets[:scope.apis]
 
 
-def module_crawl(client, landing, prefix, link_shape, cache, root, routes=READ_ROUTES, apis=True):
+def module_crawl(client, landing, prefix, link_shape, cache, root, scope=MODULE_SCOPE):
     budget = budget_of(client)
     links, skipped = crawl_links(
-        getattr(landing, "text", "") or "", str(getattr(landing, "url", "") or ""), prefix, MAX_PAGES_PER_MODULE, routes,
+        getattr(landing, "text", "") or "", str(getattr(landing, "url", "") or ""), prefix, scope.pages, scope.routes, scope.external,
     )
     lines = ["- Crawl: %d linked pages, skipped %s" % (len(links), skipped_text(skipped))]
-    entries, endpoints = _write_entries(landing, script_facts(client, landing, cache, root, link_shape)[1], link_shape)
+    entries, endpoints = _write_entries(landing, script_facts(client, landing, cache, root, link_shape, scope.scripts, scope.external)[1], link_shape)
     for link in links:
         if not budget.take():
             lines.append(budget.stop_line("Crawl"))
@@ -398,12 +420,12 @@ def module_crawl(client, landing, prefix, link_shape, cache, root, routes=READ_R
             continue
         lines.extend(response_skeleton(answer, link_shape))
         if body_kind(answer) == "html":
-            script_lines, scripts_found = script_facts(client, answer, cache, root, link_shape)
+            script_lines, scripts_found = script_facts(client, answer, cache, root, link_shape, scope.scripts, scope.external)
             lines.extend(script_lines)
             found, seen = _write_entries(answer, scripts_found, link_shape)
             entries.extend(entry for entry in found if entry not in entries)
             endpoints |= seen
-    for pattern in _api_targets(endpoints, prefix) if apis else ():
+    for pattern in _api_targets(endpoints, prefix, scope):
         if not budget.take():
             lines.append(budget.stop_line("API reads"))
             break
@@ -419,6 +441,17 @@ def module_crawl(client, landing, prefix, link_shape, cache, root, routes=READ_R
     return lines
 
 
+def _iserv_sign_in_page(hops, landing):
+    if not hops or hops[-1].where != REDIRECT_SAME_HOST or body_kind(landing) != "html":
+        return False
+    return find_login_form(parse_forms(getattr(landing, "text", "") or "", str(getattr(landing, "url", "") or ""))) is not None
+
+
+def provider_budget(outer):
+    left = outer.deadline + PROVIDER_SECONDS - outer.clock()
+    return CrawlBudget(pages=PROVIDER_PAGES, seconds=max(0, min(PROVIDER_SECONDS, left)), clock=outer.clock)
+
+
 def external_chain_lines(client, answer):
     try:
         budget = budget_of(client)
@@ -430,14 +463,17 @@ def external_chain_lines(client, answer):
     if landing is None:
         lines.append("- Landing page: not read, %s" % chain.stop)
         return lines
+    if _iserv_sign_in_page(chain.hops, landing):
+        lines.append("- Landing page: %s, landed on the IServ sign-in page" % _answer_facts(landing))
+        return lines
     lines.append("- Landing page: " + _answer_facts(landing))
     if status_of(landing) == 200:
         lines.extend(response_skeleton(landing, valueshape.link_shape))
         if body_kind(landing) == "html" and chain.reader is not None:
-            chain.reader.budget = budget_of(client)
+            chain.reader.budget = provider_budget(budget)
             cache = {}
-            lines.extend(script_section(chain.reader, landing, cache, "/", valueshape.link_shape))
-            lines.extend(module_crawl(chain.reader, landing, "/", valueshape.link_shape, cache, "/", PROVIDER_ROUTES, apis=False))
+            lines.extend(script_facts(chain.reader, landing, cache, "/", valueshape.link_shape, PROVIDER_SCOPE.scripts, True)[0])
+            lines.extend(module_crawl(chain.reader, landing, "/", valueshape.link_shape, cache, "/", PROVIDER_SCOPE))
     return lines
 
 
@@ -608,7 +644,7 @@ def unsupported_module_lines(client, rows, nav_paths):
     targets = [row for row in rows if row.get("guessed_page")]
     if not targets:
         return []
-    lines = ["### Unsupported or unknown modules", UNSUPPORTED_TABLE_HEAD, UNSUPPORTED_TABLE_RULE]
+    lines = ["### Unsupported, covered or unknown modules", UNSUPPORTED_TABLE_HEAD, UNSUPPORTED_TABLE_RULE]
     if client is None:
         for row in targets:
             lines.append("| %s | not read | - | - |" % table_cell(row["slug"]))

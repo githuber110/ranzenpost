@@ -20,12 +20,15 @@ function grid(window) {
 }
 
 describe("what a lesson tile shows", () => {
-  test("a tile carries the subject code and no room", () => {
+  test("a tile carries the code and, for larger tiles, the name, room and teacher surname", () => {
     const { window } = loadApp();
     const node = grid(window);
     const cell = node.querySelector(".tt-cell:not(.free)");
     expect(cell.querySelector(".sub").textContent).toBe("D");
-    expect(cell.textContent).not.toContain("R1");
+    expect(cell.querySelector(".lname").textContent).toBe("D");
+    expect(cell.querySelector(".lroom").textContent).toBe("R1");
+    expect(cell.querySelector(".lteacher").textContent).toBe("Beispiel");
+    for (const part of cell.querySelectorAll(".lname, .lroom, .lteacher")) expect(part.getAttribute("dir")).toBe("auto");
   });
 
   test("a period with two subjects stays one stack of two tiles", () => {
@@ -39,8 +42,8 @@ describe("what a lesson tile shows", () => {
   });
 });
 
-describe("the today rows name the teacher by surname only", () => {
-  test("no room travels into the compact row", () => {
+describe("the today rows name the room and the teacher by surname", () => {
+  test("the compact row names room and surname", () => {
     const { window } = loadApp();
     window.eval(`state.config = { subjects: {}, teachers: {} };`);
     const row = window.eval(`(function (entry) { return compactLesson(entry, false); })`)({
@@ -48,7 +51,7 @@ describe("the today rows name the teacher by surname only", () => {
       time: "08:00",
       childId: "c1",
     });
-    expect(row.querySelector(".row-sub").textContent).toBe("Beispiel");
+    expect(row.querySelector(".row-sub").textContent).toBe("R1 · Beispiel");
   });
 
   test("the full name stands in when IServ named no surname", () => {
@@ -59,6 +62,6 @@ describe("the today rows name the teacher by surname only", () => {
       time: "08:00",
       childId: "c1",
     });
-    expect(row.querySelector(".row-sub").textContent).toBe("Frau Beispiel");
+    expect(row.querySelector(".row-sub").textContent).toBe("R1 · Frau Beispiel");
   });
 });

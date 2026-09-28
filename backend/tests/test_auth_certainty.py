@@ -240,6 +240,17 @@ def test_a_password_change_that_worked_is_still_reported_as_done():
     assert client._verify_password_change("old", "new", REJECT_HTML) is True
 
 
+@pytest.mark.parametrize("outcomes", [{"new": False}, {"new": None, "old": True}])
+def test_a_refused_password_change_names_the_first_school_message(outcomes):
+    from app.iserv.errors import PasswordError
+
+    client = _client_with_probe(outcomes)
+    html = '<div class="invalid-feedback">Zu kurz.</div><div class="alert-danger">Zu einfach.</div>'
+    with pytest.raises(PasswordError) as caught:
+        client._verify_password_change("old", "new", html)
+    assert str(caught.value) == "Zu kurz."
+
+
 def test_an_unreadable_token_page_ends_the_registration_honestly_instead_of_crashing():
     from app.iserv.client import REGISTRATION_UNCONFIRMED_KEY
     from app.iserv.errors import DataError, TwoFactorError

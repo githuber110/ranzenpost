@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -82,7 +82,7 @@ function byText(nodes, text) {
 }
 
 function label(window, key) {
-  return window.eval(`t(${JSON.stringify(key)})`);
+  return evalWith(window, "t(testArgs[0])", key);
 }
 
 describe("marking a lesson as an exam", () => {
@@ -94,7 +94,7 @@ describe("marking a lesson as an exam", () => {
       return { body: { marks: [mark({ name: "Vokabeltest" })], window: {} } };
     });
 
-    window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
     const add = document.querySelector(".sheet-foot .mark-add");
     expect(add).not.toBeNull();
     expect(add.textContent).toContain(label(window, "marks.action.add"));
@@ -127,7 +127,7 @@ describe("marking a lesson as an exam", () => {
     prepare(window, [mark()]);
     const calls = stubFetch(window, () => ({ body: { marks: [], window: {} } }));
 
-    window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
     expect(document.querySelector(".mark-panel .mark-name").textContent).toBe("Diktat");
     expect(document.querySelector(".sheet-foot .mark-add")).toBeNull();
 
@@ -150,7 +150,7 @@ describe("marking a lesson as an exam", () => {
       return { body: { marks: [], window: {} } };
     });
 
-    window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
     document.querySelector(".sheet-foot .mark-add").click();
     const input = document.querySelector(".sheet-body .inp");
     input.value = "Mira";
@@ -174,7 +174,7 @@ describe("the name chips learn from what was used", () => {
       return { body: { marks: [], window: {} } };
     });
 
-    window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
     document.querySelector(".sheet-foot .mark-add").click();
     const input = document.querySelector(".sheet-body .inp");
     input.value = "Diktat";
@@ -184,7 +184,7 @@ describe("the name chips learn from what was used", () => {
 
     expect(JSON.parse(window.localStorage.getItem("markNames"))).toEqual(["Diktat"]);
 
-    window.eval(`openLessonSheet(${JSON.stringify(lesson({ period: 5 }))}, "11:30", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "11:30", "c1")', lesson({ period: 5 }));
     document.querySelector(".sheet-foot .mark-add").click();
     const chips = document.querySelectorAll(".chip-row .mark-chip");
     expect([...chips].map((chip) => chip.textContent)).toEqual(["Diktat"]);
@@ -205,7 +205,7 @@ describe("the name chips learn from what was used", () => {
   });
 
   function openForm(window, document) {
-    window.eval(`openLessonSheet(${JSON.stringify(lesson({ period: 5 }))}, "11:30", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "11:30", "c1")', lesson({ period: 5 }));
     document.querySelector(".sheet-foot .mark-add").click();
   }
 
@@ -226,7 +226,7 @@ describe("the name chips learn from what was used", () => {
       const remove = entry.querySelector("button.mark-chip-remove");
       expect(remove).not.toBeNull();
       expect(remove.getAttribute("type")).toBe("button");
-      expect(remove.getAttribute("aria-label")).toBe(window.eval(`t("marks.form.recentRemove", { name: ${JSON.stringify(name)} })`));
+      expect(remove.getAttribute("aria-label")).toBe(evalWith(window, 't("marks.form.recentRemove", { name: testArgs[0] })', name));
       expect(remove.getAttribute("aria-label")).toContain(name);
     }
   });
@@ -286,7 +286,7 @@ describe("the clarification tile, one anchor state at a time", () => {
     test(`${state} shows the tile with all three ways`, async () => {
       const { window, document } = await ready();
       prepare(window, [mark({ state })]);
-      window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+      evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
 
       const tile = document.querySelector(".mark-clarify");
       expect(tile).not.toBeNull();
@@ -306,7 +306,7 @@ describe("the clarification tile, one anchor state at a time", () => {
     test(`${state} stays quiet - no tile at all`, async () => {
       const { window, document } = await ready();
       prepare(window, [mark({ state })]);
-      window.eval(`openLessonSheet(${JSON.stringify(lesson())}, "09:45", "c1")`);
+      evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson());
       expect(document.querySelector(".mark-clarify")).toBeNull();
       expect(document.querySelector(".mark-panel")).not.toBeNull();
     });
@@ -315,7 +315,7 @@ describe("the clarification tile, one anchor state at a time", () => {
   test("substituted keeps the mark and only adds a quiet note", async () => {
     const { window, document } = await ready();
     prepare(window, [mark({ state: "substituted" })]);
-    window.eval(`openLessonSheet(${JSON.stringify(lesson({ change_kind: "changed" }))}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson({ change_kind: "changed" }));
     expect(document.querySelector(".mark-clarify")).toBeNull();
     expect(document.querySelector(".mark-panel .mark-note").textContent).toBe(
       label(window, "marks.state.substituted")
@@ -326,7 +326,7 @@ describe("the clarification tile, one anchor state at a time", () => {
     const { window, document } = await ready();
     prepare(window, [mark({ state: "cancelled" })]);
     const calls = stubFetch(window, () => ({ body: {} }));
-    window.eval(`openLessonSheet(${JSON.stringify(lesson({ change_kind: "cancelled" }))}, "09:45", "c1")`);
+    evalWith(window, 'openLessonSheet(testArgs[0], "09:45", "c1")', lesson({ change_kind: "cancelled" }));
 
     byText(document.querySelectorAll(".mark-clarify .btn"), label(window, "marks.clarify.keep")).click();
     expect(window.eval("state.sheet")).toBeNull();
@@ -388,7 +388,7 @@ describe("the mark is visible where the lesson is", () => {
   test("the grid cell carries the marked class, a shape and the spoken label", async () => {
     const { window } = await ready();
     prepare(window, [mark()]);
-    const cell = window.eval(`lessonCell(${JSON.stringify(lesson())}, "09:45", false)`);
+    const cell = evalWith(window, 'lessonCell(testArgs[0], "09:45", false)', lesson());
     expect(cell.classList.contains("marked")).toBe(true);
     expect(cell.querySelector(".exam-flag")).not.toBeNull();
     expect(cell.getAttribute("aria-label")).toContain(
@@ -399,7 +399,7 @@ describe("the mark is visible where the lesson is", () => {
   test("an unmarked cell stays untouched", async () => {
     const { window } = await ready();
     prepare(window, []);
-    const cell = window.eval(`lessonCell(${JSON.stringify(lesson())}, "09:45", false)`);
+    const cell = evalWith(window, 'lessonCell(testArgs[0], "09:45", false)', lesson());
     expect(cell.classList.contains("marked")).toBe(false);
     expect(cell.querySelector(".exam-flag")).toBeNull();
   });

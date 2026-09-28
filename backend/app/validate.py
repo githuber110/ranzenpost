@@ -1,8 +1,6 @@
 import ipaddress
 from urllib.parse import urlparse
 
-from .crypto import looks_like_base32
-
 
 def normalize_school_url(raw):
     value = (raw or "").strip()
@@ -22,14 +20,6 @@ def normalize_school_url(raw):
         raise ValueError("blocked host")
     port = f":{parsed.port}" if parsed.port else ""
     return f"https://{host}{port}"
-
-
-def clean_totp_secret(raw):
-    return (raw or "").replace(" ", "").replace("-", "").upper()
-
-
-def is_valid_secret(cleaned):
-    return looks_like_base32(cleaned)
 
 
 def is_valid_code(raw):

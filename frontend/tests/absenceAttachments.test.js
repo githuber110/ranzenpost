@@ -76,7 +76,7 @@ describe("Beurlaubung: attachment picker lives on a branch off the review page",
     expect(wz.form.attachments.length).toBe(1);
     expect(wz.status).toBe("Datei über 10 MB");
     expect(wz.nextButton.getAttribute("aria-disabled")).toBe("true");
-    expect(window.eval("absenceProblem(state.absenceForm, state.absence.data)")).toContain("Größer als 10 MB");
+    expect(window.eval("absenceProblemEntry(state.absenceForm, state.absence.data).text")).toContain("Größer als 10 MB");
   });
 
   test("attachments together over 40MB are caught here, before the send", () => {
@@ -91,7 +91,7 @@ describe("Beurlaubung: attachment picker lives on a branch off the review page",
       )
     );
     expect(wz.status).toBe("Anlagen über 40 MB");
-    expect(window.eval("absenceProblem(state.absenceForm, state.absence.data)")).toContain("40 MB");
+    expect(window.eval("absenceProblemEntry(state.absenceForm, state.absence.data).text")).toContain("40 MB");
   });
 
   test("the file input carries no accept restriction", () => {

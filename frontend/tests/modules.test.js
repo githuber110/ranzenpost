@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const MODULES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger"];
 const ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new?";
@@ -34,7 +34,7 @@ function expectedBar(keys) {
 }
 
 function seed(window, available, extra = "") {
-  window.eval(`
+  evalWith(window, `
     state.children = [{ key: "c1", name: "Alice", class_name: "3b" }];
     state.childId = "c1";
     state.me = { forename: "Alice" };
@@ -45,13 +45,13 @@ function seed(window, available, extra = "") {
     state.conferences = { items: [] };
     state.absence = { data: { entries: [], children: [] } };
     state.messengerRooms = { rooms: [] };
-    state.modules = applyModules({ modules: ${JSON.stringify(available)}, unknown: [], checked_at: 10, iserv_version: "3.9" });
+    state.modules = applyModules({ modules: testArgs[0], unknown: [], checked_at: 10, iserv_version: "3.9" });
     ${extra}
-  `);
+  `, available);
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || null)})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || null);
 }
 
 function all(overrides = {}) {

@@ -192,6 +192,6 @@ async def test_the_diagnostics_list_every_school(hass, aioclient_mock, frozen_no
     result = await async_get_config_entry_diagnostics(hass, entry)
 
     assert set(result["schools"]) == {SCHOOL, SECOND_SCHOOL}
-    assert result["schools"][SECOND_SCHOOL]["children"] == [OTHER_ALEX, OTHER_ROBIN]
-    assert set(result["states"]) == {CHILD_1, CHILD_2, OTHER_ALEX, OTHER_ROBIN}
+    assert result["schools"][SECOND_SCHOOL]["children"] == ["child-3", "child-4"]
+    assert set(result["states"]) == {"child-1", "child-2", "child-3", "child-4"}
     assert "Other School" not in str(result)

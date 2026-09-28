@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { shippedScriptText } from "./shippedSources.js";
 
 function seed(window, extra = "") {
@@ -25,7 +25,7 @@ function seed(window, extra = "") {
 }
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || null)})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || null);
 }
 
 function overviewPage(window) {
@@ -336,10 +336,10 @@ describe("the More tab and its sheet", () => {
     expect(window.document.querySelector(".sheet")).toBeNull();
   });
 
-  test("the bar limit cookie lowers the limit for tests only", () => {
+  test("a lower bar limit folds more areas under More", () => {
     const { window } = loadApp();
     seed(window);
-    window.document.cookie = "e2e_bar_limit=3";
+    window.RanzenpostBlocks.BAR_LIMIT = 3;
     const bar = window.eval("tabbar()");
     expect(bar.querySelectorAll(".tab").length).toBe(3);
     expect(window.eval("navigationLayout().more")).toEqual(["absence", "post", "messenger", "conferences"]);
@@ -349,6 +349,7 @@ describe("the More tab and its sheet", () => {
 describe("block search threshold", () => {
   test("production code keeps the threshold in the block catalogue, not in a test cookie", async () => {
     expect(shippedScriptText()).not.toContain("e2e_block_search_threshold");
+    expect(shippedScriptText()).not.toMatch(/\be2e_\w+/);
     const { window } = loadApp();
     expect(window.RanzenpostBlocks.BLOCK_SEARCH_FROM).toBe(20);
   });

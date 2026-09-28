@@ -39,6 +39,7 @@ september oktober november dezember termin termine ort raumnummer eltern schüle
 von an und oder mit ohne für fuer der die das den dem des ein eine einer
 archiv übersicht uebersicht liste listen weiter zurück zurueck vorherige startseite verlauf details alle
 projekte projekt umsätze umsaetze buchungen kontoauszug rechnungen rechnung
+antrag anträge antraege anfrage anfragen formular formulare meldung meldungen neue neuer neues
 title sender recipient recipients published date subject time room teacher class course action actions description
 note notes comment comments reason period from to until all none new read unread yes no open done
 monday tuesday wednesday thursday friday saturday sunday january february march may june july october december

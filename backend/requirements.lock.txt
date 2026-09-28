@@ -1,7 +1,7 @@
-# Locked runtime dependencies for iserv-connector/backend/requirements.txt.
-# Generated from the versions installed in .venv (pip freeze) that satisfy those
-# ranges, resolved to their linux/amd64 and linux/arm64 wheels for Python 3.12
-# (the Docker base image's platforms). Regenerate with:
+# Locked runtime dependencies for backend/requirements.txt.
+# Versions that satisfy those ranges, resolved to their linux/amd64 and
+# linux/arm64 wheels for Python 3.12 (the Docker base image's platforms).
+# Regenerate with:
 #   pip download --no-deps --dest <dir> --platform manylinux2014_<arch> \
 #     --python-version 312 --implementation cp --abi cp312 --only-binary=:all: <pkg>==<version>
 #   pip hash <dir>/*.whl

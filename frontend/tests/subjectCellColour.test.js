@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const SAMPLES = [
   ["#ff0000", "#000000", "#730000"],
@@ -24,8 +24,8 @@ describe("colour.js: the shared subject colour guard", () => {
   test("ink and bar match the backend for the shared samples (backend/tests/test_mapping.py)", () => {
     const { window } = loadApp();
     for (const [fill, ink, bar] of SAMPLES) {
-      expect(window.eval(`RanzenpostColour.inkFor("${fill}")`), fill).toBe(ink);
-      expect(window.eval(`RanzenpostColour.barFor("${fill}")`), fill).toBe(bar);
+      expect(evalWith(window, "RanzenpostColour.inkFor(testArgs[0])", fill), fill).toBe(ink);
+      expect(evalWith(window, "RanzenpostColour.barFor(testArgs[0])", fill), fill).toBe(bar);
     }
   });
 
@@ -48,7 +48,7 @@ describe("colour.js: the shared subject colour guard", () => {
 
   test("parseHex accepts six hex digits with or without the hash and nothing else", () => {
     const { window } = loadApp();
-    const parse = (value) => window.eval(`RanzenpostColour.parseHex(${JSON.stringify(value)})`);
+    const parse = (value) => evalWith(window, "RanzenpostColour.parseHex(testArgs[0])", value);
     expect(parse("#ABCDEF")).toBe("#abcdef");
     expect(parse("abcdef")).toBe("#abcdef");
     expect(parse(" #123456 ")).toBe("#123456");
@@ -60,7 +60,7 @@ describe("colour.js: the shared subject colour guard", () => {
 
   test("resolve knows palette names, base hexes, custom hexes and falls back for unknown names", () => {
     const { window } = loadApp();
-    const resolve = (value) => window.eval(`RanzenpostColour.resolve(${JSON.stringify(value)})`);
+    const resolve = (value) => evalWith(window, "RanzenpostColour.resolve(testArgs[0])", value);
     expect(resolve("yellow")).toEqual({
       name: "yellow",
       custom: false,

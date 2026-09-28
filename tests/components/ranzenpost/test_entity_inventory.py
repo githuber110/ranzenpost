@@ -256,7 +256,7 @@ async def test_the_entity_set_is_complete_in_both_scenarios(hass, aioclient_mock
         "calendar": ("lessons", "exams", "absences"),
         "event": ("timetable_changed",),
     }
-    school_keys = {"sensor": ("next_holiday", "next_conference", "connection"), "calendar": ("holidays",)}
+    school_keys = {"sensor": ("next_holiday", "next_free_day", "next_conference", "connection"), "calendar": ("holidays",)}
     expected = {
         f"{platform}.{child}_{key}" for child in (ALEX, KIM) for platform, keys in child_keys.items() for key in keys
     } | {f"{platform}.{SCHOOL}_{key}" for platform, keys in school_keys.items() for key in keys}

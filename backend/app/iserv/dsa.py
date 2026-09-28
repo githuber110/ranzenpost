@@ -1,4 +1,8 @@
+import copy
+import hashlib
+import json
 import re
+import threading
 import unicodedata
 from dataclasses import dataclass, field
 
@@ -31,6 +35,10 @@ TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 EXPIRED_STATUS = 401
 NAME_WORD_CATEGORIES = ("L", "M", "N")
+SHARED_READ_PATHS = ("timetable-slots/", "school-settings/")
+SHARED_READ_SECONDS = 120
+REGULAR_PLAN_SECONDS = 2 * 3600
+REGULAR_PLAN_TIMEOUT = 10
 
 
 def _request_filter(student_id=None):
@@ -151,11 +159,6 @@ def parse_children_from_me(payload):
             }
         )
     return children
-
-
-def class_for_name(students, name):
-    student = student_for_name(students, name)
-    return student.get("class_name", "") if student else ""
 
 
 def student_for_name(students, name):
@@ -310,13 +313,61 @@ def _int_setting(settings, key):
         return 0
 
 
+class SharedReads:
+    def __init__(self, clock, seconds=SHARED_READ_SECONDS):
+        self.clock = clock
+        self.seconds = seconds
+        self._lock = threading.Lock()
+        self._entries = {}
+
+    @staticmethod
+    def key(path, params):
+        return path, tuple(sorted((params or {}).items()))
+
+    def get(self, key):
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None or self.clock() - entry[0] >= self.seconds:
+                return None
+            return copy.deepcopy(entry[1])
+
+    def put(self, key, value):
+        with self._lock:
+            now = self.clock()
+            self._entries = {kept: entry for kept, entry in self._entries.items() if now - entry[0] < self.seconds}
+            self._entries[key] = (now, copy.deepcopy(value))
+
+    def clear(self):
+        with self._lock:
+            self._entries.clear()
+
+
+def answer_fingerprint(payload):
+    text = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def timetable_params(reference, course_ids, substitutions):
+    params = {
+        "date": query_date(reference),
+        "week": "true",
+        "substitutions": "true" if substitutions else "false",
+    }
+    selector = course_filter(course_ids)
+    if selector:
+        params["filterBy"] = selector
+    return params
+
+
 class DieSchulAppClient:
-    def __init__(self, base_url, session, timeout=30, on_expired=None, on_answered=None):
+    def __init__(self, base_url, session, timeout=30, on_expired=None, on_answered=None, shared=None, regular_plans=None):
         self.base_url = base_url.rstrip("/")
         self.session = session
         self.timeout = timeout
         self.on_expired = on_expired
         self.on_answered = on_answered
+        self.shared = shared
+        self.regular_plans = regular_plans
         self.last_status = 0
 
     def _checked(self, response):
@@ -340,7 +391,24 @@ class DieSchulAppClient:
         return data
 
     def _get(self, path, params=None):
-        response = self._checked(self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=self.timeout))
+        if self.shared is None or path not in SHARED_READ_PATHS:
+            return self._fetch(path, params)
+        return self._kept(self.shared, path, params)
+
+    def _kept(self, cache, path, params, key=None, timeout=None):
+        key = key or SharedReads.key(path, params)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        data = self._fetch(path, params, timeout)
+        if data is not None:
+            cache.put(key, data)
+        return data
+
+    def _fetch(self, path, params=None, timeout=None):
+        response = self._checked(
+            self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=timeout or self.timeout)
+        )
         if response.status_code == RATE_LIMIT_STATUS:
             raise rate_limit_outage(response)
         if response.status_code != 200:
@@ -357,15 +425,14 @@ class DieSchulAppClient:
         return self._get("users/me", {"fields": CHILDREN_FIELDS})
 
     def current_timetable(self, reference, course_ids, substitutions=False):
-        params = {
-            "date": query_date(reference),
-            "week": "true",
-            "substitutions": "true" if substitutions else "false",
-        }
-        selector = course_filter(course_ids)
-        if selector:
-            params["filterBy"] = selector
-        return self._get(CURRENT_TIMETABLE_PATH, params)
+        return self._get(CURRENT_TIMETABLE_PATH, timetable_params(reference, course_ids, substitutions))
+
+    def regular_timetable(self, reference, course_ids, current=None):
+        params = timetable_params(reference, course_ids, False)
+        if self.regular_plans is None:
+            return self._fetch(CURRENT_TIMETABLE_PATH, params, REGULAR_PLAN_TIMEOUT)
+        key = SharedReads.key(CURRENT_TIMETABLE_PATH, params) + (answer_fingerprint(current),)
+        return self._kept(self.regular_plans, CURRENT_TIMETABLE_PATH, params, key, REGULAR_PLAN_TIMEOUT)
 
     def school(self):
         return parse_school(self._get("schools/"))
@@ -375,6 +442,18 @@ class DieSchulAppClient:
         if isinstance(data, list):
             return data[0] if data else {}
         return data or {}
+
+    def school_settings_or_raise(self):
+        data = self._require("school-settings/")
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        if not isinstance(data, dict):
+            raise DataError(
+                "school app answered settings in an unknown shape",
+                message_key=SCHOOL_APP_UNREADABLE_KEY,
+                detail={"path": "school-settings/"},
+            )
+        return data
 
     def services(self):
         return self._get("services/") or []

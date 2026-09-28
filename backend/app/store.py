@@ -459,20 +459,6 @@ class Store:
         self.edit_config(change)
         return added
 
-    def save_connection(self, entry):
-        wanted = str((entry or {}).get("id") or "")
-        found = []
-
-        def change(config):
-            for index, stored in enumerate(config["connections"]):
-                if stored["id"] == wanted:
-                    config["connections"][index] = normalize_connection(entry)
-                    found.append(index)
-                    return
-
-        self.edit_config(change)
-        return bool(found)
-
     def update_connection(self, connection_id, **fields):
         updated = {}
 
@@ -552,12 +538,6 @@ class Store:
         for entry in self.connections():
             listed.extend(children_of_connection(entry))
         return listed
-
-    def find_child(self, key):
-        for child in self.children():
-            if child["key"] == key:
-                return child
-        return None
 
     def connection_store(self, connection_id):
         return ConnectionStore(self, connection_id)

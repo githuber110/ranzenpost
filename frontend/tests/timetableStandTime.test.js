@@ -22,7 +22,7 @@ describe("timetable 'Stand' line shows the time when IServ sends one", () => {
     expect(stamp).toBe("Stand 22.07.2026");
   });
 
-  test("showDateTime never reads the value through UTC — a plain Date built from the local fields", () => {
+  test("showDateTime builds a plain Date from the local fields, never through UTC", () => {
     const { window } = loadApp();
     const result = window.eval("showDateTime('01.03.2026 23:50')");
     expect(result).toBe("01.03.2026 23:50");

@@ -21,9 +21,8 @@ describe("weekly repeat asks for an end date", () => {
     const wz = openWizard(window, "deregister", DEREGISTER);
     wz.form.repeat = "weekly";
     const entry = window.eval("absenceProblemEntry(state.absenceForm, state.absence.data)");
-    expect(entry.text).toBe("Bitte ein Enddatum für die Wiederholung wählen.");
+    expect(entry.text).toBe("Bitte wähle ein Enddatum für die Wiederholung.");
     expect(entry.step).toBe("repeatUntil");
-    expect(window.eval("absenceProblem(state.absenceForm, state.absence.data)")).toBe(entry.text);
   });
 
   test("deregister: an end date before the start date is rejected too", () => {

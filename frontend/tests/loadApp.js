@@ -23,6 +23,14 @@ const colourJs = fs.readFileSync(path.join(frontendDir, "colour.js"), "utf8");
 const appJs = fs.readFileSync(path.join(frontendDir, "app.js"), "utf8");
 const baseMessages = fs.readFileSync(path.join(frontendDir, "i18n", "de.json"), "utf8");
 
+export function evalWith(window, code, ...values) {
+  const own = values.map((value) =>
+    value === undefined || typeof value === "function" ? value : window.JSON.parse(JSON.stringify(value))
+  );
+  const run = window.eval("(function (testArgs, testCode) { return eval(testCode); })");
+  return run(own, code);
+}
+
 function extractHead(html) {
   const match = /<head>([\s\S]*?)<\/head>/.exec(html);
   return match ? match[1] : "";

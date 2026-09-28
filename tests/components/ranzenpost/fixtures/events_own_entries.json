@@ -12,7 +12,8 @@
     "subject_code": "",
     "subject": "",
     "name": "",
-    "kind": "own_entries"
+    "kind": "own_entries",
+    "teacher": ""
   },
   {
     "uid": "own-20260903-e2@sample",
@@ -27,6 +28,7 @@
     "subject_code": "",
     "subject": "",
     "name": "",
-    "kind": "own_entries"
+    "kind": "own_entries",
+    "teacher": ""
   }
 ]

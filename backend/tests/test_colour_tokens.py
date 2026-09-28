@@ -97,7 +97,7 @@ def test_every_allowed_literal_is_still_there_and_carries_a_reason():
         assert len(reason.split()) >= 8, f"{name} {selector}: the reason must let a reader weigh it"
 
 
-def test_the_colour_guard_still_bites():
+def test_the_colour_guard_flags_hardcoded_colours():
     planted = ".x {\n  color: #fff;\n}\n.y {\n  background: rgb(1, 2, 3);\n}\n.z {\n  border-color: white;\n}\n"
     assert len(offenders_in("planted.css", planted)) == 3
     assert offenders_in("planted.css", ".x {\n  color: var(--ink, #fff);\n}\n") == []

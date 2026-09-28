@@ -17,11 +17,10 @@ function renderGreetingHeadline(window, forename, fixedIso) {
   return run(forename, fixedIso);
 }
 
-describe("Begruessung: Klassenkonflikt behoben, Vorname wieder sichtbar", () => {
+describe("greeting headline keeps its own class and shows the first name", () => {
   test("the greeting headline no longer shares its class with the unrelated .card.hero modifier", () => {
     const css = fs.readFileSync(path.resolve(dirname, "..", "styles.css"), "utf8");
 
-    expect(css).toMatch(/\.card\.hero\s*\{/);
     expect(css).not.toMatch(/\.card\.greeting\b/);
 
     const greetingSelectorMatches = css.match(/\.greeting\s*\{/g) || [];

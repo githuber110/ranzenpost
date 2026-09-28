@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { shippedScriptText } from "./shippedSources.js";
 
 function mockBlobResponse(window, { ok = true, disposition = "", type = "" } = {}) {
@@ -24,7 +24,7 @@ function trackDownloads(window) {
 }
 
 function tapAttachment(window, file) {
-  const rows = window.eval(`attachmentRows([${JSON.stringify(file)}])`);
+  const rows = evalWith(window, "attachmentRows([testArgs[0]])", file);
   window.document.body.append(rows);
   rows.querySelector(".row").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const choice = window.eval("state.sheet");
@@ -286,7 +286,7 @@ describe("structural tripwire: no target=_blank on our own api paths, no window 
     }
   });
 
-  test("the old 401-window path is gone for good: window.open is never called from a shipped script", async () => {
+  test("no shipped script calls window.open", async () => {
     const source = shippedScriptText();
     expect(source.includes("window.open(")).toBe(false);
     expect(source.includes(".location.replace(")).toBe(false);

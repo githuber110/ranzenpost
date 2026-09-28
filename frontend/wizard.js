@@ -289,7 +289,7 @@
         fields.username,
         el("label", { class: "wz-label" }, label("common.password")),
         fields.password,
-        el("div", { class: "wz-lock" }, [el("span", { class: "wz-lock-icon" }, "🔒"), label("wizard.login.privacy")]),
+        el("div", { class: "wz-lock" }, [el("span", { class: "wz-lock-icon", "aria-hidden": "true", html: window.RanzenpostDom.iconSvg("lock", 16) }), label("wizard.login.privacy")]),
       ];
     }
 

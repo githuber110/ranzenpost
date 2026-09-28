@@ -40,8 +40,6 @@ def test_children_carry_connection_id_and_key(tmp_path):
     assert [child["key"] for child in listed] == [child_key(one["id"], "c1"), child_key(two["id"], "c1")]
     assert listed[0]["connection_id"] == one["id"]
     assert listed[1]["name"] == "Alice Other"
-    assert store.find_child(child_key(two["id"], "c1"))["name"] == "Alice Other"
-    assert store.find_child("missing:c1") is None
 
 
 @pytest.mark.skipif(os.name != "posix", reason="file mode bits are not meaningful on this OS")

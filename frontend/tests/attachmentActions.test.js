@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function mockBlobResponse(window, type = "application/pdf") {
   window.URL.createObjectURL = () => "blob:mock-url";
@@ -22,7 +22,7 @@ function trackDownloads(window) {
 }
 
 function tapAttachment(window, file) {
-  const rows = window.eval(`attachmentRows([${JSON.stringify(file)}])`);
+  const rows = evalWith(window, "attachmentRows([testArgs[0]])", file);
   window.document.body.append(rows);
   rows.querySelector(".row").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   return rows.querySelector(".row");

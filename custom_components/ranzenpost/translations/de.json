@@ -2,7 +2,7 @@
   "config": {
     "flow_title": "Ranzenpost",
     "create_entry": {
-      "default": "Fertig. Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
+      "default": "Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
     },
     "step": {
       "hassio_confirm": {
@@ -163,7 +163,10 @@
         "name": "Stundenplan zuletzt aktualisiert"
       },
       "next_holiday": {
-        "name": "Nächste Ferien"
+        "name": "Nächste Schulferien"
+      },
+      "next_free_day": {
+        "name": "Nächster freier Tag"
       },
       "next_conference": {
         "name": "Nächster Elternsprechtag"
@@ -232,7 +235,7 @@
     },
     "no_school_yet": {
       "title": "Noch keine Schule angemeldet",
-      "description": "Fertig. Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
+      "description": "Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
     }
   }
 }

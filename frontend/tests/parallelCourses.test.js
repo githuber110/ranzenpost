@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const CHILD = "s1:c1";
 const ELECTIVES = [
@@ -41,7 +41,7 @@ function week(chosen) {
 }
 
 function withChild(window) {
-  window.eval(`state.children = [{ key: "${CHILD}", child_id: "c1", connection_id: "s1", name: "Kim Muster", class_name: "9x" }]; state.childId = "${CHILD}";`);
+  evalWith(window, 'state.children = [{ key: testArgs[0], child_id: "c1", connection_id: "s1", name: "Kim Muster", class_name: "9x" }]; state.childId = testArgs[1];', CHILD, CHILD);
 }
 
 function renderGrid(window, data) {
@@ -62,7 +62,7 @@ function renderTodayAt(window, fixedIso, data) {
       Date = FixedDate;
       state.weekOffset = 0;
       state.timetable = week;
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })
@@ -86,10 +86,10 @@ const catalogue = {
 
 function renderCoursesPage(window, data) {
   withChild(window);
-  return window.eval(`(function (data) {
-    state.coursesPage = { child: "${CHILD}", data, failed: false, draft: null, search: "", saving: false, from: "settings" };
+  return evalWith(window, `(function (data) {
+    state.coursesPage = { child: testArgs[0], data, failed: false, draft: null, search: "", saving: false, from: "settings" };
     return coursesPageView();
-  })`)(data);
+  })`, CHILD)(data);
 }
 
 describe("parallel courses in the timetable grid", () => {
@@ -295,12 +295,12 @@ describe("course choice page", () => {
 describe("course setting row", () => {
   function rows(window, config, weekData) {
     withChild(window);
-    return window.eval(`(function (config, weekData) {
+    return evalWith(window, `(function (config, weekData) {
       state.config = config;
-      state.overviewWeeks = { "${CHILD}": { 0: weekData } };
+      state.overviewWeeks = { [testArgs[0]]: { 0: weekData } };
       state.timetable = null;
       return courseSettingRows("s1").map((row) => [row.querySelector(".lbl").textContent, row.querySelector(".val").textContent]);
-    })`)(config, weekData);
+    })`, CHILD)(config, weekData);
   }
 
   test("appears only for a child whose plan has parallel courses or a stored choice", () => {

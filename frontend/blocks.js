@@ -46,10 +46,6 @@
     return block[sizeOf(block, size)];
   }
 
-  function hasContent(items) {
-    return Array.isArray(items) && items.length > 0;
-  }
-
   function shownItems(block, size, items) {
     const list = Array.isArray(items) ? items : [];
     const limit = limitOf(block, size);
@@ -114,24 +110,19 @@
 
   window.RanzenpostBlocks = {
     SIZE_COMPACT,
-    SIZE_NORMAL,
     SIZES,
-    AREA_OVERVIEW,
     AREA_MODULES,
     DEFAULT_NAVIGATION,
     BAR_LIMIT,
     BLOCK_SEARCH_FROM,
     MORE_KEY,
     BLOCK_CATALOGUE,
-    DEFAULT_OVERVIEW_KEYS,
     blockOf,
     blockKeys,
     sizeOf,
     limitOf,
-    hasContent,
     shownItems,
     offeredBlocks,
-    defaultOverviewBlocks,
     normalizeOverviewBlocks,
     hiddenBlocks,
     normalizeNavigation,

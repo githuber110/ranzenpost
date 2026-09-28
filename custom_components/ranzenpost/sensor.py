@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .api import Absence, Exam, Info, Lesson, School, SchoolInfo, State
+from .api import Absence, Exam, Holiday, Info, Lesson, School, SchoolInfo, State
 from .const import (
     ATTR_ABSENCES,
     ATTR_CHANGES,
@@ -45,6 +45,7 @@ from .const import (
     KEY_NEXT_CONFERENCE,
     KEY_NEXT_ABSENCE,
     KEY_NEXT_EXAM,
+    KEY_NEXT_FREE_DAY,
     KEY_NEXT_HOLIDAY,
     KEY_NEXT_LESSON,
     KEY_NEXT_SCHOOL_DAY,
@@ -102,8 +103,7 @@ def _conference_moment(school: School, info: Info) -> datetime | None:
     return datetime.combine(school.next_conference.date, datetime.min.time(), tzinfo=zone)
 
 
-def _holiday_attributes(school: School) -> dict[str, Any]:
-    holiday = school.next_holiday
+def _holiday_attributes(holiday: Holiday | None) -> dict[str, Any]:
     if holiday is None:
         return {}
     return {ATTR_START: holiday.start.isoformat(), ATTR_END: holiday.end.isoformat(), ATTR_DAYS_UNTIL: holiday.days_until}
@@ -233,7 +233,12 @@ SCHOOL_SENSORS: tuple[SchoolSensorDescription, ...] = (
     SchoolSensorDescription(
         key=KEY_NEXT_HOLIDAY,
         value_fn=lambda school, listed, info: school.next_holiday.name if school.next_holiday else STATE_NONE,
-        attributes_fn=lambda school, listed, info: _holiday_attributes(school),
+        attributes_fn=lambda school, listed, info: _holiday_attributes(school.next_holiday),
+    ),
+    SchoolSensorDescription(
+        key=KEY_NEXT_FREE_DAY,
+        value_fn=lambda school, listed, info: school.next_free_day.name if school.next_free_day else STATE_NONE,
+        attributes_fn=lambda school, listed, info: _holiday_attributes(school.next_free_day),
     ),
     SchoolSensorDescription(
         key=KEY_NEXT_CONFERENCE,

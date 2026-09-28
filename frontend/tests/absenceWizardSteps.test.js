@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { openWizard } from "./absenceWizard.js";
 
 const SICK_DATA = {
@@ -73,7 +73,7 @@ describe("leave wizard: prefilled subject and the reasoning hint", () => {
   test("the subject step carries the date-specific text as a real value, not a placeholder", () => {
     const { window } = loadApp();
     const wz = openWizard(window, "leave", { children: [{ id: 1 }], types: ["leave"], rules: {} });
-    const expected = window.eval(`showDate(${JSON.stringify(wz.form.from_date)})`);
+    const expected = evalWith(window, "showDate(testArgs[0])", wz.form.from_date);
     wz.go("leaveSubject");
     const input = wz.body.querySelector('input[aria-label="Betreff"]');
     expect(input.value).toBe(`z. B. Beurlaubung am ${expected}`);

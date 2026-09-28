@@ -308,7 +308,8 @@ def test_a_setup_finished_without_a_chosen_child_still_knows_the_children(tmp_pa
     assert [child["child_id"] for child in stored] == ["500001"]
     key = service.child_key("500001")
     assert known_child(store.load_config(), key) is True
-    assert SubscriptionRegistry(store).create(key, ["timetable"], require_region=False)["child_key"] == key
+    store.update_connection(key.split(":")[0], holiday_region="DE-NI")
+    assert SubscriptionRegistry(store).create(key, ["timetable"])["child_key"] == key
 
 
 def test_a_child_the_app_already_knows_is_not_stored_twice(tmp_path):

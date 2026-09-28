@@ -2,7 +2,7 @@
   "config": {
     "flow_title": "Ranzenpost",
     "create_entry": {
-      "default": "Done. Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+      "default": "Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
     },
     "step": {
       "hassio_confirm": {
@@ -163,7 +163,10 @@
         "name": "Timetable last updated"
       },
       "next_holiday": {
-        "name": "Next holiday"
+        "name": "Next school holidays"
+      },
+      "next_free_day": {
+        "name": "Next free day"
       },
       "next_conference": {
         "name": "Next parent-teacher conference"
@@ -232,7 +235,7 @@
     },
     "no_school_yet": {
       "title": "No school signed in yet",
-      "description": "Done. Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+      "description": "Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
     }
   }
 }

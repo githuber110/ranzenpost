@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function settingsView(window, config) {
   return window.eval(`
@@ -11,7 +11,7 @@ function settingsView(window, config) {
 }
 
 function label(window, key) {
-  return window.eval(`t(${JSON.stringify(key)})`);
+  return evalWith(window, "t(testArgs[0])", key);
 }
 
 const CONFIG = {

@@ -57,6 +57,49 @@ describe("week view", () => {
     expect(root.querySelector(".tt-hol")).toBeNull();
   });
 
+  it("shows three or more parallel courses as one course tile like the app", async () => {
+    const lesson = (uid, code, subject) => ({
+      uid, summary: subject, description: "", location: "R1", start: "2026-09-03T08:00:00+02:00", end: "2026-09-03T08:45:00+02:00",
+      all_day: false, cancelled: false, color: "#3366cc", subject_code: code, subject,
+    });
+    const three = makeHass({ events: { lessons: [lesson("a@s", "BI", "Biology"), lesson("b@s", "CH", "Chemistry"), lesson("c@s", "PH", "Physics")] } });
+    const card = await mountCard({ view: "week", child: "alex" }, three);
+    const tile = card.shadowRoot.querySelector(".tt-cell.courses");
+    expect(tile.querySelector(".count").textContent).toBe("3");
+    expect(tile.querySelector(".courses-label").textContent).toBe("Kurse");
+    expect(tile.getAttribute("aria-label")).toBe("Parallele Kurse: 3");
+    expect(card.shadowRoot.querySelector(".tt-stack")).toBeNull();
+
+    customElements.get("ranzenpost-card").resetCaches();
+    const two = makeHass({ events: { lessons: [lesson("a@s", "BI", "Biology"), lesson("b@s", "CH", "Chemistry")] } });
+    const pair = await mountCard({ view: "week", child: "alex" }, two);
+    expect(pair.shadowRoot.querySelectorAll(".tt-stack .tt-cell")).toHaveLength(2);
+    expect(pair.shadowRoot.querySelector(".tt-cell.courses")).toBeNull();
+  });
+
+  it("marks only the subject of an exam when two lessons share the period", async () => {
+    const lesson = (uid, code, subject) => ({
+      uid, summary: subject, description: "", location: "R1", start: "2026-09-03T08:00:00+02:00", end: "2026-09-03T08:45:00+02:00",
+      all_day: false, cancelled: false, color: "#3366cc", subject_code: code, subject,
+    });
+    const hass = makeHass({ events: { lessons: [lesson("bio@sample", "BI", "Biology"), lesson("chem@sample", "CH", "Chemistry")] } });
+    const card = await mountCard({ view: "week", child: "alex" }, hass);
+    const marked = [...card.shadowRoot.querySelectorAll(".tt-cell.marked")].map((cell) => cell.dataset.uid);
+    expect(marked).toEqual(["bio@sample"]);
+  });
+
+  it("gives each tile the name, room and teacher for larger sizes and keeps the code for small ones", async () => {
+    const card = await mountCard({ view: "week", child: "alex" }, makeHass());
+    const cell = card.shadowRoot.querySelector('.tt-cell[data-uid="lesson-20260902-p1@sample"]');
+    expect(cell.querySelector(".sub").textContent).toBe("MA");
+    expect(cell.querySelector(".lname").textContent).toBe("Maths");
+    expect(cell.querySelector(".lroom").textContent).toBe("R101");
+    expect(cell.querySelector(".lteacher").textContent).toBe("Example");
+    const cancelled = card.shadowRoot.querySelector('.tt-cell[data-uid="lesson-20260902-p4@sample"]');
+    expect(cancelled.querySelector(".lroom")).toBeNull();
+    expect(cancelled.querySelector(".room")).not.toBeNull();
+  });
+
   it("colours the subjects, strikes cancelled lessons with the cross and marks exams", async () => {
     const card = await mountCard({ view: "week", child: "alex" }, makeHass());
     const root = card.shadowRoot;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
@@ -15,16 +15,16 @@ const TEACHER = { value: "userid:22222222-3333-4444-5555-666666666666", label: "
 
 function seed(window, { schools = 2, children = [MIA], teacherSchools = [ONE, TWO], extra = "" } = {}) {
   const connections = CONNECTIONS.slice(0, schools);
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(connections)}, language: "de", notify_services: [] };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(children[0] ? children[0].key : null)};
-    state.schools = ${JSON.stringify(connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true, children: 0 })))};
+  evalWith(window, `
+    state.config = { connections: testArgs[0], language: "de", notify_services: [] };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
+    state.schools = testArgs[3];
     state.schoolStatus = {};
     state.loadedAt = {};
-    state.messengerRooms = { rooms: [], can_write_to_teacher: true, teacher_schools: ${JSON.stringify(teacherSchools)}, self_user_ids: {} };
-    ${extra}
-  `);
+    state.messengerRooms = { rooms: [], can_write_to_teacher: true, teacher_schools: testArgs[4], self_user_ids: {} };
+  `, connections, children, children[0] ? children[0].key : null, connections.map((entry) => ({ id: entry.id, name: entry.school_name, status: "ok", setup_complete: true, children: 0 })), teacherSchools);
+  evalWith(window, ...[].concat(extra));
 }
 
 function stubFetch(window, answer) {
@@ -43,7 +43,7 @@ const settle = async () => {
 };
 
 function label(window, key) {
-  return window.eval(`t(${JSON.stringify(key)})`);
+  return evalWith(window, "t(testArgs[0])", key);
 }
 
 function sheetOptions(window) {
@@ -104,8 +104,8 @@ describe("writing to a teacher asks for the school when two schools allow it", (
     window.eval("queueTeacherSearch('Zwe')");
     window.eval("window.clearTimeout(teacherSearchTimer); runTeacherSearch('Zwe')");
     await settle();
-    window.eval(`chooseTeacher(${JSON.stringify(TEACHER)})`);
-    window.eval(`state.teacherRoom.childIds = [${JSON.stringify(FORM_CHILD.id)}]`);
+    evalWith(window, "chooseTeacher(testArgs[0])", TEACHER);
+    evalWith(window, "state.teacherRoom.childIds = [testArgs[0]]", FORM_CHILD.id);
     await window.eval("submitTeacherRoom()");
     await settle();
     const paths = calls.map(([path]) => path);
@@ -120,9 +120,9 @@ describe("writing to a teacher asks for the school when two schools allow it", (
     const { window } = loadApp();
     seed(window);
     stubFetch(window, answerMessenger);
-    window.eval(`openTeacherRoom(${JSON.stringify(TWO)})`);
+    evalWith(window, "openTeacherRoom(testArgs[0])", TWO);
     await settle();
-    window.eval(`chooseTeacher(${JSON.stringify(TEACHER)})`);
+    evalWith(window, "chooseTeacher(testArgs[0])", TEACHER);
     expect(window.eval("teacherRoomReviewBody().textContent")).toContain("Hillview School");
   });
 
@@ -156,12 +156,12 @@ describe("absences name their school", () => {
 
   test("withdrawing sends the school of the loaded overview, not the first school", async () => {
     const { window } = loadApp();
-    seed(window, { children: [], extra: `state.absenceSchool = ${JSON.stringify(TWO)};` });
+    seed(window, { children: [], extra: ["state.absenceSchool = testArgs[0];", TWO] });
     const calls = stubFetch(window, () => ({ ok: true }));
-    window.eval(`
-      state.absence = { data: { children: [{ id: 1, name: "Lena" }], rules: {} }, connectionId: ${JSON.stringify(TWO)} };
+    evalWith(window, `
+      state.absence = { data: { children: [{ id: 1, name: "Lena" }], rules: {} }, connectionId: testArgs[0] };
       openAbsenceSheet({ id: 7, kind: "leave", student_id: 1, label: "Beurlaubungsantrag", deletable: true });
-    `);
+    `, TWO);
     window.eval("state.sheet().querySelector('.sheet .btn.destructive').click()");
     await settle();
     window.eval("state.sheet().querySelector('.sheet .btn.destructive').click()");
@@ -175,7 +175,7 @@ describe("the school row tells a refused child list apart", () => {
   test("a school whose account lists no children says so instead of zero profiles", () => {
     const { window } = loadApp();
     seed(window, { children: [MIA] });
-    window.eval(`state.schools = state.schools.map((row) => Object.assign({}, row, { children_state: row.id === ${JSON.stringify(TWO)} ? "refused" : "listed" }))`);
+    evalWith(window, 'state.schools = state.schools.map((row) => Object.assign({}, row, { children_state: row.id === testArgs[0] ? "refused" : "listed" }))', TWO);
     const rows = window.eval("connections().map(schoolRow)");
     expect(rows[1].querySelector(".val").textContent).toBe(label(window, "schools.children.refused"));
     expect(rows[0].querySelector(".val").textContent).not.toBe(label(window, "schools.children.refused"));
@@ -184,7 +184,7 @@ describe("the school row tells a refused child list apart", () => {
   test("an unreadable child list is shown as a warning", () => {
     const { window } = loadApp();
     seed(window, { children: [MIA] });
-    window.eval(`state.schools = state.schools.map((row) => Object.assign({}, row, { children_state: row.id === ${JSON.stringify(TWO)} ? "unreadable" : "listed" }))`);
+    evalWith(window, 'state.schools = state.schools.map((row) => Object.assign({}, row, { children_state: row.id === testArgs[0] ? "unreadable" : "listed" }))', TWO);
     const row = window.eval("connections().map(schoolRow)")[1];
     expect(row.querySelector(".val.warn").textContent).toBe(label(window, "schools.children.unreadable"));
   });
@@ -206,7 +206,7 @@ describe("checking the modules again names its schools", () => {
 
   test("the school page checks its own school and keeps the merged modules of both schools", async () => {
     const { window } = loadApp();
-    seed(window, { extra: `state.settingsSchoolId = ${JSON.stringify(TWO)};` });
+    seed(window, { extra: ["state.settingsSchoolId = testArgs[0];", TWO] });
     const calls = stubFetch(window, (path) => (path === "api/modules" ? MERGED : { ok: true, message_key: "api.modules.rechecked", modules: SECOND_ONLY }));
     await window.eval("recheckModules()");
     await settle();
@@ -235,7 +235,7 @@ describe("the sick note pdf names its school", () => {
       requested.push(String(url));
       return Promise.resolve({ ok: true, headers: { get: () => "" }, blob: () => Promise.resolve(new window.Blob(["x"])) });
     };
-    window.eval(`state.absence = { data: { children: [], rules: {} }, connectionId: ${JSON.stringify(TWO)} }`);
+    evalWith(window, "state.absence = { data: { children: [], rules: {} }, connectionId: testArgs[0] }", TWO);
     const block = window.eval("sickNotePdfBlock({ id: 42, kind: 'sick' })");
     block.querySelector("button").click();
     await settle();

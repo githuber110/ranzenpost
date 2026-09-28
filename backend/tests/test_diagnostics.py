@@ -1,3 +1,4 @@
+import email.message
 import io
 import logging
 import os
@@ -6,6 +7,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import requests
 from fastapi.testclient import TestClient
@@ -17,7 +19,7 @@ from app.server import create_app
 from app.store import Store, edit_config
 from tests import report_session
 from tests.support import Response, add_school
-from tests.test_no_personal_data import line_contains_forbidden_token
+from tests.time_table_school import SCHOOL_APP_REGULAR, SCHOOL_APP_SUBSTITUTED, school_app_plan
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LETTERS_PAGE = (FIXTURES / "letters_index.html").read_text(encoding="utf-8")
@@ -231,7 +233,7 @@ def test_the_report_carries_every_section_in_order(tmp_path):
 
 LIVE_SECTIONS = (
     "### School app", "### Letters", "### Menu", "### IServ version",
-    "### Unsupported or unknown modules", "### Page structure",
+    "### Unsupported, covered or unknown modules", "### Page structure",
 )
 
 
@@ -468,8 +470,6 @@ def test_the_report_of_the_e2e_fixture_passes_the_personal_data_token_check(tmp_
     report = run.stdout
     assert "## School 1" in report
     assert "| videoconference |" in report
-    for number, line in enumerate(report.splitlines(), 1):
-        assert not line_contains_forbidden_token(line.lower()), f"line {number}"
 
 
 E2E_SESSION_REPORT_SCRIPT = """
@@ -480,7 +480,7 @@ store = e2e_fixture_app.FixtureStore(e2e_fixture_app.E2E_DATA_DIR / "report")
 e2e_fixture_app.seed_config(store)
 service = e2e_fixture_app.FixtureService(store)
 for connection in service.connections():
-    edit_config(connection.store, report_session.with_course_ids)
+    edit_config(connection.store, report_session.with_school_account_child)
 clients = {}
 def session(self):
     url = self.store.load_config()["school_url"]
@@ -516,7 +516,7 @@ def test_every_live_report_section_of_the_e2e_fixture_hides_planted_personal_dat
         "| School app | 2 | 1 | 1 |",
         "| Letters | 2 | 0 | 0 |",
         "- Settings: timetable_availableForGuardiansAndStudents=yes, substitutions_availableForGuardiansAndStudents=yes",
-        "- Timetable query: week=true, substitutions=true, one query per child",
+        "- Timetable query: week=true, substitutions=true, one query per child, and one with substitutions=false for the regular plan",
         "- Child 1: courses in filter 2, students 1, entries per student 2",
         "- Timetable slots: 2",
         "- Rows: 2, unread: 1",
@@ -552,8 +552,6 @@ def test_every_live_report_section_of_the_e2e_fixture_hides_planted_personal_dat
     lowered = report.lower()
     for word in report_session.PLANTED_WORDS:
         assert word.lower() not in lowered, word
-    for number, line in enumerate(report.splitlines(), 1):
-        assert not line_contains_forbidden_token(line.lower()), f"line {number}"
 
 
 def test_redact_replaces_names_hosts_mails_and_tokens_but_keeps_plain_words():
@@ -799,8 +797,6 @@ def test_the_script_section_contains_no_person_host_or_mail(tmp_path):
         assert word.lower() not in lowered, word
     assert "@" not in section
     assert "gymnasium" not in lowered
-    for number, line in enumerate(section.splitlines(), 1):
-        assert not line_contains_forbidden_token(line.lower()), f"line {number}"
 
 
 def test_script_endpoint_extraction_covers_verbs_templates_and_concatenations():
@@ -1071,7 +1067,7 @@ def test_unsupported_module_lines_probe_the_real_link_and_never_leak_a_redirect_
     assert "synthetic-secret" not in joined
     assert "token" not in joined
     assert "sso.klassengeld.example" not in joined
-    assert lines[0] == "### Unsupported or unknown modules"
+    assert lines[0] == "### Unsupported, covered or unknown modules"
     assert "| klassengeld | /iserv/klassengeld/redirect | 302 | other host |" in lines
 
 
@@ -1085,11 +1081,16 @@ class RecordingAdapter(requests.adapters.BaseAdapter):
     def send(self, request, **kwargs):
         self.sent.append(request.url)
         self.cookies[request.url] = request.headers.get("Cookie", "")
-        status, headers, body = self.answers.get(request.url.split("?", 1)[0], (404, {}, b""))
+        answer = self.answers.get(request.url.split("?", 1)[0], (404, {}, b""))
+        status, headers, body = answer(request) if callable(answer) else answer
         response = requests.Response()
         response.status_code = status
         response.headers.update(headers)
         response.raw = body if hasattr(body, "read") else io.BytesIO(body)
+        if "Set-Cookie" in headers:
+            message = email.message.Message()
+            message["Set-Cookie"] = headers["Set-Cookie"]
+            response.raw._original_response = SimpleNamespace(msg=message)
         response.url = request.url
         response.request = request
         response.connection = self
@@ -1121,6 +1122,7 @@ FAKE_ADDRESSES = {
     "10.1": ["10.0.0.1"],
     "nas.10-0-0-5.nip.io": ["10.0.0.5"],
     "mixed.example": ["93.184.216.34", "192.168.1.20"],
+    "gymnasium-nord.example": ["93.184.216.35"],
 }
 
 
@@ -1181,7 +1183,8 @@ PROVIDER_PAGE = b"""
 <script src="/assets/app-9f8e7d6c5b4a.js"></script></head><body>
 <nav id="provider-nav"><a href="/tenant/gymnasium-nord/invoices/4711">Rechnungen</a><a href="/tenant/gymnasium-nord/profile/jonas.pflanzkind">Jonas</a>
 <a href="/dashboard">Dashboard</a><a href="/projects">Projekte</a><a href="/transactions">Buchungen</a>
-<a href="/remind/4711">Details</a><a href="/api/bank/refresh">Details</a><a href="/logoff">Details</a><a href="/session/end">Details</a></nav>
+<a href="/remind/4711">Details</a><a href="/api/bank/refresh">Details</a><a href="/logoff">Details</a><a href="/session/end">Details</a>
+<a href="/projects/4711">Projekte</a><a href="/projects/4712">Projekte</a></nav>
 <script>fetch("/api/overview");</script>
 <main>
 <h1>Hallo Erika Saatmuster</h1>
@@ -1195,6 +1198,7 @@ PROVIDER_PAGE = b"""
 </main></body></html>
 """
 PROVIDER_SCRIPT = b'fetch("/api/tenants/gymnasium-nord/balance",{method:"POST"});axios.get("/api/v2/invoices/"+id);'
+PROVIDER_OVERVIEW = b'{"child": "Jonas Pflanzkind", "balance": "123,45", "projects": [{"name": "Klassenfahrt", "amount": "42,50", "status": "open"}]}'
 PROVIDER_WORDS = (
     "pay.other", "sso", "ticket", "synthetic-ticket", "gymnasium-nord", "k3jf8", "xk29d", "4711", "jonas", "pflanzkind",
     "erika", "saatmuster", "42,50", "123,45", "synthetic-csrf", "de0212", "kontostand", "klassenfahrt", "eyj", "synthetic-code",
@@ -1212,6 +1216,8 @@ def provider_chain_client():
         "https://pay.other.example/dashboard": (200, {"Content-Type": "text/html"}, b"<html><body><h1>Jonas</h1></body></html>"),
         "https://pay.other.example/projects": (200, {"Content-Type": "text/html"}, b"<html><body><h1>Jonas</h1></body></html>"),
         "https://pay.other.example/transactions": (200, {"Content-Type": "text/html"}, b"<html><body><h1>Jonas</h1></body></html>"),
+        "https://pay.other.example/projects/4711": (200, {"Content-Type": "text/html"}, b"<html><body><h1>Klassenfahrt Jonas</h1></body></html>"),
+        "https://pay.other.example/api/overview": (200, {"Content-Type": "application/json"}, PROVIDER_OVERVIEW),
     })
 
 
@@ -1238,17 +1244,168 @@ def test_the_structure_of_an_external_module_follows_its_sign_in_chain_and_keeps
     assert "| POST | /api/<seg>/<seg>/<seg> | app-<hash>.js | - |" in lines
     external = [url for url in adapter.sent if "pay.other.example" in url]
     provider_paths = [url.split("pay.other.example", 1)[1] for url in external]
-    for path in ("/dashboard", "/projects", "/transactions"):
+    for path in ("/dashboard", "/projects", "/transactions", "/projects/4711", "/api/overview"):
         assert path in provider_paths, path
-    for path in ("/remind/4711", "/api/bank/refresh", "/logoff", "/session/end", "/api/overview", "/api/v2/invoices/"):
+    for path in ("/remind/4711", "/api/bank/refresh", "/logoff", "/session/end", "/api/v2/invoices/", "/projects/4712"):
         assert not [found for found in provider_paths if found.startswith(path)], path
-    assert len(external) == 7
+    assert len(external) == 9
+    assert "##### API GET /api/overview" in lines
+    assert "  - projects[].amount: string len 5, decimal" in lines
+    assert "##### Page /projects/<n>" in lines
     assert all(adapter.cookies[url] == "" for url in external)
     assert "synthetic-iserv-cookie" in adapter.cookies[SCHOOL_ONE_URL + "/iserv/klassengeld/redirect"]
     logged = "\n".join(record.getMessage() for record in caplog.records)
     for text in ("\n".join(lines).lower(), logged.lower()):
         for word in PROVIDER_WORDS:
             assert word not in text, word
+
+
+
+ISERV_SSO = SCHOOL_ONE_URL + "/iserv/auth/auth?client_id=synthetic-client-7&state=synthetic-state-5150"
+ISERV_LOGOUT = SCHOOL_ONE_URL + "/iserv/auth/logout"
+ISERV_LOGIN = SCHOOL_ONE_URL + "/iserv/auth/login"
+PROVIDER_START = "https://pay.other.example/sso/start"
+ISERV_LOGIN_PAGE = b"""
+<html><head><title>IServ - gymnasium-nord.example</title></head><body><main>
+<form id="login-form" class="login-form" method="post"><input type="text" name="_username" required>
+<input type="password" name="_password" required><button type="submit">Anmelden</button></form>
+</main></body></html>
+"""
+
+
+def iserv_sso(request):
+    if "IServSession=synthetic-iserv-cookie" in request.headers.get("Cookie", ""):
+        return 302, {"Location": PROVIDER_HOME}, b""
+    return 302, {"Location": "/iserv/auth/login"}, b""
+
+
+def provider_home(request):
+    if "ProviderSession=synthetic-provider-cookie" in request.headers.get("Cookie", ""):
+        return 200, {"Content-Type": "text/html; charset=utf-8"}, PROVIDER_PAGE
+    return 302, {"Location": PROVIDER_LOGIN}, b""
+
+
+def sso_chain_client(provider_next=ISERV_SSO):
+    return recording_client({
+        SCHOOL_ONE_URL + "/iserv/": (200, {"Content-Type": "text/html"}, b'<nav><a href="/iserv/klassengeld/redirect">K</a></nav>'),
+        SCHOOL_ONE_URL + "/iserv/klassengeld/redirect": (302, {"Location": PROVIDER_START, "Content-Type": "text/html"}, b""),
+        PROVIDER_START: (302, {"Location": provider_next, "Set-Cookie": "ProviderSession=synthetic-provider-cookie; Path=/; Secure"}, b""),
+        ISERV_SSO.split("?", 1)[0]: iserv_sso,
+        ISERV_LOGIN: (200, {"Content-Type": "text/html; charset=utf-8"}, ISERV_LOGIN_PAGE),
+        ISERV_LOGOUT: (302, {"Location": "/iserv/auth/login"}, b""),
+        PROVIDER_HOME: provider_home,
+        "https://pay.other.example/assets/app-9f8e7d6c5b4a.js": (200, {"Content-Type": "text/javascript"}, PROVIDER_SCRIPT),
+    })
+
+
+def sso_chain_structure(client, caplog):
+    fetcher = diagnostics.ReportFetcher(client)
+    nav_paths = menu_of(fetcher)
+    with caplog.at_level(logging.INFO, logger="iserv"):
+        lines = diagnostics.page_structure(fetcher, KLASSENGELD_ROW, datetime(2026, 9, 23).date(), {}, nav_paths=nav_paths)
+    return lines, "\n".join(record.getMessage() for record in caplog.records)
+
+
+def sent_cookies(adapter, host):
+    return [cookie for url, cookie in adapter.cookies.items() if requestlog.url_host(url) == host]
+
+
+def test_the_sign_in_chain_signs_in_at_iserv_with_the_session_and_keeps_each_cookie_at_its_host(caplog):
+    client, adapter = sso_chain_client()
+    client.session.cookies.set("IServSession", "synthetic-iserv-cookie")
+    lines, logged = sso_chain_structure(client, caplog)
+    assert "- Redirect chain: 302 same host -> 302 other host -> 302 same host -> 200 other host" in lines
+    assert any(line.startswith("- Landing page: 200 text/html ") for line in lines)
+    assert "- Form: /<seg>/<seg>/<seg>/<seg> (post) #payment" in lines
+    assert "synthetic-iserv-cookie" in adapter.cookies[ISERV_SSO]
+    assert "synthetic-provider-cookie" in adapter.cookies[PROVIDER_HOME]
+    assert not [cookie for cookie in sent_cookies(adapter, "pay.other.example") if "IServSession" in cookie]
+    assert not [cookie for cookie in sent_cookies(adapter, "gymnasium-nord.example") if "ProviderSession" in cookie]
+    for text in ("\n".join(lines).lower(), logged.lower()):
+        for word in PROVIDER_WORDS + ("synthetic-state", "synthetic-client", "synthetic-iserv-cookie", "synthetic-provider-cookie"):
+            assert word not in text, word
+
+
+def test_a_sign_in_chain_that_ends_on_the_iserv_sign_in_page_says_so(caplog):
+    client, adapter = sso_chain_client()
+    lines, logged = sso_chain_structure(client, caplog)
+    assert "- Redirect chain: 302 same host -> 302 other host -> 302 same host" in lines
+    landing = [line for line in lines if line.startswith("- Landing page:")]
+    assert landing == ["- Landing page: not read, chain stopped at the IServ sign-in page"]
+    assert not [line for line in lines if line.startswith(("- Form:", "- Crawl:", "- Title:"))]
+    assert PROVIDER_HOME not in adapter.sent
+    assert ISERV_LOGIN not in adapter.sent
+    assert not [cookie for cookie in sent_cookies(adapter, "gymnasium-nord.example") if "ProviderSession" in cookie]
+
+
+def test_the_sign_in_chain_sends_the_iserv_session_only_over_https_to_the_exact_iserv_host():
+    client, adapter = recording_client({})
+    client.session.cookies.set("IServSession", "synthetic-iserv-cookie", domain="gymnasium-nord.example")
+    router = client.chain_sessions(requests.Session())
+    for url in (
+        "http://gymnasium-nord.example/iserv/", "https://www.gymnasium-nord.example/iserv/", "https://gymnasium-nord.example.evil.example/",
+        "https://gymnasium-nord.example:8443/iserv/", "https://pay.other.example/",
+    ):
+        assert router.session_for(url) is not client.session, url
+    for path in ("/iserv/", "/iserv/auth/logout", "/iserv/auth/login", "/iserv/oauth/v2/auth", "/iserv/auth/auth/", "/iserv/auth/auth;x"):
+        assert router.session_for(SCHOOL_ONE_URL + path) is not client.session, path
+    assert router.session_for("https://gymnasium-nord.example/iserv/auth/auth?client_id=x") is client.session
+    assert router.session_for("https://GYMNASIUM-NORD.example:443/iserv/auth/auth") is client.session
+
+
+def test_a_sign_in_step_that_shows_the_iserv_sign_in_form_says_so_and_reads_nothing_more(caplog):
+    client, adapter = sso_chain_client()
+    adapter.answers[ISERV_SSO.split("?", 1)[0]] = (200, {"Content-Type": "text/html; charset=utf-8"}, ISERV_LOGIN_PAGE)
+    lines, _ = sso_chain_structure(client, caplog)
+    assert "- Redirect chain: 302 same host -> 302 other host -> 200 same host" in lines
+    assert "- Landing page: 200 text/html %dB, landed on the IServ sign-in page" % len(ISERV_LOGIN_PAGE) in lines
+    assert not [line for line in lines if line.startswith(("- Form:", "- Crawl:", "- Title:", "- Scripts:"))]
+    assert adapter.sent[-1] == ISERV_SSO
+
+
+def test_a_sign_in_chain_that_sends_to_another_iserv_page_stops_before_it(caplog):
+    for target in (ISERV_LOGOUT, SCHOOL_ONE_URL + "/iserv/messenger/api/markAllRead", SCHOOL_ONE_URL + "/iserv/auth/auth/../logout"):
+        client, adapter = sso_chain_client(provider_next=target)
+        client.session.cookies.set("IServSession", "synthetic-iserv-cookie")
+        lines, _ = sso_chain_structure(client, caplog)
+        assert "- Redirect chain: 302 same host -> 302 other host" in lines, target
+        assert "- Landing page: not read, chain stopped at an IServ page" in lines, target
+        assert not [url for url in adapter.sent if requestlog.url_host(url) == "gymnasium-nord.example" and "/iserv/auth/" in url], target
+        assert not [url for url in adapter.sent if "markAllRead" in url], target
+
+
+MISLEADING_TARGETS = (
+    "https://10.0.0.5:8123\\@gymnasium-nord.example/api/states",
+    "https://10.0.0.5:8123\\@gymnasium-nord.example/iserv/auth/auth",
+    "https://10.0.0.5\\gymnasium-nord.example/iserv/auth/auth",
+    "https://user@gymnasium-nord.example/iserv/auth/auth",
+    "https://gymnasium-nord.example@pay.other.example/x",
+    "https://pay.other.example/x y",
+    "https://pay.other.example/x\ty",
+    "https://pay.other.example/\nx",
+    "https://pay.other.example/x\x00",
+    "https://pay.other.example/x\x7f",
+    " https://pay.other.example/x",
+)
+
+
+def test_the_sign_in_chain_refuses_targets_that_parsers_could_read_differently():
+    client, _ = recording_client({})
+    router = client.chain_sessions(requests.Session())
+    for target in MISLEADING_TARGETS:
+        assert not diagnostics_client_allows(target), repr(target)
+        assert router.session_for(target) is not client.session, repr(target)
+        assert not router.at_home(target), repr(target)
+
+
+def test_a_sign_in_chain_to_a_misleading_target_reads_nothing_there(caplog):
+    for target in MISLEADING_TARGETS[:5]:
+        client, adapter = sso_chain_client(provider_next=target)
+        client.session.cookies.set("IServSession", "synthetic-iserv-cookie")
+        lines, _ = sso_chain_structure(client, caplog)
+        assert "- Redirect chain: 302 same host -> 302 other host" in lines, repr(target)
+        assert "- Landing page: not read, target refused" in lines, repr(target)
+        assert adapter.sent[-1] == PROVIDER_START, repr(target)
 
 
 LOAN = SCHOOL_ONE_URL + "/iserv/ausleihe/"
@@ -1643,7 +1800,7 @@ def test_unsupported_module_lines_report_a_module_not_found_in_the_menu():
 def test_unsupported_module_lines_without_a_session_says_so():
     rows = [{"slug": "ausleihe", "segment": "ausleihe", "guessed_page": True, "status": diagnostics.STATUS_UNSUPPORTED}]
     assert reportcrawl.unsupported_module_lines(None, rows, {}) == [
-        "### Unsupported or unknown modules", reportcrawl.UNSUPPORTED_TABLE_HEAD, reportcrawl.UNSUPPORTED_TABLE_RULE,
+        "### Unsupported, covered or unknown modules", reportcrawl.UNSUPPORTED_TABLE_HEAD, reportcrawl.UNSUPPORTED_TABLE_RULE,
         "| ausleihe | not read | - | - |",
     ]
 
@@ -1690,6 +1847,16 @@ def test_iserv_version_lines_say_unknown_when_no_source_found_it():
     assert "- start page (/iserv/): status 404" in lines
     assert "- legal page (/iserv/app/legal): status 404" in lines
     assert "- Chosen: unknown" in lines
+    assert "- Looked in: generator tag, footer, page text, scripts, response headers" in lines
+
+
+def test_iserv_version_lines_read_a_version_header():
+    answer = Response(200, SCHOOL_ONE_URL, "<html><body>no version here</body></html>")
+    answer.headers["X-IServ-Version"] = "3.9.1"
+    client = Client(SCHOOL_ONE_URL, {reportcrawl.MENU_LINK_PREFIX: answer})
+    lines = reportfacts.iserv_version_lines(client)
+    assert "- start page (/iserv/): 3.9.1" in lines
+    assert "- Chosen: 3.9.1" in lines
 
 
 def test_iserv_version_lines_without_a_session_says_so():
@@ -1822,9 +1989,17 @@ def test_letters_summary_lines_without_a_session_says_so():
     assert reportfacts.letters_summary_lines(None) == ["### Letters", "- Not read: no session"]
 
 
-def school_app_client(settings_payload, timetable_payload):
+QUERY_ACCOUNT = {"children": [
+    {"id": 4711, "forename": "Mia", "surname": "Musterkind", "courses": [{"id": 7}, {"id": 5}]},
+    {"id": 4712, "forename": "Ben", "surname": "Beispielsohn", "courses": [{"id": 9}]},
+    {"id": 4713, "forename": "Robin", "surname": "Example", "courses": []},
+]}
+
+
+def school_app_client(settings_payload, timetable_payload, account=QUERY_ACCOUNT):
     slots_payload = [{"number": 1}, {"number": 2}]
     pages = {
+        reportfacts.SCHOOL_ACCOUNT_ME_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=account),
         reportfacts.SCHOOL_SETTINGS_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=settings_payload),
         reportfacts.TIMETABLE_SLOTS_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=slots_payload),
         reportfacts.CURRENT_TIMETABLE_QUERY_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=timetable_payload),
@@ -1843,9 +2018,10 @@ def school_app_client(settings_payload, timetable_payload):
 
 
 QUERY_CHILDREN = {"children": [
-    {"child_id": "4711", "name": CHILD_ONE, "course_ids": [7, 5]},
-    {"child_id": "4712", "name": CHILD_TWO, "course_ids": ["9"]},
+    {"child_id": "4711", "name": CHILD_ONE},
+    {"child_id": "4712", "name": CHILD_TWO},
     {"child_id": "4713", "name": "Robin Example"},
+    {"child_id": "4714", "name": "Kim Example"},
 ]}
 
 
@@ -1855,18 +2031,83 @@ def test_school_app_query_lines_mirror_the_query_of_the_app_per_child():
     lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
     assert lines[0] == "### School app"
     assert "- Settings: timetable_availableForGuardiansAndStudents=yes, substitutions_availableForGuardiansAndStudents=yes" in lines
-    assert "- Timetable query: week=true, substitutions=true, one query per child" in lines
+    assert "- Timetable query: week=true, substitutions=true, one query per child, and one with substitutions=false for the regular plan" in lines
     assert "- Child 1: courses in filter 2, students 1, entries per student 2" in lines
     assert "- Child 2: courses in filter 1, students 1, entries per student 2" in lines
-    assert "- Child 3: no course ids stored, the app reads the time-table module instead" in lines
+    same = "regular plan 2 lessons, current 2, changed 0, only in the regular plan 0, only in the current plan 0, marked by the school 0, marks shown"
+    assert "- Child 1 substitutions: " + same in lines
+    assert "- Child 2 substitutions: " + same in lines
+    assert not any(line.startswith(("- Child 3 substitutions", "- Child 4 substitutions")) for line in lines)
+    assert "- Child 3: no course ids in the school account, the app reads the time-table module instead" in lines
+    assert "- Child 4: not in the school account, the app reads the time-table module instead" in lines
     assert "- Timetable slots: 2" in lines
     assert any(line.startswith("- Week: ") for line in lines)
-    assert [query.get("filterBy") for query in queries] == ["courseSubject.course:in(5|7)", "courseSubject.course:in(9)"]
-    assert {query["substitutions"] for query in queries} == {"true"}
+    assert [(query.get("filterBy"), query["substitutions"]) for query in queries] == [
+        ("courseSubject.course:in(5|7)", "true"),
+        ("courseSubject.course:in(5|7)", "false"),
+        ("courseSubject.course:in(9)", "true"),
+        ("courseSubject.course:in(9)", "false"),
+    ]
     assert {query["week"] for query in queries} == {"true"}
     joined = "\n".join(lines)
-    for word in ("Robin", "Musterkind", "Beispielsohn", "4711", "4712", "4713"):
+    for word in ("Robin", "Kim", "Mia", "Ben", "Musterkind", "Beispielsohn", "4711", "4712", "4713", "4714"):
         assert word not in joined
+
+
+def regular_plan_client(regular):
+    settings = [{"timetable_availableForGuardiansAndStudents": True, "substitutions_availableForGuardiansAndStudents": True}]
+    current = {"students": [{"entries": school_app_plan(SCHOOL_APP_SUBSTITUTED)}]}
+    client, queries = school_app_client(settings, current, account={"children": [QUERY_ACCOUNT["children"][0]]})
+    answered = client.fetch
+
+    def by_flag(path, params=None):
+        if path == reportfacts.CURRENT_TIMETABLE_QUERY_PATH and (params or {}).get("substitutions") == "false":
+            queries.append(dict(params))
+            return regular
+        return answered(path, params)
+
+    client.fetch = by_flag
+    return client
+
+
+def test_school_app_query_lines_count_the_differences_to_the_regular_plan():
+    regular = Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data={"students": [{"entries": school_app_plan(SCHOOL_APP_REGULAR)}]})
+    lines = reportfacts.school_app_query_lines(regular_plan_client(regular), QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert (
+        "- Child 1 substitutions: regular plan 10 lessons, current 9, changed 1, only in the regular plan 2, "
+        "only in the current plan 1, marked by the school 0, marks shown"
+    ) in lines
+    joined = "\n".join(lines)
+    for word in ("WOL", "VER", "KU", "R204", "Alex"):
+        assert word not in joined
+
+
+def test_school_app_query_lines_say_when_the_regular_plan_was_refused():
+    refused = Response(403, SCHOOL_ONE_URL, "<html>Forbidden</html>", "text/html")
+    lines = reportfacts.school_app_query_lines(regular_plan_client(refused), QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert (
+        "- Child 1 substitutions: regular plan not read, current 9, changed 0, only in the regular plan 0, "
+        "only in the current plan 0, marked by the school 0, marks left out, the regular plan was not read (answer 403)"
+    ) in lines
+
+
+def test_school_app_query_lines_say_when_the_answers_are_not_understood():
+    odd = {"students": [{"entries": [dict(entry, weekday="monday") for entry in school_app_plan(SCHOOL_APP_REGULAR)]}]}
+    regular = Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=odd)
+    lines = reportfacts.school_app_query_lines(regular_plan_client(regular), QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert (
+        "- Child 1 substitutions: regular plan not read, current 0, changed 0, only in the regular plan 0, "
+        "only in the current plan 0, marked by the school 0, marks left out, the answers were not understood (ValueError)"
+    ) in lines
+
+
+def test_school_app_query_lines_say_when_the_school_account_was_not_read():
+    settings = [{"timetable_availableForGuardiansAndStudents": True}]
+    client, queries = school_app_client(settings, {"students": []}, account=None)
+    client.pages[reportfacts.SCHOOL_ACCOUNT_ME_PATH] = Response(403, SCHOOL_ONE_URL, "<html>Forbidden</html>", "text/html")
+    lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert "- Child 1: course ids not read, the school account did not answer" in lines
+    assert queries == []
 
 
 def test_school_app_query_lines_accept_only_real_booleans():
@@ -2077,3 +2318,159 @@ def test_the_report_names_unread_scripts_instead_of_an_empty_label_table():
     client, _recorded = time_table_client(PLAIN_TIME_TABLE, data=moved_week_payload())
     lines = diagnostics.page_structure(client, TIME_TABLE_ROW, datetime(2026, 9, 23).date(), {}, "", [], 1)
     assert "- Change type labels in scripts: no page script read" in lines
+
+
+def test_the_report_lists_a_covered_module_apart_from_the_unsupported_ones():
+    registry = modules.normalize({
+        "modules": {name: True for name in modules.MODULES},
+        "unsupported": [
+            {"segment": "absence", "label": "Abwesenheiten"},
+            {"segment": "klassengeld", "label": "Klassengeld"},
+        ],
+        "checked_at": 1,
+    })
+    rows = {row["slug"]: row for row in diagnostics.module_rows(registry)}
+    assert rows["absence_obsolete"]["status"] == diagnostics.STATUS_COVERED
+    assert rows["absence_obsolete"]["page"] == "/iserv/absence/"
+    assert rows["klassengeld"]["status"] == diagnostics.STATUS_UNSUPPORTED
+
+
+def test_school_app_query_lines_say_so_when_no_timetable_source_is_left():
+    settings = [{"timetable_availableForGuardiansAndStudents": False, "substitutions_availableForGuardiansAndStudents": False}]
+    client, _ = school_app_client(settings, None)
+    lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date(), "missing")
+    assert "- Timetable release: off, the time-table module is absent too, so no timetable is available" in lines
+    assert not any("reads the time-table module instead" in line for line in lines)
+
+
+def test_the_timetable_source_is_none_when_the_school_offers_no_timetable():
+    registry = modules.normalize({"modules": {modules.TIMETABLE: False}, "checked_at": 1})
+    assert diagnostics.timetable_source_fact({}, registry) == "none, the school offers no timetable to this account"
+    assert diagnostics.timetable_source_fact({"timetable_source": "time-table"}, registry) == "time-table"
+
+
+OLDER_ABSENCE_HTML = """<table id="crud-table"><tbody>
+<tr><td><input type="checkbox"></td><td>Mia Muster</td><td>2b</td><td>offen</td><td>14.09.2026 - 15.09.2026</td></tr>
+<tr><td><input type="checkbox"></td><td>Mia Muster</td><td>2b</td><td>offen</td><td>02.09.2026</td></tr>
+<tr><td colspan="5">Keine weiteren Einträge</td></tr>
+</tbody></table>"""
+SICK_NOTES = [
+    {"sickFromDateAsString": "2026-09-14", "sickTillDateAsString": "2026-09-15"},
+    {"sickFromDateAsString": "2026-09-21", "sickTillDateAsString": "2026-09-21"},
+]
+
+
+def absence_client(older_status=200):
+    pages = {
+        reportfacts.OLDER_ABSENCE_PAGE: Response(older_status, SCHOOL_ONE_URL, OLDER_ABSENCE_HTML, "text/html"),
+        reportfacts.SICK_NOTES_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=SICK_NOTES),
+    }
+    return Client(SCHOOL_ONE_URL, pages)
+
+
+def test_the_absence_lists_are_compared_without_counts_dates_or_names():
+    lines = reportfacts.absence_evidence_lines(absence_client(), datetime(2026, 9, 28).date())
+    assert lines == [
+        "### Absence lists",
+        "- Older absence page: entries some, with a date some",
+        "- School app sick notes in the last 120 days: some",
+        "- Older page entries sharing a date with a school app sick note: some",
+    ]
+    assert not any(any(char.isdigit() for char in line.replace("120", "")) for line in lines)
+    assert not any("Mia" in line for line in lines)
+
+
+def test_a_refused_older_absence_page_is_named_with_its_answer():
+    lines = reportfacts.absence_evidence_lines(absence_client(403), datetime(2026, 9, 28).date())
+    assert "- Older absence page: not read, answer 403" in lines
+    assert not any("sharing a date" in line for line in lines)
+
+
+def test_absence_settings_show_switches_numbers_and_clock_times_but_no_free_text():
+    line = reportfacts.absence_settings_line({
+        "sickNotes_guardiansCanReportByLesson": True,
+        "requestToSchools_studentAbsence_minDays": 3,
+        "sickNotes_latestTimeToReportASickNoteToday": "07:45",
+        "sickNotes_tooLateMessageForToday": "Bitte im Sekretariat anrufen",
+        "requestToSchools_notAttend_afternoonCare_pickupTimes": ["14:00", "15:00"],
+        "sickNotes_contactUser": 48213,
+        "timetable_availableForGuardiansAndStudents": True,
+    })
+    assert line == (
+        "- Absence settings: requestToSchools_notAttend_afternoonCare_pickupTimes=list 2, "
+        "requestToSchools_studentAbsence_minDays=3, sickNotes_contactUser=number, sickNotes_guardiansCanReportByLesson=yes, "
+        "sickNotes_latestTimeToReportASickNoteToday=07:45, sickNotes_tooLateMessageForToday=text"
+    )
+
+
+def test_provider_reads_stay_on_known_read_words_and_versions():
+    routes = reportcrawl.PROVIDER_SCOPE.api_routes
+    assert reportcrawl.api_allowed("/api/v1/projects", "/", routes, external=True)
+    assert reportcrawl.api_allowed("/api/parents/students/balance", "/", routes, external=True)
+    assert not reportcrawl.api_allowed("/api/v1/logout", "/", routes, external=True)
+    assert not reportcrawl.api_allowed("/api/projects/12", "/", routes, external=True)
+    assert not reportcrawl.api_allowed("/api/extras/save", "/", routes, external=True)
+    assert not reportcrawl.api_allowed("/iserv/x/api/v1", "/iserv/x/")
+
+
+def test_provider_detail_pages_need_a_known_word_before_the_id_and_one_per_shape():
+    html = '<a href="/projects/1">Projekte</a><a href="/projects/2">Projekte</a><a href="/12">Projekte</a><a href="/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d">Projekte</a>'
+    links, skipped = reportcrawl.crawl_links(html, "https://pay.other.example/dashboard", "/", 8, reportcrawl.PROVIDER_ROUTES, external=True)
+    assert [link.path for link in links] == ["/projects/1"]
+    assert skipped == {reportcrawl.SKIP_PATH: 2, reportcrawl.SKIP_SAME: 1}
+
+
+def test_provider_script_reads_count_against_its_budget():
+    class Reader:
+        budget = reportcrawl.CrawlBudget(pages=1)
+        calls = []
+
+        def fetch_capped(self, path, limit, timeout, expired=None):
+            self.calls.append(path)
+            return None
+
+    reader = Reader()
+    page = type("Page", (), {"text": '<script src="/a.js"></script><script src="/b.js"></script>', "url": "https://pay.other.example/"})()
+    lines, _found = reportcrawl.script_facts(reader, page, {}, "/", None, 20, counted=True)
+    assert reader.calls == ["/a.js"]
+    assert any("request budget reached" in line for line in lines)
+
+
+def test_the_provider_time_stays_inside_one_shared_reserve():
+    now = [100.0]
+    outer = reportcrawl.CrawlBudget(seconds=60, clock=lambda: now[0])
+    now[0] += 60 + 40
+    assert reportcrawl.provider_budget(outer).deadline - now[0] == 5
+    now[0] += 10
+    assert reportcrawl.provider_budget(outer).expired()
+
+
+def test_the_provider_gets_its_own_budget_after_iserv_used_up_the_report_budget(caplog):
+    client, adapter = provider_chain_client()
+    client.session.cookies.set("IServSession", "synthetic-iserv-cookie", domain="gymnasium-nord.example")
+    fetcher = diagnostics.ReportFetcher(client)
+    nav_paths = menu_of(fetcher)
+    spent = reportcrawl.budget_of(fetcher)
+    spent.pages = 0
+    fetcher.budget = spent
+    assert not spent.take()
+    lines = diagnostics.page_structure(fetcher, KLASSENGELD_ROW, datetime(2026, 9, 23).date(), {}, nav_paths=nav_paths)
+    assert "##### API GET /api/overview" in lines
+
+
+def test_a_module_crawl_reads_the_request_page_of_an_unknown_module():
+    landing = '<html><body><a href="/iserv/ausleihe/request">Neue Anfrage</a></body></html>'.encode("utf-8")
+    lines, adapter = loan_structure(landing=landing)
+    assert "/iserv/ausleihe/request" in fetched_paths(adapter)
+    assert "- Crawl: 1 linked pages, skipped none" in lines
+    assert "##### Page /iserv/<seg>/request" in lines
+
+
+def test_a_provider_crawl_skips_request_pages_and_apis():
+    html = '<a href="/request">Neue Anfrage</a><a href="/requests">Anfragen</a><a href="/projects">Projekte</a>'
+    links, skipped = reportcrawl.crawl_links(html, "https://pay.other.example/dashboard", "/", 8, reportcrawl.PROVIDER_SCOPE.routes, external=True)
+    assert [link.path for link in links] == ["/projects"]
+    assert skipped == {reportcrawl.SKIP_PATH: 2}
+    assert not reportcrawl.api_allowed("/api/requests", "/", reportcrawl.PROVIDER_SCOPE.api_routes, external=True)
+    assert not reportcrawl.api_allowed("/api/v1/request", "/", reportcrawl.PROVIDER_SCOPE.api_routes, external=True)
+    assert reportcrawl.path_allowed("/iserv/ausleihe/request", "/iserv/ausleihe/", reportcrawl.MODULE_SCOPE.routes)

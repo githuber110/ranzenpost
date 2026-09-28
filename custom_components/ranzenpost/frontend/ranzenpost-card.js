@@ -23,6 +23,10 @@
   const KEY_SCHOOL_END = "school_end_today";
   const KEY_STAMP = "timetable_last_updated";
   const KEY_HOLIDAY = "next_holiday";
+  const LEGACY_PANEL = "hassio";
+  const LEGACY_PANEL_PREFIX = "/hassio/ingress/";
+  const APP_PANEL = "app";
+  const APP_PANEL_PREFIX = "/app/";
   const KEY_NEXT_LESSON = "next_lesson";
   const KEY_ABSENCES = "open_absences";
   const KEY_CONFERENCE = "next_conference";
@@ -47,8 +51,19 @@
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const CARD_BLOCKS = BLOCK_CATALOGUE.filter((block) => block.surfaces.includes("card"));
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
-  const TIMETABLE_BLOCKS = ["today", "next_lesson", "week", "changes"];
   const DAY_BLOCKS = ["today", "next_lesson", "week"];
+  const HOLIDAY_AHEAD_DAYS = 365;
+  const COURSE_CELL_MIN = 3;
+  const BLOCK_TARGETS = {
+    today: "view=timetable",
+    next_lesson: "view=timetable",
+    week: "view=timetable",
+    changes: "view=timetable",
+    letters: "view=post&segment=letters",
+    noticeboard: "view=post&segment=pinboard",
+    absences: "view=absence",
+    conferences: "view=conferences",
+  };
   const MISSING_STATES = new Set(["unknown", "unavailable", "none", ""]);
   const BIDI_MARKS = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x061c)}]`, "g");
   const CHILD_COLORS = ["#0e6b70", "#7a4b9c", "#b4602a", "#2f6b3a", "#9c3b5e", "#3a5a9c"];
@@ -212,8 +227,6 @@
   const TEXTS = {
     de: {
       "card.description": "Stundenplan, Vertretungen und Post aus Ranzenpost",
-      "view.today": "Heute",
-      "view.week": "Woche",
       "view.family": "Familie",
       "today.free": "Heute ist schulfrei.",
       "day.free": "Schulfrei",
@@ -224,6 +237,8 @@
       "lesson.substitutionShort": "Vertr.",
       "lesson.cancelled": "Entfällt",
       "lesson.exam": "Prüfung",
+      "lesson.courses": "Kurse",
+      "lesson.coursesParallel": "Parallele Kurse: {count}",
       "count.letters": "Elternbriefe",
       "count.posts": "Pinnwand",
       "count.changes": "Änderungen",
@@ -242,14 +257,9 @@
       "error.title": "Nicht erreichbar",
       "state.unavailable": "Ranzenpost ist gerade nicht erreichbar.",
       "config.view": "Die Ansicht muss today, week oder family sein.",
-      "editor.view": "Ansicht",
-      "editor.child": "Person",
       "editor.children": "Profile",
       "editor.allChildren": "Leer lassen für alle Profile",
       "editor.title": "Titel",
-      "editor.days": "Tage",
-      "editor.days1": "Nur heute",
-      "editor.days2": "Heute und morgen",
       "block.today": "Heute",
       "block.today.explain": "Stunden von heute, Änderungen, Schulschluss.",
       "block.next_lesson": "Nächste Stunde",
@@ -281,14 +291,15 @@
       "editor.size.compact": "Kompakt",
       "editor.size.normal": "Normal",
       "editor.sizes": "Größe je Baustein",
+      "editor.order": "Reihenfolge",
+      "editor.order.up": "{name} nach oben",
+      "editor.order.down": "{name} nach unten",
       "status.open": "Offen",
       "status.accepted": "Genehmigt",
       "status.rejected": "Abgelehnt",
     },
     en: {
       "card.description": "Timetable, substitutions and school mail from Ranzenpost",
-      "view.today": "Today",
-      "view.week": "Week",
       "view.family": "Family",
       "today.free": "No school today.",
       "day.free": "No school",
@@ -299,6 +310,8 @@
       "lesson.substitutionShort": "Sub.",
       "lesson.cancelled": "Cancelled",
       "lesson.exam": "Exam",
+      "lesson.courses": "courses",
+      "lesson.coursesParallel": "Parallel courses: {count}",
       "count.letters": "Letters",
       "count.posts": "Notices",
       "count.changes": "Changes",
@@ -317,14 +330,9 @@
       "error.title": "Can't connect",
       "state.unavailable": "Ranzenpost cannot be reached right now.",
       "config.view": "The view must be today, week or family.",
-      "editor.view": "View",
-      "editor.child": "Person",
       "editor.children": "Profiles",
       "editor.allChildren": "Leave empty for all profiles",
       "editor.title": "Title",
-      "editor.days": "Days",
-      "editor.days1": "Today only",
-      "editor.days2": "Today and tomorrow",
       "block.today": "Today",
       "block.today.explain": "Today's lessons, changes and the end of school.",
       "block.next_lesson": "Next lesson",
@@ -356,14 +364,15 @@
       "editor.size.compact": "Compact",
       "editor.size.normal": "Normal",
       "editor.sizes": "Size per block",
+      "editor.order": "Order",
+      "editor.order.up": "Move {name} up",
+      "editor.order.down": "Move {name} down",
       "status.open": "Open",
       "status.accepted": "Accepted",
       "status.rejected": "Rejected",
     },
     ar: {
       "card.description": "الجدول الدراسي والبدائل ورسائل المدرسة من Ranzenpost",
-      "view.today": "اليوم",
-      "view.week": "الأسبوع",
       "view.family": "العائلة",
       "today.free": "اليوم عطلة مدرسية.",
       "day.free": "لا توجد دراسة",
@@ -374,6 +383,8 @@
       "lesson.substitutionShort": "بديل",
       "lesson.cancelled": "ملغاة",
       "lesson.exam": "اختبار",
+      "lesson.courses": "مقررات",
+      "lesson.coursesParallel": "مقررات متوازية: {count}",
       "count.letters": "الرسائل",
       "count.posts": "الإعلانات",
       "count.changes": "التغييرات",
@@ -392,14 +403,9 @@
       "error.title": "تعذّر الوصول",
       "state.unavailable": "تعذر الوصول إلى Ranzenpost حاليًا.",
       "config.view": "يجب أن يكون العرض today أو week أو family.",
-      "editor.view": "العرض",
-      "editor.child": "الشخص",
       "editor.children": "الملفات الشخصية",
       "editor.allChildren": "اتركه فارغًا لكل الملفات الشخصية",
       "editor.title": "العنوان",
-      "editor.days": "الأيام",
-      "editor.days1": "اليوم فقط",
-      "editor.days2": "اليوم وغدًا",
       "block.today": "اليوم",
       "block.today.explain": "حصص اليوم والتغييرات ونهاية الدوام.",
       "block.next_lesson": "الحصة التالية",
@@ -431,14 +437,15 @@
       "editor.size.compact": "مضغوط",
       "editor.size.normal": "عادي",
       "editor.sizes": "الحجم لكل كتلة",
+      "editor.order": "الترتيب",
+      "editor.order.up": "نقل {name} إلى الأعلى",
+      "editor.order.down": "نقل {name} إلى الأسفل",
       "status.open": "مفتوح",
       "status.accepted": "مقبول",
       "status.rejected": "مرفوض",
     },
     tr: {
       "card.description": "Ranzenpost'tan ders programı, vekil dersler ve okul postası",
-      "view.today": "Bugün",
-      "view.week": "Hafta",
       "view.family": "Aile",
       "today.free": "Bugün okul yok.",
       "day.free": "Okul yok",
@@ -449,6 +456,8 @@
       "lesson.substitutionShort": "Vekil",
       "lesson.cancelled": "İptal",
       "lesson.exam": "Sınav",
+      "lesson.courses": "ders",
+      "lesson.coursesParallel": "Paralel dersler: {count}",
       "count.letters": "Mektuplar",
       "count.posts": "Duyurular",
       "count.changes": "Değişiklikler",
@@ -467,14 +476,9 @@
       "error.title": "Ulaşılamıyor",
       "state.unavailable": "Ranzenpost şu anda ulaşılamıyor.",
       "config.view": "Görünüm today, week veya family olmalı.",
-      "editor.view": "Görünüm",
-      "editor.child": "Kişi",
       "editor.children": "Profiller",
       "editor.allChildren": "Tüm profiller için boş bırakın",
       "editor.title": "Başlık",
-      "editor.days": "Gün",
-      "editor.days1": "Yalnızca bugün",
-      "editor.days2": "Bugün ve yarın",
       "block.today": "Bugün",
       "block.today.explain": "Bugünün dersleri, değişiklikler ve okul çıkışı.",
       "block.next_lesson": "Sonraki ders",
@@ -506,14 +510,15 @@
       "editor.size.compact": "Sıkışık",
       "editor.size.normal": "Normal",
       "editor.sizes": "Blok başına boyut",
+      "editor.order": "Sıralama",
+      "editor.order.up": "{name} yukarı taşı",
+      "editor.order.down": "{name} aşağı taşı",
       "status.open": "Açık",
       "status.accepted": "Onaylandı",
       "status.rejected": "Reddedildi",
     },
     ru: {
       "card.description": "Расписание, замены и школьная почта из Ranzenpost",
-      "view.today": "Сегодня",
-      "view.week": "Неделя",
       "view.family": "Семья",
       "today.free": "Сегодня занятий нет.",
       "day.free": "Занятий нет",
@@ -524,6 +529,8 @@
       "lesson.substitutionShort": "Замена",
       "lesson.cancelled": "Отмена",
       "lesson.exam": "Контрольная",
+      "lesson.courses": "курсы",
+      "lesson.coursesParallel": "Параллельные курсы: {count}",
       "count.letters": "Письма",
       "count.posts": "Объявления",
       "count.changes": "Изменения",
@@ -542,14 +549,9 @@
       "error.title": "Нет связи",
       "state.unavailable": "Ranzenpost сейчас недоступен.",
       "config.view": "Вид должен быть today, week или family.",
-      "editor.view": "Вид",
-      "editor.child": "Человек",
       "editor.children": "Профили",
       "editor.allChildren": "Оставьте пустым для всех профилей",
       "editor.title": "Заголовок",
-      "editor.days": "Дни",
-      "editor.days1": "Только сегодня",
-      "editor.days2": "Сегодня и завтра",
       "block.today": "Сегодня",
       "block.today.explain": "Уроки на сегодня, изменения, конец занятий.",
       "block.next_lesson": "Следующий урок",
@@ -581,14 +583,15 @@
       "editor.size.compact": "Компактно",
       "editor.size.normal": "Обычно",
       "editor.sizes": "Размер каждого блока",
+      "editor.order": "Порядок",
+      "editor.order.up": "Переместить «{name}» вверх",
+      "editor.order.down": "Переместить «{name}» вниз",
       "status.open": "Открыто",
       "status.accepted": "Одобрено",
       "status.rejected": "Отклонено",
     },
     uk: {
       "card.description": "Розклад, заміни та шкільна пошта з Ranzenpost",
-      "view.today": "Сьогодні",
-      "view.week": "Тиждень",
       "view.family": "Сім'я",
       "today.free": "Сьогодні уроків немає.",
       "day.free": "Занять немає",
@@ -599,6 +602,8 @@
       "lesson.substitutionShort": "Зам.",
       "lesson.cancelled": "Скасовано",
       "lesson.exam": "Контрольна",
+      "lesson.courses": "курси",
+      "lesson.coursesParallel": "Паралельні курси: {count}",
       "count.letters": "Листи",
       "count.posts": "Оголошення",
       "count.changes": "Зміни",
@@ -617,14 +622,9 @@
       "error.title": "Немає зв’язку",
       "state.unavailable": "Ranzenpost зараз недоступний.",
       "config.view": "Вигляд має бути today, week або family.",
-      "editor.view": "Вигляд",
-      "editor.child": "Особа",
       "editor.children": "Профілі",
       "editor.allChildren": "Залиште порожнім для всіх профілів",
       "editor.title": "Заголовок",
-      "editor.days": "Дні",
-      "editor.days1": "Лише сьогодні",
-      "editor.days2": "Сьогодні і завтра",
       "block.today": "Сьогодні",
       "block.today.explain": "Уроки на сьогодні, зміни, кінець занять.",
       "block.next_lesson": "Наступний урок",
@@ -656,6 +656,9 @@
       "editor.size.compact": "Компактно",
       "editor.size.normal": "Звичайно",
       "editor.sizes": "Розмір кожного блоку",
+      "editor.order": "Порядок",
+      "editor.order.up": "Перемістити «{name}» вгору",
+      "editor.order.down": "Перемістити «{name}» вниз",
       "status.open": "Відкрито",
       "status.accepted": "Схвалено",
       "status.rejected": "Відхилено",
@@ -800,6 +803,24 @@
     .tt-cell.free { background: color-mix(in srgb, var(--ink) 3%, transparent); box-shadow: none; border-radius: var(--r-xs); }
     .tt-cell .sub { font-size: 0.875rem; font-weight: 700; letter-spacing: 0.015em; line-height: 1.05; }
     .tt-cell .room { font-size: 0.625rem; font-weight: 500; line-height: 1.05; }
+    .tt { container: tt / inline-size; }
+    .tt-cell { container-type: size; }
+    .tt-cell .lname, .tt-cell .lroom, .tt-cell .lteacher { display: none; max-inline-size: 100%; box-sizing: border-box; padding-inline: 10px; text-align: center; }
+    .tt-cell .lroom, .tt-cell .lteacher { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(0.6875rem, 7.5cqi, 0.875rem); line-height: 1.25; letter-spacing: 0.01em; }
+    .tt-cell .lroom { margin-block-start: 4px; font-weight: 600; font-variant-numeric: tabular-nums lining-nums; }
+    .tt-cell .lteacher { font-weight: 500; }
+    .tt-cell.out .lroom, .tt-cell.out .lteacher { color: var(--ink-3); }
+    @container tt (min-width: 640px) { .tt > * { --tt-row: 72px; } }
+    @container tt (min-width: 900px) { .tt > * { --tt-row: 88px; } }
+    @container (min-width: 72px) and (min-height: 44px) {
+      .tt-cell .sub { display: none; }
+      .tt-cell .lname { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; text-wrap: balance; font-family: var(--font-display); font-size: clamp(0.75rem, 9cqi, 1rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.005em; }
+      .tt-cell.out .lname { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+      .tt-cell.out .room, .tt-cell.subbed .room { margin-block-start: 4px; font-size: clamp(0.6875rem, 7.5cqi, 0.875rem); font-weight: 600; line-height: 1.25; }
+      .tt .tt-cell.out .room { color: var(--danger); }
+    }
+    @container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } }
+    @container (min-width: 128px) and (min-height: 80px) { .tt-cell .lteacher { display: block; } }
     .tt-cell .bar { position: absolute; inset-inline-start: 0; inset-block: 0; inline-size: 3px; }
     .tt-cell.subject-bar::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; inline-size: 3px; background: var(--subject-bar, transparent); }
     .tt-cell.compact.subject-bar::before { inline-size: 2px; }
@@ -811,6 +832,8 @@
     .tt-cell.out .room { color: var(--ink-3); }
     .tt-cell.subbed::after { content: ""; position: absolute; inset-block-start: 5px; inset-inline-end: 5px; inline-size: 9px; block-size: 9px; border-radius: 50%; background: var(--warn); }
     .tt-cell.out::after { content: "${CROSS}"; position: absolute; inset-block-start: 1px; inset-inline-end: 4px; font-size: 0.75rem; font-weight: 700; line-height: 1; color: var(--danger); }
+    .tt-cell.courses .count { font-size: 0.875rem; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+    .tt-cell.courses .courses-label { font-size: 0.6875rem; font-weight: 500; line-height: 1.1; }
     .tt-stack { display: flex; flex-direction: column; gap: var(--tt-stack-gap); block-size: var(--tt-row); min-block-size: var(--tt-row); }
     .tt-cell.compact { block-size: auto; min-block-size: 0; flex: 1 1 0; padding: 0 var(--s-1); }
     .tt-cell.compact .sub { font-size: 0.6875rem; }
@@ -822,6 +845,13 @@
     .tt-cell .exam-flag { position: absolute; inset-block-end: 2px; inset-inline-end: 3px; display: block; line-height: 0; color: var(--accent); }
     .tt-cell.compact .exam-flag { inset-block-end: 1px; inset-inline-end: 2px; }
     .tt-cell.out .exam-flag, .tt-cell.subbed .exam-flag { color: var(--accent); }
+    .tt-cell.subject.marked { box-shadow: inset 0 0 0 2px var(--subject-cell-ink); }
+    .tt-cell .exam-flag svg { inline-size: 11px; block-size: 11px; }
+    .tt-cell.subject .exam-flag { color: var(--subject-cell-ink); }
+    @container (min-width: 96px) and (min-height: 64px) {
+      .tt-cell .exam-flag { inset-block-end: 5px; inset-inline-end: 6px; }
+      .tt-cell .exam-flag svg { inline-size: 16px; block-size: 16px; }
+    }
     .tt-hol { min-block-size: var(--tt-row); min-inline-size: 0; border: 0; border-radius: var(--r-sm); background: color-mix(in srgb, var(--ink) 5%, transparent); padding: var(--s-3) var(--s-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1); overflow: hidden; font: inherit; color: var(--ink); text-align: center; }
     .tt-hol .name { min-inline-size: 0; max-inline-size: 100%; font-size: 0.75rem; font-weight: 700; line-height: 1.15; hyphens: auto; -webkit-hyphens: auto; }
     .tt-hol .meta { min-inline-size: 0; max-inline-size: 100%; font-size: 0.625rem; font-weight: 500; line-height: 1.2; color: var(--ink-2); }
@@ -881,6 +911,13 @@
     .hint { font-size: 0.75rem; color: var(--secondary-text-color); }
     .size-list { display: flex; flex-direction: column; gap: 8px; }
     .size-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .order-host { padding-block: 12px 4px; color: var(--primary-text-color); }
+    .order-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .order-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-block-size: 44px; padding-inline: 8px; border: 1px solid var(--divider-color); border-radius: 6px; }
+    .order-name { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+    .order-actions { flex: none; display: flex; gap: 4px; }
+    .order-move { inline-size: 40px; block-size: 40px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 1.1rem; cursor: pointer; }
+    .order-move:disabled { opacity: 0.35; cursor: default; }
   `;
 
   const eventCache = new Map();
@@ -944,11 +981,22 @@
     return CARD_BLOCKS.filter((block) => moduleOffered(hass, registry, block.module));
   }
 
+  function appPanelPath(hass, path) {
+    const panels = (hass && hass.panels) || {};
+    if (!path.startsWith(LEGACY_PANEL_PREFIX) || !panels[APP_PANEL] || panels[LEGACY_PANEL]) return path;
+    return APP_PANEL_PREFIX + path.slice(LEGACY_PANEL_PREFIX.length);
+  }
+
+  function blockPath(path, key) {
+    const target = BLOCK_TARGETS[key];
+    return path && target ? `${path}?${target}` : "";
+  }
+
   function ingressPathOf(hass, registry) {
     for (const school of registry.schools) {
       const state = stateOf(hass, school.entities[KEY_CONNECTION]);
       const path = state && state.attributes ? String(state.attributes.ingress_path || "") : "";
-      if (path) return path;
+      if (path.startsWith("/") && !path.startsWith("//")) return appPanelPath(hass, path);
     }
     return "";
   }
@@ -1312,6 +1360,7 @@
       color: /^#[0-9a-fA-F]{6}$/.test(raw.color || "") ? raw.color : "",
       subjectCode: String(raw.subject_code || ""),
       subjectName: String(raw.subject || ""),
+      teacher: String(raw.teacher || ""),
       dayKey: dateKey(start, zone),
       firstDay: allDay ? raw.start.date : dateKey(start, zone),
       lastDay: allDay ? raw.end.date : dateKey(end, zone),
@@ -1357,8 +1406,9 @@
         substitution: !!(change && change.substitution && !cancelled),
         subject: (change && change.subject) || event.subjectName || cleanSummary(event),
         code: (change && change.subject_code) || event.subjectCode || "",
+        teacher: (change && change.teacher) || event.teacher || "",
         meta,
-        exam: exams.some((exam) => overlaps(exam, event)),
+        exam: exams.some((exam) => overlaps(exam, event) && (!exam.subjectCode || !event.subjectCode || exam.subjectCode === event.subjectCode)),
         now: false,
         next: false,
         done: false,
@@ -1694,10 +1744,16 @@
           plan.stateKeys.push(stateKeyOf(stateOf(hass, child.entities[key])));
         }
       }
+      const holidayEnd = zonedMidnight(shiftKey(todayKey, HOLIDAY_AHEAD_DAYS, zone), zone);
       for (const school of registry.schools) {
         const holidayCalendar = school.entities[KEY_HOLIDAYS];
+        const ofSchool = plan.children.some((child) => child.schoolId === school.id);
         const wantedSchool = plan.children.some((child) => child.schoolId === school.id && child.entities[KEY_LESSONS]);
-        if (holidayCalendar && wantedSchool && needsDays) plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: plan.end });
+        if (holidayCalendar && ofSchool && keys.has("holidays")) {
+          plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: holidayEnd > plan.end ? holidayEnd : plan.end });
+        } else if (holidayCalendar && wantedSchool && needsDays) {
+          plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: plan.end });
+        }
         for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION]) {
           plan.stateKeys.push(stateKeyOf(stateOf(hass, school.entities[key])));
         }
@@ -1853,6 +1909,10 @@
             parts.push(this._lessonCell(lessons[0], t, dayKey, place, false));
             return;
           }
+          if (lessons.length >= COURSE_CELL_MIN) {
+            parts.push(this._coursesCell(lessons, t, dayKey, place, locale));
+            return;
+          }
           const inner = lessons.map((lesson) => this._lessonCell(lesson, t, dayKey, "", true)).join("");
           parts.push(`<div class="tt-stack" style="${place}">${inner}</div>`);
         });
@@ -1908,9 +1968,23 @@
       const bar = lesson.substitution ? '<span class="bar"></span>' : "";
       const roomLabel = lesson.cancelled ? t("lesson.cancelled") : lesson.substitution ? t("lesson.substitutionShort") : "";
       const room = roomLabel ? `<span class="room">${esc(roomLabel)}</span>` : "";
-      const flag = lesson.exam ? `<span class="exam-flag" title="${esc(t("lesson.exam"))}">${iconSvg("exam", 11)}</span>` : "";
+      const flag = lesson.exam ? `<span class="exam-flag" title="${esc(t("lesson.exam"))}">${iconSvg("exam")}</span>` : "";
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
-      return `<div class="${classes.join(" ")}" data-uid="${esc(lesson.uid)}" data-day="${esc(dayKey)}"${style}>${bar}<span class="sub" dir="auto">${esc(lesson.code || lesson.subject)}</span>${room}${flag}</div>`;
+      const code = lesson.code || lesson.subject;
+      const details = compact
+        ? ""
+        : `<span class="lname" dir="auto">${esc(lesson.subject || code)}</span>${!roomLabel && lesson.location ? `<span class="lroom" dir="auto">${esc(lesson.location)}</span>` : ""}${lesson.teacher ? `<span class="lteacher" dir="auto">${esc(lesson.teacher)}</span>` : ""}`;
+      return `<div class="${classes.join(" ")}" data-uid="${esc(lesson.uid)}" data-day="${esc(dayKey)}"${style}>${bar}<span class="sub" dir="auto">${esc(code)}</span>${details}${room}${flag}</div>`;
+    }
+
+    _coursesCell(lessons, t, dayKey, place, locale) {
+      const classes = ["tt-cell", "courses"];
+      if (lessons.some((lesson) => lesson.cancelled || lesson.substitution)) classes.push("subbed");
+      const count = formatNumber(lessons.length, locale);
+      const label = t("lesson.coursesParallel", { count });
+      const bar = classes.includes("subbed") ? '<span class="bar"></span>' : "";
+      const flag = lessons.some((lesson) => lesson.exam) ? `<span class="exam-flag" title="${esc(t("lesson.exam"))}">${iconSvg("exam")}</span>` : "";
+      return `<div class="${classes.join(" ")}" data-day="${esc(dayKey)}" style="${place}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${bar}<span class="count">${esc(count)}</span><span class="courses-label">${esc(t("lesson.courses"))}</span>${flag}</div>`;
     }
 
     _legend(t) {
@@ -1990,7 +2064,7 @@
     }
 
     _blockLink(plan, key, labelKey) {
-      const path = ingressPathOf(this._hass, plan.registry);
+      const path = blockPath(ingressPathOf(this._hass, plan.registry), key);
       if (!path) return "";
       return `<a class="panel-link" href="${esc(path)}" data-block-link="${esc(key)}">${esc(plan.t(labelKey || "block.showAll"))}</a>`;
     }
@@ -2009,7 +2083,7 @@
       const shown = items.slice(0, limitOf(block, entry.size));
       const compact = entry.size === SIZE_COMPACT;
       const rows = shown.map((item) => build(item, compact)).join("");
-      const path = ingressPathOf(this._hass, plan.registry);
+      const path = blockPath(ingressPathOf(this._hass, plan.registry), entry.key);
       const more = items.length > shown.length && path
         ? `<a class="row row-all" href="${esc(path)}"><span class="row-dot"></span><div class="row-main"><div class="row-title">${esc(plan.t("block.showAll"))}</div></div></a>`
         : "";
@@ -2063,7 +2137,7 @@
         case "noticeboard": return this._noticesBlock(plan, entry, child, KEY_POSTS, "posts");
         case "absences": return this._absencesBlock(plan, entry, child);
         case "conferences": return this._conferencesBlock(plan, entry);
-        case "holidays": return this._holidaysBlock(plan, entry);
+        case "holidays": return this._holidaysBlock(plan, entry, byEntity);
         case "changes": return this._changesBlock(plan, entry, child);
         default: return "";
       }
@@ -2186,11 +2260,28 @@
       ), "", false);
     }
 
-    _holidaysBlock(plan, entry) {
+    _upcomingHolidays(plan, byEntity, school, schoolName) {
+      const { todayKey, zone } = plan;
+      return (byEntity.get(school.entities[KEY_HOLIDAYS]) || [])
+        .filter((event) => event.allDay && event.lastDay > todayKey)
+        .map((event) => ({
+          name: event.summary,
+          start: event.firstDay,
+          end: shiftKey(event.lastDay, -1, zone),
+          days: Math.max(0, Math.round((zonedMidnight(event.firstDay, zone) - zonedMidnight(todayKey, zone)) / DAY_MS)),
+          school: schoolName,
+        }));
+    }
+
+    _holidaysBlock(plan, entry, byEntity) {
       const { t, locale, zone } = plan;
       const schools = this._schoolsOf(plan);
       const items = [];
       for (const school of schools) {
+        if (school.entities[KEY_HOLIDAYS] && byEntity.has(school.entities[KEY_HOLIDAYS])) {
+          items.push(...this._upcomingHolidays(plan, byEntity, school, schools.length > 1 ? school.name : ""));
+          continue;
+        }
         const state = stateOf(this._hass, school.entities[KEY_HOLIDAY]);
         if (isMissing(state) || !state.attributes || !state.attributes.start) continue;
         items.push({ name: String(state.state), start: String(state.attributes.start), end: String(state.attributes.end || state.attributes.start), days: Number(state.attributes.days_until) || 0, school: schools.length > 1 ? school.name : "" });
@@ -2234,6 +2325,7 @@
       this._built = false;
       this.shadowRoot.addEventListener("change", (event) => this._onChange(event));
       this.shadowRoot.addEventListener("value-changed", (event) => this._onFormValue(event));
+      this.shadowRoot.addEventListener("click", (event) => this._onMove(event));
     }
 
     setConfig(config) {
@@ -2377,21 +2469,70 @@
 
     _render() {
       const t = translator(this._hass);
-      this._built = !!this._hass;
+      const order = `<div class="order-host" dir="${directionOf()}">${this._orderSection(t)}</div>`;
       if (customElements.get("ha-form")) {
-        const form = document.createElement("ha-form");
-        form.hass = this._hass;
-        form.schema = this._schema(t);
-        form.data = this._formData();
-        form.computeLabel = (schema) => this._labelOf(t, schema);
-        form.computeHelper = (schema) => this._helperOf(t, schema);
-        this._form = form;
-        this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>`;
-        this.shadowRoot.appendChild(form);
-        return;
+        try {
+          const form = document.createElement("ha-form");
+          form.hass = this._hass;
+          form.schema = this._schema(t);
+          form.data = this._formData();
+          form.computeLabel = (schema) => this._labelOf(t, schema);
+          form.computeHelper = (schema) => this._helperOf(t, schema);
+          this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>`;
+          this.shadowRoot.appendChild(form);
+          const holder = document.createElement("div");
+          holder.innerHTML = order;
+          this.shadowRoot.appendChild(holder.firstElementChild);
+          this._form = form;
+          this._built = !!this._hass;
+          return;
+        } catch (error) {
+          this._form = null;
+          if (typeof console !== "undefined" && console.warn) console.warn(`${EDITOR_TAG}:`, error);
+        }
       }
       this._form = null;
-      this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style><div class="form" dir="${directionOf()}">${this._fallbackFields(t)}</div>`;
+      this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style><div class="form" dir="${directionOf()}">${this._fallbackFields(t)}</div>${order}`;
+      this._built = !!this._hass;
+    }
+
+    _orderSection(t) {
+      const blocks = this._config.blocks;
+      if (blocks.length < 2) return "";
+      const rows = blocks
+        .map((entry, index) => {
+          const name = t(`block.${entry.key}`);
+          const button = (direction, arrow, disabled) =>
+            `<button type="button" class="order-move" data-move="${direction}" data-block="${esc(entry.key)}" aria-label="${esc(t(`editor.order.${direction}`, { name }))}"${disabled ? " disabled" : ""}><span aria-hidden="true">${arrow}</span></button>`;
+          return `<li class="order-row" data-block="${esc(entry.key)}"><span class="order-name" dir="auto">${esc(name)}</span><span class="order-actions">${button("up", "↑", index === 0)}${button("down", "↓", index === blocks.length - 1)}</span></li>`;
+        })
+        .join("");
+      return `<span class="hint" id="order-label">${esc(t("editor.order"))}</span><ol class="order-list" aria-labelledby="order-label">${rows}</ol>`;
+    }
+
+    _refreshOrder(t) {
+      const host = this.shadowRoot.querySelector(".order-host");
+      if (!host) return;
+      const active = this.shadowRoot.activeElement;
+      const focused = active && active.dataset && active.dataset.move ? { block: active.dataset.block, move: active.dataset.move } : null;
+      host.innerHTML = this._orderSection(t);
+      if (!focused) return;
+      const same = host.querySelector(`button[data-block="${focused.block}"][data-move="${focused.move}"]`);
+      const other = host.querySelector(`button[data-block="${focused.block}"]:not([data-move="${focused.move}"])`);
+      const target = same && !same.disabled ? same : other;
+      if (target) target.focus();
+    }
+
+    _onMove(event) {
+      const button = event.target && event.target.closest ? event.target.closest("button[data-move]") : null;
+      if (!button || button.disabled) return;
+      const blocks = this._config.blocks;
+      const index = blocks.findIndex((entry) => entry.key === button.dataset.block);
+      const target = index + (button.dataset.move === "up" ? -1 : 1);
+      if (index < 0 || target < 0 || target >= blocks.length) return;
+      [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+      this._emit();
+      this._update();
     }
 
     _fallbackFields(t) {
@@ -2429,8 +2570,17 @@
     _update() {
       const t = translator(this._hass);
       if (this._form) {
-        this._form.schema = this._schema(t);
-        this._form.data = this._formData();
+        try {
+          this._form.schema = this._schema(t);
+          this._form.data = this._formData();
+        } catch (error) {
+          if (typeof console !== "undefined" && console.warn) console.warn(`${EDITOR_TAG}:`, error);
+          this._form = null;
+          this._built = false;
+          this._render();
+          return;
+        }
+        this._refreshOrder(t);
         return;
       }
       const root = this.shadowRoot;
@@ -2475,7 +2625,15 @@
           const fresh = holder.querySelector(`.size-row[data-block="${entry.key}"]`);
           if (fresh) sizes.appendChild(fresh);
         }
+        const shown = [...sizes.querySelectorAll(".size-row")];
+        if (shown.map((row) => row.dataset.block).join() !== wanted.join()) {
+          for (const key of wanted) {
+            const row = shown.find((item) => item.dataset.block === key);
+            if (row) sizes.appendChild(row);
+          }
+        }
       }
+      this._refreshOrder(t);
     }
   }
 

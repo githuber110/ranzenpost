@@ -16,7 +16,6 @@ PLANTED_WORDS = (
     "Jonas", "Pflanzkind", "Erika", "Saatmuster", "Keimling", "planted-token", "planted-code",
     "pay.planted", "eyJwbGFudGVk", "c2VlZHNpZ24", "seedfrag", "Pflanzklasse", "Geheimbrief", "Saatbrief",
 )
-COURSE_IDS = [5, 7]
 
 START_PAGE = """
 <html><head><meta name="generator" content="IServ 3.9.1"></head><body>
@@ -129,8 +128,11 @@ class PlantedClient:
         return CappedBody(404, "", False)
 
 
-def with_course_ids(current):
-    current["children"] = [dict(child, course_ids=list(COURSE_IDS)) for child in current.get("children") or []]
+def with_school_account_child(current):
+    children = [dict(child) for child in current.get("children") or []]
+    if children:
+        children[0]["child_id"] = str(ME["children"][0]["id"])
+    current["children"] = children
 
 
 def planted_log_line():

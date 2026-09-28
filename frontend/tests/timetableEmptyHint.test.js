@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function render(payload) {
   const { window } = loadApp();
-  window.eval(`state.timetable = ${JSON.stringify(payload)};`);
+  evalWith(window, "state.timetable = testArgs[0];", payload);
   return window.eval("timetableView()");
 }
 
@@ -40,7 +40,7 @@ describe("a week in which IServ lists no lessons", () => {
   test("the hint uses known message keys", () => {
     const { window } = loadApp();
     for (const key of ["timetable.empty.title", "timetable.empty.text"]) {
-      expect(window.eval(`hasMessage(${JSON.stringify(key)})`)).toBe(true);
+      expect(evalWith(window, "hasMessage(testArgs[0])", key)).toBe(true);
     }
   });
 });

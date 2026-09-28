@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const CHILD = "c1";
 const WEDNESDAY = "2026-09-02";
@@ -16,13 +16,11 @@ const WEEK = {
 const TIMES = { 1: "08:00", 2: "08:50", 3: "09:50" };
 
 function withCancellations(window, periods) {
-  window.eval(`
-    state.childId = ${JSON.stringify(CHILD)};
-    state.children = [{ key: ${JSON.stringify(CHILD)}, name: "Kind" }];
-    state.cancellations = { data: { cancellations: ${JSON.stringify(
-      periods.map((period) => ({ id: `x${period}`, child_key: CHILD, date: WEDNESDAY, period }))
-    )} } };
-  `);
+  evalWith(window, `
+    state.childId = testArgs[0];
+    state.children = [{ key: testArgs[1], name: "Kind" }];
+    state.cancellations = { data: { cancellations: testArgs[2] } };
+  `, CHILD, CHILD, periods.map((period) => ({ id: `x${period}`, child_key: CHILD, date: WEDNESDAY, period })));
 }
 
 function overviewAt(window, fixedIso) {
@@ -38,7 +36,7 @@ function overviewAt(window, fixedIso) {
       state.weekOffset = 0;
       state.timetable = week;
       state.config = { period_times: times };
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })

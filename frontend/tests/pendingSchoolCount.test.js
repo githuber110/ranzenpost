@@ -1,16 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
 
 function seed(window, connections, children) {
-  window.eval(`
-    state.config = { connections: ${JSON.stringify(connections)}, language: "de", notify_services: [] };
-    state.children = ${JSON.stringify(children)};
-    state.childId = ${JSON.stringify(children[0] ? children[0].key : "")};
+  evalWith(window, `
+    state.config = { connections: testArgs[0], language: "de", notify_services: [] };
+    state.children = testArgs[1];
+    state.childId = testArgs[2];
     state.loadedAt = {};
-  `);
+  `, connections, children, children[0] ? children[0].key : "");
 }
 
 const READY = { id: ONE, school_url: "https://gym-sued.example", school_name: "School One", setup_complete: true, phones: [], period_times: {}, subjects: {}, teachers: {} };
@@ -35,10 +35,10 @@ describe("the absence form is sent to the school it was opened for", () => {
   test("the payload names the school of the open absence data, not the school of the selected child", () => {
     const { window } = loadApp();
     seed(window, [READY, SECOND], [CHILD_ONE, CHILD_TWO]);
-    window.eval(`
-      state.absence = { data: { children: [{ id: "c1", name: "Tom Example" }], entries: [] }, connectionId: ${JSON.stringify(TWO)} };
+    evalWith(window, `
+      state.absence = { data: { children: [{ id: "c1", name: "Tom Example" }], entries: [] }, connectionId: testArgs[0] };
       state.absenceForm = { type: "sick", student_id: "c1", from_date: "2126-09-01", till_date: "2126-09-01", repeat: "" };
-    `);
+    `, TWO);
     expect(window.eval("currentConnectionId()")).toBe(ONE);
     const payload = window.eval("absencePayload(state.absenceForm, state.absence.data.children)");
     expect(payload.connection_id).toBe(TWO);

@@ -294,7 +294,6 @@ TWIN = {"id": 500009, "displayname": "Kim Muster", "forename": "Muster", "surnam
 
 def test_two_candidates_of_the_same_name_are_never_guessed():
     assert dsa.student_for_name(TWINS_ROSTER, "Kim Muster") is None
-    assert dsa.class_for_name(TWINS_ROSTER, "Kim Muster") == ""
 
 
 def test_the_class_lookup_does_not_guess_between_two_students_of_the_same_name(tmp_path):

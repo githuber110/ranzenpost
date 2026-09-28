@@ -83,7 +83,7 @@ describe("compact header: screen title sits level with the settings gear", () =>
     expect(css).toMatch(/\[dir="rtl"\]\s*\.header-back\s*\.ico\s*\{\s*transform:\s*scaleX\(-1\);?\s*\}/);
   });
 
-  test("letterDetailView no longer pulls its meta line up with a negative top margin (it used to offset a title row that lived above it; that row moved into the sticky .header, so a negative margin now pulls the meta line under it)", () => {
+  test("letterDetailView sets no negative top margin on its meta line", () => {
     const { window } = loadApp();
     window.eval(
       "state.letterDetail = { letter: { letter_id: '1', recipient_id: '2', title: 'Infobrief', sender: 'Schule', published: '2026-08-31', child: 'Mia' }, detail: { body_html: '<p>x</p>', attachments: [] } };"

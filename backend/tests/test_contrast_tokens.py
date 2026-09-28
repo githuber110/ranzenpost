@@ -209,7 +209,6 @@ SELECTED_STATE_RULES = (
     r'\.tab\[aria-current="page"\] \.ico-slot',
     r'\.segment button\[aria-selected="true"\]',
     r'\.chip\[aria-selected="true"\]',
-    r'\.pick button\[aria-pressed="true"\]',
     r'\.opt\[aria-pressed="true"\]',
 )
 

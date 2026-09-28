@@ -165,7 +165,8 @@ Jede Schule bringt ein eigenes Gerät mit. Bei mehreren Schulen kommt der Name d
 | Entität | Was sie enthält | Attribute |
 | --- | --- | --- |
 | `calendar.ranzenpost_school_holidays` | Schulferien und Feiertage | Die nächsten Ferien: `summary`, `start`, `end` |
-| `sensor.ranzenpost_school_next_holiday` | Der Name der nächsten Ferien | `start`, `end`, `days_until` |
+| `sensor.ranzenpost_school_next_holiday` | Der Name der nächsten Schulferien | `start`, `end`, `days_until` |
+| `sensor.ranzenpost_school_next_free_day` | Der Name des nächsten freien Tags, Schulferien oder Feiertag | `start`, `end`, `days_until` |
 | `sensor.ranzenpost_school_next_conference` | Das Datum des nächsten Elternsprechtags | `date`, `title`, `details`, `days_until` |
 | `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` oder `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
 

@@ -82,4 +82,20 @@ describe("visibility refresh: app does not age in the background", () => {
     window.document.dispatchEvent(new window.Event("visibilitychange"));
     expect(window.eval("window.__calls")).toBe(0);
   });
+
+  test("a second boot does not add a second set of listeners", () => {
+    const { window } = loadApp();
+    const bound = [];
+    const record = (target) => {
+      const add = target.addEventListener.bind(target);
+      target.addEventListener = (type, listener, options) => {
+        if (["visibilitychange", "pageshow", "focus"].includes(type)) bound.push(type);
+        return add(type, listener, options);
+      };
+    };
+    record(window.document);
+    record(window);
+    window.eval("setupVisibilityRefresh(); setupVisibilityRefresh();");
+    expect(bound.sort()).toEqual(["focus", "pageshow", "visibilitychange"]);
+  });
 });

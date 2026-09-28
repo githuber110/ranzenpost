@@ -175,7 +175,7 @@ describe("pull-to-refresh keeps out of horizontal gestures", () => {
     expect(screen.querySelector(".pull-indicator")).toBeNull();
   });
 
-  test("the diagonal that satisfied both detectors no longer arms the refresh", () => {
+  test("a diagonal drag that satisfies both detectors never arms the refresh", () => {
     const { window } = loadApp();
     const screen = armedScreen(window);
     pull(window, screen, [240, 300], [110, 375]);

@@ -50,10 +50,6 @@ REGION_CODES = (
     "DE-TH",
 )
 
-REQUEST_PARAM_KEYS = frozenset(
-    {"countryIsoCode", "subdivisionCode", "languageIsoCode", "validFrom", "validTo"}
-)
-
 LOCAL_SCOPE = "Local"
 STATE_CODE_PARTS = 2
 EXCEPTION_TAG = "Exception"
@@ -564,24 +560,3 @@ class HolidayCalendar:
         payload["days"] = _day_map(window_start, window_end, overlapping, groups)
         payload["weeks"] = _week_rows(window_start, window_end, payload["days"], overlapping)
         return payload
-
-    def week_info(self, week_offset=0, today=None, config=None):
-        start, end = week_range(week_offset, today)
-        return self.range_info(start, end, config)
-
-    def day_info(self, day, config=None):
-        payload = self.range_info(day, day, config)
-        entry = payload["days"].get(day.isoformat())
-        return {
-            "date": day.isoformat(),
-            "status": payload["status"],
-            "stale": payload["stale"],
-            "free": bool(entry and entry["free"]),
-            "overrides_lessons": bool(entry and entry["overrides_lessons"]),
-            "weekend": bool(entry and entry["weekend"]),
-            "kind": entry["kind"] if entry else "",
-            "type": entry["type"] if entry else "",
-            "name": entry["name"] if entry else "",
-            "name_key": entry["name_key"] if entry else "",
-            "period_id": entry["period_id"] if entry else "",
-        }

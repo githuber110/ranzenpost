@@ -192,13 +192,13 @@ class SubscriptionRegistry:
                 self._write(entries)
         return moved
 
-    def create(self, child_key, components, label="", color="", require_region=True):
+    def create(self, child_key, components, label="", color=""):
         config = self.store.load_config()
         selected = normalize_components(components)
         if not known_child(config, child_key):
             raise SubscriptionError(ERROR_CHILD)
         region = config_for_child(self.store, child_key).get("holiday_region")
-        if require_region and COMPONENT_TIMETABLE in selected and not region:
+        if COMPONENT_TIMETABLE in selected and not region:
             raise SubscriptionError(ERROR_REGION)
         resolved = normalize_label(label, config, child_key)
         entry = {
@@ -230,7 +230,7 @@ class SubscriptionRegistry:
                 return public_view(updated)
         raise SubscriptionError(ERROR_NOT_FOUND)
 
-    def update(self, subscription_id, components=None, label=None, color=None, require_region=True):
+    def update(self, subscription_id, components=None, label=None, color=None):
         config = self.store.load_config()
 
         def change(entry):
@@ -239,7 +239,7 @@ class SubscriptionRegistry:
             if components is not None:
                 selected = normalize_components(components)
                 region = config_for_child(self.store, entry.get("child_key", "")).get("holiday_region")
-                if require_region and COMPONENT_TIMETABLE in selected and not region:
+                if COMPONENT_TIMETABLE in selected and not region:
                     raise SubscriptionError(ERROR_REGION)
                 entry["components"] = selected
             if label is not None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -31,6 +31,7 @@ from .const import (
     STATUS_AUTH_FAILED,
     UNKNOWN_VERSION,
 )
+from .panels import PANELS_KEY, app_panel_path
 from .signals import Signal, signals_between
 from .version import ADDON_TOO_OLD, INTEGRATION_TOO_OLD, version_mismatch
 
@@ -202,6 +203,7 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
     async def _async_update_data(self) -> RanzenpostData:
         try:
             info = await self.api.info()
+            info = replace(info, ingress_path=app_panel_path(self.hass.data.get(PANELS_KEY), info.ingress_path))
             self._sync_version_issues(info)
             self._sync_no_school_issue(info)
             states = {child.key: await self.api.state(child.key) for child in selected_children(info, self.config_entry)}

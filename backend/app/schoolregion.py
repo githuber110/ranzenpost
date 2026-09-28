@@ -8,8 +8,6 @@ LOCALITIES_PATH = "de/Localities"
 REQUEST_TIMEOUT = 10
 CACHE_TTL_SECONDS = 24 * 60 * 60
 
-REQUEST_PARAM_KEYS = frozenset({"postalCode"})
-
 POSTAL_CODE_PATTERN = re.compile(r"^[0-9]{5}$")
 
 CONFIDENCE_HIGH = "high"

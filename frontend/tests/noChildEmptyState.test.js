@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
 
 describe("overview and tab bar with no child assigned", () => {
-  test("overviewToday shows an honest empty state instead of an empty timetable card when no child is available", () => {
+  test("the today block shows an honest empty state instead of an empty timetable card when no child is available", () => {
     const { window } = loadApp();
     const section = window.eval(`
       (function () {
@@ -10,7 +10,7 @@ describe("overview and tab bar with no child assigned", () => {
         state.childId = null;
         state.timetable = null;
         state.modules.available.timetable = true;
-        return overviewToday();
+        return overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       })()
     `);
     expect(section.querySelector(".child-today")).toBeNull();

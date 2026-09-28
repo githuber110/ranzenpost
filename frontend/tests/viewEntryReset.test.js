@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function prepare(window) {
   window.eval(`
@@ -11,7 +11,7 @@ function prepare(window) {
 }
 
 function views(window) {
-  return window.eval("ALL_VIEWS");
+  return window.eval('VIEWS.map((item) => item.key).concat(["settings"])');
 }
 
 function dirty(window) {
@@ -80,10 +80,10 @@ describe("every view is entered in a defined state", () => {
       prepare(window);
       window.eval('state.view = "settings";');
       dirty(window);
-      window.eval(`setView(${JSON.stringify(target)})`);
-      const expected = window.eval(`VIEW_ENTRY_DEFAULTS[${JSON.stringify(target)}]`);
+      evalWith(window, "setView(testArgs[0])", target);
+      const expected = evalWith(window, "VIEW_ENTRY_DEFAULTS[testArgs[0]]", target);
       for (const key of Object.keys(expected)) {
-        expect({ view: target, key, value: window.eval(`state[${JSON.stringify(key)}]`) })
+        expect({ view: target, key, value: evalWith(window, "state[testArgs[0]]", key) })
           .toEqual({ view: target, key, value: expected[key] });
       }
     }
@@ -95,9 +95,9 @@ describe("every view is entered in a defined state", () => {
       prepare(window);
       trackScrolling(window);
       const origin = target === "settings" ? "overview" : "settings";
-      window.eval(`state.view = ${JSON.stringify(origin)}; render();`);
+      evalWith(window, "state.view = testArgs[0]; render();", origin);
       window.eval("state._keepScroll = 480; state._scrollTop = false;");
-      window.eval(`setView(${JSON.stringify(target)})`);
+      evalWith(window, "setView(testArgs[0])", target);
       expect({ view: target, top: screenScroll(window) }).toEqual({ view: target, top: 0 });
     }
   });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 import { openWizard } from "./absenceWizard.js";
 
 const SICK_DATA = {
@@ -54,11 +54,11 @@ describe("a mode choice unfolds its small follow-up inside the very same step", 
     const reveals = window.eval("Object.keys(ABSENCE_REVEALS).map((host) => [host, ABSENCE_REVEALS[host].step])");
     expect(reveals.length).toBeGreaterThan(0);
     for (const [host, revealed] of reveals) {
-      expect(window.eval(`absenceStepHost(${JSON.stringify(revealed)})`)).toBe(host);
-      expect(window.eval(`absenceStepHost(${JSON.stringify(host)})`)).toBe(host);
-      expect(window.eval(`ABSENCE_STEP_TITLES[${JSON.stringify(revealed)}]`)).toBeTruthy();
-      expect(window.eval(`absenceRevealName(${JSON.stringify(host)})`).length).toBeGreaterThan(0);
-      expect(window.eval(`ABSENCE_STEP_BUILDERS[${JSON.stringify(revealed)}]`)).toBeTruthy();
+      expect(evalWith(window, "absenceStepHost(testArgs[0])", revealed)).toBe(host);
+      expect(evalWith(window, "absenceStepHost(testArgs[0])", host)).toBe(host);
+      expect(evalWith(window, "ABSENCE_STEP_TITLES[testArgs[0]]", revealed)).toBeTruthy();
+      expect(evalWith(window, "absenceRevealName(testArgs[0])", host).length).toBeGreaterThan(0);
+      expect(evalWith(window, "ABSENCE_STEP_BUILDERS[testArgs[0]]", revealed)).toBeTruthy();
     }
   });
 

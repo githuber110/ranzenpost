@@ -66,7 +66,7 @@ def make(tmp_path, client_class=RefusingClient, school_app=None, **client_kwargs
     return service
 
 
-def test_a_refused_timetable_page_no_longer_costs_the_family_its_children(tmp_path):
+def test_a_refused_timetable_page_still_returns_the_family_children(tmp_path):
     service = make(tmp_path, school_app=SchoolApp(SCHOOL_APP_CHILDREN))
     children = service.children()
     assert [child["name"] for child in children] == ["Mia Muster", "Ben Muster"]
@@ -167,3 +167,48 @@ def test_a_school_app_entry_without_an_id_or_name_is_left_out(tmp_path):
     ragged = SCHOOL_APP_CHILDREN + [{"id": None, "name": "Geist"}, {"id": 7, "name": ""}]
     service = make(tmp_path, school_app=SchoolApp(ragged))
     assert [child["child_id"] for child in service.children()] == ["99", "100"]
+
+
+class CountingRefusal(RefusingClient):
+    asked = 0
+
+    def get_children(self):
+        CountingRefusal.asked += 1
+        return super().get_children()
+
+
+def counting(tmp_path, children, message_key=CHILD_PAGE_FORBIDDEN_KEY):
+    CountingRefusal.asked = 0
+    service = make(tmp_path, client_class=CountingRefusal, school_app=SchoolApp(children), message_key=message_key)
+    now = [1000.0]
+    service.clock = lambda: now[0]
+    return service, now
+
+
+def test_a_refused_timetable_page_is_not_asked_again_within_the_hour(tmp_path):
+    service, now = counting(tmp_path, SCHOOL_APP_CHILDREN)
+    service._child_service.children()
+    now[0] += 1800
+    assert [child["name"] for child in service._child_service.children()] == ["Mia Muster", "Ben Muster"]
+    assert CountingRefusal.asked == 1
+    now[0] += 1800
+    service._child_service.children()
+    assert CountingRefusal.asked == 2
+
+
+def test_a_remembered_refusal_without_school_app_children_still_refuses(tmp_path):
+    service, now = counting(tmp_path, [])
+    for _ in range(2):
+        with pytest.raises(DataError) as refused:
+            service._child_service.children()
+        assert refused.value.message_key == CHILD_PAGE_FORBIDDEN_KEY
+        now[0] += 60
+    assert CountingRefusal.asked == 1
+
+
+def test_a_page_message_is_not_remembered_as_a_refusal(tmp_path):
+    service, now = counting(tmp_path, SCHOOL_APP_CHILDREN, message_key=CHILD_PAGE_MESSAGE_KEY)
+    service._child_service.children()
+    now[0] += 60
+    service._child_service.children()
+    assert CountingRefusal.asked == 2

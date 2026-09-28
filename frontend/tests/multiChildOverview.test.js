@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const styles = fs.readFileSync(path.join(path.resolve(__dirname, ".."), "styles.css"), "utf8");
 
@@ -15,7 +15,7 @@ function renderTodayAgainAt(window, fixedDate) {
       }
       FixedDate.prototype = RealDate.prototype;
       Date = FixedDate;
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })
@@ -41,7 +41,7 @@ function renderTodayChapterAt(window, fixedDate, children, weeks, activeId) {
       for (const childId of Object.keys(weeks)) {
         state.overviewWeeks[childId] = { 0: weeks[childId] };
       }
-      const result = overviewToday();
+      const result = overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       Date = RealDate;
       return result;
     })
@@ -116,9 +116,9 @@ describe("HEUTE shows one child at a time, chosen through a chip row of first na
 
   test("tapping a chip stores the choice, drops the anchor and re-arms the now anchor", () => {
     const { window } = loadApp();
-    const result = window.eval(`
+    const result = evalWith(window, `
       (function () {
-        state.children = ${JSON.stringify(CHILDREN)};
+        state.children = testArgs[0];
         state.childId = "c1";
         state.overviewChildId = "c1";
         state._overviewAnchor = { area: "today", blockKey: "c1:3" };
@@ -128,7 +128,7 @@ describe("HEUTE shows one child at a time, chosen through a chip row of first na
         overviewSelectChild("c2");
         return { child: state.overviewChildId, anchor: state._overviewAnchor, now: state._overviewNow, rerendered: state.rerendered };
       })()
-    `);
+    `, CHILDREN);
     expect(result.child).toBe("c2");
     expect(result.anchor).toBeNull();
     expect(result.now).toBe(true);
@@ -165,7 +165,7 @@ describe("HEUTE shows one child at a time, chosen through a chip row of first na
         state.childId = null;
         state.overviewChildId = null;
         state.timetable = { lessons: [{ day_of_week: weekdayIndex(new Date()), period: 1, start_time: "08:00", subject_code: "D" }], period_times: {} };
-        return overviewToday();
+        return overviewFlatten(document.createElement("div"), [todayChapter()].filter(Boolean))[0] || null;
       })()
     `);
     const bar = panel.querySelector(".chipbar.overview-chips");

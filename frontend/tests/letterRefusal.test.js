@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const UNKNOWN = { ok: false, error: "network", message_key: "api.letters.unknown" };
 
@@ -17,7 +17,7 @@ async function settle(window, ticks = 8) {
 }
 
 function outcome(window, result, single = false) {
-  return window.eval(`markReadOutcome(${JSON.stringify(result)}, ${single})`);
+  return evalWith(window, `markReadOutcome(testArgs[0], ${single})`, result);
 }
 
 describe("marking letters read reports letters that could not be marked", () => {

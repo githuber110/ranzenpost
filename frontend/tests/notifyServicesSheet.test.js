@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ENRICHED = [
   { service: "notify.mobile_app_test_phone", name: "Test Phone", name_source: "entity", category: "mobile" },
@@ -22,12 +22,12 @@ const SEARCHABLE = [
 function openNotifySheet(services, { supervisor = true, config = {} } = {}) {
   const app = loadApp();
   const supervisorLiteral = supervisor === null ? "null" : supervisor ? "true" : "false";
-  app.window.eval(`
-    state.config = ${JSON.stringify(Object.assign({ notify_services: [], notify_events: {} }, config))};
-    state.notifyServices = ${JSON.stringify(services)};
+  evalWith(app.window, `
+    state.config = testArgs[0];
+    state.notifyServices = testArgs[1];
     state.notifySupervisor = ${supervisorLiteral};
     openSheet(notifySheet);
-  `);
+  `, Object.assign({ notify_services: [], notify_events: {} }, config), services);
   return app;
 }
 

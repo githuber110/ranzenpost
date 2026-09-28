@@ -5,6 +5,12 @@
     "end": "2026-10-23",
     "days_until": 40
   },
+  "next_free_day": {
+    "name": "Tag der Deutschen Einheit",
+    "start": "2026-10-03",
+    "end": "2026-10-03",
+    "days_until": 31
+  },
   "next_conference": {
     "date": "2026-11-05",
     "title": "Parent-teacher conference",

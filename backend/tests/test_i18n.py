@@ -118,27 +118,26 @@ GERMAN_ROLE_WORDS = re.compile(r"\b(Kind|Kinder|Kindes|Kindern|Eltern)\b")
 ENGLISH_ROLE_WORDS = re.compile(r"\b(child|children|parent|parents)\b", re.IGNORECASE)
 
 ROLE_WORD_ALLOWED_KEYS = {
-    "conferences.error.text": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
-    "conferences.title": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "conferences.error.text": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
+    "conferences.title": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
     "letters.detail.title": "IServ module name (Elternbriefe / Parent letters)",
     "letters.empty.title": "IServ module name (Elternbriefe / Parent letters)",
     "letters.error.text": "IServ module name (Elternbriefe / Parent letters)",
-    "letters.title": "IServ module name (Elternbriefe / Parent letters)",
-    "modules.catalogue.parentconference": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
-    "blocks.conferences.title": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
-    "blocks.conferences.target": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "modules.catalogue.parentconference": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
+    "blocks.conferences.title": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
+    "blocks.conferences.target": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
     "blocks.absences.row": "placeholder name {child} is a variable, the rendered text is the first name",
     "modules.catalogue.parentletter": "IServ module name (Elternbriefe / Parent letters)",
-    "notify.conferences.new.one": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
-    "notify.conferences.new.other": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "notify.conferences.new.one": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
+    "notify.conferences.new.other": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
     "notify.letters.new.one": "IServ module name (Elternbriefe / Parent letters)",
     "notify.letters.new.other": "IServ module name (Elternbriefe / Parent letters)",
     "overview.all.letters": "IServ module name (Elternbriefe / Parent letters)",
     "overview.chapter.letters": "IServ module name (Elternbriefe / Parent letters)",
     "overview.letters.none": "IServ module name (Elternbriefe / Parent letters)",
-    "settings.modules.name.conferences": "IServ module name (Elternsprechtage / Parent-teacher conference days)",
+    "settings.modules.name.conferences": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
     "settings.modules.name.letters": "IServ module name (Elternbriefe / Parent letters)",
-    "settings.notify.event.conferences": "IServ module name (Elternsprechtage / Parent-teacher meetings)",
+    "settings.notify.event.conferences": "IServ module name (Elternsprechtage / Parent-teacher conferences)",
     "settings.notify.event.letters": "IServ module name (Elternbriefe / Parent letters)",
     "wizard.child.none.modules": "names the Elternbriefe/Elternsprechtage modules by name",
     "wizard.url.text": "names the Elternbriefe module as a place to find the school URL",
@@ -220,7 +219,7 @@ def test_frontend_carries_no_hardcoded_german_ui_strings():
 
 
 def test_the_german_tripwire_still_catches_a_planted_string():
-    assert hardcoded_german('const label = "Bitte ein Datum wählen.";')
+    assert hardcoded_german('const label = "Bitte wähle ein Datum.";')
     assert hardcoded_german('toast("Der Brief wurde archiviert");')
     assert hardcoded_german("const hint = `Woche ${week}`;")
     assert hardcoded_german('el("span", {}, "Einstellungen")')

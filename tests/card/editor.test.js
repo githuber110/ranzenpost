@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENTRY_ID, SCHOOL, makeHass } from "./fakeHass.js";
@@ -72,6 +75,50 @@ describe("config editor with blocks", () => {
     expect(emitted.at(-1).title).toBe("Schule");
     tick(root, "input[name=children][value=kim]", true);
     expect(emitted.at(-1).children).toEqual(["alex", "kim"]);
+  });
+
+  it("moves blocks up and down so the order needs no code", async () => {
+    const editor = await mountEditor({ blocks: ["today", "letters", "holidays"], children: ["alex"] });
+    const root = editor.shadowRoot;
+    const emitted = [];
+    editor.addEventListener("config-changed", (event) => emitted.push(event.detail.config));
+    const order = () => [...root.querySelectorAll(".order-row")].map((row) => row.dataset.block);
+    const button = (block, move) => root.querySelector(`.order-move[data-block="${block}"][data-move="${move}"]`);
+
+    expect(root.querySelector(".order-host .hint").textContent).toBe("Reihenfolge");
+    expect(order()).toEqual(["today", "letters", "holidays"]);
+    expect(button("today", "up").disabled).toBe(true);
+    expect(button("holidays", "down").disabled).toBe(true);
+    expect(button("letters", "up").getAttribute("aria-label")).toBe("Elternbriefe nach oben");
+
+    button("holidays", "up").focus();
+    button("holidays", "up").click();
+    expect(emitted.at(-1).blocks).toEqual(["today", "holidays", "letters"]);
+    expect(order()).toEqual(["today", "holidays", "letters"]);
+    expect([...root.querySelectorAll(".size-row")].map((row) => row.dataset.block)).toEqual(["today", "holidays", "letters"]);
+    expect(root.activeElement).toBe(button("holidays", "up"));
+
+    button("holidays", "up").click();
+    expect(emitted.at(-1).blocks).toEqual(["holidays", "today", "letters"]);
+    expect(root.activeElement).toBe(button("holidays", "down"));
+  });
+
+  it("offers a field for every option the card reads, apart from the legacy view options", async () => {
+    const source = readFileSync(join(process.cwd(), "custom_components", "ranzenpost", "frontend", "ranzenpost-card.js"), "utf8");
+    const read = new Set([...source.matchAll(/(?<![.\w])(?:this\._config|config)\.([a-z_]+)/g)].map((match) => match[1]));
+    const legacy = new Set(["view", "days", "child"]);
+    const editor = await mountEditor({ blocks: ["today", "letters"], children: ["alex"] });
+    const emitted = [];
+    editor.addEventListener("config-changed", (event) => emitted.push(event.detail.config));
+    change(editor.shadowRoot, "input[name=title]", "Schule");
+    const offered = new Set(Object.keys(emitted.at(-1)));
+    expect([...read].filter((key) => !legacy.has(key) && !offered.has(key))).toEqual([]);
+    expect(read.has("blocks") && read.has("title") && read.has("children")).toBe(true);
+  });
+
+  it("shows no order list for a single block", async () => {
+    const editor = await mountEditor({ blocks: ["today"], children: ["alex"] });
+    expect(editor.shadowRoot.querySelector(".order-list")).toBeNull();
   });
 
   it("turns a legacy view config into blocks on the first change", async () => {

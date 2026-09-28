@@ -1,7 +1,5 @@
 import re
 
-from . import messages
-
 LOCKED_MARKERS = (
     "gesperrt",
     "konto gesperrt",
@@ -94,10 +92,6 @@ def classify_login_response(html):
 
 def human_message_key(kind):
     return HUMAN_MESSAGE_KEYS.get(kind, HUMAN_MESSAGE_KEYS["normal"])
-
-
-def human_message(kind):
-    return messages.text(human_message_key(kind))
 
 
 def _matches_any(text, markers):

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(dirname, "..");
@@ -45,7 +45,7 @@ function setup({ region = "DE-NI", subscriptions = [], responses = {}, host = {}
   window.eval("render = function () { window.__renders = (window.__renders || 0) + 1; };");
   window.eval('state.children = [{ key: "c1", name: "Mia", class_name: "3b" }]; state.childId = "c1";');
   window.eval('state.view = "timetable";');
-  window.eval(`state.calendar = { data: ${JSON.stringify(payloadFor(region, subscriptions, host))}, error: false };`);
+  evalWith(window, "state.calendar = { data: testArgs[0], error: false };", payloadFor(region, subscriptions, host));
   window.fetch = (url, options) => {
     const target = String(url);
     calls.push({ url: target, options: options || {} });
@@ -93,7 +93,7 @@ describe("creating a calendar subscription", () => {
 
   test("an existing subscription is changed through its own path, not created a second time", async () => {
     const { window, calls } = setup({ subscriptions: [SUBSCRIPTION] });
-    window.eval(`state.calendarDraft = calendarEditDraft(${JSON.stringify(SUBSCRIPTION)}, state.children[0]);`);
+    evalWith(window, "state.calendarDraft = calendarEditDraft(testArgs[0], state.children[0]);", SUBSCRIPTION);
     await window.eval("submitCalendarDraft(state.calendarDraft)");
 
     const writes = writeCalls(calls);
@@ -233,7 +233,7 @@ describe("the calendar is named after Ranzenpost and the child's first name", ()
 describe("renewing the token asks first", () => {
   test("no request goes out until the confirmation is accepted", async () => {
     const { window, calls } = setup({ subscriptions: [SUBSCRIPTION] });
-    const pending = window.eval(`rotateCalendarSubscription(${JSON.stringify(SUBSCRIPTION)})`);
+    const pending = evalWith(window, "rotateCalendarSubscription(testArgs[0])", SUBSCRIPTION);
 
     const dialog = window.eval("state.sheet()");
     expect(dialog.querySelector(".sheet-title").textContent).toBe(base["calendar.subscribe.rotate.title"]);
@@ -251,7 +251,7 @@ describe("renewing the token asks first", () => {
 
   test("declining the confirmation leaves the token alone", async () => {
     const { window, calls } = setup({ subscriptions: [SUBSCRIPTION] });
-    const pending = window.eval(`rotateCalendarSubscription(${JSON.stringify(SUBSCRIPTION)})`);
+    const pending = evalWith(window, "rotateCalendarSubscription(testArgs[0])", SUBSCRIPTION);
     const dialog = window.eval("state.sheet()");
     buttonWithText(dialog, base["common.cancel"]).click();
     await pending;
@@ -261,7 +261,7 @@ describe("renewing the token asks first", () => {
 
   test("deleting asks with its own wording and then calls DELETE", async () => {
     const { window, calls } = setup({ subscriptions: [SUBSCRIPTION] });
-    const pending = window.eval(`revokeCalendarSubscription(${JSON.stringify(SUBSCRIPTION)})`);
+    const pending = evalWith(window, "revokeCalendarSubscription(testArgs[0])", SUBSCRIPTION);
     const dialog = window.eval("state.sheet()");
     expect(dialog.querySelector(".sheet-title").textContent).toBe(base["calendar.subscribe.delete.title"]);
     buttonWithText(dialog, base["calendar.subscribe.delete.confirm"]).click();
@@ -502,7 +502,7 @@ describe("the QR encoder is deterministic", () => {
   test("a known address always produces the same matrix", () => {
     const { window } = loadApp();
     window.eval(qrJs);
-    const matrix = window.eval(`qrMatrix(${JSON.stringify(FROZEN_URL)})`);
+    const matrix = evalWith(window, "qrMatrix(testArgs[0])", FROZEN_URL);
     const rows = [...matrix.rows].map((row) => [...row].join(""));
 
     expect(matrix.version).toBe(6);
@@ -513,7 +513,7 @@ describe("the QR encoder is deterministic", () => {
   test("the three finder patterns and the quiet zone are where a scanner expects them", () => {
     const { window } = loadApp();
     window.eval(qrJs);
-    const matrix = window.eval(`qrMatrix(${JSON.stringify(FROZEN_URL)})`);
+    const matrix = evalWith(window, "qrMatrix(testArgs[0])", FROZEN_URL);
     const rows = [...matrix.rows].map((row) => [...row].join(""));
     const size = matrix.size;
 
@@ -521,7 +521,7 @@ describe("the QR encoder is deterministic", () => {
     expect(rows[0].slice(size - 7)).toBe("1111111");
     expect(rows[size - 7].slice(0, 7)).toBe("1111111");
     expect(rows[1].slice(0, 7)).toBe("1000001");
-    expect(window.eval(`qrCanvasSize(qrMatrix(${JSON.stringify(FROZEN_URL)}))`)).toBe(size + 8);
+    expect(evalWith(window, "qrCanvasSize(qrMatrix(testArgs[0]))", FROZEN_URL)).toBe(size + 8);
   });
 
   test("empty and oversized input yield no matrix instead of a broken one", () => {

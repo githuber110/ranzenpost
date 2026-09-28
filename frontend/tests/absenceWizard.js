@@ -1,3 +1,5 @@
+import { evalWith } from "./loadApp.js";
+
 export function openWizard(window, type, data, studentId) {
   const run = window.eval(`
     (function (type, data, studentId) {
@@ -40,7 +42,7 @@ export function wizard(window) {
       return Array.from(window.eval("absenceFlow.node.querySelectorAll('.sw-dot')"));
     },
     go(id) {
-      window.eval(`absenceFlow.go(${JSON.stringify(id)})`);
+      evalWith(window, "absenceFlow.go(testArgs[0])", id);
     },
     next() {
       window.eval("absenceFlow.next()");

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const LESSON = {
   day_of_week: 2,
@@ -13,12 +13,12 @@ const LESSON = {
 };
 
 function seed(window, entered) {
-  window.eval(`
-    state.config = { subjects: {}, teachers: {}, period_times: ${JSON.stringify(entered)} };
-    state.timetable = { lessons: [], period_times: ${JSON.stringify(entered)} };
+  evalWith(window, `
+    state.config = { subjects: {}, teachers: {}, period_times: testArgs[0] };
+    state.timetable = { lessons: [], period_times: testArgs[1] };
     state.childId = "c1";
     state.children = [{ key: "c1", name: "Mia" }];
-  `);
+  `, entered, entered);
 }
 
 function resolve(window, lesson, times) {

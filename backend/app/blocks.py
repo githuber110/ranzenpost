@@ -37,16 +37,8 @@ BLOCK_BY_KEY = {block["key"]: block for block in BLOCKS}
 DEFAULT_OVERVIEW_KEYS = ("today", "letters", "noticeboard", "conferences", "changes", "chat")
 
 
-def module_of(key):
-    return BLOCK_BY_KEY[key]["module"]
-
-
 def default_overview_blocks():
     return [{"key": block["key"], "size": block["size"]} for block in BLOCKS if block["key"] in DEFAULT_OVERVIEW_KEYS]
-
-
-def default_navigation():
-    return list(DEFAULT_NAVIGATION)
 
 
 def normalize_modules_disabled(raw):

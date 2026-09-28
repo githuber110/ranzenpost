@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const SELF = "@me:example.test";
 const TEACHER = "@teacher:example.test";
@@ -44,15 +44,14 @@ function renderRooms(window) {
 }
 
 function makeRoom(window, overrides) {
-  return window.eval(
-    `(function (over) {
+  return evalWith(window, `(function (over) {
       state.view = "messenger";
       state.messengerRooms = null;
       state.messengerRoom = Object.assign({
         room_id: "!a:example.test",
         name: "Klasse 3b Elternchat",
         memberNames: over && over.memberNames ? over.memberNames : {},
-        selfUserId: "${SELF}",
+        selfUserId: testArgs[0],
         messages: [],
         before: "",
         loading: false,
@@ -66,8 +65,7 @@ function makeRoom(window, overrides) {
         restoreFromEnd: null,
       }, over || {});
       return state.messengerRoom;
-    })`
-  )(overrides);
+    })`, SELF)(overrides);
 }
 
 function renderRoom(window) {

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 const ONE = "a1b2c3d4";
 const TWO = "b2c3d4e5";
 
 function label(window, key, vars) {
-  return window.eval(`t(${JSON.stringify(key)}, ${JSON.stringify(vars || {})})`);
+  return evalWith(window, "t(testArgs[0], testArgs[1])", key, vars || {});
 }
 
 function texts(nodes) {
@@ -17,33 +17,33 @@ function tick() {
 }
 
 function single(window, connection = {}, extra = "") {
-  window.eval(`
-    state.config = { connections: [Object.assign({ id: ${JSON.stringify(ONE)}, setup_complete: true, phones: [], subjects: {}, teachers: {} }, ${JSON.stringify(connection)})], notify_services: [], notify_events: {} };
-    state.children = [{ key: ${JSON.stringify(`${ONE}:c1`)}, child_id: "c1", connection_id: ${JSON.stringify(ONE)}, name: "Mia Example", class_name: "7b" }];
-    state.childId = ${JSON.stringify(`${ONE}:c1`)};
+  evalWith(window, `
+    state.config = { connections: [Object.assign({ id: testArgs[0], setup_complete: true, phones: [], subjects: {}, teachers: {} }, testArgs[1])], notify_services: [], notify_events: {} };
+    state.children = [{ key: testArgs[2], child_id: "c1", connection_id: testArgs[3], name: "Mia Example", class_name: "7b" }];
+    state.childId = testArgs[4];
     state.me = { forename: "Alex", username: "alex.example", email: "alex@example.invalid", is_active: true };
-    ${extra}
-  `);
+  `, ONE, connection, `${ONE}:c1`, ONE, `${ONE}:c1`);
+  evalWith(window, ...[].concat(extra));
 }
 
 function two(window, extra = "") {
-  window.eval(`
+  evalWith(window, `
     state.config = { connections: [
-      { id: ${JSON.stringify(ONE)}, school_name: "School One", setup_complete: true, phones: [], subjects: {}, teachers: {} },
-      { id: ${JSON.stringify(TWO)}, school_name: "School Two", setup_complete: true, phones: [], subjects: {}, teachers: {} },
+      { id: testArgs[0], school_name: "School One", setup_complete: true, phones: [], subjects: {}, teachers: {} },
+      { id: testArgs[1], school_name: "School Two", setup_complete: true, phones: [], subjects: {}, teachers: {} },
     ], notify_services: [], notify_events: {} };
     state.children = [
-      { key: ${JSON.stringify(`${ONE}:c1`)}, child_id: "c1", connection_id: ${JSON.stringify(ONE)}, name: "Mia Example", class_name: "7b" },
-      { key: ${JSON.stringify(`${TWO}:c1`)}, child_id: "c1", connection_id: ${JSON.stringify(TWO)}, name: "Tom Example", class_name: "3a" },
+      { key: testArgs[2], child_id: "c1", connection_id: testArgs[3], name: "Mia Example", class_name: "7b" },
+      { key: testArgs[4], child_id: "c1", connection_id: testArgs[5], name: "Tom Example", class_name: "3a" },
     ];
-    state.childId = ${JSON.stringify(`${ONE}:c1`)};
+    state.childId = testArgs[6];
     state.schools = [
-      { id: ${JSON.stringify(ONE)}, name: "School One", status: "ok", username: "parent.one", setup_complete: true },
-      { id: ${JSON.stringify(TWO)}, name: "School Two", status: "ok", username: "parent.two", setup_complete: true },
+      { id: testArgs[7], name: "School One", status: "ok", username: "parent.one", setup_complete: true },
+      { id: testArgs[8], name: "School Two", status: "ok", username: "parent.two", setup_complete: true },
     ];
-    state.schoolStatus = { ${JSON.stringify(ONE)}: "ok", ${JSON.stringify(TWO)}: "ok" };
-    ${extra}
-  `);
+    state.schoolStatus = { [testArgs[9]]: "ok", [testArgs[10]]: "ok" };
+  `, ONE, TWO, `${ONE}:c1`, ONE, `${TWO}:c1`, TWO, `${ONE}:c1`, ONE, TWO, ONE, TWO);
+  evalWith(window, ...[].concat(extra));
 }
 
 function rowCounts(root) {
@@ -61,7 +61,7 @@ describe("the settings list has no group with a single row", () => {
     expect(lonely(window.eval("settingsView()"))).toEqual([]);
     two(window);
     expect(lonely(window.eval("settingsView()"))).toEqual([]);
-    const page = window.eval(`el("div", {}, schoolPageSections(${JSON.stringify(TWO)}))`);
+    const page = evalWith(window, 'el("div", {}, schoolPageSections(testArgs[0]))', TWO);
     expect(lonely(page)).toEqual([]);
   });
 
@@ -87,7 +87,7 @@ describe("the module switches are shared and listed once under Areas", () => {
     expect(blocks.length).toBe(1);
     expect(blocks[0].closest(".settings-group").querySelector(".overline").textContent).toBe(label(window, "settings.section.modules"));
     expect(blocks[0].querySelector(".section-lead").textContent).toBe(label(window, "settings.modules.leadAll"));
-    const page = window.eval(`el("div", {}, schoolPageSections(${JSON.stringify(TWO)}))`);
+    const page = evalWith(window, 'el("div", {}, schoolPageSections(testArgs[0]))', TWO);
     expect(page.querySelector(".module-row")).toBeNull();
     expect(page.querySelector(".modules-recheck").classList.contains("link-btn")).toBe(true);
   });
@@ -138,7 +138,7 @@ describe("raw account data lives under Help as technical details", () => {
 
   test("the login row of a school page shows the user name and opens nothing", () => {
     const { window } = loadApp();
-    two(window, `state.view = "settings"; state.settingsSchoolId = ${JSON.stringify(TWO)};`);
+    two(window, ['state.view = "settings"; state.settingsSchoolId = testArgs[0];', TWO]);
     window.eval("render()");
     const row = window.document.querySelector(".school-page .login-row");
     expect(row.tagName).toBe("DIV");

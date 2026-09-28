@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadApp } from "./loadApp.js";
+import { evalWith, loadApp } from "./loadApp.js";
 
 function jsonResponse(body, ok = true, status = 200) {
   return Promise.resolve({
@@ -80,7 +80,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
     test(`${loader.name}: a failed first load shows the error state with a retry button`, async () => {
       const { window, document } = loadApp();
       await quiet(window);
-      window.eval(`state.view = "${loader.view}"; ${loader.seed} ${loader.reset}`);
+      evalWith(window, `state.view = testArgs[0]; ${loader.seed} ${loader.reset}`, loader.view);
       routeFetch(window, [
         [loader.route, () => Promise.reject(new Error("offline"))],
         ["api/config", () => jsonResponse({})],
@@ -89,7 +89,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
       await settle();
 
       const text = document.getElementById("app").textContent;
-      expect(text).toContain(window.eval(`t("${loader.errorTitle}")`));
+      expect(text).toContain(evalWith(window, "t(testArgs[0])", loader.errorTitle));
       const retry = [...document.querySelectorAll("button")].find(
         (node) => node.textContent.trim() === window.eval('t("common.retry")')
       );
@@ -99,7 +99,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
     test(`${loader.name}: a failed refresh keeps the stock that is already on screen`, async () => {
       const { window, document } = loadApp();
       await quiet(window);
-      window.eval(`state.view = "${loader.view}"; ${loader.seed}`);
+      evalWith(window, `state.view = testArgs[0]; ${loader.seed}`, loader.view);
       routeFetch(window, [
         [loader.route, () => jsonResponse(loader.good)],
         ["api/config", () => jsonResponse({})],
@@ -117,7 +117,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
 
       const text = document.getElementById("app").textContent;
       expect(text).toContain(loader.stock);
-      expect(text).not.toContain(window.eval(`t("${loader.errorTitle}")`));
+      expect(text).not.toContain(evalWith(window, "t(testArgs[0])", loader.errorTitle));
       expect(text).toContain(window.eval('t("common.refreshFailed")'));
       expect(document.querySelector(".stamp.warn")).not.toBeNull();
     });
@@ -125,7 +125,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
     test(`${loader.name}: the retry button drops the stale error and shows a loading state`, async () => {
       const { window, document } = loadApp();
       await quiet(window);
-      window.eval(`state.view = "${loader.view}"; ${loader.seed} ${loader.reset}`);
+      evalWith(window, `state.view = testArgs[0]; ${loader.seed} ${loader.reset}`, loader.view);
       routeFetch(window, [
         [loader.route, () => Promise.reject(new Error("offline"))],
         ["api/config", () => jsonResponse({})],
@@ -145,7 +145,7 @@ describe("every loader tells the truth about first load, refresh and retry", () 
 
       const text = document.getElementById("app").textContent;
       expect(text).toContain(window.eval('t("common.loading")'));
-      expect(text).not.toContain(window.eval(`t("${loader.errorTitle}")`));
+      expect(text).not.toContain(evalWith(window, "t(testArgs[0])", loader.errorTitle));
       if (pending) pending(jsonResponse(loader.good));
     });
   }

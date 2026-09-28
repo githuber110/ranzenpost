@@ -1,5 +1,6 @@
 import pytest
 
+from app import messages
 from app.iserv.client import SESSION_COOKIE, IServClient
 from app.iserv.errors import (
     REASON_BAD_CREDENTIALS,
@@ -18,7 +19,7 @@ from app.lockout import (
     TWOFACTOR_REQUIRED_SETUP,
     UNKNOWN_ACCOUNT,
     classify_login_response,
-    human_message,
+    human_message_key,
     login_refusal,
 )
 
@@ -106,7 +107,7 @@ def test_an_unknown_account_is_classified_before_the_generic_failure(fixture):
 
 def test_every_new_kind_has_its_own_actionable_message():
     kinds = ("locked", "captcha", "password_expired", "normal", UNKNOWN_ACCOUNT, DEFAULT_PASSWORD_BLOCKED)
-    texts = {kind: human_message(kind) for kind in kinds}
+    texts = {kind: messages.text(human_message_key(kind)) for kind in kinds}
     assert len(set(texts.values())) == len(kinds)
     assert "Schulnetz" in texts[DEFAULT_PASSWORD_BLOCKED]
 

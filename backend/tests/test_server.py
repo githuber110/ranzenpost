@@ -197,7 +197,7 @@ class FakeService:
 
     def report_absence(self, connection_id, payload, attachments=None):
         if payload.get("type") == "beurlaubungsantrag" and not payload.get("subject"):
-            return {"ok": False, "message": "Bitte einen Betreff für den Antrag angeben."}
+            return {"ok": False, "message": "Bitte gib einen Betreff für den Antrag an."}
         self.absence_payload = payload
         self.absence_attachments = attachments
         return {"ok": True, "message": "Meldung eingereicht."}
@@ -260,6 +260,15 @@ def test_config_roundtrip(tmp_path):
     assert body["connections"][0]["id"] == SCHOOL
 
 
+def test_config_post_drops_services_outside_the_notify_domain(tmp_path):
+    api, _ = client(tmp_path)
+    api.post(
+        "/api/config",
+        json={"notify_services": ["notify.phone", "homeassistant.restart", "light.turn_on", {"x": 1}]},
+    )
+    assert api.get("/api/config").json()["notify_services"] == ["notify.phone"]
+
+
 def test_config_post_rejects_unknown_keys_with_400(tmp_path):
     api, _ = client(tmp_path)
     response = api.post("/api/config", json={"language": "en", "admin": True, "__proto__": "x"})
@@ -312,6 +321,17 @@ def test_connection_config_drops_fully_empty_phone_row(tmp_path):
     response = api.post(
         f"/api/connections/{SCHOOL}",
         json={"phones": [{"label": "Oma", "number": "123"}, {"label": "", "number": ""}]},
+    )
+    assert response.status_code == 200
+    body = api.get(f"/api/connections/{SCHOOL}").json()
+    assert body["phones"] == [{"label": "Oma", "number": "123"}]
+
+
+def test_connection_config_stores_only_the_trimmed_phone_fields(tmp_path):
+    api, _ = client(tmp_path)
+    response = api.post(
+        f"/api/connections/{SCHOOL}",
+        json={"phones": [{"label": " Oma ", "number": " 123 ", "extra": {"x": 1}, "note": "y"}]},
     )
     assert response.status_code == 200
     body = api.get(f"/api/connections/{SCHOOL}").json()
@@ -821,7 +841,7 @@ def test_absences_post_rejects_attachments_over_the_total_limit(tmp_path):
 def test_absences_post_returns_field_specific_error(tmp_path):
     api, _ = client(tmp_path)
     response = api.post("/api/absences", json={"type": "beurlaubungsantrag", "subject": "", "body": "Text"})
-    assert response.json() == {"ok": False, "message": "Bitte einen Betreff für den Antrag angeben."}
+    assert response.json() == {"ok": False, "message": "Bitte gib einen Betreff für den Antrag an."}
 
 
 def test_index_serves_html(tmp_path):

@@ -24,6 +24,7 @@ from .subscriptions import (
     COMPONENT_PUBLIC_HOLIDAYS,
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_TIMETABLE,
+    child_first_name,
 )
 
 TOKEN_BYTES = 32
@@ -269,11 +270,6 @@ def _squeezed(value):
     return " ".join(str(value or "").split())
 
 
-def _first_name(value):
-    parts = _squeezed(value).split(" ")
-    return parts[0] if parts else ""
-
-
 def _published_day(value):
     day = holidays.parse_day(_squeezed(value).split(" ")[0])
     return day.isoformat() if day else ""
@@ -285,7 +281,7 @@ def notice_of(entry):
             "title": _squeezed(entry.get("title")),
             "sender": _squeezed(entry.get("sender") or entry.get("owner")),
             "date": _published_day(entry.get("published") or entry.get("date")),
-            "child": _first_name(entry.get("child")),
+            "child": child_first_name(entry.get("child")),
         }
     return {"title": _squeezed(entry), "sender": "", "date": "", "child": ""}
 
@@ -456,10 +452,6 @@ def children_of(config):
     ]
 
 
-def known_child(config, child_key):
-    return any(child["key"] == child_key for child in children_of(config))
-
-
 def _weekday(day):
     return WEEKDAYS[day.weekday()]
 
@@ -564,9 +556,9 @@ def _change_values(lesson):
     return before, after
 
 
-def _lesson_object(language, day, lesson, start_time, cancelled, local_now):
+def _lesson_object(language, day, lesson, start_time, cancelled, local_now, minutes):
     start = feed.lesson_start(day, start_time)
-    end = start + timedelta(minutes=feed.LESSON_MINUTES)
+    end = start + timedelta(minutes=minutes)
     shown = dict(lesson, change_kind="cancelled") if cancelled else lesson
     changed = bool(lesson.get("change_kind"))
     before, after = _change_values(lesson)
@@ -595,14 +587,19 @@ def _day_lessons(language, config, snapshot, child_key, day, day_map, blocked, d
     if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
         return []
     collected = feed.lessons_in_window(snapshot, child_key, day, day, config)
+    ordered = sorted(collected.items(), key=lambda item: (item[0][1], item[0][2:]))
+    slots = {}
+    for identity, (_, lesson) in ordered:
+        slots.setdefault(int(lesson.get("period") or 0), []).append((identity, lesson))
     items = []
-    for _, (_, lesson) in sorted(collected.items(), key=lambda item: (item[0][1], item[0][2:])):
+    for _, (_, lesson) in ordered:
         period = int(lesson.get("period") or 0)
         start_time = configured_time(config, period) or str(lesson.get("start_time") or "").strip()
         if not start_time:
             continue
-        cancelled = lesson.get("change_kind") == "cancelled" or (day, period) in dropped
-        items.append(_lesson_object(language, day, lesson, start_time, cancelled, local_now))
+        cancelled = lesson.get("change_kind") == "cancelled" or feed.lesson_dropped(dropped, day, lesson)
+        minutes = feed.lesson_minutes(config, period, slots[period])
+        items.append(_lesson_object(language, day, lesson, start_time, cancelled, local_now, minutes))
     items.sort(key=lambda item: item["start"])
     return items
 
@@ -636,6 +633,7 @@ def _exam_object(language, config, snapshot, entry, today, now_epoch):
     start_time = configured_time(config, period)
     lesson = marks.resolved_lesson(snapshot, entry, now_epoch) or {}
     start = feed.lesson_start(day, start_time) if start_time else None
+    minutes = feed.lesson_minutes(config, period, [(None, lesson)] if lesson else [])
     return {
         "date": day.isoformat(),
         "weekday": _weekday(day),
@@ -645,7 +643,7 @@ def _exam_object(language, config, snapshot, entry, today, now_epoch):
         "subject_code": str(entry.get("subject_code") or ""),
         "name": str(entry.get("name") or ""),
         "start": iso_local(start) if start else None,
-        "end": iso_local(start + timedelta(minutes=feed.LESSON_MINUTES)) if start else None,
+        "end": iso_local(start + timedelta(minutes=minutes)) if start else None,
         "teacher": feed.field_value(lesson, "teacher") if lesson else "",
         "room": str(lesson.get("room") or "") if lesson else "",
     }
@@ -784,6 +782,7 @@ def _serialize_event(event):
         "subject": event.subject or "",
         "name": event.name or "",
         "kind": event.kind or "",
+        "teacher": event.teacher or "",
     }
 
 
@@ -843,6 +842,19 @@ def next_conference(state, today):
     }
 
 
+def _upcoming_spans(language, day_map, today, horizon, kind):
+    return [span for span in feed.holiday_spans(language, day_map, today, horizon, kind) if span["end"] >= today]
+
+
+def _holiday_payload(span, today):
+    return {
+        "name": span["name"],
+        "start": span["start"].isoformat(),
+        "end": span["end"].isoformat(),
+        "days_until": max(0, (span["start"] - today).days),
+    }
+
+
 def build_school(store, holiday_calendar, now_epoch, school_id=""):
     config = config_for_connection(store, school_id)
     language = messages.normalize_language(config.get("language"))
@@ -850,18 +862,12 @@ def build_school(store, holiday_calendar, now_epoch, school_id=""):
     horizon = today + timedelta(days=feed.HOLIDAY_DAYS_AHEAD)
     payload = holiday_calendar.range_info(today, horizon, config)
     day_map = payload.get("days") or {}
-    next_holiday = None
-    for span in feed.holiday_spans(language, day_map, today, horizon, holidays.KIND_SCHOOL):
-        if span["end"] >= today:
-            next_holiday = {
-                "name": span["name"],
-                "start": span["start"].isoformat(),
-                "end": span["end"].isoformat(),
-                "days_until": max(0, (span["start"] - today).days),
-            }
-            break
+    school = _upcoming_spans(language, day_map, today, horizon, holidays.KIND_SCHOOL)
+    free = school + _upcoming_spans(language, day_map, today, horizon, holidays.KIND_PUBLIC)
+    free.sort(key=lambda span: (span["start"], span["end"]))
     return {
-        "next_holiday": next_holiday,
+        "next_holiday": _holiday_payload(school[0], today) if school else None,
+        "next_free_day": _holiday_payload(free[0], today) if free else None,
         "next_conference": next_conference(school_state(store, school_id), today),
         "region": str(config.get("holiday_region") or ""),
     }
