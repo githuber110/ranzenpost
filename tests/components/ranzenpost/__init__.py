@@ -7,6 +7,8 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.ranzenpost.const import CONF_HOST, CONF_PORT, CONF_TOKEN, DOMAIN
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+MANIFEST = pathlib.Path(__file__).resolve().parents[3] / "custom_components" / "ranzenpost" / "manifest.json"
+MANIFEST_VERSION = json.loads(MANIFEST.read_text(encoding="utf-8"))["version"]
 HOST = "addon-host"
 PORT = 8099
 TOKEN = "a" * 43
@@ -24,7 +26,10 @@ SCENARIO_SATURDAY = "saturday"
 
 
 def fixture(name: str, scenario: str = ""):
-    return json.loads((FIXTURES / scenario / f"{name}.json").read_text(encoding="utf-8"))
+    data = json.loads((FIXTURES / scenario / f"{name}.json").read_text(encoding="utf-8"))
+    if name == "info":
+        data["version"] = MANIFEST_VERSION
+    return data
 
 
 def route(path: str, base_url: str = BASE_URL, **params: str) -> str:

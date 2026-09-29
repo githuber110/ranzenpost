@@ -32,6 +32,7 @@ from .coordinator import (
 )
 from .entity import child_identifier, child_unique_id, panel_url, school_device_info, school_identifier, school_unique_id
 from .signals import async_fire_signals
+from .version import RESTART_REQUIRED
 from .websocket import async_register_websocket
 
 PLATFORMS = (Platform.BINARY_SENSOR, Platform.CALENDAR, Platform.EVENT, Platform.SENSOR)
@@ -220,6 +221,7 @@ async def async_remove_config_entry_device(
 async def async_remove_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -> None:
     if not any(other.entry_id != entry.entry_id for other in hass.config_entries.async_entries(DOMAIN)):
         await async_remove_card(hass)
+        ir.async_delete_issue(hass, DOMAIN, RESTART_REQUIRED)
     for school_id in _known_schools(hass).pop(entry.entry_id, ()):
         ir.async_delete_issue(hass, DOMAIN, login_issue_id(entry.entry_id, school_id))
     for key in ENTRY_ISSUE_KEYS:

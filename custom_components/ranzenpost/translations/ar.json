@@ -6,25 +6,25 @@
     },
     "step": {
       "hassio_confirm": {
-        "title": "ربط إضافة Ranzenpost",
-        "description": "تم العثور على الإضافة {addon}. هل تريد ربط Home Assistant بها؟"
+        "title": "ربط تطبيق Ranzenpost",
+        "description": "تم العثور على التطبيق {addon}. هل تريد ربط Home Assistant به؟"
       },
       "install_addon": {
-        "title": "تثبيت إضافة Ranzenpost",
-        "description": "إضافة Ranzenpost غير مثبتة بعد. هل تريد إضافة المستودع {repository} ثم تثبيت الإضافة وتشغيلها؟"
+        "title": "تثبيت تطبيق Ranzenpost",
+        "description": "تطبيق Ranzenpost غير مثبت بعد. هل تريد إضافة المستودع {repository} ثم تثبيت التطبيق وتشغيله؟"
       },
       "addon_no_discovery": {
-        "title": "لم تعلن الإضافة عن نفسها بعد",
-        "description": "الإضافة {addon} مثبتة لكنها لم تعلن بيانات الاتصال بعد. افتح الإضافة وتأكد من أنها تعمل، ثم أدخل المضيف والمنفذ والرمز من قسم Home Assistant في إعداداتها.",
+        "title": "لم يعلن التطبيق عن نفسه بعد",
+        "description": "التطبيق {addon} مثبت لكنه لم يعلن بيانات الاتصال بعد. افتح التطبيق وتأكد من أنه يعمل، ثم أدخل المضيف والمنفذ والرمز من قسم Home Assistant في إعداداته.",
         "data": {
           "host": "المضيف",
           "port": "المنفذ",
           "token": "الرمز"
         },
         "data_description": {
-          "host": "اسم مضيف حاوية الإضافة، يظهر عادةً في إعداداتها.",
+          "host": "اسم مضيف حاوية التطبيق، يظهر عادةً في إعداداتها.",
           "port": "منفذ واجهة برمجة التكامل، الافتراضي 8099.",
-          "token": "رمز الوصول المعروض في إعدادات الإضافة."
+          "token": "رمز الوصول المعروض في إعدادات التطبيق."
         }
       },
       "manual": {
@@ -50,21 +50,21 @@
       }
     },
     "progress": {
-      "install_addon": "يجري تثبيت إضافة Ranzenpost. قد يستغرق ذلك بضع دقائق.",
-      "start_addon": "إضافة Ranzenpost قيد التشغيل.",
-      "wait_discovery": "في انتظار أن تعلن الإضافة بيانات الاتصال."
+      "install_addon": "يجري تثبيت تطبيق Ranzenpost. قد يستغرق ذلك بضع دقائق.",
+      "start_addon": "تطبيق Ranzenpost قيد التشغيل.",
+      "wait_discovery": "في انتظار أن يعلن التطبيق بيانات الاتصال."
     },
     "error": {
-      "cannot_connect": "تعذر الوصول إلى الإضافة. تأكد من أنها تعمل.",
+      "cannot_connect": "تعذر الوصول إلى التطبيق. تأكد من أنه يعمل.",
       "invalid_auth": "تم رفض الرمز. انسخه مجددًا من إعدادات Ranzenpost.",
-      "unknown": "أجابت الإضافة بشكل غير متوقع."
+      "unknown": "أجاب التطبيق بشكل غير متوقع."
     },
     "abort": {
-      "already_configured": "إضافة Ranzenpost هذه مرتبطة بالفعل. يمكن ربط كل مضيف إضافة مرة واحدة.",
+      "already_configured": "تطبيق Ranzenpost هذا مرتبط بالفعل. يمكن ربط كل مضيف تطبيق مرة واحدة.",
       "already_in_progress": "إعداد Ranzenpost قيد التنفيذ بالفعل.",
-      "addon_install_failed": "تعذر تثبيت إضافة Ranzenpost. راجع سجل Supervisor.",
-      "addon_start_failed": "تعذر تشغيل إضافة Ranzenpost. راجع سجل الإضافة.",
-      "not_ranzenpost_addon": "رسالة الاكتشاف هذه لا تخص إضافة Ranzenpost.",
+      "addon_install_failed": "تعذر تثبيت تطبيق Ranzenpost. راجع سجل Supervisor.",
+      "addon_start_failed": "تعذر تشغيل تطبيق Ranzenpost. راجع سجل التطبيق.",
+      "not_ranzenpost_addon": "رسالة الاكتشاف هذه لا تخص تطبيق Ranzenpost.",
       "reauth_successful": "تم تجديد الرمز."
     }
   },
@@ -72,13 +72,13 @@
     "step": {
       "init": {
         "title": "خيارات Ranzenpost",
-        "description": "كم مرة يستعلم التكامل من الإضافة، ولأي الملفات الشخصية تُنشأ الكيانات.",
+        "description": "كم مرة يستعلم التكامل من التطبيق، ولأي الملفات الشخصية تُنشأ الكيانات.",
         "data": {
           "scan_interval": "فترة الاستعلام",
           "children": "الملفات الشخصية"
         },
         "data_description": {
-          "scan_interval": "الثواني بين طلبين إلى الإضافة، 30 على الأقل.",
+          "scan_interval": "الثواني بين طلبين إلى التطبيق، 30 على الأقل.",
           "children": "اتركه فارغًا لإنشاء كيانات لجميع الملفات الشخصية."
         }
       }
@@ -226,12 +226,27 @@
       "description": "يرفض IServ في {school} رمز التأكيد الخاص بالتطبيق مرارًا. يجب إعداد وصول التطبيق من جديد. افتح Ranzenpost من الشريط الجانبي وأعد إعداد المدرسة بالكامل."
     },
     "addon_too_old": {
-      "title": "حدّث إضافة Ranzenpost",
-      "description": "تعمل إضافة Ranzenpost بالإصدار {addon_version}، بينما يحتاج هذا التكامل ({integration_version}) إلى {required_version} على الأقل. حدّث الإضافة من متجر الإضافات. تظهر الأجهزة والكيانات من تلقاء نفسها بمجرد أن تبلّغ عن مدارسها مجددًا."
+      "title": "حدّث تطبيق Ranzenpost",
+      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما يحتاج هذا التكامل ({integration_version}) إلى {required_version} على الأقل. في Home Assistant افتح إعدادات ← التطبيقات، ثم متجر التطبيقات من الزر في الأسفل. من القائمة في الأعلى اختر «التحقق من وجود تحديثات»، ثم افتح Ranzenpost واختر «تحديث». تظهر الأجهزة والكيانات من تلقاء نفسها بمجرد أن يبلّغ التطبيق عن مدارسه مجددًا."
+    },
+    "app_update_needed": {
+      "title": "حدّث تطبيق Ranzenpost",
+      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما التكامل بالإصدار {integration_version} بالفعل. لا تعمل الوظائف الجديدة إلا عندما يتطابق الإصداران. في Home Assistant افتح إعدادات ← التطبيقات، ثم متجر التطبيقات من الزر في الأسفل. من القائمة في الأعلى اختر «التحقق من وجود تحديثات»، ثم افتح Ranzenpost واختر «تحديث». يختفي هذا التنبيه من تلقاء نفسه."
     },
     "integration_too_old": {
       "title": "حدّث تكامل Ranzenpost",
-      "description": "تعمل إضافة Ranzenpost بالإصدار {addon_version}، وهو إصدار ميزات أحدث من هذا التكامل ({integration_version}). حدّث التكامل عبر HACS حتى يتطابق الاثنان؛ حتى ذلك الحين قد تنقص بعض البيانات."
+      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما لا يزال هذا التكامل بالإصدار {integration_version}. افتح HACS، ثم افتح Ranzenpost وثبّت التحديث. بعد ذلك أعد تشغيل Home Assistant: إعدادات ← القائمة في الأعلى ← «أعد تشغيل Home Assistant». حتى ذلك الحين قد تنقص بعض البيانات. يختفي هذا التنبيه من تلقاء نفسه."
+    },
+    "restart_required": {
+      "title": "أعد تشغيل Home Assistant لإكمال تحديث Ranzenpost",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "أعد تشغيل Home Assistant",
+            "description": "تكامل Ranzenpost بالإصدار {installed_version} مثبت، لكن Home Assistant لا يزال يستخدم {loaded_version}. أكّد هذه الخطوة لإعادة تشغيل Home Assistant الآن. يمكنك أيضًا فعل ذلك لاحقًا: إعدادات ← القائمة في الأعلى ← «أعد تشغيل Home Assistant»."
+          }
+        }
+      }
     },
     "no_school_yet": {
       "title": "لم يتم تسجيل الدخول إلى أي مدرسة بعد",

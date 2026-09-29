@@ -1,3 +1,5 @@
+import re
+from collections import Counter
 from dataclasses import replace
 from datetime import date, datetime
 from typing import NamedTuple
@@ -22,6 +24,8 @@ TOO_DIFFERENT = "more than half differ"
 NOT_UNDERSTOOD = "not understood"
 UNDERSTOOD_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
 SUBSTITUTION_TOKENS = ("substitut", "vertret")
+FIELD_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,39}$")
+NO_MARK = "none"
 OUTCOME_TEXTS = {
     NOT_ASKED: "no comparison, the school does not release substitutions",
     COMPARED: "marks shown",
@@ -70,6 +74,47 @@ def entry_marker(entry):
     if "cancelled" in kinds:
         return "cancelled"
     return "changed" if kinds else ""
+
+
+def _value_kind(value):
+    if isinstance(value, bool):
+        return "flag"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, dict):
+        return "object"
+    return "list"
+
+
+def marker_fields(payload):
+    counts = {}
+    if not isinstance(payload, dict):
+        return counts
+    students = payload.get("students")
+    for block in students if isinstance(students, list) else []:
+        entries = block.get("entries") if isinstance(block, dict) else None
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            kind = entry_marker(entry) or NO_MARK
+            for key, value in entry.items():
+                if _blank(value) or not _token_kind(key):
+                    continue
+                name = str(key) if FIELD_NAME.match(str(key)) else "<key>"
+                counts.setdefault((name, _value_kind(value)), Counter())[kind] += 1
+    return counts
+
+
+def describe_marker_fields(counts):
+    if not counts:
+        return "none"
+    parts = []
+    for (name, kind), marks in sorted(counts.items()):
+        split = ", ".join("%s %d" % (mark, marks[mark]) for mark in sorted(marks))
+        parts.append("%s %s in %d entries (%s)" % (name, kind, sum(marks.values()), split))
+    return "; ".join(parts)
 
 
 def course_identity(lesson, entry):

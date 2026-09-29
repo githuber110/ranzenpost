@@ -7,7 +7,7 @@ from hmac import compare_digest
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from . import holidays, integration, messages, supervisor
+from . import holidays, integration, messages, supervisor, versions
 from .calendar_server import RateLimiter
 from .subscriptions import known_child
 
@@ -24,6 +24,8 @@ ROUTES = (ROUTE_INFO, ROUTE_STATE, ROUTE_EVENTS, ROUTE_SCHOOL, ROUTE_CHANGES)
 INTEGRATION_PORT = 8099
 BEARER = "bearer"
 INGRESS_HEADER = "x-ingress-path"
+VERSION_HEADER = "x-ranzenpost-integration"
+INSTALLED_HEADER = "x-ranzenpost-integration-installed"
 FAILED_ATTEMPT_LIMIT = 10
 FAILED_ATTEMPT_WINDOW_SECONDS = 60
 PORT_STATE_TTL_SECONDS = 60
@@ -63,6 +65,8 @@ class IntegrationAccess:
         self._lock = threading.Lock()
         self.token = integration.ensure_token(store)
         self.last_request = integration.last_request(store)
+        self.integration_version, self.integration_installed = integration.seen_integration(store)
+        self.unversioned = integration.integration_unversioned(store)
         self._warmed = set()
         self._port_state = (0, False)
 
@@ -80,6 +84,44 @@ class IntegrationAccess:
         now = self.now()
         self.last_request = now
         integration.note_request(self.store, now)
+
+    def note_versions(self, version, installed):
+        if version is None:
+            with self._lock:
+                if self.unversioned:
+                    return
+                self.unversioned = True
+            logger.info("the Home Assistant integration sends no version, it predates the version check")
+            integration.note_unversioned(self.store)
+            return
+        version = versions.clean_version(version)
+        installed = versions.clean_version(installed)
+        if not version:
+            return
+        with self._lock:
+            known = (version, installed) == (self.integration_version, self.integration_installed)
+            if known and not self.unversioned:
+                return
+            previous = "" if self.unversioned else self.integration_version
+            self.unversioned = False
+            self.integration_version, self.integration_installed = version, installed
+        logger.info(
+            "the Home Assistant integration reports version %s%s (was %s)",
+            version,
+            " with %s installed" % installed if installed else "",
+            previous or "unknown",
+        )
+        integration.note_integration(self.store, version, installed)
+
+    def pending_updates(self, app_version):
+        if not self.recently_active():
+            return []
+        return versions.pending_updates(
+            app_version, self.integration_version, self.integration_installed, self.unversioned
+        )
+
+    def recently_active(self):
+        return bool(self.last_request) and 0 <= self.now() - self.last_request <= integration.ACTIVE_WINDOW_SECONDS
 
     def rotate(self):
         with self._lock:
@@ -123,11 +165,16 @@ class IntegrationAccess:
 
     def status(self):
         now = self.now()
+        app_version = integration.addon_version()
         return {
             "connected": integration.is_connected(self.last_request, now),
             "last_request": integration.berlin_iso(self.last_request) if self.last_request else None,
             "token": self.token,
             "port": INTEGRATION_PORT,
+            "app_version": app_version,
+            "integration_version": "" if self.unversioned else self.integration_version,
+            "integration_installed": "" if self.unversioned else self.integration_installed,
+            "updates": self.pending_updates(app_version),
         }
 
 
@@ -186,6 +233,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
             access.limiter.allow(source)
             return _refusal(401, ERROR_UNAUTHORIZED, UNAUTHORIZED_KEY)
         access.note_request()
+        access.note_versions(request.headers.get(VERSION_HEADER), request.headers.get(INSTALLED_HEADER))
         return None
 
     @app.get(ROUTE_INFO)

@@ -12,6 +12,7 @@ const LESSON_MINUTES = 45;
 const PULL_AXIS_RATIO = 1;
 const OVERVIEW_ORIGIN = "overview";
 const LETTER_UNKNOWN_KEY = "api.letters.unknown";
+const TIMETABLE_REFUSED_KEY = "api.timetable.refused";
 const LETTERS_TAB_CURRENT = "current";
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024;
@@ -187,6 +188,15 @@ function defaultModules() {
   return { available, unsupported: [], unknown: [], checkedAt: 0, iservVersion: "" };
 }
 
+function webUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname ? url.href : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function applyModules(payload) {
   const parsed = defaultModules();
   const data = payload && typeof payload === "object" ? payload : {};
@@ -199,6 +209,8 @@ function applyModules(payload) {
       slug: String(entry.slug || entry.segment),
       label: String(entry.label || entry.segment),
       name: String(entry.name || entry.label || entry.segment),
+      linkOnly: entry.link_only === true,
+      openUrl: webUrl(entry.open_url),
     }));
   parsed.unknown = (Array.isArray(data.unknown) ? data.unknown : [])
     .filter((entry) => entry && typeof entry.segment === "string" && entry.segment)
@@ -2024,7 +2036,7 @@ async function bootOnce() {
         applyTimetable(await loadTimetable());
       } catch (error) {
         if (handleApiFailure(error)) return;
-        state.timetable = { lessons: [], error: errorCode(error) };
+        state.timetable = failedWeek(errorCode(error), error && error.body);
       }
     }
     render();
@@ -2551,7 +2563,7 @@ async function loadOverviewWeek(childId, week) {
   if (!outcome) return;
   if (!state.overviewWeeks[childId]) state.overviewWeeks[childId] = {};
   if (outcome.data) state.overviewWeeks[childId][weekIdx] = outcome.data;
-  else if (outcome.error) state.overviewWeeks[childId][weekIdx] = { lessons: [], error: outcome.error };
+  else if (outcome.error) state.overviewWeeks[childId][weekIdx] = failedWeek(outcome.error, outcome.body);
   if (state.view === "overview" || state.view === "timetable") rerender();
 }
 
@@ -2812,6 +2824,7 @@ function todayChapter(size) {
     chapter.loading = true;
     return chapter;
   }
+  if (timetableRefused(week)) return overviewRest(chapter, "today:refused", t(TIMETABLE_REFUSED_KEY));
   if (week.error) {
     chapter.bodyClass = "panel-rest";
     chapter.blocks = [overviewFailureBlock("today:failed", () => loadOverviewWeek(child.key, 0))];
@@ -4358,6 +4371,10 @@ function timetableView() {
     view.append(loadingBlock());
     return view;
   }
+  if (timetableRefused(data)) {
+    view.append(timetableRefusedBlock());
+    return view;
+  }
   if (data.error || !Array.isArray(data.lessons)) {
     view.append(schoolInOutage(currentConnectionId())
       ? outageEmptyBlock()
@@ -4393,6 +4410,18 @@ function timetableView() {
   const timetableNote = refreshFailureNote("timetable");
   if (timetableNote) view.append(timetableNote);
   return view;
+}
+
+function failedWeek(code, body) {
+  return { lessons: [], error: code, message_key: (body && body.message_key) || "" };
+}
+
+function timetableRefused(data) {
+  return !!data && data.message_key === TIMETABLE_REFUSED_KEY;
+}
+
+function timetableRefusedBlock() {
+  return emptyBlock("timetable", t("timetable.refused.title"), t(TIMETABLE_REFUSED_KEY));
 }
 
 function noLessonsListed(data, monday) {
@@ -4457,6 +4486,10 @@ function timetableChildColumn(child) {
       autoLoad(`ovWeek:${child.key}:${state.weekOffset}`, () => loadOverviewWeek(child.key, state.weekOffset));
     }
     column.append(loadingBlock());
+    return column;
+  }
+  if (timetableRefused(data)) {
+    column.append(timetableRefusedBlock());
     return column;
   }
   if (data.error || !Array.isArray(data.lessons)) {
@@ -4614,7 +4647,7 @@ async function reloadTimetable() {
     return loaded.timetable;
   }, keep, currentConnectionId());
   if (!outcome) return;
-  if (outcome.error) state.timetable = { lessons: [], error: outcome.error };
+  if (outcome.error) state.timetable = failedWeek(outcome.error, outcome.body);
   else if (outcome.data) applyTimetable(loaded);
   rerender();
 }
@@ -5796,6 +5829,7 @@ function lessonCell(lesson, time, compact, childId, weekLessons) {
   const code = lesson.subject_code || lesson.subject_label || "?";
   const surname = compact ? "" : teacherSurname(lesson);
   const room = compact || roomLabel ? "" : lesson.room || "";
+  const pairedRoom = !compact && kind === "changed" && !moved && lesson.room ? lesson.room : "";
   const cell = el("button", {
     class: compact ? `${shown} compact` : shown,
     type: "button",
@@ -5806,7 +5840,8 @@ function lessonCell(lesson, time, compact, childId, weekLessons) {
     kind && kind !== "cancelled" ? el("span", { class: "bar" }) : null,
     iservText("span", { class: "sub" }, code),
     compact ? null : iservText("span", { class: "lname" }, lesson.subject_label || code),
-    roomLabel ? el("span", { class: "room" }, roomLabel) : null,
+    roomLabel ? el("span", { class: pairedRoom ? "room paired" : "room" }, roomLabel) : null,
+    pairedRoom ? iservText("span", { class: "lroom paired" }, t("common.pair", { first: roomLabel, second: pairedRoom })) : null,
     room ? iservText("span", { class: "lroom" }, room) : null,
     surname ? iservText("span", { class: "lteacher" }, surname) : null,
     note ? el("span", { class: "note-flag", html: iconSvg("info", 11) }) : null,
@@ -10381,6 +10416,9 @@ async function submitAbsence() {
 function settingsView() {
   const config = state.config || {};
   const view = el("div", {});
+  ensureHaStatus();
+  const hint = updateHintBlock();
+  if (hint) view.append(hint);
   if (manySchools()) return manySchoolsSettings(view, config);
   view.append(displaySettingsSection(true));
   view.append(connectSettingsSection(config));
@@ -10416,7 +10454,7 @@ function displaySettingsSection(first) {
 }
 
 function connectSettingsSection(config) {
-  if (state.haStatus === null && !state.haStatusLoading) loadHaStatus();
+  ensureHaStatus();
   if (!state.calendar) autoLoad("calendarSettings", loadSettingsCalendar);
   return settingsSection("settings.section.notifications", false, [
     settingRow(t("settings.notify.service"), notifyServicesSummaryLabel(config.notify_services), () => openSheet(notifySheet), "notify-setting"),
@@ -10452,12 +10490,20 @@ function catalogueModuleName(entry) {
 }
 
 function unknownModuleLabels() {
-  return state.modules.unsupported.map(catalogueModuleName)
+  return reportableUnsupported().map(catalogueModuleName)
     .concat(state.modules.unknown.map((entry) => entry.label || entry.segment));
 }
 
+function reportableUnsupported() {
+  return state.modules.unsupported.filter((entry) => !entry.linkOnly);
+}
+
+function linkOnlyModules() {
+  return state.modules.unsupported.filter((entry) => entry.linkOnly);
+}
+
 function moduleEntries() {
-  return state.modules.unsupported.concat(state.modules.unknown);
+  return reportableUnsupported().concat(state.modules.unknown);
 }
 
 function moduleSegments() {
@@ -10555,13 +10601,32 @@ async function rememberReportedModules() {
   await persistModuleFlags();
 }
 
+function moduleLinkRows() {
+  const linked = linkOnlyModules();
+  if (!linked.length) return null;
+  return el("div", { class: "module-link-rows" }, linked.map((entry) => el("div", { class: "module-link-row" }, [
+    el("p", { class: "cal-hint module-link-note" }, t("settings.modules.linkOnly", { name: catalogueModuleName(entry) })),
+    entry.openUrl
+      ? el("a", { class: "link-btn module-open-link", href: entry.openUrl, target: "_blank", rel: "noopener noreferrer" }, [externalIcon(16), t("settings.modules.openInIserv")])
+      : null,
+  ])));
+}
+
 function modulesHelpBlock() {
-  if (!moduleEntries().length) return null;
-  if (unreportedModuleEntries().length) return el("div", { class: "modules-help-block" }, [moduleCard(false)]);
-  return el("div", { class: "modules-help-block" }, [
-    el("p", { class: "cal-hint modules-unknown" }, t("settings.modules.unknown", { labels: unknownModuleLabels().join(", ") })),
-    el("button", { class: "btn ghost slim modules-report", type: "button", onclick: openHelpPage }, [icon("info", 16), t("settings.modules.report")]),
-  ]);
+  const links = moduleLinkRows();
+  const parts = [];
+  if (moduleEntries().length) {
+    if (unreportedModuleEntries().length) parts.push(moduleCard(false));
+    else {
+      parts.push(
+        el("p", { class: "cal-hint modules-unknown" }, t("settings.modules.unknown", { labels: unknownModuleLabels().join(", ") })),
+        el("button", { class: "btn ghost slim modules-report", type: "button", onclick: openHelpPage }, [icon("info", 16), t("settings.modules.report")]),
+      );
+    }
+  }
+  if (links) parts.push(links);
+  if (!parts.length) return null;
+  return el("div", { class: "modules-help-block" }, parts);
 }
 
 function openHelpPage() {
@@ -10602,7 +10667,7 @@ function helpReport() {
 function helpIssueBody() {
   const facts = state.helpFacts;
   const versions = facts
-    ? t("help.issue.versions", { app: facts.app || "?", home_assistant: facts.home_assistant || "?", iserv: facts.iserv || "?" })
+    ? t("help.issue.versions", { app: facts.app || "?", integration: facts.integration || "?", home_assistant: facts.home_assistant || "?", iserv: facts.iserv || "?" })
     : "";
   return t("help.issue.body", { versions }).trimStart();
 }
@@ -10685,7 +10750,9 @@ function helpPageView() {
   issueLink.addEventListener("click", () => { rememberReportedModules(); });
   const copyButton = el("button", { class: "btn ghost slim help-copy", type: "button", onclick: copyHelpReport }, [icon("clip", 16), t("help.copy")]);
   if (!ready) copyButton.disabled = true;
+  ensureHaStatus();
   return el("div", { class: "help-page" }, [
+    updateHintBlock(),
     el("p", { class: "help-intro" }, t("help.intro.what")),
     el("p", { class: "help-intro" }, t("help.intro.not")),
     el("div", { class: "btn-stack help-actions" }, [saveButton, issueLink, copyButton]),
@@ -11388,7 +11455,40 @@ async function loadHaStatus() {
 function haRowValue() {
   const loaded = state.haStatus && state.haStatus.data;
   if (!loaded) return "";
+  if (pendingUpdates().length) return t("settings.ha.status.update");
   return t(loaded.connected ? "settings.ha.status.connected" : "settings.ha.status.disconnected");
+}
+
+const UPDATE_STEPS = ["app", "integration", "restart"];
+
+function pendingUpdates() {
+  const data = state.haStatus && state.haStatus.data;
+  const listed = data && Array.isArray(data.updates) ? data.updates : [];
+  return UPDATE_STEPS.filter((step) => listed.includes(step));
+}
+
+function ensureHaStatus() {
+  if (state.haStatus === null && !state.haStatusLoading) loadHaStatus();
+}
+
+function updateStepText(step, data) {
+  const installed = String(data.integration_installed || "");
+  const loaded = String(data.integration_version || "");
+  const app = String(data.app_version || state.appVersion || "");
+  const restartPending = pendingUpdates().includes("restart");
+  const integration = step === "restart" || !restartPending ? loaded : installed || loaded;
+  if (step === "integration" && !integration) return t("settings.update.integration.older", { app });
+  return t(`settings.update.${step}.text`, { app, integration, installed });
+}
+
+function updateHintBlock() {
+  const steps = pendingUpdates();
+  if (!steps.length) return null;
+  const data = state.haStatus.data;
+  return el("section", { class: "update-hint", role: "status" }, steps.map((step) => el("div", { class: `update-step update-${step}` }, [
+    el("b", { class: "update-title" }, t(`settings.update.${step}.title`)),
+    el("p", { class: "update-text" }, updateStepText(step, data)),
+  ])));
 }
 
 async function openHomeAssistantSheet() {
@@ -11405,6 +11505,8 @@ function homeAssistantSheet() {
   else if (loaded.error || !loaded.data) body.push(plainCard(t("settings.ha.loadFailed")));
   else {
     body.push(haStatusBlock(loaded.data));
+    const hint = updateHintBlock();
+    if (hint) body.push(hint);
     body.push(haTokenBlock(loaded.data));
   }
   body.push(haInstallBlock());

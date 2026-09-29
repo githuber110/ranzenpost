@@ -31,7 +31,7 @@ async def test_setup_creates_the_school_and_child_devices(hass, aioclient_mock, 
     child = registry.async_get_device(identifiers={(DOMAIN, f"child:{entry.entry_id}:{CHILD_1}")})
     other = registry.async_get_device(identifiers={(DOMAIN, f"child:{entry.entry_id}:{CHILD_2}")})
     assert school.name == "Ranzenpost Sample School"
-    assert school.sw_version == "2609.02.00"
+    assert school.sw_version == MANIFEST_VERSION
     assert child.name == "Ranzenpost Alex"
     assert child.via_device_id == school.id
     assert other.name == "Ranzenpost Kim"

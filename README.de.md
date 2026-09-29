@@ -44,7 +44,7 @@
 
 ## Installation
 
-Du brauchst beide Teile. Das Add-on meldet sich bei IServ an und zeigt die App in der Seitenleiste. Die Integration macht aus denselben Daten Entitäten und die Dashboard-Karte.
+Du brauchst beide Teile. Die Ranzenpost-App (früher Add-on genannt) meldet sich bei IServ an und zeigt Ranzenpost in der Seitenleiste. Die Integration macht aus denselben Daten Entitäten und die Dashboard-Karte.
 
 ### 1. Repository hinzufügen
 
@@ -52,19 +52,19 @@ Du brauchst beide Teile. Das Add-on meldet sich bei IServ an und zeigt die App i
 
 Home Assistant öffnet sich und fragt, ob du das Repository hinzufügen willst.
 
-### 2. Add-on installieren und Einrichtung durchlaufen
+### 2. App installieren und Einrichtung durchlaufen
 
-**Ranzenpost (IServ)** erscheint jetzt im Add-on-Store. Öffne es, klicke **Installieren**, dann **Starten**. Öffne **Ranzenpost** in der Seitenleiste. Die Einrichtung fragt nach der Adresse deiner Schule, deinem Elternlogin und, falls deine Schule das nutzt, nach einem Code aus der Authenticator-App, die du schon hast. Dein Authenticator funktioniert weiter. Dann wählst du deine Kinder. Fertig.
+**Ranzenpost (IServ)** erscheint jetzt im App-Store. Öffne es, klicke **Installieren**, dann **Starten**. Öffne **Ranzenpost** in der Seitenleiste. Die Einrichtung fragt nach der Adresse deiner Schule, deinem Elternlogin und, falls deine Schule das nutzt, nach einem Code aus der Authenticator-App, die du schon hast. Dein Authenticator funktioniert weiter. Dann wählst du deine Kinder. Fertig.
 
 ### 3. Integration hinzufügen
 
 [![Die Ranzenpost-Integration über HACS hinzufügen](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=githuber110&repository=ranzenpost&category=integration)
 
-Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstellungen, Geräte & Dienste, Integration hinzufügen** und nach **Ranzenpost** suchen. Das laufende Add-on wird von selbst gefunden. Fängst du mit der Integration an, bietet sie an, das Add-on für dich zu installieren.
+Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstellungen, Geräte & Dienste, Integration hinzufügen** und nach **Ranzenpost** suchen. Die laufende App wird von selbst gefunden. Fängst du mit der Integration an, bietet sie an, die App für dich zu installieren.
 
 ### Voraussetzungen
 
-- Home Assistant 2025.6 oder neuer, als Home Assistant OS oder Supervised. Der Add-on-Store braucht den Supervisor.
+- Home Assistant 2025.6 oder neuer, als Home Assistant OS oder Supervised. Der App-Store braucht den Supervisor.
 - Ein Rechner mit `amd64` oder `aarch64`, zum Beispiel ein Raspberry Pi 4 oder 5, ein Home Assistant Green oder Yellow oder ein x86-Rechner.
 - Ein IServ-Elternkonto an einer Schule, die die Elternmodule eingeschaltet hat.
 - Ranzenpost wurde mit Zwei-Faktor-Anmeldung gebaut und getestet. Die Anmeldung ohne Zwei-Faktor klappt auch. Eine echte Schule hat das bestätigt.
@@ -73,13 +73,13 @@ Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstel
 <details>
 <summary>Von Hand installieren, aktualisieren, Home Assistant ohne Supervisor</summary>
 
-**Add-on von Hand:** **Einstellungen, Add-ons, Add-on-Store**, das Menü oben rechts, **Repositories**, `https://github.com/githuber110/ranzenpost` einfügen.
+**App von Hand:** **Einstellungen, Apps**, unten rechts den **App-Store**, das Menü oben rechts, **Repositories**, `https://github.com/githuber110/ranzenpost` einfügen.
 
 **Integration von Hand:** **HACS**, das Menü oben rechts, **Benutzerdefinierte Repositories**, `https://github.com/githuber110/ranzenpost` einfügen, **Integration** wählen.
 
-**Ohne Supervisor:** Die Integration fragt nach Host, Port und Token des Add-ons. Das Token steht in der App unter **Einstellungen, Home Assistant**, mit einem Kopierknopf.
+**Ohne Supervisor:** Die Integration fragt nach Host, Port und Token der App. Das Token steht in der App unter **Einstellungen, Home Assistant**, mit einem Kopierknopf.
 
-**Aktualisieren:** Das Add-on aktualisierst du unter **Einstellungen, Add-ons, Ranzenpost (IServ)**, die Integration in HACS. Installiere Add-on und Integration aus demselben Release, starte dann Home Assistant neu und lade die Seite neu. Ein Reparaturhinweis meldet, wenn einer der beiden ein Release zurückliegt. Einstellungen und die Verbindung zur Schule bleiben bei einem Update erhalten.
+**Aktualisieren:** Bring immer beide Teile auf dasselbe Release. Die App: **Einstellungen, Apps**, den **App-Store**, das Menü oben rechts, **Nach Updates suchen**, dann **Ranzenpost (IServ)** und **Aktualisieren**. Die Integration: **Ranzenpost** in HACS öffnen und das Update installieren, dann Home Assistant neu starten und die Seite neu laden. Liegt ein Teil zurück oder fehlt der Neustart, zeigt Home Assistant einen Reparaturhinweis mit diesen Schritten, und die App zeigt denselben Hinweis in ihren Einstellungen. Einstellungen und die Verbindung zur Schule bleiben bei einem Update erhalten.
 
 Die Dokumentation in Home Assistant ist [`iserv_connector/DOCS.md`](iserv_connector/DOCS.md).
 
@@ -130,7 +130,7 @@ blocks:
   - conferences
 ```
 
-`children` nimmt Vornamen, Vornamen mit der Schule in Klammern oder die Schlüssel der Kinder aus dem Add-on. Lässt du es weg, zeigt die Karte alle Kinder. Jeder Baustein ist ein Schlüssel oder ein Schlüssel mit `size`, `compact` oder `normal`. Die älteren Schlüssel `view` und `child` funktionieren weiter.
+`children` nimmt Vornamen, Vornamen mit der Schule in Klammern oder die Schlüssel der Kinder aus der App. Lässt du es weg, zeigt die Karte alle Kinder. Jeder Baustein ist ein Schlüssel oder ein Schlüssel mit `size`, `compact` oder `normal`. Die älteren Schlüssel `view` und `child` funktionieren weiter.
 
 </details>
 
@@ -170,7 +170,7 @@ Jede Schule bringt ein eigenes Gerät mit. Bei mehreren Schulen kommt der Name d
 | `sensor.ranzenpost_school_next_conference` | Das Datum des nächsten Elternsprechtags | `date`, `title`, `details`, `days_until` |
 | `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` oder `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
 
-Ein Zähler zeigt `0` und eine leere Liste, wenn nichts da ist, ein Textsensor zeigt `none`, und ein Zeitstempel-Sensor bleibt nur `unknown`, solange es diesen Moment nicht gibt. Zeiten sind ISO 8601 in der Zeitzone der Schule, Daten `YYYY-MM-DD`, Wochentage englische Namen wie `monday`. Die Integration fragt das Add-on alle 60 Sekunden und spricht nie selbst mit IServ. Die Kalender erscheinen auch im Kalender von Home Assistant.
+Ein Zähler zeigt `0` und eine leere Liste, wenn nichts da ist, ein Textsensor zeigt `none`, und ein Zeitstempel-Sensor bleibt nur `unknown`, solange es diesen Moment nicht gibt. Zeiten sind ISO 8601 in der Zeitzone der Schule, Daten `YYYY-MM-DD`, Wochentage englische Namen wie `monday`. Die Integration fragt die App alle 60 Sekunden und spricht nie selbst mit IServ. Die Kalender erscheinen auch im Kalender von Home Assistant.
 
 ### Automationen
 
@@ -260,7 +260,7 @@ actions:
 
 ### Push-Nachrichten und Reparaturen
 
-Das Add-on schickt für jede Stundenplanänderung, jeden neuen Brief, jeden neuen Beitrag und jeden neuen Sprechtag eine Nachricht an die Notify-Dienste, die du auswählst, zum Beispiel die Home Assistant App auf deinem Handy. Jedes Ziel hat einen Testknopf, und die Texte gibt es in allen sechs Sprachen. Braucht die Anmeldung bei einer Schule dich, zeigt Home Assistant einen Reparaturhinweis mit dem Namen der Schule und dem nächsten Schritt. Er verschwindet von selbst, sobald die Anmeldung wieder klappt.
+Die App schickt für jede Stundenplanänderung, jeden neuen Brief, jeden neuen Beitrag und jeden neuen Sprechtag eine Nachricht an die Notify-Dienste, die du auswählst, zum Beispiel die Home Assistant App auf deinem Handy. Jedes Ziel hat einen Testknopf, und die Texte gibt es in allen sechs Sprachen. Braucht die Anmeldung bei einer Schule dich, zeigt Home Assistant einen Reparaturhinweis mit dem Namen der Schule und dem nächsten Schritt. Er verschwindet von selbst, sobald die Anmeldung wieder klappt.
 
 ## Die App
 
@@ -301,7 +301,7 @@ Jede Schule und jedes Konto behält Anmeldung, Kinder, Namen und Stundenzeiten f
 
 Ein Feed je Kind, den deine Kalender-App abonniert: Stunden, Schulferien, Feiertage, markierte Arbeiten, genehmigte Abwesenheiten und eigene Einträge, jeweils abschaltbar. Als Link oder QR-Code. Der Link lässt sich jederzeit erneuern oder löschen.
 
-Der Feed läuft auf einem zweiten Port, 8100, der **standardmäßig aus** ist. Schalte ihn unter **Einstellungen, Add-ons, Ranzenpost (IServ), Konfiguration, Netzwerk** ein. Wer den Link hat, sieht den Stundenplan dieses Kindes, behandle den Link also wie ein Geheimnis. Der Fernzugriff von Nabu Casa leitet keine Add-on-Ports weiter, unterwegs braucht der Feed also deinen eigenen Fernzugriff oder ein VPN.
+Der Feed läuft auf einem zweiten Port, 8100, der **standardmäßig aus** ist. Schalte ihn unter **Einstellungen, Apps, Ranzenpost (IServ), Konfiguration, Netzwerk** ein. Wer den Link hat, sieht den Stundenplan dieses Kindes, behandle den Link also wie ein Geheimnis. Der Fernzugriff von Nabu Casa leitet keine App-Ports weiter, unterwegs braucht der Feed also deinen eigenen Fernzugriff oder ein VPN.
 
 ### Sprachen und Designs
 
@@ -326,13 +326,15 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 | Elternsprechtage (`parentconference`) | Elternsprechtage | Termine und Titel | Nichts |
 | Chat (`messenger`) | Messenger, wo die Schule ihn für Eltern freigibt | Räume und Nachrichten | Nachricht senden, als gelesen markieren, Raum mit einer Lehrkraft öffnen |
 
+Klassengeld erkennt Ranzenpost, unterstützt es aber nicht. Die Einstellungen bieten einen Link, der es in IServ öffnet. Es läuft als eigener Dienst hinter einer Zustimmung in IServ, und die Unterstützung steht jemandem offen, dessen Schule Klassengeld nutzt und der sie selbst bauen möchte. Siehe [Issue #5](https://github.com/githuber110/ranzenpost/issues/5).
+
 Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` an, zeigt die Einstellungsseite es als vorhanden, aber noch nicht unterstützt, statt den Stundenplan als fehlend zu melden. Module, die Ranzenpost noch nicht kennt, erscheinen in den Einstellungen unter ihrem IServ-Namen, mit einem Knopf, der ein vorausgefülltes Issue öffnet.
 
 ## Datenschutz
 
 - Alles läuft auf deinem Home Assistant. Es gibt kein Konto bei uns und keinen Server von uns.
 - Drei Ziele nach außen: der IServ-Server deiner Schule, `openholidaysapi.org` für Feriendaten und einmalig `openplzapi.org`, um die Postleitzahl der Schule einem Bundesland zuzuordnen. Diese beiden Anfragen tragen ein Bundesland und ein Jahr oder eine Postleitzahl, sonst nichts.
-- Schuladresse, Login und der eigene Zwei-Faktor-Schlüssel der App bleiben im Ordner `/data` des Add-ons. Login und Zwei-Faktor-Schlüssel liegen verschlüsselt. Mit einer **Passphrase** in den Add-on-Optionen wird der Schlüssel beim Start daraus abgeleitet und nie auf die Platte geschrieben.
+- Schuladresse, Login und der eigene Zwei-Faktor-Schlüssel der App bleiben im Ordner `/data` der App. Login und Zwei-Faktor-Schlüssel liegen verschlüsselt. Mit einer **Passphrase** in den App-Optionen wird der Schlüssel beim Start daraus abgeleitet und nie auf die Platte geschrieben.
 - Gelesen werden nur Kinder, die dein Konto aufführt. Andere IDs probiert die App nie.
 - Jeder Schreibzugriff auf IServ fragt vorher nach. Nichts wird in deinem Namen verschickt.
 - **Trennen** versucht, das Zwei-Faktor-Token der App aus IServ zu entfernen, und löscht dann die Daten der Schule lokal.
@@ -340,7 +342,7 @@ Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` a
 
 ## Hilfe bekommen
 
-1. Öffne in der App **Einstellungen, Hilfe, Problem melden** und tippe auf **Bericht speichern**. Er bündelt Versionen, den Aufbau jedes IServ-Moduls und das Add-on-Log in `ranzenpost-report.zip`. Namen, Beträge, Adressen und Geheimnisse werden entfernt. Bei Modulen eines anderen Anbieters wie Klassengeld meldet sich der Bericht dort einmal an. Er öffnet keinen Brief und keinen einzelnen Eintrag. Nichts wird von selbst verschickt.
+1. Öffne in der App **Einstellungen, Hilfe, Problem melden** und tippe auf **Bericht speichern**. Er bündelt Versionen, den Aufbau jedes IServ-Moduls und das App-Log in `ranzenpost-report.zip`. Namen, Beträge, Adressen und Geheimnisse werden entfernt. Bei Modulen eines anderen Anbieters wie Klassengeld meldet sich der Bericht dort einmal an. Er öffnet keinen Brief und keinen einzelnen Eintrag. Nichts wird von selbst verschickt.
 2. Öffne ein [Issue](https://github.com/githuber110/ranzenpost/issues) und hänge die Datei an. Deutsch ist willkommen.
 3. Bei einem Sicherheitsproblem bitte kein öffentliches Issue öffnen. Siehe [SECURITY.md](SECURITY.md).
 

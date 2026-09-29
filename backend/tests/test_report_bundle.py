@@ -387,7 +387,7 @@ def test_the_zip_endpoint_serves_a_download_and_reuses_the_report_it_just_built(
     service, first, _second = two_school_service(tmp_path)
     client = TestClient(create_app(service))
     body = client.get("/api/diagnostics").json()
-    assert set(body["facts"]) == {"app", "home_assistant", "iserv"}
+    assert set(body["facts"]) == {"app", "integration", "home_assistant", "iserv"}
     assert body["facts"]["iserv"] == "3.9.1"
     fetched = len(first.client.capped_calls)
     answer = client.get("/api/diagnostics/report.zip")

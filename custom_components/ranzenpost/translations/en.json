@@ -6,25 +6,25 @@
     },
     "step": {
       "hassio_confirm": {
-        "title": "Connect the Ranzenpost add-on",
-        "description": "The add-on {addon} was found. Connect Home Assistant to it?"
+        "title": "Connect the Ranzenpost app",
+        "description": "The app {addon} was found. Connect Home Assistant to it?"
       },
       "install_addon": {
-        "title": "Install the Ranzenpost add-on",
-        "description": "The Ranzenpost add-on is not installed yet. Add the repository {repository}, then install and start the add-on?"
+        "title": "Install the Ranzenpost app",
+        "description": "The Ranzenpost app is not installed yet. Add the repository {repository}, then install and start the app?"
       },
       "addon_no_discovery": {
-        "title": "The add-on has not announced itself",
-        "description": "The add-on {addon} is installed but has not announced its connection details yet. Open the add-on, check that it is running, and enter the host, port and token from its Home Assistant settings block.",
+        "title": "The app has not announced itself",
+        "description": "The app {addon} is installed but has not announced its connection details yet. Open the app, check that it is running, and enter the host, port and token from its Home Assistant settings block.",
         "data": {
           "host": "Host",
           "port": "Port",
           "token": "Token"
         },
         "data_description": {
-          "host": "Host name of the add-on container, usually shown in its settings.",
+          "host": "Host name of the app container, usually shown in its settings.",
           "port": "Port of the integration API, 8099 by default.",
-          "token": "Access token shown in the add-on settings."
+          "token": "Access token shown in the app settings."
         }
       },
       "manual": {
@@ -50,21 +50,21 @@
       }
     },
     "progress": {
-      "install_addon": "The Ranzenpost add-on is being installed. This can take a few minutes.",
-      "start_addon": "The Ranzenpost add-on is starting.",
-      "wait_discovery": "Waiting for the add-on to announce its connection details."
+      "install_addon": "The Ranzenpost app is being installed. This can take a few minutes.",
+      "start_addon": "The Ranzenpost app is starting.",
+      "wait_discovery": "Waiting for the app to announce its connection details."
     },
     "error": {
-      "cannot_connect": "The add-on could not be reached. Check that it is running.",
+      "cannot_connect": "The app could not be reached. Check that it is running.",
       "invalid_auth": "The token was rejected. Copy it again from the Ranzenpost settings.",
-      "unknown": "The add-on answered in an unexpected way."
+      "unknown": "The app answered in an unexpected way."
     },
     "abort": {
-      "already_configured": "This Ranzenpost add-on is already connected. Every add-on host can be connected once.",
+      "already_configured": "This Ranzenpost app is already connected. Every app host can be connected once.",
       "already_in_progress": "A Ranzenpost setup is already in progress.",
-      "addon_install_failed": "The Ranzenpost add-on could not be installed. Check the Supervisor log.",
-      "addon_start_failed": "The Ranzenpost add-on could not be started. Check the add-on log.",
-      "not_ranzenpost_addon": "This discovery message does not belong to the Ranzenpost add-on.",
+      "addon_install_failed": "The Ranzenpost app could not be installed. Check the Supervisor log.",
+      "addon_start_failed": "The Ranzenpost app could not be started. Check the app log.",
+      "not_ranzenpost_addon": "This discovery message does not belong to the Ranzenpost app.",
       "reauth_successful": "The token was renewed."
     }
   },
@@ -72,13 +72,13 @@
     "step": {
       "init": {
         "title": "Ranzenpost options",
-        "description": "How often the integration asks the add-on, and which profiles get entities.",
+        "description": "How often the integration asks the app, and which profiles get entities.",
         "data": {
           "scan_interval": "Polling interval",
           "children": "Profiles"
         },
         "data_description": {
-          "scan_interval": "Seconds between two requests to the add-on, at least 30.",
+          "scan_interval": "Seconds between two requests to the app, at least 30.",
           "children": "Leave empty to create entities for every profile."
         }
       }
@@ -226,12 +226,27 @@
       "description": "IServ at {school} keeps turning down the app's confirmation code. The app's access has to be set up again. Open Ranzenpost in the sidebar and set up the school from scratch."
     },
     "addon_too_old": {
-      "title": "Update the Ranzenpost add-on",
-      "description": "The Ranzenpost add-on runs version {addon_version}, but this integration ({integration_version}) needs at least {required_version}. Update the add-on in the add-on store. Devices and entities appear on their own once it reports its schools again."
+      "title": "Update the Ranzenpost app",
+      "description": "The Ranzenpost app runs version {addon_version}, but this integration ({integration_version}) needs at least {required_version}. In Home Assistant open Settings → Apps, then the App store with the Install app button at the bottom right. Open the menu at the top right, choose Check for updates, then open Ranzenpost and select Update. Devices and entities appear on their own once the app reports its schools again."
+    },
+    "app_update_needed": {
+      "title": "Update the Ranzenpost app",
+      "description": "The Ranzenpost app runs version {addon_version}, the integration is already at {integration_version}. New functions only work once both have the same version. In Home Assistant open Settings → Apps, then the App store with the Install app button at the bottom right. Open the menu at the top right, choose Check for updates, then open Ranzenpost and select Update. This notice disappears on its own."
     },
     "integration_too_old": {
       "title": "Update the Ranzenpost integration",
-      "description": "The Ranzenpost add-on runs version {addon_version}, a feature release ahead of this integration ({integration_version}). Update the integration through HACS so both match; until then some data may be missing."
+      "description": "The Ranzenpost app runs version {addon_version}, this integration is still at {integration_version}. Open HACS, open Ranzenpost and install the update. Then restart Home Assistant: Settings → menu at the top right → Restart Home Assistant. Until then some data may be missing. This notice disappears on its own."
+    },
+    "restart_required": {
+      "title": "Restart Home Assistant to finish the Ranzenpost update",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Restart Home Assistant",
+            "description": "The Ranzenpost integration {installed_version} is installed, but Home Assistant still runs {loaded_version}. Confirm this step to restart Home Assistant now. You can also restart later: Settings → menu at the top right → Restart Home Assistant."
+          }
+        }
+      }
     },
     "no_school_yet": {
       "title": "No school signed in yet",

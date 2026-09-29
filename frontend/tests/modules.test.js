@@ -270,7 +270,7 @@ describe("the settings follow the modules", () => {
     seed(window, all(), `state.modules.unsupported = [{ segment: "calendar", slug: "calendar", label: "Kalender", name: "Kalender" }];`);
     expect(window.eval("settingsView()").querySelector(".module-card")).not.toBeNull();
     const parsed = window.eval("applyModules({ modules: {}, unsupported: [{ segment: 'calendar' }, { label: 'x' }], unknown: [] })");
-    expect(parsed.unsupported).toEqual([{ segment: "calendar", slug: "calendar", label: "calendar", name: "calendar" }]);
+    expect(parsed.unsupported).toEqual([{ segment: "calendar", slug: "calendar", label: "calendar", name: "calendar", linkOnly: false, openUrl: "" }]);
     expect(window.eval("catalogueModuleName({ segment: 'odd', slug: 'odd', label: 'Odd', name: 'Official' })")).toBe("Official");
   });
 });
@@ -429,5 +429,80 @@ describe("an account whose modules need no child", () => {
     expect(areas).toEqual(["letters", "noticeboard"]);
     expect(view.textContent).not.toContain(label(window, "overview.noChild"));
     expect(view.querySelector(".overview-failed")).toBeNull();
+  });
+});
+
+describe("a module that only opens in IServ", () => {
+  const KLASSENGELD = `{ segment: "klassengeld", slug: "klassengeld", label: "Klassengeld", name: "Klassengeld", linkOnly: true, openUrl: "https://school.example/iserv/klassengeld/redirect" }`;
+
+  test("it shows a note and a secondary link that opens in a new tab", () => {
+    const { window } = loadApp();
+    seed(window, all(), `state.modules.unsupported = [${KLASSENGELD}];`);
+    const block = window.eval("settingsView()").querySelector(".modules-block");
+    const link = block.querySelector(".module-open-link");
+    expect(link.getAttribute("href")).toBe("https://school.example/iserv/klassengeld/redirect");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(link.textContent).toContain(label(window, "settings.modules.openInIserv"));
+    expect(block.querySelector(".module-link-note").textContent).toBe(label(window, "settings.modules.linkOnly", { name: label(window, "modules.catalogue.klassengeld") }));
+    expect(block.querySelectorAll(".btn").length).toBe(0);
+  });
+
+  test("it neither raises the report card nor enters the issue prefill or the unknown hint", () => {
+    const { window } = loadApp();
+    seed(window, all(), `state.modules.unsupported = [${KLASSENGELD}];`);
+    expect(window.eval("moduleCardWanted()")).toBe(false);
+    expect(window.eval("moduleSegments()")).toEqual([]);
+    expect(window.eval("settingsView()").querySelector(".module-card")).toBeNull();
+    const plain = new window.URLSearchParams(window.eval("moduleIssueUrl()").slice(ISSUE_URL.length));
+    expect(plain.get("title")).toBe(label(window, "help.issue.titlePlain"));
+  });
+
+  test("next to an unknown module the card and the link both appear and only the unknown one is reported", () => {
+    const { window } = loadApp();
+    seed(window, all(), `
+      state.modules.unsupported = [${KLASSENGELD}];
+      state.modules.unknown = [{ segment: "mystery", label: "Mystery" }];
+      state.config.reported_modules = ["mystery"];
+    `);
+    const block = window.eval("settingsView()").querySelector(".modules-block");
+    expect(block.querySelector(".modules-unknown").textContent).toBe(label(window, "settings.modules.unknown", { labels: "Mystery" }));
+    expect(block.querySelector(".module-open-link")).not.toBeNull();
+  });
+
+  test("without a link the note stays and no anchor is drawn, and only http links are kept", () => {
+    const { window } = loadApp();
+    seed(window, all(), `state.modules.unsupported = [{ segment: "klassengeld", slug: "klassengeld", label: "Klassengeld", name: "Klassengeld", linkOnly: true, openUrl: "" }];`);
+    const block = window.eval("settingsView()").querySelector(".modules-block");
+    expect(block.querySelector(".module-link-note")).not.toBeNull();
+    expect(block.querySelector(".module-open-link")).toBeNull();
+    const parsed = window.eval(`applyModules({ modules: {}, unsupported: [
+      { segment: "klassengeld", link_only: true, open_url: "javascript:alert(1)" },
+      { segment: "klassengeld", link_only: true, open_url: "https://a.example/iserv/klassengeld/redirect" },
+    ] })`);
+    expect(parsed.unsupported.map((entry) => entry.openUrl)).toEqual(["", "https://a.example/iserv/klassengeld/redirect"]);
+    expect(parsed.unsupported.every((entry) => entry.linkOnly)).toBe(true);
+  });
+
+  test("an open link is only taken when it is a well formed https address", () => {
+    const { window } = loadApp();
+    const addresses = [
+      "http://a.example/iserv/klassengeld/redirect",
+      "javascript://a.example/%0Aalert(1)",
+      "data://a.example/text",
+      "https://",
+      "https://a b.example/",
+      "HTTPS://A.example/iserv/klassengeld/redirect",
+    ];
+    const parsed = evalWith(window, "applyModules({ modules: {}, unsupported: testArgs[0] })", addresses.map((open_url) => ({ segment: "klassengeld", link_only: true, open_url })));
+    expect(parsed.unsupported.map((entry) => entry.openUrl)).toEqual(["", "", "", "", "", "https://a.example/iserv/klassengeld/redirect"]);
+  });
+
+  test("each school page shows its own link", () => {
+    const { window } = loadApp();
+    seed(window, all());
+    const first = window.eval(`(() => { state.modules = applyModules({ modules: {}, unsupported: [{ segment: "klassengeld", link_only: true, open_url: "https://one.example/iserv/klassengeld/redirect" }] }); return modulesHelpBlock().querySelector(".module-open-link").getAttribute("href"); })()`);
+    const second = window.eval(`(() => { state.modules = applyModules({ modules: {}, unsupported: [{ segment: "klassengeld", link_only: true, open_url: "https://two.example/iserv/klassengeld/redirect" }] }); return modulesHelpBlock().querySelector(".module-open-link").getAttribute("href"); })()`);
+    expect([first, second]).toEqual(["https://one.example/iserv/klassengeld/redirect", "https://two.example/iserv/klassengeld/redirect"]);
   });
 });

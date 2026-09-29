@@ -37,6 +37,15 @@ test("a week without lessons in either source shows the short hint", async ({ pa
   await expect(page.locator(".tt")).toHaveCount(0);
 });
 
+test("a school that refuses the time-table data says that it releases no timetable, without an error", async ({ page }) => {
+  await openTimetable(page, "time-table-refused");
+  const block = page.locator(".empty").filter({ hasText: await message(page, "timetable.refused.title") });
+  await expect(block).toBeVisible();
+  await expect(block).toContainText(await message(page, "api.timetable.refused"));
+  await expect(block.locator("button")).toHaveCount(0);
+  await expect(page.getByText(await message(page, "timetable.error.title"), { exact: true })).toHaveCount(0);
+});
+
 test("room changes and cancellations of the older time-table module show in the week", async ({ page }) => {
   await openTimetable(page, "time-table-changes");
   await expect(page.locator(".tt .tt-cell[data-subject]")).toHaveCount(WEEK_LESSONS);

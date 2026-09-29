@@ -48,6 +48,7 @@ from .scriptscan import SCRIPT_ROOT, change_type_label_line, change_type_labels,
 from .store import host_of
 from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option
 from .valueshape import table_cell
+from .versions import pending_updates
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ STATUS_NOT_PROBED = "not probed"
 STATUS_ASSUMED = "assumed, never checked"
 STATUS_UNSUPPORTED = "present, not supported"
 STATUS_COVERED = "present, covered by the school app"
+UNVERSIONED_INTEGRATION = "older (sends no version)"
 VERDICT_STATUS = {modules.AVAILABLE: STATUS_SUPPORTED, modules.MISSING: STATUS_MISSING, modules.UNKNOWN: STATUS_UNKNOWN}
 LEGACY_TIMETABLE = modules.LEGACY_TIMETABLE
 KNOWN_ROWS = (
@@ -737,6 +739,56 @@ def _versions(versions):
     return str(app or "unknown"), str(home_assistant or "unknown")
 
 
+def _integration_versions(service, versions):
+    given = versions or {}
+    if "integration" in given:
+        return (
+            str(given.get("integration") or ""),
+            str(given.get("integration_installed") or ""),
+            given.get("integration_unversioned") is True,
+        )
+    store = getattr(service, "store", None)
+    if store is None:
+        return "", "", False
+    try:
+        return (*integration.seen_integration(store), integration.integration_unversioned(store))
+    except Exception:
+        logger.debug("the integration version could not be read", exc_info=True)
+        return "", "", False
+
+
+def _integration_label(loaded, unversioned):
+    if unversioned:
+        return UNVERSIONED_INTEGRATION
+    return loaded or "unknown"
+
+
+def _integration_activity(service, versions, now):
+    if "integration" in (versions or {}):
+        return True, 0
+    store = getattr(service, "store", None)
+    if store is None:
+        return False, 0
+    try:
+        return integration.is_active(store, now), integration.last_request(store)
+    except Exception:
+        logger.debug("the integration activity could not be read", exc_info=True)
+        return False, 0
+
+
+def integration_lines(app_version, loaded, installed, unversioned=False, active=True, last_seen=0):
+    line = "- Integration: %s" % _integration_label(loaded, unversioned)
+    if loaded and installed and installed != loaded and not unversioned:
+        line += " (installed %s)" % installed
+    if not active and (loaded or unversioned):
+        line += ", last request %s" % (_stamp(last_seen) if last_seen else "unknown")
+    lines = [line]
+    steps = pending_updates(app_version, loaded, installed, unversioned) if active else []
+    if steps:
+        lines.append("- Pending updates: %s" % ", ".join(steps))
+    return lines
+
+
 def _log_lines(log_lines):
     return list(log_lines) if log_lines is not None else logfile.lines()
 
@@ -783,6 +835,8 @@ def report_parts(service, structure=True, log_lines=None, clock=time.time, versi
     lines = [TITLE, "", "## Versions"]
     lines.append("- Generated: %s" % _stamp(now))
     lines.append("- Ranzenpost: %s" % app_version)
+    activity = _integration_activity(service, versions, now)
+    lines.extend(integration_lines(app_version, *_integration_versions(service, versions), *activity))
     lines.append("- Home Assistant: %s" % home_assistant)
     lines.append("- IServ: %s" % iserv_version)
     lines.append("- Language: %s" % (config.get("language") or "system"))
@@ -851,6 +905,8 @@ def report_segments(service):
     for connection in service.connections():
         registry = _registry_without_network(connection)
         for entry in registry["unsupported"] + registry["unknown"]:
+            if entry.get("link_only"):
+                continue
             if entry["segment"] not in segments:
                 segments.append(entry["segment"])
     return segments
@@ -860,7 +916,13 @@ def report_facts(service, versions=None):
     app_version, home_assistant = _versions(versions)
     iserv_versions = [_registry_without_network(connection)["iserv_version"] for connection in service.connections()]
     iserv_version = next((version for version in iserv_versions if version), "") or "unknown"
-    return {"app": app_version, "home_assistant": home_assistant, "iserv": iserv_version}
+    loaded, _installed, unversioned = _integration_versions(service, versions)
+    return {
+        "app": app_version,
+        "integration": _integration_label(loaded, unversioned),
+        "home_assistant": home_assistant,
+        "iserv": iserv_version,
+    }
 
 
 class ReportCache:

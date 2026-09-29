@@ -59,6 +59,7 @@ CATALOGUE = {
     "webuntis": ("WebUntis Messenger", "WebUntis Messenger", CURRENT),
     "cloudfiles": ("Wolke", "Cloud", CURRENT),
 }
+LINK_ONLY = {"klassengeld": "/iserv/klassengeld/redirect"}
 SEGMENT_SLUGS = {
     "time-table": "timetable",
     "dsa-absences": "absence",
@@ -70,6 +71,10 @@ def slug_of(segment):
     segment = str(segment or "").strip().lower()
     slug = SEGMENT_SLUGS.get(segment, segment)
     return slug if slug in CATALOGUE else ""
+
+
+def link_only_path(slug):
+    return LINK_ONLY.get(slug, "")
 
 
 def official_name(slug):

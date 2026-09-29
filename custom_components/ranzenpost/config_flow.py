@@ -24,6 +24,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
+from homeassistant.loader import async_get_integration
 
 from .api import AuthError, Child, ConnectionError, Info, RanzenpostApi
 from .const import (
@@ -47,7 +48,6 @@ from .const import (
     MIN_SCAN_INTERVAL,
     unique_id_of,
 )
-from .coordinator import api_for_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,7 +135,14 @@ def is_ranzenpost_addon(slug: str) -> bool:
 
 
 async def validate_connection(hass: HomeAssistant, data: Mapping[str, Any]) -> Info:
-    api = RanzenpostApi(async_get_clientsession(hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
+    integration = await async_get_integration(hass, DOMAIN)
+    api = RanzenpostApi(
+        async_get_clientsession(hass),
+        data[CONF_HOST],
+        data[CONF_PORT],
+        data[CONF_TOKEN],
+        integration_version=str(integration.version or ""),
+    )
     return await api.info()
 
 
@@ -438,6 +445,6 @@ class RanzenpostOptionsFlow(OptionsFlow):
         if coordinator is not None and coordinator.data is not None:
             return coordinator.data.info
         try:
-            return await api_for_entry(self.hass, self.config_entry).info()
+            return await validate_connection(self.hass, self.config_entry.data)
         except Exception:
             return None

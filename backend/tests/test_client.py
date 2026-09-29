@@ -125,8 +125,8 @@ def test_the_week_reader_always_sends_the_child_id_for_a_two_child_account():
         assert json.loads(params["filter"])["child"] == child.child_id
 
 
-def test_the_week_reader_reports_a_403_as_an_unreadable_module_not_a_login_failure():
-    from app.iserv.timetable import TIMETABLE_SHAPE_KEY
+def test_the_week_reader_reports_a_403_as_a_refusal_not_a_login_failure():
+    from app.iserv.timetable import TIMETABLE_REFUSED_KEY
 
     class ForbiddenSession(FakeSession):
         def get(self, url, timeout=None, params=None):
@@ -138,7 +138,7 @@ def test_the_week_reader_reports_a_403_as_an_unreadable_module_not_a_login_failu
     client.login("parent", "secret", lambda: "451884")
     with pytest.raises(DataError) as excinfo:
         client.read_time_table_week("22222222-2222-4222-8222-222222222222")
-    assert excinfo.value.message_key == TIMETABLE_SHAPE_KEY
+    assert excinfo.value.message_key == TIMETABLE_REFUSED_KEY
     assert excinfo.value.detail["status"] == 403
     assert not isinstance(excinfo.value, LoginError)
 

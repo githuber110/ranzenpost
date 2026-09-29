@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+from app.iserv import dsa_substitutions
 from app.iserv.dsa_substitutions import (
     COMPARED,
     NOT_ASKED,
@@ -304,3 +305,41 @@ def test_school_markers_are_ignored_when_substitutions_are_not_released():
     assert not any(kinds(week).values())
     assert week.change_items is None
     assert (comparison.outcome, comparison.marked, comparison.markers_used) == (NOT_ASKED, 0, False)
+
+
+def test_the_report_names_the_marker_fields_of_the_school_with_their_value_kind():
+    payload = {
+        "students": [
+            {
+                "entries": [
+                    {"id": 1, "substitutionId": 7, "room": {"id": 1}},
+                    {"id": 2, "substitutionId": 0},
+                    {"id": 3, "cancellation": "Entfällt"},
+                    {"id": 4, "substitutionId": 8, "note": "free text that stays out"},
+                ]
+            }
+        ]
+    }
+
+    counts = dsa_substitutions.marker_fields(payload)
+
+    assert dsa_substitutions.describe_marker_fields(counts) == (
+        "cancellation text in 1 entries (cancelled 1); substitutionId number in 2 entries (changed 2)"
+    )
+
+
+def test_the_report_says_none_when_the_school_marks_nothing():
+    assert dsa_substitutions.describe_marker_fields(dsa_substitutions.marker_fields({"students": [{"entries": [{"id": 1}]}]})) == "none"
+    assert dsa_substitutions.describe_marker_fields(dsa_substitutions.marker_fields([])) == "none"
+
+
+@pytest.mark.parametrize("payload", [
+    {"students": {"entries": [{"substitutionId": 7}]}},
+    {"students": ["text", None, 3]},
+    {"students": [{"entries": ["text", None]}]},
+    {"students": [{"entries": {"substitutionId": 7}}]},
+    {"students": [{"entries": 3}]},
+    {"students": "text"},
+])
+def test_an_odd_answer_leaves_the_marker_fields_empty_instead_of_failing(payload):
+    assert dsa_substitutions.describe_marker_fields(dsa_substitutions.marker_fields(payload)) == "none"

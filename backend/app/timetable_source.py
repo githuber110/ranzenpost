@@ -7,7 +7,7 @@ from .child_service import connection_marker
 from .iserv.dsa import REFUSED_STATUSES, SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
 from .iserv.dsa_substitutions import NOT_ASKED, describe
 from .iserv.errors import DataError, OutageError
-from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows
+from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows, time_table_refusal
 from .store import edit_config
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,8 @@ class TimetableSources:
         self._vacations = None
         self._announced = False
         self._refused = False
+        self._data_refusals = {}
+        self._delivered = set()
 
     def reset(self):
         with self._lock:
@@ -119,6 +121,8 @@ class TimetableSources:
             self._vacations = None
             self._announced = False
             self._refused = False
+            self._data_refusals = {}
+            self._delivered = set()
 
     def _note(self, key, message, *args, level=logging.INFO):
         now = self.connection.clock()
@@ -292,7 +296,12 @@ class TimetableSources:
         chosen = self._reported(client, lambda: self._time_table_id(client, str(request.child_id), request.child))
         if chosen is None:
             return None
-        return self._read_week(client, chosen, request.target)
+        try:
+            return self._read_week(client, chosen, request.target)
+        except DataError as error:
+            if time_table_refusal(error):
+                return None
+            raise
 
     def _reported(self, client, step):
         try:
@@ -300,6 +309,13 @@ class TimetableSources:
         except OutageError:
             raise
         except DataError as error:
+            if time_table_refusal(error):
+                self._note(
+                    "data-refused",
+                    "time-table data refused for this account (status %s), no timetable released",
+                    error.detail.get("status"),
+                )
+                raise
             if error.message_key == SCHOOL_APP_EXPIRED_KEY:
                 self.connection._forget_session(client)
             self._note(
@@ -311,7 +327,19 @@ class TimetableSources:
             raise
 
     def _read_week(self, client, chosen, target):
-        week = self._reported(client, lambda: client.read_time_table_week(chosen, target))
+        refusal = self._remembered_refusal(chosen)
+        if refusal is not None:
+            raise fresh_error(refusal)
+        try:
+            week = self._reported(client, lambda: self._week_answer(client, chosen, target))
+        except DataError as error:
+            if time_table_refusal(error):
+                with self._lock:
+                    self._data_refusals[chosen] = (self.connection.clock(), error)
+            raise
+        with self._lock:
+            self._data_refusals.pop(chosen, None)
+            self._delivered.add(chosen)
         answer = getattr(week, "answer", None) or {}
         self._note(
             "data",
@@ -319,6 +347,26 @@ class TimetableSources:
             answer.get("status", "-"), answer.get("content_type") or "-", len(display_rows(week)), week.start_date,
         )
         return week
+
+    def _week_answer(self, client, chosen, target):
+        try:
+            return client.read_time_table_week(chosen, target)
+        except DataError as error:
+            if not time_table_refusal(error):
+                raise
+            with self._lock:
+                delivered = chosen in self._delivered
+            if not delivered:
+                raise
+            raise DataError(str(error), message_key=TIMETABLE_SHAPE_KEY, detail=dict(error.detail)) from error
+
+    def _remembered_refusal(self, chosen):
+        now = self.connection.clock()
+        with self._lock:
+            known = self._data_refusals.get(chosen)
+        if known is None or now - known[0] >= RECHECK_SECONDS:
+            return None
+        return known[1]
 
     def _cached_match(self, child_id, now):
         with self._lock:

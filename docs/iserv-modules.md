@@ -129,6 +129,9 @@ screen with the settings entry and the hint.
   documentation does not mention parents. Ranzenpost has its own exam marks on the timetable.
 - Klassengeld (`klassengeld`): the brochure says parents pay class money through a payment request
   sent as a parent letter. Nothing in the documentation describes a parent view beyond the letter.
+  Problem reports from three schools show the menu link leading through IServ sign-in to an IServ
+  consent page for a separate Klassengeld service. Ranzenpost stops there and does not support the
+  module until a contributor with access builds it.
 - Pläne (`plan`): plan files such as substitution plans. Parents are mentioned only as readers
   without login. A school that publishes its substitution plan this way is not covered.
 - Ganztag (`dsa-daycare`): the all-day care module behind the day-care cancellation that the

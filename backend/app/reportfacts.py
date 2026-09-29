@@ -15,7 +15,7 @@ from .iserv.dsa import (
     parse_children_from_me,
     parse_students,
 )
-from .iserv.dsa_substitutions import comparison_of, describe as describe_substitutions
+from .iserv.dsa_substitutions import comparison_of, describe as describe_substitutions, describe_marker_fields, marker_fields
 from .iserv.dsa_timetable import course_filter, query_date
 from .iserv.letters import parse_letter_list
 from .iserv.timetable import DATE_FORMAT, week_bounds
@@ -186,9 +186,13 @@ def _switch(settings, key):
     return "not a boolean"
 
 
+def _entry_count(entries):
+    return len(entries) if isinstance(entries, list) else 0
+
+
 def _entries_fact(payload):
     blocks = payload.get("students") if isinstance(payload.get("students"), list) else []
-    counts = [len(block.get("entries") or []) for block in blocks if isinstance(block, dict)]
+    counts = [_entry_count(block.get("entries")) for block in blocks if isinstance(block, dict)]
     return "students %d, entries per student %s" % (len(counts), ", ".join(str(count) for count in counts) or "-")
 
 
@@ -275,6 +279,7 @@ def school_app_query_lines(client, config, today, time_table=TIME_TABLE_PRESENT)
         lines.append("- Child %d: %s" % (number, fact))
         if substitutions and answered is not None:
             lines.append("- Child %d substitutions: %s" % (number, _substitutions_fact(client, answered, today)))
+            lines.append("- Child %d school markers: %s" % (number, describe_marker_fields(marker_fields(answered[1]))))
     slots = fetch_json(client, TIMETABLE_SLOTS_PATH, {"filterBy": LESSON_FILTER})
     lines.append("- Timetable slots: %s" % (len(slots) if isinstance(slots, list) else "not read"))
     start, end = week_bounds(today)

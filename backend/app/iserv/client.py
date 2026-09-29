@@ -50,7 +50,9 @@ from .forms import (
     parse_forms,
 )
 from .timetable import (
+    TIME_TABLE_REFUSED_STATUSES,
     TIME_TABLE_SOURCE,
+    TIMETABLE_REFUSED_KEY,
     TIMETABLE_SHAPE_KEY,
     data_params,
     parse_time_table,
@@ -343,7 +345,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.4.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2609.4.1")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -626,6 +628,12 @@ class IServClient:
         response = self._get(TIME_TABLE_DATA, params=data_params(child_id, reference or date.today()))
         status = self._secondary_status(response)
         self._raise_session_lost(response)
+        if status in TIME_TABLE_REFUSED_STATUSES:
+            raise DataError(
+                f"time-table data answered {status}",
+                message_key=TIMETABLE_REFUSED_KEY,
+                detail=dict(page_diagnosis(response), source=TIME_TABLE_SOURCE),
+            )
         if status != 200:
             raise self._time_table_refusal("time-table data", response)
         try:

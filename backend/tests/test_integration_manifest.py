@@ -14,6 +14,8 @@ CODEOWNERS = REPO_ROOT / "CODEOWNERS"
 ADDON_CONFIG = REPO_ROOT / "iserv_connector" / "config.yaml"
 PACKAGE_JSON = REPO_ROOT / "package.json"
 CHANGELOG = REPO_ROOT / "iserv_connector" / "CHANGELOG.md"
+CARD = INTEGRATION / "frontend" / "ranzenpost-card.js"
+CARD_VERSION = re.compile(r'const CARD_VERSION = "([^"]+)";')
 
 LANGUAGES = ("de", "en", "ar", "tr", "ru", "uk")
 REQUIRED_MANIFEST_KEYS = {
@@ -119,9 +121,10 @@ def test_addon_package_and_integration_share_one_version():
     addon_version = _addon_version()
     manifest_version = _json(MANIFEST)["version"]
     package_version = _json(PACKAGE_JSON)["version"]
+    card_version = CARD_VERSION.search(CARD.read_text(encoding="utf-8")).group(1)
     assert VERSION.match(addon_version), addon_version
     assert VERSION.match(package_version), package_version
-    assert manifest_version == addon_version == package_version
+    assert manifest_version == addon_version == package_version == card_version
 
 
 def test_changelog_top_section_names_this_version_or_a_later_public_one():

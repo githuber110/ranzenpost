@@ -103,6 +103,20 @@ for (const viewport of VIEWPORTS) {
   }
 }
 
+test.describe("substitutions in large tiles", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("keep the room next to the substitution label", async ({ page }) => {
+    await page.context().addCookies([{ name: "e2e_timetable_source", value: "time-table-changes", url: BASE_URL }]);
+    await goto(page);
+    await openArea(page, "timetable");
+    const cell = page.locator(".tt .tt-cell.subbed[data-subject='D']:not(.compact)");
+    await expect(cell.locator(".lroom.paired")).toBeVisible();
+    await expect(cell.locator(".lroom.paired")).toHaveText(/R305$/);
+    await expect(cell.locator(".room.paired")).toBeHidden();
+  });
+});
+
 test.describe("cancelled lessons in large tiles", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 

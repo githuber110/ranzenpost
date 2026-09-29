@@ -11,6 +11,8 @@ from .models import Lesson, TimetableWeek
 logger = logging.getLogger(__name__)
 
 TIMETABLE_SHAPE_KEY = "api.timetable.unreadable"
+TIMETABLE_REFUSED_KEY = "api.timetable.refused"
+TIME_TABLE_REFUSED_STATUSES = (403,)
 TIME_TABLE_SOURCE = "time-table"
 SHAPE_DIAGNOSIS_LINES = 40
 
@@ -25,6 +27,10 @@ SUBSTITUTED_FIELDS = (
 )
 PLACEHOLDER_CHARACTERS = frozenset("-+?–— ")
 CHANGE_ITEMS_FORMAT = "lessons"
+
+
+def time_table_refusal(error):
+    return getattr(error, "message_key", "") == TIMETABLE_REFUSED_KEY
 
 
 def week_bounds(reference):

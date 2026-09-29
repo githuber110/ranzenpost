@@ -239,7 +239,7 @@ class ConnectionService:
         registry = modules.normalize(stored if stored else None)
         if self._timetable_page_denied and not self._school_app_timetable_usable(registry):
             registry["modules"][modules.TIMETABLE] = False
-        return registry
+        return modules.with_open_urls(registry, self.store.load_config().get("school_url", ""))
 
     def _school_app_timetable_usable(self, registry):
         return modules.school_app_timetable_served(registry) and self._child_service.course_ids_known()
@@ -906,6 +906,10 @@ def _tag_media_urls(payload, connection_id):
     return payload
 
 
+def without_open_url(entry):
+    return {key: value for key, value in entry.items() if key != "open_url"}
+
+
 class IServService:
     def __init__(self, store, client_factory=None):
         self.store = store
@@ -1093,7 +1097,7 @@ class IServService:
                 for entry in registry[field]:
                     if entry["segment"] not in seen:
                         seen.add(entry["segment"])
-                        merged[field].append(entry)
+                        merged[field].append(entry if len(registries) == 1 else without_open_url(entry))
         merged["checked_at"] = max(registry["checked_at"] for registry in registries)
         merged["iserv_version"] = next(
             (registry["iserv_version"] for registry in registries if registry["iserv_version"]), ""

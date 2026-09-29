@@ -44,7 +44,7 @@
 
 ## Install
 
-You want both parts. The add-on signs in to IServ and serves the app in the sidebar. The integration turns the same data into entities and the dashboard card.
+You want both parts. The Ranzenpost app (formerly called add-on) signs in to IServ and shows Ranzenpost in the sidebar. The integration turns the same data into entities and the dashboard card.
 
 ### 1. Add the repository
 
@@ -52,19 +52,19 @@ You want both parts. The add-on signs in to IServ and serves the app in the side
 
 Home Assistant opens and asks you to confirm the repository.
 
-### 2. Install the add-on and run the setup
+### 2. Install the app and run the setup
 
-**Ranzenpost (IServ)** now appears in the add-on store. Open it, click **Install**, then **Start**. Open **Ranzenpost** from the sidebar. The setup asks for your school's address, your parent login and, if your school uses it, one code from the authenticator app you already have. Your authenticator keeps working. Then pick your children. Done.
+**Ranzenpost (IServ)** now appears in the App store. Open it, click **Install**, then **Start**. Open **Ranzenpost** from the sidebar. The setup asks for your school's address, your parent login and, if your school uses it, one code from the authenticator app you already have. Your authenticator keeps working. Then pick your children. Done.
 
 ### 3. Add the integration
 
 [![Add the Ranzenpost integration through HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=githuber110&repository=ranzenpost&category=integration)
 
-Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings, Devices & services, Add integration** and search for **Ranzenpost**. The running add-on is found on its own. If you start with the integration instead, it offers to install the add-on for you.
+Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings, Devices & services, Add integration** and search for **Ranzenpost**. The running app is found on its own. If you start with the integration instead, it offers to install the app for you.
 
 ### Requirements
 
-- Home Assistant 2025.6 or newer, as Home Assistant OS or Supervised. The add-on store needs the Supervisor.
+- Home Assistant 2025.6 or newer, as Home Assistant OS or Supervised. The App store needs the Supervisor.
 - A machine with `amd64` or `aarch64`, for example a Raspberry Pi 4 or 5, a Home Assistant Green or Yellow, or an x86 box.
 - An IServ parent account at a school that has switched on the parent modules.
 - Two-factor login is what Ranzenpost was built and tested with. A login without two-factor works too and has been confirmed at a real school.
@@ -73,13 +73,13 @@ Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings
 <details>
 <summary>Install by hand, update, and Home Assistant without a Supervisor</summary>
 
-**Add-on by hand:** **Settings, Add-ons, Add-on Store**, the menu in the top right, **Repositories**, paste `https://github.com/githuber110/ranzenpost`.
+**App by hand:** **Settings, Apps**, the **App store** (the **Install app** button at the bottom right), the menu in the top right, **Repositories**, paste `https://github.com/githuber110/ranzenpost`.
 
 **Integration by hand:** **HACS**, the menu in the top right, **Custom repositories**, paste `https://github.com/githuber110/ranzenpost`, pick **Integration**.
 
-**Without a Supervisor:** the integration asks for the add-on's host, port and token. The token is in the app under **Settings, Home Assistant**, with a copy button.
+**Without a Supervisor:** the integration asks for the app's host, port and token. The token is in the app under **Settings, Home Assistant**, with a copy button.
 
-**Updating:** the add-on updates under **Settings, Add-ons, Ranzenpost (IServ)**, the integration under HACS. Install the add-on and the integration of the same release, then restart Home Assistant and reload the page. A repair tells you when one of them is a release behind. Settings and the school connection survive an update.
+**Updating:** always update both parts to the same release. The app: **Settings, Apps**, the **App store**, the menu in the top right, **Check for updates**, then **Ranzenpost (IServ)** and **Update**. The integration: open **Ranzenpost** in HACS and install the update, then restart Home Assistant and reload the page. If one part is behind or the restart is missing, Home Assistant shows a repair with these steps, and the app shows the same hint in its settings. Settings and the school connection survive an update.
 
 The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](iserv_connector/DOCS.md).
 
@@ -130,7 +130,7 @@ blocks:
   - conferences
 ```
 
-`children` takes first names, first names with the school in brackets, or the children's keys from the add-on. Leave it out for every child. Each block is a key or a key with a `size`, `compact` or `normal`. The older `view` and `child` keys still work.
+`children` takes first names, first names with the school in brackets, or the children's keys from the app. Leave it out for every child. Each block is a key or a key with a `size`, `compact` or `normal`. The older `view` and `child` keys still work.
 
 </details>
 
@@ -170,7 +170,7 @@ Each school adds its own device. With several schools, the school's name joins t
 | `sensor.ranzenpost_school_next_conference` | The date of the next parent-teacher conference | `date`, `title`, `details`, `days_until` |
 | `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` or `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
 
-A counter reads `0` and an empty list when there is nothing, a text sensor reads `none`, and a timestamp sensor stays `unknown` only while no such moment exists. Times are ISO 8601 in the school's time zone, dates are `YYYY-MM-DD`, weekdays are English names such as `monday`. The integration asks the add-on every 60 seconds and never talks to IServ itself. The calendars also show up in Home Assistant's calendar panel.
+A counter reads `0` and an empty list when there is nothing, a text sensor reads `none`, and a timestamp sensor stays `unknown` only while no such moment exists. Times are ISO 8601 in the school's time zone, dates are `YYYY-MM-DD`, weekdays are English names such as `monday`. The integration asks the app every 60 seconds and never talks to IServ itself. The calendars also show up in Home Assistant's calendar panel.
 
 ### Automations
 
@@ -260,7 +260,7 @@ actions:
 
 ### Push messages and repairs
 
-The add-on sends a message for every timetable change, new letter, new post and new conference day to the notify services you pick, for example the Home Assistant app on your phone. Each target has a test button, and the texts come in all six languages. When a school's login needs you, Home Assistant shows a repair that names the school and says what to do. It clears on its own once the login works.
+The app sends a message for every timetable change, new letter, new post and new conference day to the notify services you pick, for example the Home Assistant app on your phone. Each target has a test button, and the texts come in all six languages. When a school's login needs you, Home Assistant shows a repair that names the school and says what to do. It clears on its own once the login works.
 
 ## The app
 
@@ -301,7 +301,7 @@ Each school or account keeps its own login, children, names and lesson times. Le
 
 A feed per child that your calendar app subscribes to: lessons, school holidays, public holidays, marked exams, approved absences and your own entries, each switchable. Link or QR code. The link can be renewed or deleted at any time.
 
-The feed is served on a second port, 8100, which is **off by default**. Switch it on under **Settings, Add-ons, Ranzenpost (IServ), Configuration, Network**. Whoever has the link sees that child's timetable, so treat the link as the secret. Nabu Casa remote access does not forward add-on ports, so outside your home network the feed needs your own remote access or a VPN.
+The feed is served on a second port, 8100, which is **off by default**. Switch it on under **Settings, Apps, Ranzenpost (IServ), Configuration, Network**. Whoever has the link sees that child's timetable, so treat the link as the secret. Nabu Casa remote access does not forward app ports, so outside your home network the feed needs your own remote access or a VPN.
 
 ### Languages and themes
 
@@ -326,13 +326,15 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Parent-teacher conferences (`parentconference`) | Parent conferences | Dates and titles | Nothing |
 | Chat (`messenger`) | Messenger, where the school opens it to parents | Rooms and messages | Send a message, mark as read, open a room with a teacher |
 
+Klassengeld is recognised but not supported. Settings offer a link that opens it in IServ. It runs as a separate service behind an IServ consent step, and it is open for a contributor whose school uses Klassengeld and who would like to build the support. See [issue #5](https://github.com/githuber110/ranzenpost/issues/5).
+
 A school that only offers the older timetable module, at `/iserv/timetable/`, shows it in the settings as present, not supported yet, instead of showing the timetable as missing. Modules Ranzenpost does not know yet appear in the settings by their IServ name, with a button that opens a prefilled issue.
 
 ## Privacy
 
 - Everything runs on your Home Assistant. There is no account with us and no server of ours.
 - Three outbound destinations: your school's IServ server, `openholidaysapi.org` for holiday dates, and `openplzapi.org` once to turn the school's postal code into a federal state. Those two requests carry a federal state and a year, or a postal code, nothing else.
-- Your school address, login and the app's own two-factor key stay in the add-on's `/data` folder. Login and two-factor key are encrypted at rest. With a **passphrase** in the add-on options the key is derived from it at start and never written to disk.
+- Your school address, login and the app's own two-factor key stay in the app's `/data` folder. Login and two-factor key are encrypted at rest. With a **passphrase** in the app options the key is derived from it at start and never written to disk.
 - Only children your account lists are read. The app never tries other IDs.
 - Every write to IServ asks for confirmation. Nothing is sent on your behalf.
 - **Disconnect** tries to remove the app's two-factor token from IServ, then deletes the school's data locally.
@@ -340,7 +342,7 @@ A school that only offers the older timetable module, at `/iserv/timetable/`, sh
 
 ## Getting help
 
-1. In the app, open **Settings, Help, Report a problem** and tap **Save report**. It bundles versions, the structure of each IServ module and the add-on log into `ranzenpost-report.zip`. Names, amounts, addresses and secrets are removed. For modules run by another provider, such as Klassengeld, the report signs in there once. It opens no letter and no single entry. Nothing is sent on its own.
+1. In the app, open **Settings, Help, Report a problem** and tap **Save report**. It bundles versions, the structure of each IServ module and the app log into `ranzenpost-report.zip`. Names, amounts, addresses and secrets are removed. For modules run by another provider, such as Klassengeld, the report signs in there once. It opens no letter and no single entry. Nothing is sent on its own.
 2. Open an [issue](https://github.com/githuber110/ranzenpost/issues) and attach that file. German is welcome.
 3. For a security problem, do not open a public issue. See [SECURITY.md](SECURITY.md).
 

@@ -414,7 +414,13 @@ COURSES_COOKIE = "e2e_courses"
 COURSES = contextvars.ContextVar("e2e_courses", default="")
 TIMETABLE_SOURCE_COOKIE = "e2e_timetable_source"
 TIMETABLE_SOURCE = contextvars.ContextVar("e2e_timetable_source", default="")
-TIMETABLE_SOURCE_MODES = {"time-table": "lessons", "empty": "empty", "time-table-changes": "changes", "school-app-refused": "refused"}
+TIMETABLE_SOURCE_MODES = {
+    "time-table": "lessons",
+    "empty": "empty",
+    "time-table-changes": "changes",
+    "school-app-refused": "refused",
+    "time-table-refused": "data-refused",
+}
 TIMETABLE_SOURCE_OPTION = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
 TIMETABLE_SOURCE_SCHOOLS = {}
 TIMETABLE_SOURCE_LOCK = threading.Lock()
@@ -655,7 +661,7 @@ def timetable_source_school(mode):
 def _timetable_source_school(mode):
     from app.service import ConnectionService
     from app.store import ConnectionStore
-    from tests.time_table_school import TimeTableSchool, client_factory, withheld_school
+    from tests.time_table_school import FORBIDDEN, TimeTableSchool, client_factory, withheld_school
 
     entry = TIMETABLE_SOURCE_SCHOOLS.get(mode)
     if entry is not None:
@@ -668,6 +674,8 @@ def _timetable_source_school(mode):
     child = dict(child_id="child-1", child_name=("Mia", "Musterkind"), options=((TIMETABLE_SOURCE_OPTION, "Musterkind, Mia"),))
     if mode == "refused":
         school = withheld_school(**child)
+    elif mode == "data-refused":
+        school = TimeTableSchool(time_table=FORBIDDEN, me_courses=False, **child)
     else:
         school = TimeTableSchool(
             time_table="lessons" if mode == "changes" else mode,

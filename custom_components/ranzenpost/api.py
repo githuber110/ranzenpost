@@ -15,6 +15,8 @@ ROUTE_EVENTS = "/api/integration/events"
 ROUTE_SCHOOL = "/api/integration/school"
 ROUTE_CHANGES = "/api/integration/changes"
 AUTH_STATUSES = (401, 403)
+HEADER_INTEGRATION = "X-Ranzenpost-Integration"
+HEADER_INSTALLED = "X-Ranzenpost-Integration-Installed"
 KEY_SEPARATOR = ":"
 KEY_SCHOOLS = "schools"
 
@@ -145,6 +147,7 @@ class Info:
     last_poll: datetime | None
     legacy: bool = False
     ingress_path: str = ""
+    integration_version: str = ""
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Info:
@@ -578,6 +581,8 @@ class RanzenpostApi:
     port: int
     token: str
     timeout: float = REQUEST_TIMEOUT
+    integration_version: str = ""
+    installed_version: str = ""
     base_url: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -585,6 +590,10 @@ class RanzenpostApi:
 
     async def _get(self, route: str, params: dict[str, str] | None = None) -> Any:
         headers = {"Authorization": f"Bearer {self.token}"}
+        if self.integration_version:
+            headers[HEADER_INTEGRATION] = self.integration_version
+        if self.installed_version:
+            headers[HEADER_INSTALLED] = self.installed_version
         try:
             async with (
                 asyncio.timeout(self.timeout),

@@ -110,6 +110,7 @@ class Profile:
     changed_lessons: bool = False
     report_source: str = "school-app"
     substitution_line: str = ""
+    stored_children: tuple = ()
 
     def school(self):
         return ProfileSchool(menu=self.menu, children_listed=self.children_listed, **self.fields)
@@ -158,6 +159,17 @@ PROFILES = {
             source=None,
             children_listed=False,
             unsupported=("klassengeld",),
+        ),
+        Profile(
+            name="second_school_with_a_stored_child",
+            story="A second school whose account lists no children keeps a child stored earlier; the time-table page "
+            "and its data both refuse.",
+            fields=dict(time_table=FORBIDDEN, page=PAGE_FORBIDDEN),
+            menu=BASE_MENU + ("klassengeld/redirect",),
+            source=None,
+            children_listed=False,
+            unsupported=("klassengeld",),
+            stored_children=({"child_id": "500001", "name": "Child One"},),
         ),
         Profile(
             name="school_app_empty_with_slots",

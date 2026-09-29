@@ -3,6 +3,29 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2609.4.1
+
+### New
+
+- Home Assistant shows a repair when the app or the integration is behind, with the exact update steps. An integration
+  that is installed but not loaded yet offers a restart of Home Assistant.
+- The app shows under Settings and on the help page which side still needs its update. The problem report names the
+  integration version.
+- Settings offer an "Open in IServ" link for Klassengeld, which Ranzenpost recognises but does not support. It no longer
+  appears in the request to report unknown modules.
+
+### Changed
+
+- Home Assistant texts and the docs say "app" instead of "add-on". A dashboard card older than the integration asks you
+  to reload the page.
+- Cover lessons show their room next to the cover label in tiles that are big enough, in the app and on the card.
+- The problem report names the fields a school uses to mark cover and cancelled lessons.
+
+### Fixed
+
+- When a school does not release the timetable to your account, Ranzenpost says so calmly instead of showing an error,
+  and the log no longer fills with warnings.
+
 ## 2609.4.0
 
 ### New

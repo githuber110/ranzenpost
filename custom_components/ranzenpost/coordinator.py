@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -33,15 +36,39 @@ from .const import (
 )
 from .panels import PANELS_KEY, app_panel_path
 from .signals import Signal, signals_between
-from .version import ADDON_TOO_OLD, INTEGRATION_TOO_OLD, version_mismatch
+from .version import (
+    ADDON_TOO_OLD,
+    APP_UPDATE_NEEDED,
+    INTEGRATION_TOO_OLD,
+    RESTART_REQUIRED,
+    mismatch_is_severe,
+    newer_version,
+    restart_pending,
+    version_mismatch,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-VERSION_ISSUE_KEYS = (ADDON_TOO_OLD, INTEGRATION_TOO_OLD)
+VERSION_ISSUE_KEYS = (ADDON_TOO_OLD, APP_UPDATE_NEEDED, INTEGRATION_TOO_OLD)
 ENTRY_ISSUE_KEYS = (*VERSION_ISSUE_KEYS, NO_SCHOOL_ISSUE_KEY)
 PLACEHOLDER_ADDON_VERSION = "addon_version"
 PLACEHOLDER_INTEGRATION_VERSION = "integration_version"
 PLACEHOLDER_REQUIRED_VERSION = "required_version"
+PLACEHOLDER_LOADED_VERSION = "loaded_version"
+PLACEHOLDER_INSTALLED_VERSION = "installed_version"
+MANIFEST_FILE = Path(__file__).parent / "manifest.json"
+
+type ManifestStamp = tuple[int, str]
+
+
+def read_installed_version(path: Path, known: ManifestStamp | None) -> ManifestStamp | None:
+    try:
+        stamp = path.stat().st_mtime_ns
+        if known is not None and known[0] == stamp:
+            return known
+        return (stamp, str(json.loads(path.read_text(encoding="utf-8")).get("version") or ""))
+    except (OSError, ValueError, AttributeError):
+        return known
 
 
 def login_issue_id(entry_id: str, school_id: str) -> str:
@@ -147,14 +174,62 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         )
         self.api = api or api_for_entry(hass, entry)
         self.integration_version = integration_version
+        self.api.integration_version = integration_version
+        self.installed_version = ""
+        self._manifest: ManifestStamp | None = None
+        self._manifest_check: asyncio.Task | None = None
         self.events = EventCache(self.api)
         self._seen_changes: set[tuple] = set()
         self._entity_fingerprint: tuple | None = None
         self._version_issue: str | None = None
 
+    def _schedule_manifest_check(self) -> None:
+        if self._manifest_check is not None and not self._manifest_check.done():
+            return
+        self._manifest_check = self.config_entry.async_create_background_task(
+            self.hass, self._async_check_manifest(), f"{DOMAIN} manifest check"
+        )
+
+    async def _async_check_manifest(self) -> None:
+        self._manifest = await self.hass.async_add_executor_job(read_installed_version, MANIFEST_FILE, self._manifest)
+        installed = self._manifest[1] if self._manifest else ""
+        changed = installed != self.installed_version
+        self.installed_version = installed
+        self.api.installed_version = installed if self.restart_pending else ""
+        self._sync_restart_issue()
+        if changed and self.data is not None:
+            self._sync_version_issues(self.data.info)
+
+    @property
+    def restart_pending(self) -> bool:
+        return restart_pending(self.integration_version, self.installed_version)
+
+    @property
+    def target_version(self) -> str:
+        return newer_version(self.integration_version, self.installed_version)
+
+    def _sync_restart_issue(self) -> None:
+        if not self.restart_pending:
+            ir.async_delete_issue(self.hass, DOMAIN, RESTART_REQUIRED)
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            RESTART_REQUIRED,
+            is_fixable=True,
+            is_persistent=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=RESTART_REQUIRED,
+            translation_placeholders={
+                PLACEHOLDER_LOADED_VERSION: self.integration_version,
+                PLACEHOLDER_INSTALLED_VERSION: self.installed_version,
+            },
+        )
+
     def _sync_version_issues(self, info: Info) -> None:
         entry_id = self.config_entry.entry_id
-        mismatch = version_mismatch(info.version, self.integration_version, info.legacy)
+        target = self.target_version
+        mismatch = version_mismatch(info.version, target, info.legacy)
         for key in VERSION_ISSUE_KEYS:
             if key != mismatch:
                 ir.async_delete_issue(self.hass, DOMAIN, entry_issue_id(key, entry_id))
@@ -162,21 +237,22 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
             self._version_issue = None
             return
         addon_version = info.version or UNKNOWN_VERSION
-        integration_version = self.integration_version or UNKNOWN_VERSION
+        integration_version = target or UNKNOWN_VERSION
         if mismatch != self._version_issue:
             _LOGGER.warning(
-                "the Ranzenpost add-on %s and the integration %s do not match (%s), update the older one",
+                "the Ranzenpost app %s and the integration %s do not match (%s), update the older one",
                 addon_version,
                 integration_version,
                 mismatch,
             )
         self._version_issue = mismatch
+        severe = mismatch_is_severe(mismatch, info.version, target)
         ir.async_create_issue(
             self.hass,
             DOMAIN,
             entry_issue_id(mismatch, entry_id),
             is_fixable=False,
-            severity=ir.IssueSeverity.ERROR if mismatch == ADDON_TOO_OLD else ir.IssueSeverity.WARNING,
+            severity=ir.IssueSeverity.ERROR if severe else ir.IssueSeverity.WARNING,
             translation_key=mismatch,
             translation_placeholders={
                 PLACEHOLDER_ADDON_VERSION: addon_version,
@@ -201,9 +277,14 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         )
 
     async def _async_update_data(self) -> RanzenpostData:
+        self._schedule_manifest_check()
         try:
             info = await self.api.info()
-            info = replace(info, ingress_path=app_panel_path(self.hass.data.get(PANELS_KEY), info.ingress_path))
+            info = replace(
+                info,
+                ingress_path=app_panel_path(self.hass.data.get(PANELS_KEY), info.ingress_path),
+                integration_version=self.integration_version,
+            )
             self._sync_version_issues(info)
             self._sync_no_school_issue(info)
             states = {child.key: await self.api.state(child.key) for child in selected_children(info, self.config_entry)}

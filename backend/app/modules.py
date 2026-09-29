@@ -17,7 +17,8 @@ from .iserv.messenger import (
 )
 from .iserv.pages import path_of
 from .pathpattern import path_pattern
-from .module_catalogue import official_name, slug_of
+from .validate import normalize_school_url
+from .module_catalogue import link_only_path, official_name, slug_of
 
 TIMETABLE = "timetable"
 LETTERS = "letters"
@@ -176,12 +177,35 @@ def is_known_segment(segment):
 def _unsupported_entry(entry):
     segment = str((entry or {}).get("segment") or "").strip()
     slug = slug_of(segment) or str((entry or {}).get("slug") or "").strip()
-    return {
+    cleaned = {
         "segment": segment,
         "slug": slug,
         "label": _clean_label((entry or {}).get("label"), segment),
         "name": official_name(slug) or str((entry or {}).get("name") or ""),
     }
+    if link_only_path(slug):
+        cleaned["link_only"] = True
+    return cleaned
+
+
+def open_url(school_url, slug):
+    path = link_only_path(slug)
+    if not path or not path.startswith(ISERV_ROOT + "/"):
+        return ""
+    try:
+        base = normalize_school_url(school_url)
+    except ValueError:
+        return ""
+    return base + path
+
+
+def with_open_urls(registry, school_url):
+    for field in ("unsupported", "covered"):
+        registry[field] = [
+            dict(entry, open_url=open_url(school_url, entry["slug"])) if entry.get("link_only") else entry
+            for entry in registry[field]
+        ]
+    return registry
 
 
 def _covered(entry, flags):

@@ -226,7 +226,7 @@ describe("notification sheet: chip list + nested picker replace the old free-for
     const { document } = openNotifySheet([], { supervisor: false });
 
     const hint = [...document.querySelectorAll(".dlg-text")].find((node) =>
-      node.textContent.includes("Die Geräte-Liste erscheint, sobald die App als Add-on in Home Assistant läuft.")
+      node.textContent.includes("Die Geräte-Liste erscheint, sobald Ranzenpost als App in Home Assistant läuft.")
     );
     expect(hint).not.toBeUndefined();
     expect(document.querySelector(".notify-pick-open").disabled).toBe(true);

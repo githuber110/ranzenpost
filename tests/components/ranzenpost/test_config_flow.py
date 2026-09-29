@@ -10,6 +10,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
+from custom_components.ranzenpost.api import HEADER_INTEGRATION
 from custom_components.ranzenpost.const import (
     ADDON_REPOSITORY,
     CONF_CHILDREN,
@@ -25,6 +26,7 @@ from . import (
     CHILD_2,
     ENTRY_DATA,
     HOST,
+    MANIFEST_VERSION,
     NEW_TOKEN,
     PORT,
     TOKEN,
@@ -543,6 +545,21 @@ async def test_options_flow_stores_interval_and_children_and_reloads(hass, aiocl
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {CONF_SCAN_INTERVAL: 45, CONF_CHILDREN: [CHILD_2]}
     assert setup.call_count == 1
+
+
+async def test_options_flow_of_an_entry_not_loaded_asks_the_app_with_the_integration_version(hass, aioclient_mock):
+    aioclient_mock.get(route("info"), json=fixture("info"))
+    entry = make_entry()
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    fields = {key.schema: value for key, value in result["data_schema"].schema.items()}
+    assert [option["value"] for option in fields[CONF_CHILDREN].config["options"]] == [CHILD_1, CHILD_2]
+    calls = [call for call in aioclient_mock.mock_calls if "/api/integration/" in str(call[1])]
+    assert calls
+    assert all(call[3].get(HEADER_INTEGRATION) == MANIFEST_VERSION for call in calls)
 
 
 async def test_options_flow_names_the_school_next_to_the_first_name_when_there_are_two(hass, aioclient_mock):

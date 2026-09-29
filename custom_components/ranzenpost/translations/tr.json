@@ -6,25 +6,25 @@
     },
     "step": {
       "hassio_confirm": {
-        "title": "Ranzenpost eklentisini bağla",
-        "description": "{addon} eklentisi bulundu. Home Assistant buna bağlansın mı?"
+        "title": "Ranzenpost uygulamasını bağla",
+        "description": "{addon} uygulaması bulundu. Home Assistant buna bağlansın mı?"
       },
       "install_addon": {
-        "title": "Ranzenpost eklentisini kur",
-        "description": "Ranzenpost eklentisi henüz kurulu değil. {repository} deposu eklensin, ardından eklenti kurulup başlatılsın mı?"
+        "title": "Ranzenpost uygulamasını kur",
+        "description": "Ranzenpost uygulaması henüz kurulu değil. {repository} deposu eklensin, ardından uygulama kurulup başlatılsın mı?"
       },
       "addon_no_discovery": {
-        "title": "Eklenti kendini bildirmedi",
-        "description": "{addon} eklentisi kurulu ancak bağlantı bilgilerini henüz bildirmedi. Eklentiyi açın, çalıştığını kontrol edin ve ayarlarındaki Home Assistant bölümünden ana bilgisayar, port ve belirteci girin.",
+        "title": "Uygulama kendini bildirmedi",
+        "description": "{addon} uygulaması kurulu ancak bağlantı bilgilerini henüz bildirmedi. Uygulamayı açın, çalıştığını kontrol edin ve ayarlarındaki Home Assistant bölümünden ana bilgisayar, port ve belirteci girin.",
         "data": {
           "host": "Ana bilgisayar",
           "port": "Port",
           "token": "Belirteç"
         },
         "data_description": {
-          "host": "Eklenti kapsayıcısının ana bilgisayar adı, genellikle ayarlarında gösterilir.",
+          "host": "Uygulama kapsayıcısının ana bilgisayar adı, genellikle ayarlarında gösterilir.",
           "port": "Entegrasyon API portu, varsayılan 8099.",
-          "token": "Eklenti ayarlarında gösterilen erişim belirteci."
+          "token": "Uygulama ayarlarında gösterilen erişim belirteci."
         }
       },
       "manual": {
@@ -50,21 +50,21 @@
       }
     },
     "progress": {
-      "install_addon": "Ranzenpost eklentisi kuruluyor. Bu birkaç dakika sürebilir.",
-      "start_addon": "Ranzenpost eklentisi başlatılıyor.",
-      "wait_discovery": "Eklentinin bağlantı bilgilerini bildirmesi bekleniyor."
+      "install_addon": "Ranzenpost uygulaması kuruluyor. Bu birkaç dakika sürebilir.",
+      "start_addon": "Ranzenpost uygulaması başlatılıyor.",
+      "wait_discovery": "Uygulamanın bağlantı bilgilerini bildirmesi bekleniyor."
     },
     "error": {
-      "cannot_connect": "Eklentiye ulaşılamadı. Çalıştığını kontrol edin.",
+      "cannot_connect": "Uygulamaya ulaşılamadı. Çalıştığını kontrol edin.",
       "invalid_auth": "Belirteç reddedildi. Ranzenpost ayarlarından yeniden kopyalayın.",
-      "unknown": "Eklenti beklenmedik bir yanıt verdi."
+      "unknown": "Uygulama beklenmedik bir yanıt verdi."
     },
     "abort": {
-      "already_configured": "Bu Ranzenpost eklentisi zaten bağlı. Her eklenti ana bilgisayarı bir kez bağlanabilir.",
+      "already_configured": "Bu Ranzenpost uygulaması zaten bağlı. Her uygulama ana bilgisayarı bir kez bağlanabilir.",
       "already_in_progress": "Bir Ranzenpost kurulumu zaten sürüyor.",
-      "addon_install_failed": "Ranzenpost eklentisi kurulamadı. Supervisor günlüğünü kontrol edin.",
-      "addon_start_failed": "Ranzenpost eklentisi başlatılamadı. Eklenti günlüğünü kontrol edin.",
-      "not_ranzenpost_addon": "Bu keşif mesajı Ranzenpost eklentisine ait değil.",
+      "addon_install_failed": "Ranzenpost uygulaması kurulamadı. Supervisor günlüğünü kontrol edin.",
+      "addon_start_failed": "Ranzenpost uygulaması başlatılamadı. Uygulama günlüğünü kontrol edin.",
+      "not_ranzenpost_addon": "Bu keşif mesajı Ranzenpost uygulamasına ait değil.",
       "reauth_successful": "Belirteç yenilendi."
     }
   },
@@ -72,13 +72,13 @@
     "step": {
       "init": {
         "title": "Ranzenpost seçenekleri",
-        "description": "Entegrasyonun eklentiyi ne sıklıkla sorgulayacağı ve hangi profiller için varlık oluşturulacağı.",
+        "description": "Entegrasyonun uygulamayı ne sıklıkla sorgulayacağı ve hangi profiller için varlık oluşturulacağı.",
         "data": {
           "scan_interval": "Sorgulama aralığı",
           "children": "Profiller"
         },
         "data_description": {
-          "scan_interval": "Eklentiye iki istek arasındaki saniye, en az 30.",
+          "scan_interval": "Uygulamaya iki istek arasındaki saniye, en az 30.",
           "children": "Tüm profiller için varlık oluşturmak üzere boş bırakın."
         }
       }
@@ -226,12 +226,27 @@
       "description": "{school} okulundaki IServ uygulamanın doğrulama kodunu tekrar tekrar reddediyor. Uygulamanın erişimi yeniden kurulmalı. Kenar çubuğundan Ranzenpost'u açın ve okulu baştan kurun."
     },
     "addon_too_old": {
-      "title": "Ranzenpost eklentisini güncelleyin",
-      "description": "Ranzenpost eklentisi {addon_version} sürümünde çalışıyor, ancak bu entegrasyon ({integration_version}) en az {required_version} sürümünü gerektiriyor. Eklentiyi eklenti mağazasından güncelleyin. Okullarını yeniden bildirdiğinde cihazlar ve varlıklar kendiliğinden görünür."
+      "title": "Ranzenpost uygulamasını güncelleyin",
+      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, ancak bu entegrasyon ({integration_version}) en az {required_version} sürümünü gerektiriyor. Home Assistant'ta Ayarlar → Uygulamalar'ı, ardından sağ alttan Uygulama mağazası'nı açın. Sağ üstteki menüden “Güncellemeleri kontrol et” seçeneğini seçin, sonra Ranzenpost'u açın ve “Güncelle”yi seçin. Uygulama okullarını yeniden bildirdiğinde cihazlar ve varlıklar kendiliğinden görünür."
+    },
+    "app_update_needed": {
+      "title": "Ranzenpost uygulamasını güncelleyin",
+      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, entegrasyon ise zaten {integration_version} sürümünde. Yeni işlevler ancak ikisi aynı sürümde olduğunda çalışır. Home Assistant'ta Ayarlar → Uygulamalar'ı, ardından sağ alttan Uygulama mağazası'nı açın. Sağ üstteki menüden “Güncellemeleri kontrol et” seçeneğini seçin, sonra Ranzenpost'u açın ve “Güncelle”yi seçin. Bu bildirim kendiliğinden kaybolur."
     },
     "integration_too_old": {
       "title": "Ranzenpost entegrasyonunu güncelleyin",
-      "description": "Ranzenpost eklentisi {addon_version} sürümünde çalışıyor, bu entegrasyondan ({integration_version}) bir özellik sürümü ileride. İkisinin eşleşmesi için entegrasyonu HACS üzerinden güncelleyin; o zamana kadar bazı veriler eksik olabilir."
+      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, bu entegrasyon ise hâlâ {integration_version} sürümünde. HACS'ı açın, Ranzenpost'u açın ve güncellemeyi kurun. Ardından Home Assistant'ı yeniden başlatın: Ayarlar → sağ üstteki menü → “Home Assistant'ı Yeniden Başlat”. O zamana kadar bazı veriler eksik olabilir. Bu bildirim kendiliğinden kaybolur."
+    },
+    "restart_required": {
+      "title": "Ranzenpost güncellemesini tamamlamak için Home Assistant'ı yeniden başlatın",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Home Assistant'ı Yeniden Başlat",
+            "description": "Ranzenpost entegrasyonu {installed_version} kurulu, ancak Home Assistant hâlâ {loaded_version} sürümünü kullanıyor. Home Assistant'ı şimdi yeniden başlatmak için bu adımı onaylayın. Daha sonra da yapabilirsiniz: Ayarlar → sağ üstteki menü → “Home Assistant'ı Yeniden Başlat”."
+          }
+        }
+      }
     },
     "no_school_yet": {
       "title": "Henüz giriş yapılmış okul yok",

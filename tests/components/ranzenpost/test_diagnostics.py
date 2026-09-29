@@ -4,7 +4,7 @@ from custom_components.ranzenpost.diagnostics import async_get_config_entry_diag
 
 from custom_components.ranzenpost.const import CONF_CHILDREN
 
-from . import CHILD_1, CHILD_2, SCHOOL, TOKEN, info_with_schools, school_of, setup_entry
+from . import CHILD_1, CHILD_2, MANIFEST_VERSION, SCHOOL, TOKEN, info_with_schools, school_of, setup_entry
 
 REDACTED = "**REDACTED**"
 PERSONAL_TEXTS = (
@@ -43,7 +43,7 @@ async def test_diagnostics_redact_the_token_and_carry_the_snapshot(hass, aioclie
     assert result["entry"]["data"]["host"] == "addon-host"
     assert TOKEN not in str(result)
     assert result["last_update_success"] is True
-    assert result["info"]["version"] == "2609.02.00"
+    assert result["info"]["version"] == MANIFEST_VERSION
     assert result["info"]["schools"][0]["modules"]["timetable"] is True
     assert result["info"]["schools"][0]["status"] == "ok"
     assert result["info"]["last_poll"] == "2026-09-02T09:00:00+02:00"

@@ -69,12 +69,28 @@ school, the app asks which one.
 
 ## Install
 
-1. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ → Repositories** and add this
+1. In Home Assistant: **Settings → Apps → App store → ⋮ → Repositories** and add this
    repository's URL.
 2. Install **Ranzenpost (IServ)** and open it. Setup runs entirely in the app's own UI.
 
 The app image is published per release; the version in `config.yaml` and the pushed image tag are
 verified against each other in CI.
+
+## Updating
+
+Keep the app and the integration on the same release.
+
+- App: **Settings → Apps → App store** (the **Install app** button) **→ ⋮ → Check for updates**, then
+  **Ranzenpost (IServ) → Update**.
+- Integration: open **Ranzenpost** in HACS and install the update, then restart Home Assistant and
+  reload the browser page.
+
+The integration sends its version with every call, so both sides can tell when the other one is
+behind. Home Assistant then shows a repair with the steps above: the app is behind, the integration
+is behind, or a newer integration is installed but Home Assistant has not restarted yet (that repair
+offers the restart). The app shows the same hint under **Settings** and on the help page, and the
+problem report lists both versions. A dashboard card that still runs older code asks to reload the
+page. The hints disappear on their own once both sides match.
 
 ## Notifications
 
@@ -84,10 +100,10 @@ substitutions and cancellations alike. A test button confirms the service works.
 
 ## Home Assistant integration
 
-The add-on serves a small read-only API on its own port (8099, the same one Ingress uses) for the
+The app serves a small read-only API on its own port (8099, the same one Ingress uses) for the
 Ranzenpost integration, which turns the data into devices and entities in Home Assistant. The API
-needs a bearer token that the add-on creates on its first start and keeps in `/data/integration_token`
-(owner-only file permissions). On every start and after every rotation the add-on announces itself
+needs a bearer token that the app creates on its first start and keeps in `/data/integration_token`
+(owner-only file permissions). On every start and after every rotation the app announces itself
 to the Supervisor (discovery), so the integration finds the host, port and token without any typing.
 Without a Supervisor, copy the token from **Settings → Home Assistant** in the app and enter it in the
 integration by hand.
@@ -189,12 +205,12 @@ Arabic the rail and the pane mirror to the other side.
 
 Calendar feeds are served by a second, token-protected port (8100) so they can be reached directly
 by calendar apps, separate from the app's own Ingress UI. It is **off by default**. To turn it on:
-Home Assistant → **Settings → Add-ons → Ranzenpost (IServ) → Configuration → Network**, then
+Home Assistant → **Settings → Apps → Ranzenpost (IServ) → Configuration → Network**, then
 enable **"Show disabled ports"** and map port 8100.
 
 A subscription link on this port shows that child's timetable to anyone who has the link, without
 a password. Treat the link itself as the secret, and revoke/rotate it in Settings if it leaks.
-Nabu Casa remote access does **not** forward add-on ports: reaching port 8100 from outside your home
+Nabu Casa remote access does **not** forward app ports: reaching port 8100 from outside your home
 network needs your own home network access or a VPN.
 
 ## Privacy & secrets

@@ -11,6 +11,7 @@ from . import courses, feed, holidays, integration, marks, messages, modules
 from .failure import error_kind
 from .iserv.dsa import student_for_name
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
+from .iserv.timetable import time_table_refusal
 from .iserv.errors import (
     LOGIN_SESSION_KEY,
     LOGIN_TWOFACTOR_KEY,
@@ -265,6 +266,8 @@ class Poller:
             except OutageError:
                 raise
             except Exception as error:
+                if time_table_refusal(error):
+                    break
                 logger.warning(
                     "poll school#%s timetable child#%s week %d failed: %s, keeping the earlier weeks",
                     getattr(connection, "id", ""), child_id, offset, error_kind(error),
@@ -676,6 +679,9 @@ class Poller:
                 except OutageError:
                     raise
                 except Exception as error:
+                    if time_table_refusal(error):
+                        events.append({"child_key": key, "module": "timetable", "state": CHILDREN_REFUSED})
+                        continue
                     logger.warning(
                         "poll school#%s timetable child#%s failed: %s", connection_id, child_id, error_kind(error)
                     )

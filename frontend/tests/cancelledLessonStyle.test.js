@@ -1,5 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { loadApp } from "./loadApp.js";
+
+const STYLES = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "styles.css"), "utf8");
 
 function renderCell(window, lesson, compact) {
   const run = window.eval("(function (lesson, compact) { return lessonCell(lesson, '', compact); })");
@@ -37,6 +42,37 @@ describe("cancelled lessons get the neutral 'empty' look, substitution stays amb
     const { window } = loadApp();
     const cell = renderCell(window, { subject_code: "MA", change_kind: "changed", room: "R204" });
     expect(cell.querySelector(".room").textContent).toBe("Vertr.");
+  });
+
+  test("a substitution keeps its room next to the label for tiles large enough for the room", () => {
+    const { window } = loadApp();
+    const cell = renderCell(window, { subject_code: "MA", change_kind: "changed", room: "WK1" });
+    expect(cell.querySelector(".room.paired").textContent).toBe("Vertr.");
+    expect([...cell.querySelectorAll(".lroom")].map((node) => node.textContent)).toEqual(["Vertr. · WK1"]);
+  });
+
+  test("a compact substitution tile shows no room", () => {
+    const { window } = loadApp();
+    const cell = renderCell(window, { subject_code: "MA", change_kind: "changed", room: "WK1" }, true);
+    expect(cell.querySelector(".lroom")).toBeNull();
+  });
+
+  test("a substitution without a room keeps the plain label", () => {
+    const { window } = loadApp();
+    const cell = renderCell(window, { subject_code: "MA", change_kind: "changed" });
+    expect(cell.querySelector(".room").classList.contains("paired")).toBe(false);
+    expect(cell.querySelector(".lroom")).toBeNull();
+  });
+
+  test("a cancelled lesson keeps its look and shows no room", () => {
+    const { window } = loadApp();
+    const cell = renderCell(window, { subject_code: "MA", change_kind: "cancelled", room: "WK1" });
+    expect(cell.querySelector(".room").classList.contains("paired")).toBe(false);
+    expect(cell.querySelector(".lroom")).toBeNull();
+  });
+
+  test("the paired label replaces the short one in the tile tier that shows the room", () => {
+    expect(STYLES).toMatch(/@container \(min-width: 96px\) and \(min-height: 64px\) \{ \.tt-cell \.lroom \{ display: block; \} \.tt-cell \.room\.paired \{ display: none; \} \}/);
   });
 
   test("a plain lesson carries its subject alone, without the room", () => {

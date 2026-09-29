@@ -1,4 +1,4 @@
-from . import SCENARIO_SATURDAY, fixture, setup_entry
+from . import MANIFEST_VERSION, SCENARIO_SATURDAY, fixture, setup_entry
 
 ALEX = "ranzenpost_alex"
 KIM = "ranzenpost_kim"
@@ -133,7 +133,8 @@ async def test_every_entity_on_a_school_morning(hass, aioclient_mock, frozen_now
         {
             "last_poll": "2026-09-02T09:00:00+02:00",
             "last_success": "2026-09-02T09:00:00+02:00",
-            "version": "2609.02.00",
+            "version": MANIFEST_VERSION,
+            "integration_version": MANIFEST_VERSION,
             "modules": MODULES,
             "modules_disabled": [],
             "feed_port_open": True,
@@ -226,7 +227,8 @@ async def test_every_entity_on_a_saturday_night(hass, aioclient_mock, frozen_sat
         {
             "last_poll": "2026-09-05T03:49:00+02:00",
             "last_success": "2026-09-05T03:49:00+02:00",
-            "version": "2609.02.00",
+            "version": MANIFEST_VERSION,
+            "integration_version": MANIFEST_VERSION,
             "modules": MODULES,
             "modules_disabled": [],
             "feed_port_open": True,

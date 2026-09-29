@@ -3,7 +3,7 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.ranzenpost.const import DOMAIN
 
-from . import CHILD_1, CHILD_2, SCHOOL, setup_entry
+from . import CHILD_1, CHILD_2, MANIFEST_VERSION, SCHOOL, setup_entry
 
 ALEX = "sensor.ranzenpost_alex"
 KIM = "sensor.ranzenpost_kim"
@@ -119,7 +119,8 @@ async def test_school_sensors_describe_holiday_conference_and_connection(hass, a
     assert connection.state == "ok"
     assert connection.attributes["options"] == ["ok", "error", "unconfigured", "unreachable", "auth_failed"]
     assert connection.attributes["last_poll"] == "2026-09-02T09:00:00+02:00"
-    assert connection.attributes["version"] == "2609.02.00"
+    assert connection.attributes["version"] == MANIFEST_VERSION
+    assert connection.attributes["integration_version"] == MANIFEST_VERSION
     assert connection.attributes["feed_port_open"] is True
 
 

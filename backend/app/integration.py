@@ -59,6 +59,9 @@ KIND_NEW_LESSON = "new_lesson"
 CHANGE_KINDS = (KIND_SUBSTITUTION, KIND_CANCELLATION, KIND_ROOM_CHANGE, KIND_NEW_LESSON)
 
 LAST_REQUEST = "last_request"
+INTEGRATION_VERSION = "integration_version"
+INTEGRATION_INSTALLED = "integration_installed"
+INTEGRATION_UNVERSIONED = "integration_unversioned"
 CHANGE_KEYS = "change_keys"
 
 STATUS_OK = "ok"
@@ -183,6 +186,31 @@ def note_request(store, now_epoch):
         if previous and now_epoch - previous < REQUEST_WRITE_INTERVAL_SECONDS:
             return
         state[LAST_REQUEST] = int(now_epoch)
+
+    edit_state(store, change)
+
+
+def seen_integration(store):
+    state = state_of(store)
+    return str(state.get(INTEGRATION_VERSION) or ""), str(state.get(INTEGRATION_INSTALLED) or "")
+
+
+def integration_unversioned(store):
+    return state_of(store).get(INTEGRATION_UNVERSIONED) is True
+
+
+def note_integration(store, version, installed):
+    def change(state):
+        state[INTEGRATION_VERSION] = version
+        state[INTEGRATION_INSTALLED] = installed
+        state.pop(INTEGRATION_UNVERSIONED, None)
+
+    edit_state(store, change)
+
+
+def note_unversioned(store):
+    def change(state):
+        state[INTEGRATION_UNVERSIONED] = True
 
     edit_state(store, change)
 

@@ -139,6 +139,9 @@ describe("week view", () => {
     expect(cell.querySelector(".bar")).not.toBeNull();
     expect(cell.querySelector(".sub").textContent).toBe("EN");
     expect(cell.querySelector(".room").textContent).toBe("Vertr.");
+    expect(cell.querySelector(".room").classList.contains("paired")).toBe(true);
+    expect([...cell.querySelectorAll(".lroom")].map((node) => node.textContent)).toEqual(["Vertr. · R202"]);
+    expect(card.shadowRoot.querySelector("style").textContent).toContain("@container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } .tt-cell .room.paired { display: none; } }");
     expect(cell.classList.contains("subject")).toBe(false);
     expect(cell.style.getPropertyValue("--subject-cell-fill")).toBe("");
   });

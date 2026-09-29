@@ -9,10 +9,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from app import diagnostics, logbuffer, modules, pageshape, pathpattern, reportcrawl, reportfacts, requestlog, scriptscan
+from app import diagnostics, integration, logbuffer, modules, pageshape, pathpattern, reportcrawl, reportfacts, requestlog, scriptscan
 from app.iserv.client import REDIRECT_NONE, CappedBody, IServClient, UnfollowedAnswer, chain_target_allowed, redirect_kind
 from app.iserv.errors import LoginError
 from app.server import create_app
@@ -207,8 +208,11 @@ def two_school_service(tmp_path):
     return Service(store, [first, second]), first, second
 
 
+REPORT_EPOCH = 1_788_000_000
+
+
 def build(service, **kwargs):
-    kwargs.setdefault("clock", lambda: 1_788_000_000)
+    kwargs.setdefault("clock", lambda: REPORT_EPOCH)
     kwargs.setdefault("versions", {"app": "2609.02.00", "home_assistant": "2026.9.1"})
     return diagnostics.build_report(service, **kwargs)
 
@@ -221,6 +225,7 @@ def test_the_report_carries_every_section_in_order(tmp_path):
     assert "## School 2" in headings
     assert headings[-1] == "## Log"
     assert "- Ranzenpost: 2609.02.00" in report
+    assert "- Integration: unknown" in report
     assert "- Home Assistant: 2026.9.1" in report
     assert "- IServ: 3.9.1" in report
     assert "- Schools: 2" in report
@@ -229,6 +234,61 @@ def test_the_report_carries_every_section_in_order(tmp_path):
     assert "- Account: 2fa=no guardian=unknown" in report
     assert "- Language: " in report
     assert "- Timezone: Europe/Berlin" in report
+
+
+def test_the_report_names_the_integration_version_and_what_still_needs_updating(tmp_path):
+    service, _first, _second = two_school_service(tmp_path)
+    integration.note_integration(service.store, "2609.3.0", "2609.4.0")
+    integration.note_request(service.store, REPORT_EPOCH - 60)
+
+    report = build(service, versions={"app": "2609.4.1", "home_assistant": "2026.9.1"}, structure=False)
+    lines = report.splitlines()
+    start = lines.index("- Ranzenpost: 2609.4.1")
+    assert lines[start + 1] == "- Integration: 2609.3.0 (installed 2609.4.0)"
+    assert lines[start + 2] == "- Pending updates: integration, restart"
+    assert lines[start + 3] == "- Home Assistant: 2026.9.1"
+
+    matching = build(service, versions={"app": "2609.4.0", "home_assistant": "y", "integration": "2609.4.0"}, structure=False)
+    assert "- Integration: 2609.4.0" in matching.splitlines()
+    assert "Pending updates" not in matching
+    facts = diagnostics.report_facts(service, versions={"app": "2609.4.1", "home_assistant": "y"})
+    assert facts["integration"] == "2609.3.0"
+
+
+def test_the_report_names_an_integration_that_sends_no_version_as_older(tmp_path):
+    service, _first, _second = two_school_service(tmp_path)
+    integration.note_integration(service.store, "2609.3.0", "2609.4.0")
+    integration.note_unversioned(service.store)
+    integration.note_request(service.store, REPORT_EPOCH - 60)
+
+    report = build(service, versions={"app": "2609.4.1", "home_assistant": "2026.9.1"}, structure=False)
+    lines = report.splitlines()
+    start = lines.index("- Ranzenpost: 2609.4.1")
+    assert lines[start + 1] == "- Integration: older (sends no version)"
+    assert lines[start + 2] == "- Pending updates: integration"
+    facts = diagnostics.report_facts(service, versions={"app": "2609.4.1", "home_assistant": "y"})
+    assert facts["integration"] == "older (sends no version)"
+
+    integration.note_integration(service.store, "2609.4.1", "")
+    report = build(service, versions={"app": "2609.4.1", "home_assistant": "2026.9.1"}, structure=False)
+    assert "- Integration: 2609.4.1" in report.splitlines()
+    assert "Pending updates" not in report
+
+
+def test_the_report_names_no_pending_update_for_an_integration_that_stopped_asking(tmp_path):
+    service, _first, _second = two_school_service(tmp_path)
+    integration.note_integration(service.store, "2609.3.0", "2609.4.0")
+    integration.note_request(service.store, REPORT_EPOCH - integration.ACTIVE_WINDOW_SECONDS - 60)
+
+    report = build(service, versions={"app": "2609.4.1", "home_assistant": "2026.9.1"}, structure=False)
+    lines = report.splitlines()
+    start = lines.index("- Ranzenpost: 2609.4.1")
+    assert lines[start + 1].startswith("- Integration: 2609.3.0 (installed 2609.4.0), last request 2026-08-28T")
+    assert "Pending updates" not in report
+
+    integration.note_request(service.store, REPORT_EPOCH - 60)
+    report = build(service, versions={"app": "2609.4.1", "home_assistant": "2026.9.1"}, structure=False)
+    assert "- Pending updates: integration, restart" in report.splitlines()
 
 
 LIVE_SECTIONS = (
@@ -687,6 +747,17 @@ def test_the_registry_keeps_the_last_probe_answer_per_module():
     assert modules.normalize({"probes": {modules.LETTERS: {"status": "200", "extra": 1}}})["probes"][modules.LETTERS]["status"] == 200
     assert modules.normalize({"probes": {"other": {"status": 200}}})["probes"] == {}
     assert modules.default_registry()["probes"] == {}
+
+
+def test_the_report_segments_leave_out_modules_the_app_only_links_to():
+    stored = {
+        "unsupported": [{"segment": "klassengeld", "label": "Klassengeld"}, {"segment": "calendar", "label": "Kalender"}],
+        "unknown": [{"segment": "mystery", "label": "Mystery"}],
+    }
+    assert modules.normalize(stored)["unsupported"][0].get("link_only") is True
+    connection = SimpleNamespace(stored_modules=lambda: stored)
+    service = SimpleNamespace(connections=lambda: [connection])
+    assert diagnostics.report_segments(service) == ["calendar", "mystery"]
 
 
 def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path):
@@ -2077,6 +2148,7 @@ def test_school_app_query_lines_count_the_differences_to_the_regular_plan():
         "- Child 1 substitutions: regular plan 10 lessons, current 9, changed 1, only in the regular plan 2, "
         "only in the current plan 1, marked by the school 0, marks shown"
     ) in lines
+    assert "- Child 1 school markers: none" in lines
     joined = "\n".join(lines)
     for word in ("WOL", "VER", "KU", "R204", "Alex"):
         assert word not in joined
@@ -2099,6 +2171,20 @@ def test_school_app_query_lines_say_when_the_answers_are_not_understood():
         "- Child 1 substitutions: regular plan not read, current 0, changed 0, only in the regular plan 0, "
         "only in the current plan 0, marked by the school 0, marks left out, the answers were not understood (ValueError)"
     ) in lines
+
+
+@pytest.mark.parametrize("payload, entries", [
+    ({"students": {"entries": [{"substitutionId": 7}]}}, "students 0, entries per student -"),
+    ({"students": ["text", None]}, "students 0, entries per student -"),
+    ({"students": [{"entries": ["text", None]}]}, "students 1, entries per student 2"),
+    ({"students": [{"entries": 3}]}, "students 1, entries per student 0"),
+])
+def test_school_app_query_lines_survive_an_odd_answer_shape(payload, entries):
+    settings = [{"id": 1, "timetable_availableForGuardiansAndStudents": True, "substitutions_availableForGuardiansAndStudents": True}]
+    client, _ = school_app_client(settings, payload)
+    lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
+    assert "- Child 1: courses in filter 2, %s" % entries in lines
+    assert "- Child 1 school markers: none" in lines
 
 
 def test_school_app_query_lines_say_when_the_school_account_was_not_read():

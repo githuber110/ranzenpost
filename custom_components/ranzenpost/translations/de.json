@@ -6,25 +6,25 @@
     },
     "step": {
       "hassio_confirm": {
-        "title": "Ranzenpost-Add-on verbinden",
-        "description": "Das Add-on {addon} wurde gefunden. Home Assistant damit verbinden?"
+        "title": "Ranzenpost-App verbinden",
+        "description": "Die App {addon} wurde gefunden. Home Assistant damit verbinden?"
       },
       "install_addon": {
-        "title": "Ranzenpost-Add-on installieren",
-        "description": "Das Ranzenpost-Add-on ist noch nicht installiert. Repository {repository} hinzufügen, dann das Add-on installieren und starten?"
+        "title": "Ranzenpost-App installieren",
+        "description": "Die Ranzenpost-App ist noch nicht installiert. Repository {repository} hinzufügen, dann die App installieren und starten?"
       },
       "addon_no_discovery": {
-        "title": "Das Add-on hat sich noch nicht gemeldet",
-        "description": "Das Add-on {addon} ist installiert, hat aber seine Verbindungsdaten noch nicht gemeldet. Öffne das Add-on, prüfe, dass es läuft, und trage Host, Port und Token aus dem Block „Home Assistant“ in den Einstellungen ein.",
+        "title": "Die App hat sich noch nicht gemeldet",
+        "description": "Die App {addon} ist installiert, hat aber ihre Verbindungsdaten noch nicht gemeldet. Öffne die App, prüfe, dass sie läuft, und trage Host, Port und Token aus dem Block „Home Assistant“ in den Einstellungen ein.",
         "data": {
           "host": "Host",
           "port": "Port",
           "token": "Token"
         },
         "data_description": {
-          "host": "Hostname des Add-on-Containers, steht in dessen Einstellungen.",
+          "host": "Hostname des App-Containers, steht in dessen Einstellungen.",
           "port": "Port der Integrations-API, standardmäßig 8099.",
-          "token": "Zugangstoken aus den Add-on-Einstellungen."
+          "token": "Zugangstoken aus den App-Einstellungen."
         }
       },
       "manual": {
@@ -50,21 +50,21 @@
       }
     },
     "progress": {
-      "install_addon": "Das Ranzenpost-Add-on wird installiert. Das kann ein paar Minuten dauern.",
-      "start_addon": "Das Ranzenpost-Add-on startet.",
-      "wait_discovery": "Warte darauf, dass das Add-on seine Verbindungsdaten meldet."
+      "install_addon": "Die Ranzenpost-App wird installiert. Das kann ein paar Minuten dauern.",
+      "start_addon": "Die Ranzenpost-App startet.",
+      "wait_discovery": "Warte darauf, dass die App ihre Verbindungsdaten meldet."
     },
     "error": {
-      "cannot_connect": "Das Add-on ist nicht erreichbar. Prüfe, ob es läuft.",
+      "cannot_connect": "Die App ist nicht erreichbar. Prüfe, ob sie läuft.",
       "invalid_auth": "Das Token wurde abgelehnt. Kopiere es erneut aus den Ranzenpost-Einstellungen.",
-      "unknown": "Das Add-on hat unerwartet geantwortet."
+      "unknown": "Die App hat unerwartet geantwortet."
     },
     "abort": {
-      "already_configured": "Dieses Ranzenpost-Add-on ist bereits verbunden. Jeder Add-on-Host kann einmal verbunden werden.",
+      "already_configured": "Diese Ranzenpost-App ist bereits verbunden. Jeder App-Host kann einmal verbunden werden.",
       "already_in_progress": "Eine Ranzenpost-Einrichtung läuft bereits.",
-      "addon_install_failed": "Das Ranzenpost-Add-on konnte nicht installiert werden. Sieh im Supervisor-Protokoll nach.",
-      "addon_start_failed": "Das Ranzenpost-Add-on konnte nicht gestartet werden. Sieh im Add-on-Protokoll nach.",
-      "not_ranzenpost_addon": "Diese Meldung gehört nicht zum Ranzenpost-Add-on.",
+      "addon_install_failed": "Die Ranzenpost-App konnte nicht installiert werden. Sieh im Supervisor-Protokoll nach.",
+      "addon_start_failed": "Die Ranzenpost-App konnte nicht gestartet werden. Sieh im App-Protokoll nach.",
+      "not_ranzenpost_addon": "Diese Meldung gehört nicht zur Ranzenpost-App.",
       "reauth_successful": "Das Token wurde erneuert."
     }
   },
@@ -72,13 +72,13 @@
     "step": {
       "init": {
         "title": "Ranzenpost-Optionen",
-        "description": "Wie oft die Integration das Add-on abfragt und welche Profile Entitäten bekommen.",
+        "description": "Wie oft die Integration die App abfragt und welche Profile Entitäten bekommen.",
         "data": {
           "scan_interval": "Abfrageintervall",
           "children": "Profile"
         },
         "data_description": {
-          "scan_interval": "Sekunden zwischen zwei Anfragen an das Add-on, mindestens 30.",
+          "scan_interval": "Sekunden zwischen zwei Anfragen an die App, mindestens 30.",
           "children": "Leer lassen, um Entitäten für alle Profile anzulegen."
         }
       }
@@ -226,12 +226,27 @@
       "description": "IServ bei {school} lehnt den Bestätigungscode der App immer wieder ab. Der Zugang der App muss neu eingerichtet werden. Öffne Ranzenpost in der Seitenleiste und richte die Schule ganz neu ein."
     },
     "addon_too_old": {
-      "title": "Ranzenpost-Add-on aktualisieren",
-      "description": "Das Ranzenpost-Add-on läuft in Version {addon_version}, diese Integration ({integration_version}) braucht mindestens {required_version}. Aktualisiere das Add-on im Add-on-Store. Geräte und Entitäten erscheinen von selbst, sobald es seine Schulen wieder meldet."
+      "title": "Ranzenpost-App aktualisieren",
+      "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ({integration_version}) braucht mindestens {required_version}. Öffne in Home Assistant Einstellungen → Apps und dort unten rechts den App-Store. Wähle oben rechts im Menü „Nach Updates suchen“, öffne dann Ranzenpost und wähle „Aktualisieren“. Geräte und Entitäten erscheinen von selbst, sobald die App ihre Schulen wieder meldet."
+    },
+    "app_update_needed": {
+      "title": "Ranzenpost-App aktualisieren",
+      "description": "Die Ranzenpost-App läuft in Version {addon_version}, die Integration ist schon bei {integration_version}. Neue Funktionen gehen erst, wenn beide dieselbe Version haben. Öffne in Home Assistant Einstellungen → Apps und dort unten rechts den App-Store. Wähle oben rechts im Menü „Nach Updates suchen“, öffne dann Ranzenpost und wähle „Aktualisieren“. Dieser Hinweis verschwindet von selbst."
     },
     "integration_too_old": {
       "title": "Ranzenpost-Integration aktualisieren",
-      "description": "Das Ranzenpost-Add-on läuft in Version {addon_version}, eine Funktionsversion vor dieser Integration ({integration_version}). Aktualisiere die Integration über HACS, damit beide zusammenpassen; bis dahin können Daten fehlen."
+      "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ist noch bei {integration_version}. Öffne HACS, öffne Ranzenpost und installiere das Update. Starte danach Home Assistant neu: Einstellungen → Menü oben rechts → „Home Assistant neu starten“. Bis dahin können Daten fehlen. Dieser Hinweis verschwindet von selbst."
+    },
+    "restart_required": {
+      "title": "Home Assistant neu starten, um das Ranzenpost-Update abzuschließen",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Home Assistant neu starten",
+            "description": "Die Ranzenpost-Integration {installed_version} ist installiert, Home Assistant nutzt aber noch {loaded_version}. Bestätige diesen Schritt, um Home Assistant jetzt neu zu starten. Später geht es auch über Einstellungen → Menü oben rechts → „Home Assistant neu starten“."
+          }
+        }
+      }
     },
     "no_school_yet": {
       "title": "Noch keine Schule angemeldet",

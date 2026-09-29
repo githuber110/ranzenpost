@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
 
+import pytest
 import requests
 
 from app import module_catalogue, modules
@@ -550,3 +551,40 @@ def test_a_covered_module_that_disappears_is_a_change():
     before = old_absence_registry(True)
     after = dict(before, unsupported=[])
     assert modules.changed(before, after) is True
+
+
+KLASSENGELD_PAGE = """
+<html><body>
+<a href="/iserv/klassengeld/redirect">Klassengeld</a>
+<a href="/iserv/calendar/">Kalender</a>
+</body></html>
+"""
+
+
+def test_klassengeld_is_flagged_link_only_and_other_modules_are_not():
+    unsupported, unknown = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
+    flags = {entry["segment"]: entry.get("link_only", False) for entry in unsupported}
+    assert flags == {"klassengeld": True, "calendar": False}
+    assert unknown == []
+
+
+def test_the_open_url_joins_the_school_host_with_the_catalogue_path():
+    assert modules.open_url("https://school.example", "klassengeld") == "https://school.example/iserv/klassengeld/redirect"
+    assert modules.open_url("school.example:8443/iserv/", "klassengeld") == "https://school.example:8443/iserv/klassengeld/redirect"
+
+
+@pytest.mark.parametrize("school_url", ["", "not a url", "https://localhost", "http://192.168.0.5"])
+def test_the_open_url_is_empty_for_an_unusable_school_url(school_url):
+    assert modules.open_url(school_url, "klassengeld") == ""
+
+
+def test_the_open_url_is_empty_for_modules_that_are_not_link_only():
+    assert modules.open_url("https://school.example", "calendar") == ""
+    assert modules.open_url("https://school.example", "") == ""
+
+
+def test_open_urls_are_added_only_to_link_only_entries():
+    unsupported, _ = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
+    registry = modules.with_open_urls(modules.normalize({"unsupported": unsupported}), "https://school.example")
+    urls = {entry["segment"]: entry.get("open_url") for entry in registry["unsupported"]}
+    assert urls == {"klassengeld": "https://school.example/iserv/klassengeld/redirect", "calendar": None}

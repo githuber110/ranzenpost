@@ -4,7 +4,7 @@ import { evalWith, loadApp } from "./loadApp.js";
 const MODULES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger"];
 const ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new?";
 const REPORT = "# Ranzenpost report\n\n## Versions\n- Ranzenpost: 2609.02.00\n";
-const FACTS = { app: "2609.02.00", home_assistant: "2026.9.1", iserv: "3.9.1" };
+const FACTS = { app: "2609.02.00", integration: "2609.02.00", home_assistant: "2026.9.1", iserv: "3.9.1" };
 const BUNDLE_NAME = "ranzenpost-report.zip";
 const DAY = 86400;
 
@@ -359,8 +359,8 @@ describe("the help page", () => {
     expect(href.startsWith(ISSUE_URL)).toBe(true);
     const params = new window.URLSearchParams(href.slice(ISSUE_URL.length));
     expect(params.get("title")).toBe("Unsupported IServ modules: calendar, mail");
-    const versions = label(window, "help.issue.versions", { app: "2609.02.00", home_assistant: "2026.9.1", iserv: "3.9.1" });
-    expect(versions).toBe("Ranzenpost 2609.02.00, Home Assistant 2026.9.1, IServ 3.9.1");
+    const versions = label(window, "help.issue.versions", { app: "2609.02.00", integration: "2609.02.00", home_assistant: "2026.9.1", iserv: "3.9.1" });
+    expect(versions).toBe("Ranzenpost 2609.02.00, integration 2609.02.00, Home Assistant 2026.9.1, IServ 3.9.1");
     const question = label(window, "help.issue.moduleQuestion");
     expect(params.get("body")).toBe(`${question}\n\n${label(window, "help.issue.body", { versions })}`);
     expect(params.get("body").startsWith(question)).toBe(true);

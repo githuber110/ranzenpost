@@ -1826,7 +1826,7 @@ button.section-head {
   .tt-cell.out .room, .tt-cell.subbed .room { margin-block-start: 4px; font-size: clamp(0.6875rem, 7.5cqi, 0.875rem); font-weight: 600; line-height: 1.25; }
   .tt .tt-cell.out .room { color: var(--danger); }
 }
-@container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } }
+@container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } .tt-cell .room.paired { display: none; } }
 @container (min-width: 128px) and (min-height: 80px) { .tt-cell .lteacher { display: block; } }
 .tt-cell .bar { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 3px; }
 .tt-cell.subject-bar::before {
@@ -2523,6 +2523,21 @@ button.cal-add { margin-bottom: var(--s-4); }
 .ha-token-block > .overline { display: block; margin-bottom: var(--s-3); }
 .ha-token { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875rem; margin-bottom: var(--s-4); }
 .ha-install-block { margin-block-start: var(--s-2); }
+.update-hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
+  margin-block-end: var(--s-6);
+  border-radius: var(--r-lg);
+  border-inline-start: 4px solid var(--warn);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.update-step { display: flex; flex-direction: column; gap: var(--s-2); }
+.update-step + .update-step { border-block-start: 1px solid var(--line); padding-block-start: var(--s-4); }
+.update-title { font-weight: 700; }
+.update-text { margin: 0; font-size: 0.875rem; line-height: 1.5; text-align: start; overflow-wrap: anywhere; }
 .ha-install { text-decoration: none; margin-bottom: var(--s-4); }
 
 .module-rows {
@@ -2578,6 +2593,12 @@ button.cal-add { margin-bottom: var(--s-4); }
 .tech-page .tech-lead { margin-block-start: 0; }
 .modules-help-block { margin-block-start: var(--s-6); }
 .modules-report { width: auto; }
+.module-link-rows { display: flex; flex-direction: column; gap: var(--s-4); }
+.module-link-rows:not(:first-child) { margin-block-start: var(--s-6); }
+.module-link-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s-5); }
+.module-link-note { margin: 0; flex: 1 1 auto; text-align: start; overflow-wrap: anywhere; }
+.module-open-link { text-decoration: none; }
+.module-open-link:hover { text-decoration: underline; }
 .module-card {
   display: flex;
   flex-direction: column;

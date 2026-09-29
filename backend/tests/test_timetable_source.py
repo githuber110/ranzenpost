@@ -6,7 +6,7 @@ import pytest
 
 from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY, SHARED_READ_SECONDS
 from app.iserv.errors import DataError, LoginError, TwoFactorError
-from app.iserv.timetable import TIMETABLE_SHAPE_KEY
+from app.iserv.timetable import TIMETABLE_REFUSED_KEY, TIMETABLE_SHAPE_KEY
 from app.store import Store
 from app.timetable_source import MATCH_SECONDS, RECHECK_SECONDS, SOURCE_KEY, matching_option, name_words
 from app.iserv.models import Child
@@ -24,6 +24,7 @@ from tests.time_table_school import (
     DATA,
     EMPTY,
     FORBIDDEN,
+    LESSONS,
     ODD,
     OTHER_CHILD,
     PAGE,
@@ -235,15 +236,69 @@ def test_a_missing_time_table_module_leaves_the_empty_school_app_week(tmp_path):
     assert school.paths(DATA) == []
 
 
-def test_a_refusal_of_the_time_table_data_is_an_error_but_no_sign_in_failure(tmp_path):
-    service = make(tmp_path, TimeTableSchool(time_table=FORBIDDEN))
-    with pytest.raises(DataError) as caught:
-        service.timetable(CHILD, reference=WEDNESDAY)
-    assert not isinstance(caught.value, (LoginError, TwoFactorError))
-    assert caught.value.message_key == TIMETABLE_SHAPE_KEY
-    assert caught.value.detail["source"] == "time-table"
-    assert caught.value.detail["status"] == 403
+def test_a_refusal_of_the_time_table_data_leaves_the_empty_school_app_week_like_a_refused_page(tmp_path, caplog):
+    school = TimeTableSchool(time_table=FORBIDDEN)
+    service = make(tmp_path, school)
+    with caplog.at_level(logging.INFO, logger="app.timetable_source"):
+        for offset in (0, 1, 0):
+            assert service.timetable(CHILD, reference=WEDNESDAY, week_offset=offset)["no_lessons"] is True
+    assert len(school.paths(DATA)) == 1
     assert remembered(service) in (None, "")
+    assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+    refusals = [line for line in source_lines(caplog) if "refused" in line]
+    assert refusals == ["school#%s time-table data refused for this account (status 403), no timetable released" % service.id]
+    service.clock.now += RECHECK_SECONDS
+    service.timetable(CHILD, reference=WEDNESDAY)
+    assert len(school.paths(DATA)) == 2
+
+
+def test_a_child_without_courses_whose_time_table_data_refuses_names_the_refusal(tmp_path, caplog):
+    school = TimeTableSchool(time_table=FORBIDDEN, me_courses=False)
+    service = make(tmp_path, school)
+    with caplog.at_level(logging.INFO, logger="app.timetable_source"):
+        for offset in (0, 1, 0):
+            with pytest.raises(DataError) as caught:
+                service.timetable(CHILD, reference=WEDNESDAY, week_offset=offset)
+            assert not isinstance(caught.value, (LoginError, TwoFactorError))
+            assert caught.value.message_key == TIMETABLE_REFUSED_KEY
+            assert caught.value.detail["status"] == 403
+    assert len(school.paths(DATA)) == 1
+    assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+    assert len([line for line in source_lines(caplog) if "refused for this account" in line]) == 1
+    assert "Riverside" not in caplog.text
+    assert "Zugriff" not in caplog.text
+    service.clock.now += RECHECK_SECONDS
+    with pytest.raises(DataError):
+        service.timetable(CHILD, reference=WEDNESDAY)
+    assert len(school.paths(DATA)) == 2
+
+
+@pytest.mark.parametrize("me_courses", [True, False])
+def test_a_single_refusal_after_a_delivered_week_is_an_error_and_not_remembered(tmp_path, caplog, me_courses):
+    school = TimeTableSchool(me_courses=me_courses)
+    service = make(tmp_path, school)
+    first = service.timetable(CHILD, reference=WEDNESDAY)
+    assert first["source"] == "time-table"
+    assert len(first["lessons"]) == len(WEEK_PLAN)
+    school.time_table = FORBIDDEN
+    service.clock.now += 120
+    with caplog.at_level(logging.INFO, logger="app.timetable_source"):
+        with pytest.raises(DataError) as caught:
+            service.timetable(CHILD, reference=WEDNESDAY)
+    assert caught.value.message_key == TIMETABLE_SHAPE_KEY
+    assert caught.value.detail["status"] == 403
+    assert not [line for line in source_lines(caplog) if "no timetable released" in line]
+    school.time_table = FORBIDDEN
+    service.clock.now += 120
+    with pytest.raises(DataError) as again:
+        service.timetable(CHILD, reference=WEDNESDAY)
+    assert again.value.message_key == TIMETABLE_SHAPE_KEY
+    school.time_table = LESSONS
+    service.clock.now += 120
+    third = service.timetable(CHILD, reference=WEDNESDAY)
+    assert third["source"] == "time-table"
+    assert len(third["lessons"]) == len(WEEK_PLAN)
+    assert len(school.paths(DATA)) == 4
 
 
 def test_an_answer_in_an_unknown_shape_is_an_error_with_a_diagnosis(tmp_path):
@@ -476,15 +531,6 @@ def edit_config_switch(service, revision):
     edit_config(service.store, lambda config: config.update(login_revision=revision))
 
 
-def test_the_diagnosis_logged_for_a_refusal_carries_no_page_title(tmp_path, caplog):
-    service = make(tmp_path, TimeTableSchool(time_table=FORBIDDEN))
-    with caplog.at_level(logging.INFO, logger="app.timetable_source"):
-        with pytest.raises(DataError):
-            service.timetable(CHILD, reference=WEDNESDAY)
-    assert "Riverside" not in caplog.text
-    assert "Zugriff" not in caplog.text
-
-
 PRIVATE = ("Kim", "Muster", CHILD, OWN_OPTION, "Robin", "Anders", "7001", "R101", "KLE")
 
 
@@ -530,7 +576,6 @@ def test_an_honest_empty_week_with_slots_is_logged(tmp_path, caplog):
 
 
 @pytest.mark.parametrize("answer, key, fragment", [
-    (FORBIDDEN, TIMETABLE_SHAPE_KEY, '"status": 403'),
     (BROKEN, TIMETABLE_SHAPE_KEY, '"status": 500'),
     (ODD, TIMETABLE_SHAPE_KEY, '"shape": ["(root): object keys 1", "rows: array len 1 of object"'),
 ])

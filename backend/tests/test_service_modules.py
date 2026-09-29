@@ -470,3 +470,40 @@ def test_letters_child_ids_are_stable_slugs():
     assert letters_child_id("  Alex   Example ") == "letters:alex-example"
     assert letters_child_id("Zoë O'Neil") == "letters:zoë-o-neil"
     assert letters_child_id("Alex Example") == letters_child_id("alex example")
+
+
+def _stored_klassengeld(store, url):
+    connection_id = add_school(store, url)
+    scoped_store = connection_service(store, connection_id).store
+    scoped_store.save_modules(
+        modules.normalize({"unsupported": [{"segment": "klassengeld"}, {"segment": "calendar"}], "checked_at": 5})
+    )
+    return connection_service(store, connection_id)
+
+
+def test_each_school_offers_its_own_klassengeld_link(tmp_path):
+    store = Store(tmp_path)
+    first = _stored_klassengeld(store, "https://one.example")
+    second = _stored_klassengeld(store, "https://two.example")
+    first_entries = {entry["segment"]: entry for entry in first.modules()["unsupported"]}
+    second_entries = {entry["segment"]: entry for entry in second.modules()["unsupported"]}
+    assert first_entries["klassengeld"]["open_url"] == "https://one.example/iserv/klassengeld/redirect"
+    assert second_entries["klassengeld"]["open_url"] == "https://two.example/iserv/klassengeld/redirect"
+    assert "open_url" not in first_entries["calendar"]
+
+
+def test_the_combined_registry_keeps_the_link_for_one_school_and_drops_it_for_several(tmp_path):
+    from app.service import IServService
+
+    single = Store(tmp_path / "single")
+    _stored_klassengeld(single, "https://one.example")
+    only = {entry["segment"]: entry for entry in IServService(single).modules()["unsupported"]}
+    assert only["klassengeld"]["open_url"] == "https://one.example/iserv/klassengeld/redirect"
+    assert only["klassengeld"]["link_only"] is True
+
+    several = Store(tmp_path / "several")
+    _stored_klassengeld(several, "https://one.example")
+    _stored_klassengeld(several, "https://two.example")
+    both = {entry["segment"]: entry for entry in IServService(several).modules()["unsupported"]}
+    assert "open_url" not in both["klassengeld"]
+    assert both["klassengeld"]["link_only"] is True

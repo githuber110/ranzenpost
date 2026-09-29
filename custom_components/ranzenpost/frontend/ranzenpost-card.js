@@ -1,5 +1,8 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
+  const CARD_VERSION = "2609.4.1";
+  const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
+  const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
   const DOMAIN = "ranzenpost";
   const VIEWS = ["today", "week", "family"];
@@ -227,6 +230,7 @@
   const TEXTS = {
     de: {
       "card.description": "Stundenplan, Vertretungen und Post aus Ranzenpost",
+      "card.reload": "Lade die Seite neu, um das Update abzuschließen.",
       "view.family": "Familie",
       "today.free": "Heute ist schulfrei.",
       "day.free": "Schulfrei",
@@ -300,6 +304,7 @@
     },
     en: {
       "card.description": "Timetable, substitutions and school mail from Ranzenpost",
+      "card.reload": "Reload the page to finish the update.",
       "view.family": "Family",
       "today.free": "No school today.",
       "day.free": "No school",
@@ -373,6 +378,7 @@
     },
     ar: {
       "card.description": "الجدول الدراسي والبدائل ورسائل المدرسة من Ranzenpost",
+      "card.reload": "أعد تحميل الصفحة لإكمال التحديث.",
       "view.family": "العائلة",
       "today.free": "اليوم عطلة مدرسية.",
       "day.free": "لا توجد دراسة",
@@ -446,6 +452,7 @@
     },
     tr: {
       "card.description": "Ranzenpost'tan ders programı, vekil dersler ve okul postası",
+      "card.reload": "Güncellemeyi tamamlamak için sayfayı yenileyin.",
       "view.family": "Aile",
       "today.free": "Bugün okul yok.",
       "day.free": "Okul yok",
@@ -519,6 +526,7 @@
     },
     ru: {
       "card.description": "Расписание, замены и школьная почта из Ranzenpost",
+      "card.reload": "Перезагрузите страницу, чтобы завершить обновление.",
       "view.family": "Семья",
       "today.free": "Сегодня занятий нет.",
       "day.free": "Занятий нет",
@@ -592,6 +600,7 @@
     },
     uk: {
       "card.description": "Розклад, заміни та шкільна пошта з Ranzenpost",
+      "card.reload": "Перезавантажте сторінку, щоб завершити оновлення.",
       "view.family": "Сім'я",
       "today.free": "Сьогодні уроків немає.",
       "day.free": "Занять немає",
@@ -819,7 +828,7 @@
       .tt-cell.out .room, .tt-cell.subbed .room { margin-block-start: 4px; font-size: clamp(0.6875rem, 7.5cqi, 0.875rem); font-weight: 600; line-height: 1.25; }
       .tt .tt-cell.out .room { color: var(--danger); }
     }
-    @container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } }
+    @container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } .tt-cell .room.paired { display: none; } }
     @container (min-width: 128px) and (min-height: 80px) { .tt-cell .lteacher { display: block; } }
     .tt-cell .bar { position: absolute; inset-inline-start: 0; inset-block: 0; inline-size: 3px; }
     .tt-cell.subject-bar::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; inline-size: 3px; background: var(--subject-bar, transparent); }
@@ -867,6 +876,7 @@
     .legend i { inline-size: 3px; block-size: 12px; border-radius: 2px; display: block; }
     .legend i.dot { inline-size: 9px; block-size: 9px; border-radius: 50%; }
     .legend i.sym { inline-size: auto; block-size: auto; border-radius: 0; font-size: 0.75rem; font-weight: 700; line-height: 1; font-style: normal; }
+    .card-update { margin: 0; margin-block-end: var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); border-inline-start: 3px solid var(--warn); background: var(--surface-2); font-size: 0.8125rem; text-align: start; }
     .stamp { margin-block-start: var(--s-4); font-size: 0.6875rem; color: var(--ink-3); text-align: start; font-variant-numeric: tabular-nums; padding: 0 var(--s-4); }
     .empty { text-align: center; padding: var(--s-11) var(--s-6) var(--s-8); }
     .empty > .ico-slot > .ico { inline-size: 64px; block-size: 64px; margin: 0 auto var(--s-6); padding: 18px; background: var(--surface-2); border-radius: 50%; color: var(--ink-2); }
@@ -990,6 +1000,29 @@
   function blockPath(path, key) {
     const target = BLOCK_TARGETS[key];
     return path && target ? `${path}?${target}` : "";
+  }
+
+  function versionParts(text) {
+    const match = VERSION_PATTERN.exec(String(text || "").trim());
+    if (!match) return null;
+    return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] === undefined ? FINAL_RELEASE : Number(match[4])];
+  }
+
+  function integrationVersionOf(hass, registry) {
+    for (const school of (registry && registry.schools) || []) {
+      const state = stateOf(hass, school.entities[KEY_CONNECTION]);
+      const version = state && state.attributes ? String(state.attributes.integration_version || "") : "";
+      if (version) return version;
+    }
+    return "";
+  }
+
+  function cardOutdated(hass, registry) {
+    const mine = versionParts(CARD_VERSION);
+    const running = versionParts(integrationVersionOf(hass, registry));
+    if (!mine || !running) return false;
+    const index = running.findIndex((part, position) => part !== mine[position]);
+    return index >= 0 && running[index] > mine[index];
   }
 
   function ingressPathOf(hass, registry) {
@@ -1797,7 +1830,13 @@
       } else {
         inner = this._renderFamily(plan, byEntity, title);
       }
-      this._paint(inner);
+      this._paint(this._updateNotice(plan) + inner);
+    }
+
+    _updateNotice(plan) {
+      if (!cardOutdated(this._hass, plan.registry)) return "";
+      const t = translator(this._hass);
+      return `<p class="card-update" role="status">${esc(t("card.reload"))}</p>`;
     }
 
     _renderError(error) {
@@ -1967,13 +2006,15 @@
       }
       const bar = lesson.substitution ? '<span class="bar"></span>' : "";
       const roomLabel = lesson.cancelled ? t("lesson.cancelled") : lesson.substitution ? t("lesson.substitutionShort") : "";
-      const room = roomLabel ? `<span class="room">${esc(roomLabel)}</span>` : "";
+      const paired = !compact && !lesson.cancelled && lesson.substitution && lesson.location ? [roomLabel, lesson.location].join(" · ") : "";
+      const room = roomLabel ? `<span class="${paired ? "room paired" : "room"}">${esc(roomLabel)}</span>` : "";
+      const lroom = paired ? `<span class="lroom paired" dir="auto">${esc(paired)}</span>` : !roomLabel && lesson.location ? `<span class="lroom" dir="auto">${esc(lesson.location)}</span>` : "";
       const flag = lesson.exam ? `<span class="exam-flag" title="${esc(t("lesson.exam"))}">${iconSvg("exam")}</span>` : "";
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const code = lesson.code || lesson.subject;
       const details = compact
         ? ""
-        : `<span class="lname" dir="auto">${esc(lesson.subject || code)}</span>${!roomLabel && lesson.location ? `<span class="lroom" dir="auto">${esc(lesson.location)}</span>` : ""}${lesson.teacher ? `<span class="lteacher" dir="auto">${esc(lesson.teacher)}</span>` : ""}`;
+        : `<span class="lname" dir="auto">${esc(lesson.subject || code)}</span>${lroom}${lesson.teacher ? `<span class="lteacher" dir="auto">${esc(lesson.teacher)}</span>` : ""}`;
       return `<div class="${classes.join(" ")}" data-uid="${esc(lesson.uid)}" data-day="${esc(dayKey)}"${style}>${bar}<span class="sub" dir="auto">${esc(code)}</span>${details}${room}${flag}</div>`;
     }
 
