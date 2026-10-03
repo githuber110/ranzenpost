@@ -345,7 +345,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2610.1.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2610.1.1")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""

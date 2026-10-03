@@ -3,6 +3,12 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.1.1
+
+### Fixed
+
+- Updated urllib3 to 2.8.0, which closes three security issues in how HTTP responses and proxies are handled.
+
 ## 2610.1.0
 
 ### New
