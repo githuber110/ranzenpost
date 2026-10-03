@@ -3,13 +3,14 @@ import os
 import threading
 import time
 from hmac import compare_digest
+from typing import Any
 
-from fastapi import Request
+from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 
-from . import holidays, integration, messages, supervisor, versions
+from . import feed, holidays, integration, messages, supervisor, versions
 from .calendar_server import RateLimiter
-from .subscriptions import known_child
+from .subscriptions import ONLINE_READY, known_child, token_log_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,10 @@ ROUTE_STATE = PREFIX + "/state"
 ROUTE_EVENTS = PREFIX + "/events"
 ROUTE_SCHOOL = PREFIX + "/school"
 ROUTE_CHANGES = PREFIX + "/changes"
-ROUTES = (ROUTE_INFO, ROUTE_STATE, ROUTE_EVENTS, ROUTE_SCHOOL, ROUTE_CHANGES)
+ROUTE_FEED = PREFIX + "/feed"
+ROUTE_FEEDS = PREFIX + "/feeds"
+ROUTES = (ROUTE_INFO, ROUTE_STATE, ROUTE_EVENTS, ROUTE_SCHOOL, ROUTE_CHANGES, ROUTE_FEED, ROUTE_FEEDS)
+MAX_FEED_REPORTS = 100
 INTEGRATION_PORT = 8099
 BEARER = "bearer"
 INGRESS_HEADER = "x-ingress-path"
@@ -43,6 +47,8 @@ BAD_KIND_KEY = "api.integration.badKind"
 BAD_RANGE_KEY = "api.integration.badRange"
 BAD_PURPOSE_KEY = "api.integration.badPurpose"
 TOKEN_ROTATED_KEY = "api.integration.token.rotated"
+UNKNOWN_FEED_KEY = "api.integration.unknownFeed"
+BAD_FEEDS_KEY = "api.integration.badFeeds"
 
 ERROR_UNAUTHORIZED = "unauthorized"
 ERROR_FORBIDDEN = "forbidden"
@@ -52,6 +58,8 @@ ERROR_UNKNOWN_SCHOOL = "unknown_school"
 ERROR_BAD_KIND = "bad_kind"
 ERROR_BAD_RANGE = "bad_range"
 ERROR_BAD_PURPOSE = "bad_purpose"
+ERROR_UNKNOWN_FEED = "unknown_feed"
+ERROR_BAD_FEEDS = "bad_feeds"
 
 
 class IntegrationAccess:
@@ -218,7 +226,7 @@ def _parse_range(start, end, today):
     return first, last
 
 
-def register_integration_routes(app, service, store, holiday_calendar, access, warm=None):
+def register_integration_routes(app, service, store, holiday_calendar, access, warm=None, registry=None):
     def _known_school(school_id):
         entry = store.connection(school_id) if school_id else None
         return entry is not None and bool(entry.get("setup_complete"))
@@ -241,7 +249,16 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         refusal = denied(request)
         if refusal is not None:
             return refusal
-        return integration.build_info(service, store, access.now(), access.feed_port_open())
+        if registry is None:
+            return integration.build_info(service, store, access.now(), access.feed_port_open())
+        feeds = registry.online_feeds()
+        unreported = [feed["webhook_id"] for feed in feeds if not feed["reported"]]
+        if unreported:
+            registry.mark_offered(unreported)
+        return integration.build_info(
+            service, store, access.now(), access.feed_port_open(),
+            online_feeds=feeds, outside_access=registry.outside_access,
+        )
 
     @app.get(ROUTE_STATE)
     def state(request: Request, child: str = ""):
@@ -302,6 +319,46 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         if refusal is not None:
             return refusal
         return integration.build_changes(store)
+
+    @app.get(ROUTE_FEED)
+    def online_feed(request: Request, id: str = "", webhook: str = ""):
+        refusal = denied(request)
+        if refusal is not None:
+            return refusal
+        subscription = registry.find_online(id, webhook) if registry is not None else None
+        if subscription is None:
+            logger.info("Home Assistant asked for a calendar feed that is not online")
+            return _refusal(404, ERROR_UNKNOWN_FEED, UNKNOWN_FEED_KEY)
+        registry.note_fetch(subscription.get("id", ""))
+        logger.info(
+            "calendar feed access through Home Assistant token=%s",
+            token_log_prefix(subscription.get("token", "")),
+        )
+        return {"calendar": feed.build_feed(subscription, store, holiday_calendar)}
+
+    @app.post(ROUTE_FEEDS)
+    def online_feed_reports(request: Request, body: Any = Body(default=None)):
+        refusal = denied(request)
+        if refusal is not None:
+            return refusal
+        reports = body.get("feeds") if isinstance(body, dict) else None
+        if registry is None or not isinstance(reports, list) or len(reports) > MAX_FEED_REPORTS:
+            return _refusal(400, ERROR_BAD_FEEDS, BAD_FEEDS_KEY)
+        outside = registry.record_outside_access(body.get("outside"))
+        if outside is not None:
+            logger.info(
+                "Home Assistant reports access from outside: cloud %s, external %s",
+                "yes" if outside["cloud"] else "no",
+                "yes" if outside["external"] else "no",
+            )
+        states = registry.record_online_reports(reports)
+        ready = states.count(ONLINE_READY)
+        logger.info(
+            "Home Assistant reported online calendar addresses: %s ready, %s without access from outside",
+            ready,
+            len(states) - ready,
+        )
+        return {"stored": len(states)}
 
 
 def register_status_routes(app, access):

@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from custom_components.ranzenpost.api import HEADER_INSTALLED, HEADER_INTEGRATION
 from custom_components.ranzenpost.config_flow import validate_connection
 from custom_components.ranzenpost.const import DOMAIN
-from custom_components.ranzenpost.version import parse_version
+from custom_components.ranzenpost.version import FINAL, mismatch_is_severe, parse_version, version_mismatch
 
 from . import ENTRY_DATA, MANIFEST_VERSION, fixture, mock_addon, route, setup_entry
 
@@ -87,8 +87,19 @@ async def test_an_app_a_feature_release_behind_raises_an_error_repair_with_the_u
     assert issue(hass, entry, "app_update_needed") is None
 
 
+def older_on_the_same_line():
+    year, line, fix, beta = LOADED
+    if beta != FINAL:
+        return f"{year}.{line}.{fix}b{beta - 1}" if beta > 0 else (f"{year}.{line}.{fix - 1}" if fix > 0 else None)
+    return f"{year}.{line}.{fix}b1"
+
+
 async def test_an_app_a_fix_release_behind_raises_a_warning_repair(hass, aioclient_mock, frozen_now):
-    older_fix = f"{LOADED[0]}.{LOADED[1]}.{LOADED[2]}b1"
+    older_fix = older_on_the_same_line()
+    if older_fix is None:
+        assert version_mismatch("2609.5.0", "2609.5.1", False) == "app_update_needed"
+        assert mismatch_is_severe("app_update_needed", "2609.5.0", "2609.5.1") is False
+        return
     entry = await setup_entry(hass, aioclient_mock, info=info_of(older_fix))
 
     found = issue(hass, entry, "app_update_needed")

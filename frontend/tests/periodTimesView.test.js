@@ -559,3 +559,149 @@ describe("plan and today", () => {
     expect(next.node.textContent).toContain(tr(window, "periods.today.tomorrow"));
   });
 });
+
+describe("weekend appointments and typed start times", () => {
+  function plainWeek() {
+    const lessons = [];
+    ["21.09.2026", "22.09.2026", "23.09.2026", "24.09.2026", "25.09.2026"].forEach((date, index) => {
+      for (let period = 1; period <= 5; period += 1) {
+        lessons.push({ date, day_of_week: index + 1, period, start_time: clock(BASE[period - 1]), end_time: clock(BASE[period - 1] + 45), subject_code: "D", subject_label: "Deutsch", change_kind: "" });
+      }
+    });
+    return { lessons, period_times: {}, start_date: "21.09.2026", end_date: "25.09.2026" };
+  }
+
+  const ONCE = { interval: 1, from: "", until: "", holidays: true };
+  const saturday = Object.assign({ id: "w6", type: "club", name: "Swim", start: "17:30", duration: 60, end: "18:30", repeat: "once", date: "2026-09-26", days: [], child: "sam", child_key: `${ONE}:sam`, status: OK }, ONCE);
+  const sunday = Object.assign({}, saturday, { id: "w7", name: "Match", date: "2026-09-27" });
+
+  function gridWith(window) {
+    return atDay(window, "2026-09-23T09:30:00", ["() => { state.weekOffset = 0; return timetableGrid(testArgs[0], testArgs[1]); }", plainWeek(), `${ONE}:sam`]);
+  }
+
+  function heads(grid) {
+    return [...grid.querySelectorAll(".tt-head")].length;
+  }
+
+  test("a week without weekend appointments keeps five days", async () => {
+    const { window } = await setup();
+    const grid = gridWith(window);
+
+    expect(heads(grid)).toBe(5);
+    expect(grid.classList.contains("tt-weekend")).toBe(false);
+  });
+
+  test("a Saturday appointment in the evening adds Saturday to the week", async () => {
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([saturday]) }) });
+    const grid = gridWith(window);
+
+    expect(heads(grid)).toBe(6);
+    expect(grid.style.gridTemplateColumns).toBe("30px repeat(6, 1fr)");
+    const own = grid.querySelector('.tt-own[data-entry="w6"]');
+    expect(own.style.gridColumn).toBe("7");
+    expect(own.textContent).toContain("17:30");
+  });
+
+  test("a Sunday appointment shows the whole weekend", async () => {
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([sunday]) }) });
+    const grid = gridWith(window);
+
+    expect(heads(grid)).toBe(7);
+    expect(grid.querySelector('.tt-own[data-entry="w7"]').style.gridColumn).toBe("8");
+  });
+
+  test("another child's weekend appointment leaves the week alone", async () => {
+    const other = Object.assign({}, saturday, { child: "mika", child_key: `${ONE}:mika` });
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([other]) }) });
+
+    expect(heads(gridWith(window))).toBe(5);
+  });
+
+  function startInput(window, doc) {
+    evalWith(window, "openEntryForm({ school: testArgs[0], entry: state.periods[testArgs[1]].entries[2] })", ONE, ONE);
+    return doc.querySelector(".entry-start input.val-time");
+  }
+
+  test("the start time can be typed instead of stepped", async () => {
+    const { window, doc } = await setup();
+    const input = startInput(window, doc);
+    expect(input.value).toBe("15:30");
+
+    input.value = "18:00";
+    input.dispatchEvent(new window.Event("change"));
+
+    expect(window.eval("state.periodsDetail.form.start")).toBe(18 * 60);
+    expect(doc.querySelector(".entry-start input.val-time").value).toBe("18:00");
+  });
+
+  test("a typed start before the earliest possible one moves to it and says so", async () => {
+    const { window, doc } = await setup();
+    const input = startInput(window, doc);
+    const earliest = evalWith(window, "entryLimits(state.periodsDetail.form, state.periods[testArgs[0]]).minStart", ONE);
+
+    input.value = "00:05";
+    input.dispatchEvent(new window.Event("change"));
+
+    expect(window.eval("state.periodsDetail.form.start")).toBe(earliest);
+    expect(window.eval("state.periodsDetail.form.note")).toBe(tr(window, "periods.clamped.start", { time: evalWith(window, "clockLabel(testArgs[0])", earliest) }));
+  });
+
+  test("a typed start late at night stops where the plus button stops", async () => {
+    const { window, doc } = await setup();
+    const input = startInput(window, doc);
+
+    input.value = "23:59";
+    input.dispatchEvent(new window.Event("change"));
+
+    expect(window.eval("state.periodsDetail.form.start")).toBe(24 * 60 - 5);
+    expect(doc.querySelectorAll(".entry-start .sbtn")[1].disabled).toBe(true);
+  });
+
+  test("a weekend pause never opens the weekend", async () => {
+    const pause = Object.assign({}, saturday, { id: "wp", type: "pause", name: "Walk" });
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([pause]) }) });
+
+    expect(heads(gridWith(window))).toBe(5);
+  });
+
+  function weekendHolidays(window, fullWeek) {
+    const AUTUMN = { id: "h1", kind: "school", type: "autumn", name: "Herbstferien", name_key: "", start: "2026-09-21", end: "2026-09-27" };
+    const days = {};
+    for (let offset = 0; offset < 7; offset += 1) {
+      days[`2026-09-${String(21 + offset).padStart(2, "0")}`] = { free: true, overrides_lessons: true, weekend: offset >= 5, kind: "school", type: "autumn", name: "Herbstferien", name_key: "", period_id: "h1" };
+    }
+    const weeks = [{ week: 39, iso_year: 2026, start: "2026-09-21", end: "2026-09-27", coverage: fullWeek ? "full" : "partial", label_key: "holidays.week.partial", school_days: 5, free_school_days: 5, override_school_days: 5, overrides_lessons: true, primary: AUTUMN, periods: [AUTUMN] }];
+    evalWith(window, "state.holidays = { [testArgs[0]]: testArgs[1] };", ONE, { status: "ok", stale: false, days, weeks, periods: [AUTUMN] });
+  }
+
+  test("in the holidays a weekly club without holiday ticks stays away on Saturday", async () => {
+    const weekly = Object.assign({}, saturday, { id: "wk", repeat: "weekly", date: "", days: [5], from: "2026-09-01", until: "2027-06-30", holidays: false });
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([weekly]) }) });
+    weekendHolidays(window, true);
+
+    expect(heads(gridWith(window))).toBe(5);
+  });
+
+  test("a whole holiday week still shows a Saturday appointment next to the holiday field", async () => {
+    const { window } = await setup({ data: view({ entries: ENTRIES.concat([saturday]) }) });
+    weekendHolidays(window, true);
+    const grid = gridWith(window);
+
+    expect(heads(grid)).toBe(6);
+    expect(grid.querySelector(".tt-hol")).not.toBeNull();
+    const own = grid.querySelector('.tt-own[data-entry="w6"]');
+    expect(own.style.gridColumn).toBe("7");
+    expect(own.classList.contains("on-hol")).toBe(false);
+  });
+
+  test("an empty time keeps the start", async () => {
+    const { window, doc } = await setup();
+    const input = startInput(window, doc);
+
+    input.value = "";
+    input.dispatchEvent(new window.Event("change"));
+
+    expect(window.eval("state.periodsDetail.form.start")).toBe(15 * 60 + 30);
+    expect(input.value).toBe("15:30");
+  });
+});

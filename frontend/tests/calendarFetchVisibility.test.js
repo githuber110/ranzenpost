@@ -66,19 +66,13 @@ describe("the fetch line always carries a date", () => {
   });
 });
 
-describe("the screen names the one-time setting that makes changes arrive on their own", () => {
-  test("anywhere it names the calendar app's own refresh setting", () => {
+describe("the setup help names the one-time setting that makes changes arrive on their own", () => {
+  test("the iPhone line carries the fetch interval on every device", () => {
     const { window } = loadApp();
     const shown = textOf(seed(window, subscription()));
-    expect(shown).toContain(window.eval("t('calendar.subscribe.refresh')"));
-  });
-
-  test("on an iPhone it names the iPhone setting instead", () => {
-    const { window } = loadApp();
+    expect(shown).toContain(window.eval("t('calendar.subscribe.help.apple')"));
     Object.defineProperty(window.navigator, "userAgent", { value: IPHONE_UA, configurable: true });
-    const shown = textOf(seed(window, subscription()));
-    expect(shown).toContain(window.eval("t('calendar.subscribe.refresh.apple')"));
-    expect(shown).not.toContain(window.eval("t('calendar.subscribe.refresh')"));
+    expect(textOf(seed(window, subscription()))).toContain(window.eval("t('calendar.subscribe.help.apple')"));
   });
 });
 

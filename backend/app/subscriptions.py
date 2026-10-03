@@ -3,6 +3,7 @@ import re
 import secrets
 import threading
 import time
+from urllib.parse import urlsplit
 
 from .store import children_of_config, config_for_child
 
@@ -28,6 +29,33 @@ IDENTIFIER_BYTES = 8
 MAX_LABEL_LENGTH = 60
 MIN_NAME_TOKEN_LENGTH = 3
 TOKEN_LOG_PREFIX_LENGTH = 4
+ONLINE_FIELD = "online"
+WEBHOOK_FIELD = "webhook_id"
+REPORT_FIELD = "online_report"
+WEBHOOK_PREFIX = "ranzenpost_"
+WEBHOOK_BYTES = 16
+MAX_ONLINE_URL_LENGTH = 512
+ONLINE_URL_SCHEMES = ("https", "http")
+ONLINE_OFF = "off"
+ONLINE_PENDING = "pending"
+ONLINE_READY = "ready"
+ONLINE_UNREACHABLE = "unreachable"
+ONLINE_STALLED = "stalled"
+ONLINE_NO_INTEGRATION = "no_integration"
+OFFERED_FIELD = "offered_at"
+INTEGRATION_WINDOW_SECONDS = 2 * 60 * 60
+STALL_GRACE_SECONDS = 120
+INTERNET_READY = "ready"
+INTERNET_NO_INTEGRATION = "no_integration"
+INTERNET_UPDATE = "update_integration"
+INTERNET_NO_ACCESS = "no_access"
+INTERNET_CHECKING = "checking"
+INTERNET_REFUSALS = {
+    INTERNET_CHECKING: "calendar.subscribe.variant.internet.checking",
+    INTERNET_NO_INTEGRATION: "calendar.subscribe.variant.internet.noIntegration",
+    INTERNET_UPDATE: "calendar.subscribe.variant.internet.update",
+    INTERNET_NO_ACCESS: "calendar.subscribe.variant.internet.noAccess",
+}
 
 ERROR_COMPONENTS = "api.calendar.error.components"
 ERROR_CHILD = "api.calendar.error.child"
@@ -129,6 +157,87 @@ def _as_epoch(value):
     return int(value) if value > 0 else 0
 
 
+def online_url(value):
+    text = str(value or "").strip()
+    if not text or len(text) > MAX_ONLINE_URL_LENGTH or any(char.isspace() for char in text):
+        return ""
+    try:
+        parts = urlsplit(text)
+    except ValueError:
+        return ""
+    if parts.scheme not in ONLINE_URL_SCHEMES or not parts.hostname or parts.username or parts.password:
+        return ""
+    return text
+
+
+def _online_report(entry):
+    report = entry.get(REPORT_FIELD)
+    if not isinstance(report, dict) or report.get(WEBHOOK_FIELD) != entry.get(WEBHOOK_FIELD):
+        return None
+    return report
+
+
+def online_state(entry):
+    if not entry.get(ONLINE_FIELD) or not entry.get(WEBHOOK_FIELD):
+        return ONLINE_OFF
+    report = _online_report(entry)
+    if report is None:
+        return ONLINE_PENDING
+    return ONLINE_READY if report.get("cloud_url") or report.get("external_url") else ONLINE_UNREACHABLE
+
+
+def online_address(entry):
+    report = _online_report(entry) if online_state(entry) == ONLINE_READY else None
+    if report is None:
+        return ""
+    return report.get("cloud_url") or report.get("external_url") or ""
+
+
+def _new_webhook_id():
+    return WEBHOOK_PREFIX + secrets.token_hex(WEBHOOK_BYTES)
+
+
+def _go_online(entry):
+    entry[ONLINE_FIELD] = True
+    entry[WEBHOOK_FIELD] = _new_webhook_id()
+    entry.pop(REPORT_FIELD, None)
+    entry.pop(OFFERED_FIELD, None)
+    return entry
+
+
+def _go_offline(entry):
+    for field in (ONLINE_FIELD, WEBHOOK_FIELD, REPORT_FIELD, OFFERED_FIELD):
+        entry.pop(field, None)
+    return entry
+
+
+def integration_present(integration_seen, now):
+    seen = _as_epoch(integration_seen)
+    return bool(seen) and 0 <= now - seen <= INTEGRATION_WINDOW_SECONDS
+
+
+def internet_access(outside, integration_seen, now, started=0):
+    if not integration_present(integration_seen, now):
+        return INTERNET_NO_INTEGRATION
+    if not isinstance(outside, dict):
+        if _as_epoch(integration_seen) < _as_epoch(started) + STALL_GRACE_SECONDS:
+            return INTERNET_CHECKING
+        return INTERNET_UPDATE
+    return INTERNET_READY if outside.get("cloud") or outside.get("external") else INTERNET_NO_ACCESS
+
+
+def settle_online_state(view, integration_seen, now):
+    state = view.get("online_state")
+    if state == ONLINE_OFF:
+        return view
+    if not integration_present(integration_seen, now):
+        return dict(view, online_state=ONLINE_NO_INTEGRATION, online_url="")
+    offered = _as_epoch(view.get(OFFERED_FIELD))
+    if state == ONLINE_PENDING and offered and now - offered >= STALL_GRACE_SECONDS:
+        return dict(view, online_state=ONLINE_STALLED)
+    return view
+
+
 def public_view(entry):
     return {
         "id": entry.get("id", ""),
@@ -142,6 +251,10 @@ def public_view(entry):
         "watched_since": _as_epoch(entry.get(WATCH_FIELD)) or _as_epoch(entry.get("created_at")),
         "token": entry.get("token", ""),
         "path": feed_path(entry.get("token", "")),
+        "online": online_state(entry) != ONLINE_OFF,
+        "online_state": online_state(entry),
+        "online_url": online_address(entry),
+        "offered_at": _as_epoch(entry.get(OFFERED_FIELD)),
     }
 
 
@@ -154,6 +267,8 @@ class SubscriptionRegistry:
         self.store = store
         self.clock = clock or time.time
         self._lock = getattr(store, "lock", None) or threading.Lock()
+        self._outside = None
+        self.started = int(self.clock())
 
     def _read(self):
         data = self.store.load_calendar_subscriptions()
@@ -192,7 +307,17 @@ class SubscriptionRegistry:
                 self._write(entries)
         return moved
 
-    def create(self, child_key, components, label="", color=""):
+    @property
+    def outside_access(self):
+        return dict(self._outside) if self._outside is not None else None
+
+    def record_outside_access(self, outside):
+        if not isinstance(outside, dict):
+            return None
+        self._outside = {"cloud": outside.get("cloud") is True, "external": outside.get("external") is True}
+        return dict(self._outside)
+
+    def create(self, child_key, components, label="", color="", online=False):
         config = self.store.load_config()
         selected = normalize_components(components)
         if not known_child(config, child_key):
@@ -212,6 +337,8 @@ class SubscriptionRegistry:
             "rotated_at": 0,
         }
         entry[WATCH_FIELD] = entry["created_at"]
+        if online is True:
+            _go_online(entry)
         with self._lock:
             entries = self._read()
             entries.append(entry)
@@ -230,10 +357,14 @@ class SubscriptionRegistry:
                 return public_view(updated)
         raise SubscriptionError(ERROR_NOT_FOUND)
 
-    def update(self, subscription_id, components=None, label=None, color=None):
+    def update(self, subscription_id, components=None, label=None, color=None, online=None):
         config = self.store.load_config()
 
         def change(entry):
+            if online is True and online_state(entry) == ONLINE_OFF:
+                _go_online(entry)
+            elif online is False:
+                _go_offline(entry)
             if color is not None:
                 entry["color"] = normalize_color(color)
             if components is not None:
@@ -254,6 +385,8 @@ class SubscriptionRegistry:
             entry["rotated_at"] = int(self.clock())
             entry.pop(LAST_FETCH_FIELD, None)
             entry[WATCH_FIELD] = entry["rotated_at"]
+            if online_state(entry) != ONLINE_OFF:
+                _go_online(entry)
             return entry
 
         return self._mutate(subscription_id, change)
@@ -275,6 +408,75 @@ class SubscriptionRegistry:
             if len(stored) == len(candidate) and hmac.compare_digest(stored, candidate):
                 found = entry
         return found
+
+    def find_online(self, subscription_id, webhook_id):
+        wanted = str(subscription_id or "")
+        presented = str(webhook_id or "")
+        for entry in self._read():
+            if not wanted or entry.get("id") != wanted or online_state(entry) == ONLINE_OFF:
+                continue
+            stored = str(entry.get(WEBHOOK_FIELD) or "")
+            if presented and len(stored) == len(presented) and hmac.compare_digest(stored, presented):
+                return entry
+        return None
+
+    def online_feeds(self):
+        feeds = []
+        for entry in self._read():
+            if online_state(entry) == ONLINE_OFF:
+                continue
+            report = _online_report(entry) or {}
+            feeds.append({
+                "id": entry.get("id", ""),
+                "webhook_id": entry.get(WEBHOOK_FIELD, ""),
+                "cloud_url": report.get("cloud_url", ""),
+                "external_url": report.get("external_url", ""),
+                "reported": bool(report),
+            })
+        return feeds
+
+    def mark_offered(self, webhook_ids):
+        offered = {str(item) for item in webhook_ids}
+        stamp = int(self.clock())
+        with self._lock:
+            entries = self._read()
+            fresh = [
+                entry for entry in entries
+                if online_state(entry) == ONLINE_PENDING
+                and not _as_epoch(entry.get(OFFERED_FIELD))
+                and entry.get(WEBHOOK_FIELD) in offered
+            ]
+            for entry in fresh:
+                entry[OFFERED_FIELD] = stamp
+            if fresh:
+                self._write(entries)
+        return len(fresh)
+
+    def record_online_reports(self, reports):
+        wanted = {}
+        for report in reports:
+            if isinstance(report, dict) and report.get("id") and report.get(WEBHOOK_FIELD):
+                wanted[str(report["id"])] = report
+        stamp = int(self.clock())
+        stored = []
+        with self._lock:
+            entries = self._read()
+            for entry in entries:
+                report = wanted.get(entry.get("id", ""))
+                if report is None or online_state(entry) == ONLINE_OFF:
+                    continue
+                if str(report[WEBHOOK_FIELD]) != entry.get(WEBHOOK_FIELD):
+                    continue
+                entry[REPORT_FIELD] = {
+                    WEBHOOK_FIELD: entry[WEBHOOK_FIELD],
+                    "cloud_url": online_url(report.get("cloud_url")),
+                    "external_url": online_url(report.get("external_url")),
+                    "reported_at": stamp,
+                }
+                stored.append(entry)
+            if stored:
+                self._write(entries)
+        return [online_state(entry) for entry in stored]
 
     def note_fetch(self, subscription_id):
         stamp = int(self.clock())

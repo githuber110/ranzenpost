@@ -1,6 +1,6 @@
 import pytest
 
-from custom_components.ranzenpost.api import AuthError, ConnectionError, RanzenpostApi
+from custom_components.ranzenpost.api import AuthError, ConnectionError, NotFoundError, RanzenpostApi
 
 
 class FakeResponse:
@@ -23,13 +23,14 @@ class FakeSession:
     def __init__(self, response):
         self.response = response
 
-    def get(self, url, params=None, headers=None):
+    def request(self, method, url, params=None, json=None, headers=None):
+        self.sent = (method, url, params, json)
         return self.response
 
 
 @pytest.mark.parametrize(
     ("status", "raised"),
-    [(200, None), (401, AuthError), (500, ConnectionError)],
+    [(200, None), (401, AuthError), (404, NotFoundError), (500, ConnectionError)],
 )
 async def test_every_answer_is_released_after_reading(status, raised):
     response = FakeResponse(status, {"ok": True})

@@ -303,6 +303,8 @@ A feed per child that your calendar app subscribes to: lessons, school holidays,
 
 The feed is served on a second port, 8100, which is **off by default**. Switch it on under **Settings, Apps, Ranzenpost (IServ), Configuration, Network**. Whoever has the link sees that child's timetable, so treat the link as the secret. Nabu Casa remote access does not forward app ports, so outside your home network the feed needs your own remote access or a VPN.
 
+When you create a calendar you choose where it loads. **Local** works on your home network or over VPN and never leaves it. **Internet** works anywhere, also in Google Calendar and Outlook.com: the Ranzenpost integration serves the feed as a Home Assistant webhook, through Home Assistant Cloud (Nabu Casa) or your own external URL. Without either, only Local is offered. Renewing or deleting the link ends the old address at once.
+
 ### Languages and themes
 
 German, English, Arabic, Turkish, Russian and Ukrainian. Arabic runs right to left. Dates, times and numbers follow the language. Light and dark theme, following the device or pinned. Large system font sizes are respected. If your school switches on mandatory two-factor later, Ranzenpost says so plainly and walks you through it.

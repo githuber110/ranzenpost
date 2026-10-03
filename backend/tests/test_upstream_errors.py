@@ -149,6 +149,8 @@ ROUTES_WITHOUT_UPSTREAM_CALLS = {
     "/api/integration/events": "local snapshot only, own 401/403/429 vocabulary",
     "/api/integration/school": "local snapshot only, own 401/403/429 vocabulary",
     "/api/integration/changes": "local snapshot only, own 401/403/429 vocabulary",
+    "/api/integration/feed": "local snapshot and subscription registry only, own 401/403/404/429 vocabulary",
+    "/api/integration/feeds": "local subscription registry only, own 400/401/403/429 vocabulary",
     "/api/integration-status": "local token file, never reaches IServ",
     "/api/integration-status/rotate": "local token file and Supervisor, never reaches IServ",
     "/api/wizard": "wizard state machine with its own error object",

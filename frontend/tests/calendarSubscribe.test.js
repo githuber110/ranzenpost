@@ -87,6 +87,7 @@ describe("creating a calendar subscription", () => {
       components: ["timetable", "own_entries"],
       label: "3b",
       color: "#135859",
+      online: false,
     });
     expect(window.eval("state.calendarDraft")).toBeNull();
   });
@@ -274,13 +275,13 @@ describe("renewing the token asks first", () => {
 });
 
 describe("the subscription address is built from the host of this device", () => {
-  test("the sheet shows the feed address and offers webcal, copy and QR", () => {
+  test("the page offers webcal, copy and QR without spelling the address out", () => {
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "ha.example", port_open: true } });
     window.eval(qrJs);
     window.eval("window.__handoff = null; handOffCalendarUrl = (url) => { window.__handoff = url; };");
     const sheetNode = window.eval("calendarPageView()");
 
-    expect(sheetNode.querySelector(".cal-url").textContent).toBe("http://ha.example:8100/calendar/token-1.ics");
+    expect(sheetNode.textContent).not.toContain("ha.example:8100");
     const addButton = buttonWithText(sheetNode, base["calendar.subscribe.add"]);
     expect(addButton).not.toBeNull();
     expect(addButton.classList.contains("cal-add")).toBe(true);
@@ -295,7 +296,7 @@ describe("the subscription address is built from the host of this device", () =>
     const { window } = setup({ subscriptions: [SUBSCRIPTION], host: { host: "", port_open: true } });
     const sheetNode = window.eval("calendarPageView()");
 
-    expect(sheetNode.querySelector(".cal-url")).toBeNull();
+    expect(sheetNode.textContent).not.toContain(":8100/calendar/");
     expect(sheetNode.textContent).toContain(base["calendar.subscribe.host.missing"]);
     expect(sheetNode.querySelector("button.cal-add")).toBeNull();
   });

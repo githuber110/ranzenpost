@@ -303,6 +303,8 @@ Ein Feed je Kind, den deine Kalender-App abonniert: Stunden, Schulferien, Feiert
 
 Der Feed läuft auf einem zweiten Port, 8100, der **standardmäßig aus** ist. Schalte ihn unter **Einstellungen, Apps, Ranzenpost (IServ), Konfiguration, Netzwerk** ein. Wer den Link hat, sieht den Stundenplan dieses Kindes, behandle den Link also wie ein Geheimnis. Der Fernzugriff von Nabu Casa leitet keine App-Ports weiter, unterwegs braucht der Feed also deinen eigenen Fernzugriff oder ein VPN.
 
+Beim Anlegen wählst du, wo der Kalender lädt. **Lokal** geht im Heimnetz oder per VPN und verlässt es nie. **Internet** geht überall, auch in Google Kalender und Outlook.com: Die Ranzenpost-Integration stellt den Feed als Home-Assistant-Webhook bereit, über Home Assistant Cloud (Nabu Casa) oder deine eigene externe Adresse. Ohne beides gibt es nur Lokal. Erneuern oder Löschen des Links beendet die alte Adresse sofort.
+
 ### Sprachen und Designs
 
 Deutsch, Englisch, Arabisch, Türkisch, Russisch und Ukrainisch. Arabisch läuft von rechts nach links. Datum, Uhrzeit und Zahlen folgen der Sprache. Helles und dunkles Design, dem Gerät folgend oder festgelegt. Große Systemschriften werden berücksichtigt. Schaltet deine Schule später eine Pflicht zur Zwei-Faktor-Anmeldung ein, sagt Ranzenpost das offen und führt dich hindurch.

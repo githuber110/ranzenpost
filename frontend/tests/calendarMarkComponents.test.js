@@ -18,8 +18,8 @@ describe("the subscription offers the two new parts", () => {
   test("marks and absences stand next to the three existing parts, in backend order", () => {
     const { window } = loadApp();
     const form = draftForm(window);
-    const labels = [...form.querySelectorAll(".check span > :first-child")];
-    const texts = [...form.querySelectorAll(".check span")].map((node) => node.firstChild.textContent);
+    const labels = [...form.querySelectorAll(".check:not(.cal-variant) span > :first-child")];
+    const texts = [...form.querySelectorAll(".check:not(.cal-variant) span")].map((node) => node.firstChild.textContent);
     expect(labels.length).toBeGreaterThan(0);
     expect(texts).toEqual([
       base["calendar.subscribe.component.timetable"],

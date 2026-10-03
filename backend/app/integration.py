@@ -562,7 +562,7 @@ def own_entries_shared(store, child_key):
     return config_for_child(store, child_key).get(OWN_ENTRIES_SETTING) is True
 
 
-def build_info(service, store, now_epoch, feed_port_open):
+def build_info(service, store, now_epoch, feed_port_open, online_feeds=(), outside_access=None):
     config = store.load_config()
     state = state_of(store)
     return {
@@ -573,6 +573,8 @@ def build_info(service, store, now_epoch, feed_port_open):
         "feed_port_open": bool(feed_port_open),
         "last_poll": _iso_or_none(_epoch(state.get("last_poll"))),
         "ingress_path": supervisor.ingress_path(),
+        "online_feeds": [dict(item) for item in online_feeds],
+        "outside_access": dict(outside_access, reported=True) if outside_access else {"cloud": False, "external": False, "reported": False},
     }
 
 

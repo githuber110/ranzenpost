@@ -51,6 +51,10 @@ def test_the_matrix_client_blocks_read_marker_and_receipt_paths_at_runtime():
         client._put("/_matrix/client/v3/rooms/!x:y/receipt/m.read/$evt", {})
     with pytest.raises(ForbiddenMatrixCallError):
         client._put("/_matrix/client/v3/rooms/!x:y/read_markers", {})
+    with pytest.raises(ForbiddenMatrixCallError):
+        client._post("/_matrix/client/v3/rooms/!x:y/read_markers", {})
+    with pytest.raises(ForbiddenMatrixCallError):
+        client._post("/_matrix/client/v3/rooms/!x:y/receipt/m.read/$evt", {})
 
 
 def test_the_one_sanction_covers_the_read_marker_route_and_nothing_else():

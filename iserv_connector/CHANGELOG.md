@@ -3,6 +3,19 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.1.0
+
+### New
+
+- When you create a calendar subscription you choose Local or Internet. Internet also works in Google Calendar and
+  Outlook.com, through Home Assistant Cloud or your own external URL. The page shows no addresses, only add, copy and QR.
+- Own appointments on Saturday or Sunday appear in the week, which then shows the weekend.
+- The start time of an own entry can be typed.
+
+### Fixed
+
+- Marking a messenger chat as read works again. Before, it always failed and the unread count stayed.
+
 ## 2609.4.1
 
 ### New

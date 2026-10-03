@@ -709,10 +709,15 @@ class MatrixClient:
         return response
 
     def _put(self, path, json_body, sanctioned=False):
+        return self._write("put", path, json_body, sanctioned)
+
+    def _post(self, path, json_body, sanctioned=False):
+        return self._write("post", path, json_body, sanctioned)
+
+    def _write(self, method, path, json_body, sanctioned):
         self._guard(path, sanctioned=sanctioned)
-        response = self.session.put(
-            f"{self.base_url}{path}", headers=self._headers(), json=json_body, timeout=self.timeout
-        )
+        send = getattr(self.session, method)
+        response = send(f"{self.base_url}{path}", headers=self._headers(), json=json_body, timeout=self.timeout)
         if response.status_code == 401:
             logger.warning("matrix rejected the token on a write to %s", path)
             raise MatrixAuthError("matrix token rejected")
@@ -740,7 +745,7 @@ class MatrixClient:
         return self._get(MATRIX_MEDIA_PATH.format(server_name=server_name, media_id=media_id))
 
     def send_read_marker(self, room_id, event_id):
-        return self._put(
+        return self._post(
             MATRIX_READ_MARKER_PATH.format(room_id=room_id),
             build_read_marker(event_id),
             sanctioned=True,

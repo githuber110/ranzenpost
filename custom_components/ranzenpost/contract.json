@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/githuber110/ranzenpost/custom_components/ranzenpost/contract.json",
   "title": "Ranzenpost integration API",
-  "description": "Every GET route under /api/integration answers JSON in one of the shapes below. All routes need the header Authorization: Bearer <token>; 401 without or with a wrong token, 403 when called through the ingress proxy, 429 after ten failed attempts a minute from one source. Times are ISO 8601 with the Europe/Berlin offset, all-day dates are YYYY-MM-DD with an exclusive end. Every school of the add-on appears in /info with its own id; a child is addressed by its key, a school by its id.",
+  "description": "Every route under /api/integration answers JSON in one of the shapes below. All routes are GET except /feeds, which takes a JSON body by POST. All routes need the header Authorization: Bearer <token>; 401 without or with a wrong token, 403 when called through the ingress proxy, 429 after ten failed attempts a minute from one source. Times are ISO 8601 with the Europe/Berlin offset, all-day dates are YYYY-MM-DD with an exclusive end. Every school of the add-on appears in /info with its own id; a child is addressed by its key, a school by its id.",
   "routes": {
     "/api/integration/info": {
       "$ref": "#/$defs/info"
@@ -32,6 +32,21 @@
     },
     "/api/integration/changes": {
       "$ref": "#/$defs/changes"
+    },
+    "/api/integration/feed": {
+      "$ref": "#/$defs/feed",
+      "query": [
+        "id",
+        "webhook"
+      ],
+      "description": "Answers only while the subscription is online and webhook matches its current webhook id."
+    },
+    "/api/integration/feeds": {
+      "$ref": "#/$defs/feedsStored",
+      "method": "POST",
+      "body": {
+        "$ref": "#/$defs/feedReports"
+      }
     }
   },
   "errors": {
@@ -78,7 +93,9 @@
             "unknown_school",
             "bad_kind",
             "bad_range",
-            "bad_purpose"
+            "bad_purpose",
+            "unknown_feed",
+            "bad_feeds"
           ]
         },
         "message_key": {
@@ -217,7 +234,9 @@
         "timezone",
         "feed_port_open",
         "last_poll",
-        "ingress_path"
+        "ingress_path",
+        "online_feeds",
+        "outside_access"
       ],
       "properties": {
         "version": {
@@ -260,6 +279,37 @@
         "ingress_path": {
           "type": "string",
           "description": "The Home Assistant panel path that opens the app, for example /hassio/ingress/<slug>. Empty when the add-on runs without the Supervisor."
+        },
+        "online_feeds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/onlineFeed"
+          },
+          "description": "The cloud_url and external_url the add-on currently knows for each feed, so the integration reports again only after a change."
+        },
+        "outside_access": {
+          "type": "object",
+          "required": [
+            "cloud",
+            "external",
+            "reported"
+          ],
+          "properties": {
+            "cloud": {
+              "type": "boolean",
+              "description": "Home Assistant Cloud has an active subscription."
+            },
+            "external": {
+              "type": "boolean",
+              "description": "Home Assistant has an external URL of its own."
+            },
+            "reported": {
+              "type": "boolean",
+              "description": "Whether the integration has reported its access from outside since the add-on started."
+            }
+          },
+          "additionalProperties": false,
+          "description": "What the add-on currently knows about how Home Assistant can be reached from outside."
         }
       },
       "additionalProperties": false
@@ -1125,6 +1175,134 @@
         },
         "room": {
           "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "onlineFeed": {
+      "type": "object",
+      "description": "A calendar subscription the parent shared for access from outside. The integration registers a Home Assistant webhook with this id and reports the addresses it reached it under.",
+      "required": [
+        "id",
+        "webhook_id",
+        "cloud_url",
+        "external_url",
+        "reported"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string",
+          "pattern": "^ranzenpost_[0-9a-f]{32}$"
+        },
+        "cloud_url": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "An http or https address, or empty when there is none."
+        },
+        "external_url": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "An http or https address, or empty when there is none."
+        },
+        "reported": {
+          "type": "boolean",
+          "description": "Whether the integration has reported addresses for the current webhook id at all."
+        }
+      },
+      "additionalProperties": false
+    },
+    "feed": {
+      "type": "object",
+      "required": [
+        "calendar"
+      ],
+      "properties": {
+        "calendar": {
+          "type": "string",
+          "description": "The iCalendar text of the subscription."
+        }
+      },
+      "additionalProperties": false
+    },
+    "feedReports": {
+      "type": "object",
+      "required": [
+        "feeds"
+      ],
+      "properties": {
+        "feeds": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/feedReport"
+          }
+        },
+        "outside": {
+          "$ref": "#/$defs/outsideAccess"
+        }
+      },
+      "additionalProperties": false
+    },
+    "feedsStored": {
+      "type": "object",
+      "required": [
+        "stored"
+      ],
+      "properties": {
+        "stored": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "feedReport": {
+      "type": "object",
+      "description": "The addresses the integration reached one online feed under.",
+      "required": [
+        "id",
+        "webhook_id",
+        "cloud_url",
+        "external_url"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string",
+          "pattern": "^ranzenpost_[0-9a-f]{32}$"
+        },
+        "cloud_url": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "An http or https address, or empty when there is none."
+        },
+        "external_url": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "An http or https address, or empty when there is none."
+        }
+      },
+      "additionalProperties": false
+    },
+    "outsideAccess": {
+      "type": "object",
+      "required": [
+        "cloud",
+        "external"
+      ],
+      "properties": {
+        "cloud": {
+          "type": "boolean",
+          "description": "Home Assistant Cloud has an active subscription."
+        },
+        "external": {
+          "type": "boolean",
+          "description": "Home Assistant has an external URL of its own."
         }
       },
       "additionalProperties": false

@@ -2438,33 +2438,29 @@ button.section-head {
   white-space: nowrap;
 }
 .cal-parts { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-bottom: var(--s-5); }
-.cal-url {
-  display: block;
-  font-family: var(--font-text);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border-radius: var(--r-sm);
-  padding: var(--s-4) var(--s-5);
-  margin-bottom: var(--s-5);
-  overflow-wrap: anywhere;
-  user-select: text;
-}
 .cal-action-row { display: flex; flex-wrap: wrap; gap: var(--s-4); margin-bottom: var(--s-4); }
 .cal-action-row .btn { flex: 1 1 132px; width: auto; }
 a.cal-add { text-decoration: none; margin-bottom: var(--s-4); }
 button.cal-add { margin-bottom: var(--s-4); }
 .cal-webview { margin-block: var(--s-4) var(--s-5); }
-.cal-step-list {
-  margin: var(--s-3) 0 var(--s-3);
-  padding-inline-start: var(--s-7);
+.cal-variant small { display: block; }
+.cal-variant-off { cursor: not-allowed; }
+.cal-variant-off input,
+.cal-variant-off .cal-variant-name,
+.cal-variant-off .cal-variant-hint { opacity: 0.55; }
+.cal-variant-reason { color: var(--ink); margin-block-start: var(--s-2); }
+.cal-name-row .cal-variant-tag { margin-inline-start: auto; }
+.cal-name-row .cal-menu { flex: none; }
+.cal-help-list {
+  margin: var(--s-3) 0 0;
+  padding-inline-start: var(--s-6);
   padding-inline-end: 0;
   color: var(--ink-2);
   font-size: 0.875rem;
   line-height: 1.5;
 }
-.cal-step-list li + li { margin-block-start: var(--s-3); }
+.cal-help-list li + li { margin-block-start: var(--s-2); }
+.cal-online-status { display: flex; gap: var(--s-2); align-items: center; }
 .cal-form-lbl { display: block; margin-bottom: var(--s-3); }
 .cal-locked { opacity: 0.55; cursor: not-allowed; }
 .cal-swatches { display: flex; flex-wrap: wrap; gap: var(--s-2); }
@@ -3797,6 +3793,15 @@ button.pgap:active { background: color-mix(in srgb, var(--accent) 8%, transparen
   font-variant-numeric: tabular-nums;
 }
 .stepper .flabel { margin: 0; }
+.stepper .val-time {
+  min-inline-size: 0;
+  padding-block: 0;
+  padding-inline: var(--s-3);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: center;
+}
+.stepper .val-time:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sbtn {
   inline-size: 44px;
   block-size: 44px;
@@ -3909,6 +3914,10 @@ button.pgap:active { background: color-mix(in srgb, var(--accent) 8%, transparen
 }
 .tt-own .sub { font-size: 0.625rem; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; max-inline-size: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tt-own .room { font-size: 0.5rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+@container tt (max-width: 330px) {
+  .tt-weekend .tt-own .room { display: none; }
+  .tt-weekend .tt-own .sub { -webkit-line-clamp: 3; }
+}
 .tt-own.cut { border-color: var(--warn); background: var(--warn-soft); }
 .tt-own.on-hol { position: relative; z-index: 1; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .tt-void { min-inline-size: 0; }

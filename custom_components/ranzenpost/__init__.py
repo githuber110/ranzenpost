@@ -31,6 +31,7 @@ from .coordinator import (
     login_issue_id,
 )
 from .entity import child_identifier, child_unique_id, panel_url, school_device_info, school_identifier, school_unique_id
+from .online_feed import OnlineFeeds, async_remove_cloudhooks
 from .signals import async_fire_signals
 from .version import RESTART_REQUIRED
 from .websocket import async_register_websocket
@@ -188,6 +189,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_register_card(hass)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+    online = OnlineFeeds(hass, entry.entry_id, coordinator.api)
+    entry.async_on_unload(online.async_unload)
+    await online.async_sync(info.online_feeds, info.outside_access)
 
     announced = coordinator.data
 
@@ -197,6 +201,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -
         data = coordinator.data
         sync_device_names_and_links(hass, entry, data.info)
         _remember_schools(hass, entry, data.info)
+        entry.async_create_background_task(hass, online.async_sync(data.info.online_feeds, data.info.outside_access), f"{DOMAIN} online feeds")
         if data is not announced:
             announced = data
             async_fire_signals(hass, entry.entry_id, data.signals)
@@ -226,6 +231,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) 
         ir.async_delete_issue(hass, DOMAIN, login_issue_id(entry.entry_id, school_id))
     for key in ENTRY_ISSUE_KEYS:
         ir.async_delete_issue(hass, DOMAIN, entry_issue_id(key, entry.entry_id))
+    await async_remove_cloudhooks(hass, entry.entry_id)
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: RanzenpostConfigEntry) -> None:

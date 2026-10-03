@@ -11,10 +11,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(HERE, "..", "..", "custom_components", "ranzenpost", "frontend", "ranzenpost-card.js"), "utf8");
 const MANIFEST = JSON.parse(readFileSync(join(HERE, "..", "..", "custom_components", "ranzenpost", "manifest.json"), "utf8"));
 const CARD_VERSION = /const CARD_VERSION = "([^"]+)";/.exec(SOURCE)[1];
-const [YEAR_MONTH, LINE, FIX] = CARD_VERSION.split(".").map(Number);
+const [YEAR_MONTH, LINE, FIX] = CARD_VERSION.split(".").map((part) => Number.parseInt(part, 10));
 const NEWER_FEATURE = `${YEAR_MONTH}.${LINE + 1}.0`;
 const NEWER_FIX = `${YEAR_MONTH}.${LINE}.${FIX + 1}`;
-const OLDER = `${YEAR_MONTH}.${LINE}.${FIX}b1`;
+const OLDER = `${YEAR_MONTH}.${LINE - 1}.0`;
 
 function hassWith(integrationVersion, language = "de") {
   const hass = makeHass({ language });

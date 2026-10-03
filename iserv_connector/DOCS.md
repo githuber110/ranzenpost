@@ -213,6 +213,14 @@ a password. Treat the link itself as the secret, and revoke/rotate it in Setting
 Nabu Casa remote access does **not** forward app ports: reaching port 8100 from outside your home
 network needs your own home network access or a VPN.
 
+Google Calendar and Outlook.com fetch subscriptions from the internet and never reach port 8100.
+For them, choose **Internet** when you create the calendar. The Ranzenpost integration then
+serves that feed as a Home Assistant webhook: through Home Assistant Cloud (Nabu Casa) when you
+have a subscription, otherwise under your external URL from Settings → System → Network. Anyone
+with that address sees the feed without a password. Renewing or deleting the link ends it.
+Home Assistant writes that address into its own log when a request other than GET reaches it, so
+remove it before you share a Home Assistant log.
+
 ## Privacy & secrets
 
 Your school URL, login and the app's own 2FA key stay on your Home Assistant instance (`/data`).

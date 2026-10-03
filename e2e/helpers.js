@@ -411,7 +411,15 @@ async function leaveSettingsPage(page) {
   else await page.locator(".header-back").click();
 }
 
+async function calendarMenu(page, index) {
+  await page.locator(".cal-menu").first().click();
+  const row = page.locator(".sheet .rows .row").nth(index);
+  await row.waitFor({ state: "visible" });
+  await row.click();
+}
+
 module.exports = {
+  calendarMenu,
   leaveSettingsPage,
   waitForBoot,
   goto,

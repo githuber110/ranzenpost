@@ -93,6 +93,7 @@ def _change_of(change, aliases: dict[str, str]) -> dict[str, Any]:
 
 def _info_of(info, aliases: dict[str, str]) -> dict[str, Any]:
     plain = asdict(info)
+    plain["online_feeds"] = len(info.online_feeds)
     plain["schools"] = [
         dict(
             asdict(school),

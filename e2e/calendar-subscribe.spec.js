@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const {
+  calendarMenu,
   goto,
   waitForSheetSettled,
   checkHorizontalOverflow,
@@ -62,9 +63,9 @@ for (const viewport of VIEWPORTS) {
 
           await openCalendarPage(page);
           await expect(page.locator(".cal-card")).toBeVisible();
-          await expect(page.locator(".cal-url")).toContainText(`${FEED_HOST}:8100/calendar/`);
-          await expect(page.locator(".cal-url")).toHaveAttribute("dir", "ltr");
+          await expect(page.locator(".calendar-page")).not.toContainText(":8100/calendar/");
           await expect(page.locator("button.cal-add")).toBeVisible();
+          await expect(page.locator(".cal-variant-tag")).toBeVisible();
           await assertClean(page, `${viewport.name}/${language.key}/page`);
         });
 
@@ -79,9 +80,10 @@ for (const viewport of VIEWPORTS) {
         test(`stays contained while the parts are being changed (${language.key})`, async ({ page }) => {
           await prepare(page);
           await openCalendarPage(page);
-          await page.locator(".cal-edit").click();
+          await calendarMenu(page, 0);
           await page.waitForSelector(".cal-swatches");
-          await expect(page.locator(".cal-form .check")).toHaveCount(6);
+          await expect(page.locator(".cal-form .check:not(.cal-variant)")).toHaveCount(6);
+          await expect(page.locator(".cal-form .cal-variant")).toHaveCount(2);
           await assertClean(page, `${viewport.name}/${language.key}/edit-form`);
         });
 
@@ -109,7 +111,7 @@ test.describe("calendar subscription page: writing actions", () => {
     });
     await prepare(page);
     await openCalendarPage(page);
-    await page.locator(".cal-rotate").click();
+    await calendarMenu(page, 1);
     await waitForSheetSettled(page);
     await expect(page.locator(".sheet .btn.destructive")).toBeVisible();
     expect(rotateCalls).toEqual([]);
@@ -149,7 +151,7 @@ test.describe("calendar subscription page: writing actions", () => {
     await goto(page);
     await openCalendarPage(page);
     await expect(page.locator(".cal-host")).toHaveCount(0);
-    const url = await page.locator(".cal-url").first().textContent();
+    const url = await page.evaluate(() => calendarLinks(state.calendar.data.subscriptions[0]).plain);
     expect(url).toContain(`${FEED_HOST}:8100/calendar/`);
     const authority = url.split("://")[1].split("/")[0];
     expect(authority).toBe(`${FEED_HOST}:8100`);

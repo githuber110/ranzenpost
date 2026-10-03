@@ -7,12 +7,27 @@ from . import messages, subscriptions
 from .calendar_listener import DEFAULT_PORT as CALENDAR_PORT
 
 
-def register_routes(app, service, subscription_registry, warm):
+def register_routes(app, service, subscription_registry, warm, integration_seen=None):
     def _warm_after(entry):
         wanted = (subscriptions.COMPONENT_TIMETABLE, subscriptions.COMPONENT_MARKS, subscriptions.COMPONENT_OWN_ENTRIES)
         if any(name in (entry.get("components") or []) for name in wanted):
             warm(entry.get("child_key", ""))
         return entry
+
+    def _internet():
+        seen = integration_seen() if integration_seen else 0
+        return subscriptions.internet_access(
+            subscription_registry.outside_access, seen, int(subscription_registry.clock()), subscription_registry.started
+        )
+
+    def _internet_refused(subscription_id=""):
+        access = _internet()
+        if access == subscriptions.INTERNET_READY:
+            return None
+        current = next((view for view in subscription_registry.list() if view.get("id") == subscription_id), None)
+        if current is not None and current.get("online"):
+            return None
+        return _subscription_error(subscriptions.SubscriptionError(subscriptions.INTERNET_REFUSALS[access]))
 
     def _subscription_error(error):
         return JSONResponse(status_code=400, content=messages.result(False, error.message_key))
@@ -21,14 +36,19 @@ def register_routes(app, service, subscription_registry, warm):
     def calendar_subscriptions():
         from .supervisor import calendar_access
 
+        seen = integration_seen() if integration_seen else 0
+        now = int(subscription_registry.clock())
         body = {
-            "subscriptions": subscription_registry.list(),
+            "subscriptions": [
+                subscriptions.settle_online_state(view, seen, now) for view in subscription_registry.list()
+            ],
             "components": list(subscriptions.COMPONENTS),
             "holiday_regions": {
                 entry["id"]: entry.get("holiday_region") or "" for entry in service.store.connections()
             },
             "path_template": "/calendar/{token}.ics",
             "port": int(os.environ.get("ISERV_CALENDAR_PORT", str(CALENDAR_PORT))),
+            "internet": _internet(),
         }
         body.update(calendar_access(store=service.store))
         return body
@@ -47,6 +67,9 @@ def register_routes(app, service, subscription_registry, warm):
 
     @app.post("/api/calendar/subscriptions")
     def create_calendar_subscription(body: dict = Body(...)):
+        refused = _internet_refused() if body.get("online") is True else None
+        if refused is not None:
+            return refused
         try:
             return _warm_after(
                 subscription_registry.create(
@@ -54,6 +77,7 @@ def register_routes(app, service, subscription_registry, warm):
                     body.get("components"),
                     body.get("label", ""),
                     body.get("color", ""),
+                    online=body.get("online") is True,
                 )
             )
         except subscriptions.SubscriptionError as error:
@@ -61,12 +85,16 @@ def register_routes(app, service, subscription_registry, warm):
 
     @app.post("/api/calendar/subscriptions/{subscription_id}")
     def update_calendar_subscription(subscription_id: str, body: dict = Body(...)):
+        refused = _internet_refused(subscription_id) if body.get("online") is True else None
+        if refused is not None:
+            return refused
         try:
             updated = subscription_registry.update(
                 subscription_id,
                 components=body.get("components"),
                 label=body.get("label"),
                 color=body.get("color"),
+                online=body.get("online") if isinstance(body.get("online"), bool) else None,
             )
         except subscriptions.SubscriptionError as error:
             return _subscription_error(error)

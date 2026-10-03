@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { goto, waitForSheetSettled, leaveSettingsPage } = require("./helpers");
+const { calendarMenu, goto, waitForSheetSettled, leaveSettingsPage } = require("./helpers");
 const SCHEMA = require("../tests/settings-schema.json");
 
 const VIEWPORTS = [
@@ -650,7 +650,7 @@ const SETTINGS = [
           await openTab(page, TIMETABLE_TAB);
           await page.locator(".header-actions .icon-btn").first().click();
           await page.waitForSelector(".calendar-page .cal-card", { timeout: 8000 });
-          await page.locator(".cal-edit").click();
+          await calendarMenu(page, 0);
           await page.waitForSelector(".cal-form");
           await page.locator(".cal-form .check input").first().uncheck();
           await page.locator(".cal-form .btn-stack .btn").first().click();
@@ -672,7 +672,7 @@ const SETTINGS = [
       {
         name: "rotate",
         change: async (page) => {
-          await page.locator(".cal-rotate").click();
+          await calendarMenu(page, 1);
           await confirmDestructive(page);
           await page.waitForSelector(".cal-card", { timeout: 8000 });
         },
@@ -690,7 +690,7 @@ const SETTINGS = [
       {
         name: "delete",
         change: async (page) => {
-          await page.locator(".cal-delete").click();
+          await calendarMenu(page, 2);
           await confirmDestructive(page);
           await settled(page);
         },

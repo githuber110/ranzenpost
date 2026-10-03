@@ -43,8 +43,8 @@ async def test_the_loader_accepts_the_integration_with_its_platforms(hass):
     assert integration.config_flow is True
     assert integration.iot_class == "local_polling"
     assert integration.integration_type == "hub"
-    assert integration.dependencies == ["http"]
-    assert integration.after_dependencies == ["hassio", "lovelace"]
+    assert integration.dependencies == ["http", "webhook"]
+    assert integration.after_dependencies == ["cloud", "hassio", "lovelace"]
     assert integration.requirements == []
     platforms = ("binary_sensor", "calendar", "event", "sensor", "config_flow", "diagnostics")
     assert integration.platforms_exists(platforms) == list(platforms)

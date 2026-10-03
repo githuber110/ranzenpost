@@ -267,7 +267,7 @@ def test_info_describes_the_add_on_the_schools_and_the_children(tmp_path):
     body = client.get(PREFIX + "/info", headers=_auth(store)).json()
 
     assert body["version"] == "2609.02.00"
-    assert set(body) == {"version", "schools", "language", "timezone", "feed_port_open", "last_poll", "ingress_path"}
+    assert set(body) == {"version", "schools", "language", "timezone", "feed_port_open", "last_poll", "ingress_path", "online_feeds", "outside_access"}
     assert set(body["schools"][0]) == {
         "id", "name", "url_host", "modules", "disabled", "status", "status_reason", "children", "last_poll", "last_success", "own_entries"
     }

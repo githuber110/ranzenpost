@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2609.4.1";
+  const CARD_VERSION = "2610.1.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";

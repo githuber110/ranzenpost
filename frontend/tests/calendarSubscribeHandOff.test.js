@@ -68,12 +68,13 @@ describe("the companion app opens the calendar through the browser first", () =>
     expect(labels.join(" ")).toContain(window.eval("t('calendar.subscribe.copy')"));
   });
 
-  test("copying and the manual steps stay available", () => {
+  test("copying and the manual way stay available", () => {
     const { window } = loadApp();
     asWebView(window);
     const nodes = actions(window);
     expect(buttonTexts(nodes).join(" ")).toContain(window.eval("t('calendar.subscribe.copy')"));
-    expect(nodes.some((node) => node.querySelector && node.querySelector(".cal-step-list"))).toBe(true);
+    const help = nodes.find((node) => node.classList && node.classList.contains("cal-help"));
+    expect(help.textContent).toContain(window.eval("t('calendar.subscribe.help.app')"));
   });
 });
 

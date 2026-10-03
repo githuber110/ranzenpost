@@ -43,5 +43,11 @@
   "timezone": "Europe/Berlin",
   "feed_port_open": true,
   "last_poll": "2026-09-05T03:49:00+02:00",
-  "ingress_path": "/hassio/ingress/ranzenpost"
+  "ingress_path": "/hassio/ingress/ranzenpost",
+  "online_feeds": [],
+  "outside_access": {
+    "cloud": false,
+    "external": false,
+    "reported": false
+  }
 }

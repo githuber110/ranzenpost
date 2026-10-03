@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
@@ -14,6 +15,10 @@ ROUTE_STATE = "/api/integration/state"
 ROUTE_EVENTS = "/api/integration/events"
 ROUTE_SCHOOL = "/api/integration/school"
 ROUTE_CHANGES = "/api/integration/changes"
+ROUTE_FEED = "/api/integration/feed"
+ROUTE_FEEDS = "/api/integration/feeds"
+NOT_FOUND = 404
+WEBHOOK_ID = re.compile(r"^ranzenpost_[0-9a-f]{32}$")
 AUTH_STATUSES = (401, 403)
 HEADER_INTEGRATION = "X-Ranzenpost-Integration"
 HEADER_INSTALLED = "X-Ranzenpost-Integration-Installed"
@@ -30,6 +35,10 @@ class AuthError(RanzenpostError):
 
 
 class ConnectionError(RanzenpostError):
+    pass
+
+
+class NotFoundError(ConnectionError):
     pass
 
 
@@ -138,6 +147,55 @@ class SchoolInfo:
 
 
 @dataclass(frozen=True)
+class OnlineFeed:
+    id: str
+    webhook_id: str
+    cloud_url: str = ""
+    external_url: str = ""
+    reported: bool = False
+
+    @classmethod
+    def from_json(cls, data: Any) -> OnlineFeed | None:
+        if not isinstance(data, dict):
+            return None
+        feed_id = str(data.get("id") or "")
+        webhook_id = str(data.get("webhook_id") or "")
+        if not feed_id or not WEBHOOK_ID.match(webhook_id):
+            return None
+        return cls(
+            id=feed_id,
+            webhook_id=webhook_id,
+            cloud_url=str(data.get("cloud_url") or ""),
+            external_url=str(data.get("external_url") or ""),
+            reported=data.get("reported") is True,
+        )
+
+
+@dataclass(frozen=True)
+class OutsideAccess:
+    cloud: bool = False
+    external: bool = False
+    reported: bool = False
+
+    @classmethod
+    def from_json(cls, data: Any) -> OutsideAccess:
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            cloud=data.get("cloud") is True,
+            external=data.get("external") is True,
+            reported=data.get("reported") is True,
+        )
+
+
+def _online_feeds(data: Any) -> tuple[OnlineFeed, ...]:
+    if not isinstance(data, list):
+        return ()
+    feeds = (OnlineFeed.from_json(item) for item in data)
+    return tuple(feed for feed in feeds if feed is not None)
+
+
+@dataclass(frozen=True)
 class Info:
     version: str
     schools: tuple[SchoolInfo, ...]
@@ -148,6 +206,8 @@ class Info:
     legacy: bool = False
     ingress_path: str = ""
     integration_version: str = ""
+    online_feeds: tuple[OnlineFeed, ...] = ()
+    outside_access: OutsideAccess = field(default_factory=OutsideAccess)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Info:
@@ -160,6 +220,8 @@ class Info:
             last_poll=parse_datetime(data.get("last_poll")),
             legacy=KEY_SCHOOLS not in data,
             ingress_path=str(data.get("ingress_path") or ""),
+            online_feeds=_online_feeds(data.get("online_feeds")),
+            outside_access=OutsideAccess.from_json(data.get("outside_access")),
         )
 
     @property
@@ -588,19 +650,34 @@ class RanzenpostApi:
     def __post_init__(self) -> None:
         self.base_url = f"http://{self.host}:{int(self.port)}"
 
-    async def _get(self, route: str, params: dict[str, str] | None = None) -> Any:
+    def _headers(self) -> dict[str, str]:
         headers = {"Authorization": f"Bearer {self.token}"}
         if self.integration_version:
             headers[HEADER_INTEGRATION] = self.integration_version
         if self.installed_version:
             headers[HEADER_INSTALLED] = self.installed_version
+        return headers
+
+    async def _get(self, route: str, params: dict[str, str] | None = None) -> Any:
+        return await self._request("GET", route, params=params)
+
+    async def _post(self, route: str, body: Any) -> Any:
+        return await self._request("POST", route, body=body)
+
+    async def _request(
+        self, method: str, route: str, params: dict[str, str] | None = None, body: Any = None
+    ) -> Any:
         try:
             async with (
                 asyncio.timeout(self.timeout),
-                self.session.get(self.base_url + route, params=params, headers=headers) as response,
+                self.session.request(
+                    method, self.base_url + route, params=params, json=body, headers=self._headers()
+                ) as response,
             ):
                 if response.status in AUTH_STATUSES:
                     raise AuthError(f"{route} answered {response.status}")
+                if response.status == NOT_FOUND:
+                    raise NotFoundError(f"{route} answered {response.status}")
                 if response.status != 200:
                     raise ConnectionError(f"{route} answered {response.status}")
                 return await response.json()
@@ -628,3 +705,16 @@ class RanzenpostApi:
 
     async def changes(self) -> list[Change]:
         return [Change.from_json(item) for item in await self._get(ROUTE_CHANGES)]
+
+    async def feed(self, feed_id: str, webhook_id: str) -> str:
+        data = await self._get(ROUTE_FEED, {"id": feed_id, "webhook": webhook_id})
+        calendar = data.get("calendar") if isinstance(data, dict) else None
+        if not isinstance(calendar, str):
+            raise ConnectionError(f"{ROUTE_FEED} answered no calendar")
+        return calendar
+
+    async def report_feeds(self, feeds: list[dict[str, str]], outside: dict[str, bool] | None = None) -> None:
+        body: dict[str, Any] = {"feeds": feeds}
+        if outside is not None:
+            body["outside"] = outside
+        await self._post(ROUTE_FEEDS, body)

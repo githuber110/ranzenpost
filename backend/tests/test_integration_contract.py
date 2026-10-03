@@ -26,7 +26,15 @@ from tests.test_integration_api import (
 )
 
 CONTRACT = Path(__file__).resolve().parents[2] / "custom_components" / "ranzenpost" / "contract.json"
-ROUTES = ("/api/integration/info", "/api/integration/state", "/api/integration/events", "/api/integration/school", "/api/integration/changes")
+ROUTES = (
+    "/api/integration/info",
+    "/api/integration/state",
+    "/api/integration/events",
+    "/api/integration/school",
+    "/api/integration/changes",
+    "/api/integration/feed",
+    "/api/integration/feeds",
+)
 
 
 def contract():
@@ -75,6 +83,8 @@ def test_the_contract_lists_the_query_parameters_the_routes_read():
     assert document["routes"]["/api/integration/state"]["query"] == ["child"]
     assert document["routes"]["/api/integration/events"]["query"] == ["child", "kind", "start", "end", "school", "purpose"]
     assert document["routes"]["/api/integration/school"]["query"] == ["id"]
+    assert document["routes"]["/api/integration/feed"]["query"] == ["id", "webhook"]
+    assert document["routes"]["/api/integration/feeds"]["method"] == "POST"
     assert document["$defs"]["eventKind"]["enum"] == sorted(integration.EVENT_COMPONENTS, key=list(integration.EVENT_COMPONENTS).index)
     assert document["$defs"]["purpose"]["enum"] == list(integration.PURPOSES)
     assert integration_api.ERROR_BAD_PURPOSE in document["$defs"]["error"]["properties"]["error"]["enum"]

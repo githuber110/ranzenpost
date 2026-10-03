@@ -40,6 +40,10 @@ class FakeSession:
         self.calls.append(("PUT", url, headers, json))
         return FakeResponse(self.next_status, self.next_json)
 
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.calls.append(("POST", url, headers, json))
+        return FakeResponse(self.next_status, self.next_json)
+
 
 def make_client(status=200, body=None):
     session = FakeSession()
@@ -386,3 +390,44 @@ def test_the_read_marker_body_names_both_markers_so_the_counter_can_drop():
     body = build_read_marker("$evt-1")
     assert set(body.values()) == {"$evt-1"}
     assert len(body) == 2
+
+
+MATRIX_WRITE_METHODS = {
+    "send_message": ("PUT", "/_matrix/client/v3/rooms/!room:school.example/send/m.room.message/txn-1"),
+    "send_read_marker": ("POST", "/_matrix/client/v3/rooms/!room:school.example/read_markers"),
+}
+
+
+@pytest.mark.parametrize(("name", "expected"), sorted(MATRIX_WRITE_METHODS.items()))
+def test_every_matrix_write_uses_the_method_the_spec_names(name, expected):
+    client, session = make_client()
+    if name == "send_message":
+        client.send_message("!room:school.example", "txn-1", {"msgtype": "m.text", "body": "x"})
+    else:
+        client.send_read_marker("!room:school.example", "$evt-1")
+
+    method, url, headers, _body = session.calls[0]
+    assert (method, url) == (expected[0], BASE + expected[1])
+    assert headers["Authorization"] == "Bearer tok-123"
+
+
+def test_the_read_marker_is_posted_with_both_markers():
+    client, session = make_client()
+
+    client.send_read_marker("!room:school.example", "$evt-1")
+
+    assert session.calls == [
+        (
+            "POST",
+            BASE + "/_matrix/client/v3/rooms/!room:school.example/read_markers",
+            {"Authorization": "Bearer tok-123"},
+            {"m.fully_read": "$evt-1", "m.read": "$evt-1"},
+        )
+    ]
+
+
+def test_a_rejected_token_on_the_read_marker_raises():
+    client, _ = make_client(status=401)
+
+    with pytest.raises(MatrixAuthError):
+        client.send_read_marker("!room:school.example", "$evt-1")

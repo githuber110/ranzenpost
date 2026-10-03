@@ -4766,6 +4766,7 @@ async function openCalendarPage() {
   openSettingsPage(SETTINGS_PAGE_CALENDAR);
   await loadCalendarSubscriptions();
   if (calendarPageOpen()) rerender();
+  watchCalendarPending();
 }
 
 function calendarPageOpen() {
@@ -4788,7 +4789,6 @@ function closeCalendarPage() {
 
 function calendarPageView() {
   const body = [noteBlock(t("calendar.subscribe.warning"))];
-  body.push(el("p", { class: "cal-hint" }, t(calendarIsRemoteSession() ? "calendar.subscribe.reach.remote" : "calendar.subscribe.reach")));
   const loaded = state.calendar;
   if (!loaded) body.push(loadingBlock());
   else if (loaded.error || !loaded.data) body.push(plainCard(t("calendar.subscribe.loadFailed")));
@@ -4880,7 +4880,7 @@ function resumeCalendarPage() {
 function calendarPortNotice(data) {
   if (data.restart_pending || state.calendarPortRestart) return calendarRestartPanel();
   if (data.port_open) return null;
-  if (!(data.subscriptions || []).length) return null;
+  if (!(data.subscriptions || []).some((entry) => !entry.online)) return null;
   if (!data.supervisor) return el("p", { class: "cal-hint" }, t("calendar.subscribe.port.manual", { port: String(calendarPort()) }));
   const busy = state.calendarBusy === CALENDAR_PORT_BUSY;
   const button = el("button", {
@@ -4960,6 +4960,7 @@ function calendarNewDraft(child) {
     label: "",
     placeholder: calendarDefaultName(child),
     color: CALENDAR_DEFAULT_COLOR,
+    online: false,
     error: "",
     busy: false,
   };
@@ -4973,9 +4974,60 @@ function calendarEditDraft(subscription, child) {
     label: subscription.label || "",
     placeholder: calendarDefaultName(child),
     color: subscription.color || CALENDAR_DEFAULT_COLOR,
+    online: !!subscription.online,
+    wasOnline: !!subscription.online,
     error: "",
     busy: false,
   };
+}
+
+const CALENDAR_INTERNET_READY = "ready";
+const CALENDAR_INTERNET_REASONS = {
+  checking: "calendar.subscribe.variant.internet.checking",
+  no_integration: "calendar.subscribe.variant.internet.noIntegration",
+  update_integration: "calendar.subscribe.variant.internet.update",
+  no_access: "calendar.subscribe.variant.internet.noAccess",
+};
+
+function calendarInternetReason() {
+  const data = calendarData();
+  const access = data && data.internet;
+  if (access === CALENDAR_INTERNET_READY) return "";
+  return CALENDAR_INTERNET_REASONS[access] || CALENDAR_INTERNET_REASONS.no_integration;
+}
+
+function calendarVariantOption(draft, online, refresh) {
+  const reason = online && !draft.wasOnline ? calendarInternetReason() : "";
+  const input = el("input", { type: "radio", name: `cal-variant-${draft.childId}`, value: online ? "internet" : "local" });
+  input.checked = draft.online === online;
+  if (reason) input.disabled = true;
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    draft.online = online;
+    refresh();
+  });
+  const key = online ? "internet" : "local";
+  const reasonId = `cal-variant-reason-${draft.childId}`;
+  if (reason) input.setAttribute("aria-describedby", reasonId);
+  return el("label", { class: reason ? "cell check cal-variant cal-variant-off" : "cell check cal-variant" }, [
+    input,
+    el("span", {}, [
+      el("span", { class: "cal-variant-name" }, t(`calendar.subscribe.variant.${key}`)),
+      el("small", { class: "cal-variant-hint" }, t(`calendar.subscribe.variant.${key}.hint`)),
+      reason ? el("small", { class: "cal-variant-reason", id: reasonId }, t(reason)) : null,
+    ]),
+  ]);
+}
+
+function calendarVariantField(draft, refresh) {
+  if (draft.online && !draft.wasOnline && calendarInternetReason()) draft.online = false;
+  return el("div", { class: "field" }, [
+    el("span", { class: "lbl" }, t("calendar.subscribe.variant")),
+    el("div", { class: "field-group", role: "radiogroup", "aria-label": t("calendar.subscribe.variant") }, [
+      calendarVariantOption(draft, false, refresh),
+      calendarVariantOption(draft, true, refresh),
+    ]),
+  ]);
 }
 
 function calendarComponents() {
@@ -5057,6 +5109,7 @@ function calendarForm(draft) {
     wrap.append(el("button", { class: "btn ghost slim", type: "button", onclick: openCalendarRegionSetting }, t("calendar.subscribe.region.open")));
   }
   wrap.append(problem);
+  wrap.append(calendarVariantField(draft, refresh));
   wrap.append(calendarLabelField(draft));
   wrap.append(calendarColorField(draft, refresh));
   submit.addEventListener("click", () => submitCalendarDraft(draft));
@@ -5117,6 +5170,7 @@ async function submitCalendarDraft(draft) {
     components: draft.components,
     label: draft.label,
     color: draft.color,
+    online: !!draft.online,
   };
   const result = draft.id
     ? await calendarPostRequest(`api/calendar/subscriptions/${encodeURIComponent(draft.id)}`, payload)
@@ -5132,7 +5186,47 @@ async function submitCalendarDraft(draft) {
   await loadCalendarSubscriptions();
   rerender();
   toast(t(wasUpdate ? "common.saved" : "calendar.subscribe.created"));
-  if (!wasUpdate) await autoOpenCalendarPort();
+  if (!draft.online && (!wasUpdate || draft.wasOnline)) await autoOpenCalendarPort();
+  watchCalendarPending();
+}
+
+const CALENDAR_PENDING_POLL_MS = 10000;
+const CALENDAR_PENDING_MAX_POLLS = 30;
+let calendarPendingWatch = 0;
+
+function calendarHasPending() {
+  const data = calendarData();
+  if (!data) return false;
+  if (data.internet === "checking") return true;
+  return (data.subscriptions || []).some((entry) => entry.online && calendarOnlineStatus(entry) === "pending");
+}
+
+function watchCalendarPending(round = 0) {
+  calendarPendingWatch += 1;
+  const watch = calendarPendingWatch;
+  if (!calendarHasPending() || round >= CALENDAR_PENDING_MAX_POLLS) return;
+  window.setTimeout(async () => {
+    if (watch !== calendarPendingWatch || !calendarPageOpen()) return;
+    await refreshCalendarPending();
+    if (watch !== calendarPendingWatch || !calendarPageOpen()) return;
+    watchCalendarPending(round + 1);
+  }, CALENDAR_PENDING_POLL_MS);
+}
+
+async function refreshCalendarPending() {
+  let fresh = null;
+  try {
+    fresh = await getJson("api/calendar/subscriptions");
+  } catch (error) {
+    return false;
+  }
+  const current = calendarData();
+  if (!current || !fresh || typeof fresh !== "object" || !Array.isArray(fresh.subscriptions)) return false;
+  if (JSON.stringify(current) === JSON.stringify(fresh)) return false;
+  const accessChanged = current.internet !== fresh.internet;
+  state.calendar = { data: fresh, error: false };
+  if ((!state.calendarDraft || accessChanged) && !state.sheet) rerender();
+  return true;
 }
 
 async function autoOpenCalendarPort() {
@@ -5148,17 +5242,14 @@ function calendarSubscriptionBlock(subscription, child) {
   nodes.push(el("div", { class: "cal-name-row" }, [
     dot,
     el("b", { class: "cal-name" }, subscription.label || calendarDefaultName(child)),
+    el("span", { class: "tag cal-variant-tag" }, t(subscription.online ? "calendar.subscribe.variant.internet" : "calendar.subscribe.variant.local")),
+    calendarMenuButton(subscription, child),
   ]));
   const parts = (subscription.components || []).map((component) =>
     el("span", { class: "tag" }, t(`calendar.subscribe.component.${component}`))
   );
   if (parts.length) nodes.push(el("div", { class: "cal-parts" }, parts));
-  const host = calendarHost();
-  if (!host) nodes.push(el("p", { class: "cal-hint" }, t("calendar.subscribe.host.missing")));
-  else nodes.push(el("code", { class: "cal-url", dir: "ltr" }, calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN)));
-  nodes.push(calendarFetchLine(subscription));
-  nodes.push(el("p", { class: "cal-hint cal-refresh" }, t(isApplePlatform() ? "calendar.subscribe.refresh.apple" : "calendar.subscribe.refresh")));
-  for (const node of calendarActions(subscription, child)) nodes.push(node);
+  for (const node of calendarActions(subscription)) nodes.push(node);
   return nodes;
 }
 
@@ -5241,6 +5332,11 @@ function calendarAddButton(subscription, feedUrl) {
 
 const WEBVIEW_UA_MARKERS = ["homeassistant", "home assistant", "; wv)"];
 
+function isApplePlatform() {
+  const agent = String(navigator.userAgent || "").toLowerCase();
+  return agent.includes("iphone") || agent.includes("ipad") || agent.includes("ipod") || agent.includes("macintosh");
+}
+
 function isEmbeddedWebView() {
   const agent = String(navigator.userAgent || "").toLowerCase();
   if (WEBVIEW_UA_MARKERS.some((marker) => agent.includes(marker))) return true;
@@ -5252,74 +5348,107 @@ function isEmbeddedWebView() {
   return appleTouch && agent.includes("applewebkit") && !agent.includes("safari/");
 }
 
-function isApplePlatform() {
-  const agent = String(navigator.userAgent || "").toLowerCase();
-  return agent.includes("iphone") || agent.includes("ipad") || agent.includes("ipod")
-    || (agent.includes("macintosh") && Number(navigator.maxTouchPoints || 0) > 1);
+function calendarLinks(subscription) {
+  if (!subscription.online) {
+    return {
+      web: calendarFeedUrl(subscription, CALENDAR_SCHEME_WEB),
+      plain: calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN),
+      local: true,
+    };
+  }
+  if (calendarOnlineStatus(subscription) !== CALENDAR_ONLINE_READY) return { web: "", plain: "", local: false };
+  const plain = String(subscription.online_url || "");
+  return { web: plain.replace(/^https?:/, `${CALENDAR_SCHEME_WEB}:`), plain, local: false };
 }
 
-function calendarWebViewSteps() {
-  const firstStep = isApplePlatform()
-    ? "calendar.subscribe.webview.step1"
-    : "calendar.subscribe.webview.step1Other";
-  return el("div", { class: "cal-webview" }, [
-    el("span", { class: "overline" }, t("calendar.subscribe.webview.title")),
-    el("ol", { class: "cal-step-list" }, [
-      el("li", {}, t(firstStep)),
-      el("li", {}, t("calendar.subscribe.webview.step2")),
-    ]),
-    el("p", { class: "cal-hint" }, t("calendar.subscribe.webview.hint")),
-    el("p", { class: "cal-hint cal-import-hint" }, t("calendar.subscribe.importHint")),
-  ]);
-}
-
-function calendarActions(subscription, child) {
+function calendarActions(subscription) {
   const nodes = [];
-  const feedUrl = calendarFeedUrl(subscription, CALENDAR_SCHEME_WEB);
-  const plainUrl = calendarFeedUrl(subscription, CALENDAR_SCHEME_PLAIN);
-  const busy = !!state.calendarBusy;
+  if (subscription.online && calendarOnlineStatus(subscription) !== CALENDAR_ONLINE_READY) {
+    const status = calendarOnlineStatus(subscription);
+    nodes.push(el("p", { class: "cal-hint cal-online-status" }, [
+      status === "pending" ? el("span", { class: "spin" }) : null,
+      t(CALENDAR_ONLINE_TEXTS[status]),
+    ]));
+    return nodes;
+  }
+  const links = calendarLinks(subscription);
+  if (!links.plain) {
+    nodes.push(el("p", { class: "cal-hint" }, t("calendar.subscribe.host.missing")));
+    return nodes;
+  }
   const embedded = isEmbeddedWebView();
-  if (embedded && plainUrl) {
-    nodes.push(calendarBrowserButton(subscription, calendarSubscribeUrl(plainUrl)));
-    nodes.push(calendarWebViewSteps());
-  } else if (embedded) {
-    nodes.push(noteBlock(t("calendar.subscribe.host.missing")));
-  } else if (feedUrl) {
-    nodes.push(calendarAddButton(subscription, feedUrl));
+  if (embedded) {
+    nodes.push(calendarBrowserButton(subscription, links.local ? calendarSubscribeUrl(links.plain) : links.web));
+  } else {
+    nodes.push(calendarAddButton(subscription, links.web));
   }
   if (state.calendarHandOffStalled === subscription.id) nodes.push(calendarHandOffStalledBlock());
-  const row = el("div", { class: "cal-action-row" });
-  if (!embedded) row.append(calendarCopyButton(plainUrl));
-  else if (plainUrl) row.append(calendarCopyButton(calendarSubscribeUrl(plainUrl)));
-  if (typeof qrMatrix === "function" && feedUrl) row.append(calendarQrButton(subscription));
-  if (row.childNodes.length) nodes.push(row);
-  if (state.calendarQr === subscription.id && feedUrl) {
-    const panel = calendarQrPanel(feedUrl);
+  const copied = !embedded ? links.plain
+    : links.local ? calendarSubscribeUrl(links.plain)
+    : isApplePlatform() ? links.web : links.plain;
+  const row = el("div", { class: "cal-action-row" }, [calendarCopyButton(copied)]);
+  if (typeof qrMatrix === "function") row.append(calendarQrButton(subscription));
+  nodes.push(row);
+  if (state.calendarQr === subscription.id) {
+    const panel = calendarQrPanel(links.web);
     if (panel) nodes.push(panel);
   }
-  const rotating = state.calendarBusy === calendarActionKey("rotate", subscription);
-  const revoking = state.calendarBusy === calendarActionKey("revoke", subscription);
-  nodes.push(el("div", { class: "cal-action-row" }, [
-    el("button", {
-      class: "btn ghost slim cal-edit",
-      type: "button",
-      disabled: busy ? "disabled" : null,
-      onclick: () => { state.calendarDraft = calendarEditDraft(subscription, child); rerender(); },
-    }, t("calendar.subscribe.edit")),
-    el("button", {
-      class: "btn ghost slim cal-rotate",
-      type: "button",
-      disabled: busy ? "disabled" : null,
-      onclick: () => rotateCalendarSubscription(subscription),
-    }, rotating ? [el("span", { class: "spin" }), t("calendar.subscribe.rotate")] : [t("calendar.subscribe.rotate")]),
-  ]));
-  nodes.push(el("button", {
-    class: "btn destructive slim cal-delete",
-    type: "button",
-    disabled: busy ? "disabled" : null,
-    onclick: () => revokeCalendarSubscription(subscription),
-  }, revoking ? [el("span", { class: "spin" }), t("calendar.subscribe.delete")] : [icon("trash", 16), t("calendar.subscribe.delete")]));
+  nodes.push(calendarFetchLine(subscription));
+  nodes.push(calendarHelp(subscription));
   return nodes;
+}
+
+function calendarHelp(subscription) {
+  const keys = subscription.online
+    ? ["apple", "androidInternet", "google", "outlook"]
+    : ["apple", "android", "localOnly"];
+  if (isEmbeddedWebView()) keys.push(subscription.online ? "appInternet" : "app");
+  const details = el("details", { class: "help-details cal-help" }, [
+    el("summary", { class: "help-details-summary" }, t("calendar.subscribe.help.title")),
+    el("ul", { class: "cal-help-list" }, keys.map((key) => el("li", {}, t(`calendar.subscribe.help.${key}`)))),
+  ]);
+  details.open = state.calendarHelpOpen === subscription.id;
+  details.addEventListener("toggle", () => {
+    if (details.open) state.calendarHelpOpen = subscription.id;
+    else if (state.calendarHelpOpen === subscription.id) state.calendarHelpOpen = "";
+  });
+  return details;
+}
+
+function calendarMenuButton(subscription, child) {
+  return el("button", {
+    class: "icon-btn cal-menu",
+    type: "button",
+    "aria-label": t("calendar.subscribe.menu"),
+    disabled: state.calendarBusy ? "disabled" : null,
+    onclick: () => openSheet(() => calendarMenuSheet(subscription, child)),
+  }, [icon("more", 18)]);
+}
+
+function calendarMenuSheet(subscription, child) {
+  return sheet(subscription.label || calendarDefaultName(child), [el("div", { class: "rows flat" }, [
+    letterActionRow("settings", t("calendar.subscribe.edit"), () => {
+      closeSheet();
+      state.calendarDraft = calendarEditDraft(subscription, child);
+      rerender();
+    }),
+    letterActionRow("restore", t("calendar.subscribe.rotate"), () => { closeSheet(); rotateCalendarSubscription(subscription); }),
+    letterActionRow("trash", t("calendar.subscribe.delete"), () => { closeSheet(); revokeCalendarSubscription(subscription); }),
+  ])]);
+}
+
+const CALENDAR_ONLINE_READY = "ready";
+const CALENDAR_ONLINE_TEXTS = {
+  pending: "calendar.subscribe.online.pending",
+  stalled: "calendar.subscribe.online.stalled",
+  no_integration: "calendar.subscribe.online.noIntegration",
+  unreachable: "calendar.subscribe.online.unreachable",
+};
+
+function calendarOnlineStatus(subscription) {
+  const status = subscription.online_state;
+  if (status === CALENDAR_ONLINE_READY) return subscription.online_url ? CALENDAR_ONLINE_READY : "pending";
+  return Object.prototype.hasOwnProperty.call(CALENDAR_ONLINE_TEXTS, status) ? status : "pending";
 }
 
 function calendarCopyButton(url) {
@@ -5395,6 +5524,7 @@ async function runCalendarAction(key, request, doneKey) {
   await loadCalendarSubscriptions();
   rerender();
   toast(t(doneKey));
+  watchCalendarPending();
 }
 
 async function rotateCalendarSubscription(subscription) {
@@ -5442,11 +5572,17 @@ function timetableGrid(data, childId, options) {
   for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
     blocked.push(!!fullWeek || holidayBlocksLessons(isoDate(addDays(monday, day))));
   }
+  const dayCount = planWeekDays(owner, monday);
+  const columns = blocked.concat(Array.from({ length: dayCount - HOLIDAY_SCHOOL_DAYS }, () => false));
   const grid = el("div", { class: state.spotlightSubject ? "tt spotlight" : "tt" });
+  if (dayCount > HOLIDAY_SCHOOL_DAYS) {
+    grid.classList.add("tt-weekend");
+    grid.style.gridTemplateColumns = `30px repeat(${dayCount}, 1fr)`;
+  }
   grid.addEventListener("keydown", spotlightEscape);
   if (opts.swipe !== false) setupWeekSwipe(grid);
   grid.append(el("div", { style: "grid-column:1;grid-row:1" }));
-  for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
+  for (let day = 0; day < dayCount; day += 1) {
     const date = addDays(monday, day);
     const entry = holidayDay(isoDate(date));
     grid.append(
@@ -5461,7 +5597,7 @@ function timetableGrid(data, childId, options) {
   }
   if (fullWeek) {
     grid.append(holidayFullField(fullWeek, monday));
-    const own = ownPlanLayout(data, owner, monday, blocked.map(() => true), [], 3);
+    const own = ownPlanLayout(data, owner, monday, columns.map((_, day) => day < HOLIDAY_SCHOOL_DAYS), [], 3);
     if (own) for (const node of own.nodes) grid.append(node);
     return grid;
   }
@@ -5474,7 +5610,7 @@ function timetableGrid(data, childId, options) {
     .filter((n) => Number.isInteger(n) && n > 0);
   const maxPeriod = periodsWithLessons.length ? Math.max(...periodsWithLessons) : 5;
   const rows = Array.from({ length: maxPeriod }, (_, index) => index + 1);
-  const own = ownPlanLayout(data, owner, monday, blocked, rows);
+  const own = ownPlanLayout(data, owner, monday, columns, rows);
   const lineOf = (period) => (own ? own.rowOf.get(period) : period + 1);
   const byKey = new Map();
   for (const lesson of visible) {
@@ -13729,12 +13865,26 @@ function periodsDetailParts() {
   return Object.assign(empty, parts || {});
 }
 
-function stepper(label, value, onStep, canLower, canRaise, name) {
+function stepper(label, value, onStep, canLower, canRaise, name, onType) {
+  const shown = onType ? stepperTimeInput(label, value, onType) : el("span", { class: "val", "aria-label": label }, value);
   return el("div", { class: `stepper ${name}` }, [
     el("button", { class: "sbtn", type: "button", "aria-label": t("periods.earlier", { minutes: formatNumber(PERIOD_STEP) }), disabled: canLower ? null : "disabled", onclick: () => onStep(-PERIOD_STEP) }, [icon("minus", 18)]),
-    el("span", { class: "val", "aria-label": label }, value),
+    shown,
     el("button", { class: "sbtn", type: "button", "aria-label": t("periods.later", { minutes: formatNumber(PERIOD_STEP) }), disabled: canRaise ? null : "disabled", onclick: () => onStep(PERIOD_STEP) }, [icon("plus", 18)]),
   ]);
+}
+
+function stepperTimeInput(label, minutes, onType) {
+  const input = el("input", { class: "val val-time", type: "time", step: "60", dir: "ltr", value: hhmm(minutes), "aria-label": label });
+  input.addEventListener("change", () => {
+    const chosen = periodRules().minutesOf(input.value);
+    if (chosen === null) {
+      input.value = hhmm(minutes);
+      return;
+    }
+    onType(chosen);
+  });
+  return input;
 }
 
 function durationField(options) {
@@ -14214,7 +14364,11 @@ function entryFormParts(detail, data) {
     : t("periods.earliest.none");
   body.push(el("div", { class: "field" }, [
     el("span", { class: "lbl" }, t("periods.field.start")),
-    stepper(t("periods.field.start"), clockLabel(form.start), (delta) => { form.start += delta; form.note = ""; refit(); }, form.start - PERIOD_STEP >= found.minStart, found.max > PERIOD_STEP && form.start + 2 * PERIOD_STEP <= P.DAY_MINUTES, "entry-start"),
+    stepper(t("periods.field.start"), form.start, (delta) => { form.start += delta; form.note = ""; refit(); }, form.start - PERIOD_STEP >= found.minStart, found.max > PERIOD_STEP && form.start + 2 * PERIOD_STEP <= P.DAY_MINUTES, "entry-start", (chosen) => {
+      form.start = Math.max(found.minStart, Math.min(chosen, P.DAY_MINUTES - PERIOD_STEP));
+      form.note = form.start !== chosen ? t("periods.clamped.start", { time: clockLabel(form.start) }) : "";
+      refit();
+    }),
     el("span", { class: "hint" }, earliest),
   ]));
   const maxText = found.limit
@@ -14406,6 +14560,30 @@ function planFreeCell(owner, iso, period) {
   });
 }
 
+const PLAN_WEEK_DAYS = 7;
+
+function planWeekendEntries(owner, monday) {
+  const P = periodRules();
+  const school = connectionOfKey(owner);
+  const box = school ? periodsData(school) : null;
+  if (!periodsReady(box) || !box.entries.length) return [];
+  const child = P.rawChild(owner);
+  const found = [];
+  for (let day = HOLIDAY_SCHOOL_DAYS; day < PLAN_WEEK_DAYS; day += 1) {
+    const iso = isoDate(addDays(monday, day));
+    const holiday = holidayDay(iso, school);
+    const shown = P.resolveDay(box.entries, [], iso, child, !!(holiday && holiday.free))
+      .some((item) => item.state !== P.STATE_HIDDEN && item.entry.type !== P.TYPE_PAUSE);
+    if (shown) found.push(day);
+  }
+  return found;
+}
+
+function planWeekDays(owner, monday) {
+  const weekend = planWeekendEntries(owner, monday);
+  return weekend.length ? Math.max(...weekend) + 1 : HOLIDAY_SCHOOL_DAYS;
+}
+
 function ownPlanLayout(data, owner, monday, blocked, periods, firstLine) {
   const P = periodRules();
   const school = connectionOfKey(owner);
@@ -14417,13 +14595,13 @@ function ownPlanLayout(data, owner, monday, blocked, periods, firstLine) {
   const groups = new Map();
   const first = firstLine || 2;
   let any = false;
-  for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
+  for (let day = 0; day < blocked.length; day += 1) {
     const iso = isoDate(addDays(monday, day));
     const holiday = holidayDay(iso, school);
     const spans = blocked[day] ? [] : P.spansFor(rows, regular[iso] || []);
     for (const item of P.resolveDay(box.entries, spans, iso, child, !!(blocked[day] || (holiday && holiday.free)))) {
       if (item.state === P.STATE_HIDDEN) continue;
-      if (blocked[day] && item.entry.type === P.TYPE_PAUSE) continue;
+      if ((blocked[day] || day >= HOLIDAY_SCHOOL_DAYS) && item.entry.type === P.TYPE_PAUSE) continue;
       any = true;
       const kind = item.entry.type === P.TYPE_PAUSE ? "strip" : "own";
       const start = P.startOf(item.entry);
@@ -14469,7 +14647,7 @@ function planStripNodes(school, group, line) {
     el("button", {
       class: cut ? "tt-strip cut" : "tt-strip",
       type: "button",
-      style: `grid-column:2 / -1;grid-row:${line}`,
+      style: `grid-column:2 / span ${HOLIDAY_SCHOOL_DAYS};grid-row:${line}`,
       "data-entry": shown.entry.id,
       onclick: () => openEntryDetail(school, shown.entry.id),
     }, [iservText("span", {}, [...names, durationLabel(shown.end - shown.start)].join(" · "))]),
@@ -14479,7 +14657,7 @@ function planStripNodes(school, group, line) {
 function planOwnNodes(school, group, line, blocked) {
   const P = periodRules();
   const nodes = [el("div", { class: "tt-hour own", style: `grid-column:1;grid-row:${line}` }, [el("span", {}, clockLabel(group.start))])];
-  for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
+  for (let day = 0; day < blocked.length; day += 1) {
     const item = group.cells.get(day);
     const place = `grid-column:${day + 2};grid-row:${line}`;
     if (!item) {

@@ -103,7 +103,9 @@ def create_app(
 
     warm = calendar_warmer or warm_calendar
     access = integration_access or IntegrationAccess(service.store)
-    register_integration_routes(app, service, service.store, holiday_source, access, warm=warm)
+    register_integration_routes(
+        app, service, service.store, holiday_source, access, warm=warm, registry=subscription_registry
+    )
     register_status_routes(app, access)
     app.state.integration_access = access
     register_ingress_guard(app, ingress_only_from_env() if ingress_only is None else ingress_only)
@@ -296,7 +298,7 @@ def create_app(
             return messages.result(False, "api.notify.failed")
         return messages.result(True, "api.notify.sent")
 
-    register_calendar_routes(app, service, subscription_registry, warm)
+    register_calendar_routes(app, service, subscription_registry, warm, integration_seen=lambda: access.last_request)
 
     register_mark_routes(app, marks_registry)
 

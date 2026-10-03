@@ -52,7 +52,7 @@ describe("the subscription path fits the device it is shown on", () => {
     expect(add).not.toBeNull();
     expect(add.textContent).toContain(window.eval('t("calendar.subscribe.add")'));
     expect(host.querySelector(".cal-open-browser")).toBeNull();
-    expect(host.querySelector(".cal-webview")).toBeNull();
+    expect(host.querySelector(".cal-help").textContent).not.toContain(window.eval('t("calendar.subscribe.help.app")'));
     expect(host.querySelector(".cal-copy")).not.toBeNull();
   });
 
@@ -63,14 +63,7 @@ describe("the subscription path fits the device it is shown on", () => {
     expect(host.querySelector("button")).toBe(open);
     expect(open.textContent).toContain(window.eval('t("calendar.subscribe.add")'));
     expect(host.querySelector(".cal-copy")).not.toBeNull();
-    const steps = host.querySelector(".cal-webview");
-    expect(steps).not.toBeNull();
-    expect([...steps.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
-      window.eval('t("calendar.subscribe.webview.step1")'),
-      window.eval('t("calendar.subscribe.webview.step2")'),
-    ]);
-    expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.webview.hint")'));
-    expect(steps.textContent).toContain(window.eval('t("calendar.subscribe.importHint")'));
+    expect(host.querySelector(".cal-help").textContent).toContain(window.eval('t("calendar.subscribe.help.app")'));
   });
 
   test("the web view hands the calendar to the browser, never to webcal inside itself", () => {
@@ -104,11 +97,9 @@ describe("the subscription path fits the device it is shown on", () => {
 
   test("an android web view is never told to open the address in safari", () => {
     const { window, host } = actionsFor(ANDROID_WEBVIEW_UA);
-    const steps = host.querySelector(".cal-webview");
-    expect(steps).not.toBeNull();
-    const first = steps.querySelector("li").textContent;
-    expect(first).toBe(window.eval('t("calendar.subscribe.webview.step1Other")'));
-    expect(first).not.toContain("Safari");
+    const help = host.querySelector(".cal-help").textContent;
+    expect(help).toContain(window.eval('t("calendar.subscribe.help.app")'));
+    expect(help).not.toContain("Safari");
   });
 
   test("without a reachable address the web view shows no dead copy button", () => {

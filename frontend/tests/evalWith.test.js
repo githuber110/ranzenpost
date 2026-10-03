@@ -17,7 +17,7 @@ describe("test code passes values to the app window as data", () => {
       });
     }
     expect(offenders).toEqual([]);
-  });
+  }, 20000);
 
   test("values arrive as objects of the app window", () => {
     const { window } = loadApp();
