@@ -36,6 +36,7 @@ describe("the subscription offers the two new parts", () => {
       "marks",
       "absences",
       "own_entries",
+      "school_events",
     ]);
   });
 

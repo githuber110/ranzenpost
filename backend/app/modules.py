@@ -1,6 +1,6 @@
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 
 from bs4 import BeautifulSoup
 
@@ -16,6 +16,14 @@ from .iserv.messenger import (
     parse_bootstrap,
 )
 from .iserv.pages import path_of
+from .iserv.school_calendar import (
+    CALENDAR_EVENTS_PATH,
+    CALENDAR_SOURCES_PATH,
+    CalendarShapeError,
+    events_params,
+    parse_events,
+    parse_sources,
+)
 from .pathpattern import path_pattern
 from .validate import normalize_school_url
 from .module_catalogue import link_only_path, official_name, slug_of
@@ -26,7 +34,9 @@ PINBOARD = "pinboard"
 ABSENCES = "absences"
 CONFERENCES = "conferences"
 MESSENGER = "messenger"
-MODULES = (TIMETABLE, LETTERS, PINBOARD, ABSENCES, CONFERENCES, MESSENGER)
+CALENDAR = "calendar"
+MODULES = (TIMETABLE, LETTERS, PINBOARD, ABSENCES, CONFERENCES, MESSENGER, CALENDAR)
+CONFIRMED_ONLY = frozenset({CALENDAR})
 
 AVAILABLE = "available"
 MISSING = "missing"
@@ -38,6 +48,7 @@ SEGMENTS = {
     "parentletter": (LETTERS,),
     "parentconference": (CONFERENCES,),
     "messenger": (MESSENGER,),
+    "calendar": (CALENDAR,),
     "dieschulapp": (PINBOARD, ABSENCES),
     "dsa-timetable": (TIMETABLE,),
     "dsa-pinboard": (PINBOARD,),
@@ -73,6 +84,7 @@ PROBES = {
     ABSENCES: (DSA_API + "/sickNotes/userSelection/", None),
     CONFERENCES: ("/iserv/parentconference/attendee/", None),
     MESSENGER: ("/iserv/messenger/", None),
+    CALENDAR: (CALENDAR_SOURCES_PATH, None),
 }
 MISSING_STATUSES = (403, 404)
 OUTCOME_RANK = {AVAILABLE: 2, UNKNOWN: 1, MISSING: 0}
@@ -97,7 +109,7 @@ HISTORY_LIMIT = 30
 
 def default_registry():
     return {
-        "modules": {name: True for name in MODULES},
+        "modules": {name: name not in CONFIRMED_ONLY for name in MODULES},
         "unsupported": [],
         "covered": [],
         "unknown": [],
@@ -192,11 +204,7 @@ def open_url(school_url, slug):
     path = link_only_path(slug)
     if not path or not path.startswith(ISERV_ROOT + "/"):
         return ""
-    try:
-        base = normalize_school_url(school_url)
-    except ValueError:
-        return ""
-    return base + path
+    return open_page_url(school_url, path)
 
 
 def with_open_urls(registry, school_url):
@@ -206,6 +214,18 @@ def with_open_urls(registry, school_url):
             for entry in registry[field]
         ]
     return registry
+
+
+def open_page_url(school_url, path):
+    try:
+        base = normalize_school_url(school_url)
+    except ValueError:
+        return ""
+    return base + path
+
+
+def lists_module(registry, slug):
+    return any(isinstance(entry, dict) and entry.get("slug") == slug for entry in (registry or {}).get("unsupported") or [])
 
 
 def _covered(entry, flags):
@@ -232,7 +252,7 @@ def normalize(registry):
     if not isinstance(registry, dict):
         return base
     flags = registry.get("modules") if isinstance(registry.get("modules"), dict) else {}
-    base["modules"] = {name: bool(flags.get(name, True)) for name in MODULES}
+    base["modules"] = {name: bool(flags.get(name, name not in CONFIRMED_ONLY)) for name in MODULES}
     present = [
         _unsupported_entry(entry)
         for entry in (registry.get("unsupported") or []) + (registry.get("covered") or [])
@@ -362,7 +382,28 @@ def _messenger_served(response, fetch):
     return MISSING
 
 
-PAGE_CHECKS = {MESSENGER: _messenger_served}
+def _school_calendar_served(response, fetch):
+    if not _json_reads(response, parse_sources):
+        return MISSING
+    today = date.today()
+    events = fetch(CALENDAR_EVENTS_PATH, events_params(today, today + timedelta(days=1)))
+    if events is None:
+        return UNKNOWN
+    if int(getattr(events, "status_code", 0) or 0) != 200:
+        return MISSING
+    return AVAILABLE if _json_reads(events, parse_events) else MISSING
+
+
+def _json_reads(response, parse):
+    reader = getattr(response, "json", None)
+    try:
+        parse(reader() if callable(reader) else None)
+    except (ValueError, TypeError, CalendarShapeError):
+        return False
+    return True
+
+
+PAGE_CHECKS = {MESSENGER: _messenger_served, CALENDAR: _school_calendar_served}
 
 
 def _school_app_timetable_probe(today):
@@ -444,6 +485,8 @@ def detect(html, fetch, previous, clock=time.time, login_html="", school_app_tim
             flags[name] = False
         elif earlier is not None and earlier["checked_at"]:
             flags[name] = earlier["modules"][name]
+        elif name in CONFIRMED_ONLY:
+            flags[name] = False
         elif links:
             flags[name] = name in linked
         else:

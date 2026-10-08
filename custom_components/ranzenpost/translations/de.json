@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "Ferien"
+      },
+      "school_events": {
+        "name": "Schultermine"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "Ungelesene Pinnwandbeiträge"
       },
+      "unread_mail": {
+        "name": "Ungelesene E-Mails"
+      },
       "open_absences": {
         "name": "Offene Abwesenheiten"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "Status einer Abwesenheit geändert",
       "school_unreachable": "Schule nicht erreichbar",
       "school_reachable": "Schule wieder erreichbar",
-      "login_needed": "Anmeldung erforderlich"
+      "login_needed": "Anmeldung erforderlich",
+      "school_new_letter": "Neuer Elternbrief",
+      "school_new_noticeboard_post": "Neuer Pinnwandbeitrag"
     },
     "condition_type": {
       "is_school_day": "Ist ein Schultag",

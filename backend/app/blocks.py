@@ -10,12 +10,14 @@ AREA_ABSENCE = "absence"
 AREA_POST = "post"
 AREA_MESSENGER = "messenger"
 AREA_CONFERENCES = "conferences"
+AREA_CALENDAR = "calendar"
 AREA_MODULES = {
     AREA_TIMETABLE: (modules.TIMETABLE,),
     AREA_ABSENCE: (modules.ABSENCES,),
     AREA_POST: (modules.LETTERS, modules.PINBOARD),
     AREA_MESSENGER: (modules.MESSENGER,),
     AREA_CONFERENCES: (modules.CONFERENCES,),
+    AREA_CALENDAR: (modules.CALENDAR,),
 }
 DEFAULT_NAVIGATION = (AREA_TIMETABLE, AREA_ABSENCE, AREA_POST, AREA_MESSENGER, AREA_CONFERENCES)
 
@@ -30,6 +32,7 @@ BLOCKS = (
     {"key": "holidays", "module": modules.TIMETABLE, "area": AREA_TIMETABLE, "compact": 1, "normal": 3, "size": SIZE_COMPACT},
     {"key": "changes", "module": modules.TIMETABLE, "area": AREA_TIMETABLE, "compact": 3, "normal": 6, "size": SIZE_COMPACT},
     {"key": "chat", "module": modules.MESSENGER, "area": AREA_MESSENGER, "compact": 3, "normal": 5, "size": SIZE_COMPACT},
+    {"key": "school_events", "module": modules.CALENDAR, "area": AREA_CALENDAR, "compact": 2, "normal": 5, "size": SIZE_NORMAL},
 )
 BLOCK_KEYS = tuple(block["key"] for block in BLOCKS)
 BLOCK_BY_KEY = {block["key"]: block for block in BLOCKS}
@@ -76,7 +79,7 @@ def normalize_navigation(raw):
         area = str(entry) if isinstance(entry, str) else ""
         if area in AREA_MODULES and area not in kept:
             kept.append(area)
-    for area in DEFAULT_NAVIGATION:
+    for area in DEFAULT_NAVIGATION + tuple(AREA_MODULES):
         if area not in kept:
             kept.append(area)
     return kept

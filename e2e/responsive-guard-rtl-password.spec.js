@@ -75,6 +75,7 @@ for (const viewport of VIEWPORTS) {
 
       await page.locator(".swatch-trigger").first().click();
       await expect(page.locator(".color-dialog")).toBeVisible();
+      await waitForSheetSettled(page);
       await assertClean(page, `rtl/${viewport.name}/color-dialog`);
 
       const nested = await page.evaluate(

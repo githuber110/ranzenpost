@@ -150,8 +150,8 @@ class EventCache:
         self._entries.clear()
 
 
-def _fingerprint(info: Info) -> tuple[tuple[tuple[str, Modules, bool], ...], frozenset[str]]:
-    schools = tuple((school.id, school.modules, school.own_entries) for school in info.schools)
+def _fingerprint(info: Info) -> tuple[tuple[tuple[str, Modules, bool, bool], ...], frozenset[str]]:
+    schools = tuple((school.id, school.modules, school.own_entries, school.mail) for school in info.schools)
     return (schools, frozenset(child.key for child in info.children))
 
 
@@ -300,7 +300,13 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         new_changes = self._fresh_changes(changes)
         previous = self.data
         signals = signals_between(
-            previous.info if previous else None, previous.states if previous else {}, info, states, new_changes
+            previous.info if previous else None,
+            previous.states if previous else {},
+            info,
+            states,
+            new_changes,
+            previous.schools if previous else {},
+            schools,
         )
         return RanzenpostData(info, states, schools, changes, new_changes, signals)
 

@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "Holidays"
+      },
+      "school_events": {
+        "name": "School events"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "Unread posts"
       },
+      "unread_mail": {
+        "name": "Unread e-mails"
+      },
       "open_absences": {
         "name": "Open absences"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "Absence status changed",
       "school_unreachable": "School unreachable",
       "school_reachable": "School reachable again",
-      "login_needed": "Login needed"
+      "login_needed": "Login needed",
+      "school_new_letter": "New letter",
+      "school_new_noticeboard_post": "New noticeboard post"
     },
     "condition_type": {
       "is_school_day": "Is a school day",

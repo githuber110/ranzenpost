@@ -192,7 +192,9 @@ def test_fuzzed_json_with_planted_personal_data_never_leaks_a_value():
 
 
 def test_the_shape_walk_is_capped_and_says_so():
-    wide = {"key_%d" % index: index for index in range(valueshape.MAX_LINES + 50)}
+    words = [word for word in vocabulary.API_WORDS if len(word) > 3 and word.isalpha()][:30]
+    names = [first + second.capitalize() for first in words for second in words]
+    wide = {name: 1 for name in names[: valueshape.MAX_LINES + 50]}
     block = pageshape.shape_block(wide)
     assert len(block) == valueshape.MAX_LINES + 1
     assert block[-1] == "  - cut after %d keys" % valueshape.MAX_LINES
@@ -502,7 +504,7 @@ def test_a_school_without_the_timetable_we_read_lists_the_old_module_as_present_
     assert entry["name"] == "Stundenplan (veraltet)"
     assert registry["probes"][modules.LEGACY_TIMETABLE]["status"] == 200
     assert modules.normalize(registry)["probes"][modules.LEGACY_TIMETABLE]["verdict"] == modules.AVAILABLE
-    assert "not supported: 2 (calendar, timetable)" in modules.summary(registry)
+    assert "not supported: 2 (news, timetable)" in modules.summary(registry)
     rows = diagnostics.module_rows(modules.normalize(registry))
     legacy = next(row for row in rows if row["slug"] == diagnostics.LEGACY_TIMETABLE)
     assert legacy["status"] == diagnostics.STATUS_UNSUPPORTED
@@ -538,7 +540,7 @@ def test_a_school_without_either_timetable_stays_missing_without_an_extra_entry(
     registry = registry_for(SCHOOL_ONE_URL, {"/iserv/time-table/": Response(404, SCHOOL_ONE_URL + "/iserv/time-table/", "")})
     assert registry["modules"][modules.TIMETABLE] is False
     assert registry["probes"][modules.LEGACY_TIMETABLE]["verdict"] == modules.MISSING
-    assert [entry["segment"] for entry in registry["unsupported"]] == ["calendar"]
+    assert [entry["segment"] for entry in registry["unsupported"]] == ["news"]
     legacy = next(row for row in diagnostics.module_rows(modules.normalize(registry)) if row["slug"] == diagnostics.LEGACY_TIMETABLE)
     assert legacy["status"] == diagnostics.STATUS_MISSING
 

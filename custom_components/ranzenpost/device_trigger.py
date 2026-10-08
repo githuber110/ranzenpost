@@ -8,20 +8,28 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
 
-from .const import ATTR_TYPE, CHILD_TRIGGERS, DOMAIN, EVENT_RANZENPOST, SCHOOL_TRIGGERS, TRIGGER_MODULES
+from .const import (
+    ATTR_TYPE,
+    CHILD_TRIGGERS,
+    DOMAIN,
+    EVENT_RANZENPOST,
+    SCHOOL_NOTICE_TRIGGERS,
+    SCHOOL_TRIGGERS,
+    TRIGGER_MODULES,
+)
 from .devices import DeviceRef, device_ref_of_id, modules_of_device
 from .signals import ATTR_DEVICE_ID
 
 TRIGGER_SCHEMA = DEVICE_TRIGGER_BASE_SCHEMA.extend(
-    {vol.Required(CONF_TYPE): vol.In(CHILD_TRIGGERS + SCHOOL_TRIGGERS)}
+    {vol.Required(CONF_TYPE): vol.In(CHILD_TRIGGERS + SCHOOL_TRIGGERS + SCHOOL_NOTICE_TRIGGERS)}
 )
 PLATFORM_DEVICE = "device"
 
 
 def trigger_types_of(hass: HomeAssistant, ref: DeviceRef) -> tuple[str, ...]:
-    if not ref.is_child:
-        return SCHOOL_TRIGGERS
     modules = modules_of_device(hass, ref)
+    if not ref.is_child:
+        return SCHOOL_TRIGGERS + tuple(kind for kind in SCHOOL_NOTICE_TRIGGERS if modules.has(TRIGGER_MODULES[kind]))
     return tuple(kind for kind in CHILD_TRIGGERS if modules.has(TRIGGER_MODULES[kind]))
 
 
@@ -30,7 +38,7 @@ async def async_validate_trigger_config(hass: HomeAssistant, config: ConfigType)
     ref = device_ref_of_id(hass, config[CONF_DEVICE_ID])
     if ref is None:
         return config
-    allowed = CHILD_TRIGGERS if ref.is_child else SCHOOL_TRIGGERS
+    allowed = CHILD_TRIGGERS if ref.is_child else SCHOOL_TRIGGERS + SCHOOL_NOTICE_TRIGGERS
     if config[CONF_TYPE] not in allowed:
         raise InvalidDeviceAutomationConfig(f"{config[CONF_TYPE]} is not a trigger of a {ref.kind} device")
     return config

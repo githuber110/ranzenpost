@@ -21,7 +21,7 @@ const OTHER_LANGUAGES = [
 ];
 const THEMES = ["light", "dark"];
 const FONT_SIZES = [16, 20];
-const ALL_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat"];
+const ALL_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events"];
 
 let layoutSlot = 0;
 
@@ -31,6 +31,7 @@ async function gotoBlocks(page, lang, theme, fontSize) {
   await page.context().addCookies([
     { name: "e2e_lang", value: lang, url: BASE_URL },
     { name: "e2e_scenario", value: "two-children", url: BASE_URL },
+    { name: "e2e_modules", value: "all", url: BASE_URL },
     { name: "e2e_layout", value: `blocks-guard-${process.pid}-${Date.now()}-${layoutSlot}`, url: BASE_URL },
   ]);
   await page.request.post(`${BASE_URL}/api/config`, { data: { overview_blocks: ALL_BLOCKS.map((key) => ({ key })) } });
@@ -133,7 +134,7 @@ test.describe("blocks guard: the empty modules render no block", () => {
     await page.context().clearCookies();
     await page.context().addCookies([
       { name: "e2e_lang", value: "de", url: BASE_URL },
-      { name: "e2e_empty", value: "timetable,letters,pinboard,absences,conferences,messenger", url: BASE_URL },
+      { name: "e2e_empty", value: "timetable,letters,pinboard,absences,conferences,messenger,calendar", url: BASE_URL },
     ]);
     await goto(page);
     await page.waitForSelector(".overview-empty", { timeout: 10000 });

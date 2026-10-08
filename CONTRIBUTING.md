@@ -55,24 +55,31 @@ run at all. For a single card file use `npm run test:card:focused -- tests/card/
 
 ## Layout
 
-- `iserv_connector/` — the Home Assistant add-on manifest (`config.yaml`, `DOCS.md`, changelog,
+- `iserv_connector/`: the Home Assistant add-on manifest (`config.yaml`, `DOCS.md`, changelog,
   translations of the option names).
-- `Dockerfile` — builds the add-on image, published to `ghcr.io` on a `v*` tag.
+- `Dockerfile`: builds the add-on image, published to `ghcr.io` on a `v*` tag.
 - `backend/`
-  - `app/iserv/` — the IServ client: form login with TOTP, children, timetable, absences, letters.
-  - `app/` — config store, encryption, mapping, poller, calendar feed, the FastAPI Ingress service.
-  - `tests/` — pytest against anonymised fixtures, plus repository guards (personal data, i18n
+  - `app/iserv/`: the IServ client for the form login with TOTP, children, timetable, absences
+    and letters.
+  - `app/`: config store, encryption, mapping, poller, calendar feed, the FastAPI Ingress service.
+  - `tests/`: pytest against anonymised fixtures, plus repository guards (personal data, i18n
     parity, logical CSS properties, commit hygiene).
-- `frontend/` — the Ingress web UI (vanilla JS).
-  - `i18n/` — the string database, one flat `key -> text` file per language.
-- `e2e/` — Playwright specs; the fixture IServ server they run against is
+- `frontend/`: the Ingress web UI (vanilla JS, no build step).
+  - `i18n/`: the string database, one flat `key -> text` file per language.
+  - `lib/`: small modules the app loads, such as the store and the sheets.
+  - `fonts/` and `vendor/`: bundled fonts and pdf.js, with their licences.
+- `e2e/`: Playwright specs; the fixture IServ server they run against is
   `backend/tests/e2e_fixture_app.py`.
-- `docs/screenshots/` — the images used in the README. `node scripts/capture_screenshots.js`
+- `docs/iserv-modules.md`: the map of IServ modules, what parents can do in each and what Ranzenpost
+  reads and writes.
+- `docs/screenshots/`: the images used in the README. `node scripts/capture_screenshots.js`
   regenerates all of them from the fixture server in English, light and dark.
-- `custom_components/ranzenpost/` — the Home Assistant integration (devices, entities, config
+- `custom_components/ranzenpost/`: the Home Assistant integration (devices, entities, config
   flow, the dashboard card it serves) and `tests/components/ranzenpost/` for its tests.
-- `tests/card/` — vitest suite for the dashboard card, run with `npm run test:card`.
-- `scripts/` — small standalone helpers, such as `extract_changelog_section.py`, that both CI and
+- `tests/card/`: vitest suite for the dashboard card, run with `npm run test:card`.
+- `assets/`: the banner and the source art of the icons.
+- `hacs.json` and `repository.yaml`: the entries for HACS and the Home Assistant app store.
+- `scripts/`: small standalone helpers, such as `extract_changelog_section.py`, that both CI and
   the test suite call so there is one implementation of each.
 
 ## Conventions

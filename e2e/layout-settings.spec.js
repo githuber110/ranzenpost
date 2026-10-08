@@ -126,7 +126,7 @@ for (const viewport of VIEWPORTS) {
         const moved = await page.locator(".nav-rows > *").evaluateAll((nodes) => nodes.map((node) => node.dataset.band || node.dataset.area));
         expect(moved).toEqual(["bar", "overview", "timetable", "absence", "messenger", "more", "post", "conferences"]);
         const config = await page.evaluate(() => fetch("api/config").then((response) => response.json()));
-        expect(config.navigation).toEqual(["timetable", "absence", "messenger", "post", "conferences"]);
+        expect(config.navigation).toEqual(["timetable", "absence", "messenger", "post", "conferences", "calendar"]);
         if (viewport.width < 900) {
           const tabs = await page.locator(".tabbar .tab").evaluateAll((nodes) => nodes.map((node) => node.dataset.view));
           expect(tabs).toEqual(["overview", "timetable", "absence", "messenger", "more"]);

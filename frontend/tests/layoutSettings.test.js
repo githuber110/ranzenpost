@@ -217,7 +217,7 @@ describe("settings › Layout › Navigation", () => {
     window.eval('state.view = "settings"; state.settingsPage = "layout"; render();');
     const page = window.document;
     page.querySelector('.nav-row[data-area="messenger"] .order-btns [data-dir="up"]').click();
-    expect(window.eval("window.__posts[0].body")).toEqual({ navigation: ["timetable", "messenger", "post", "conferences", "absence"] });
+    expect(window.eval("window.__posts[0].body")).toEqual({ navigation: ["timetable", "messenger", "post", "conferences", "absence", "calendar"] });
     expect(page.activeElement).toBe(page.querySelector('.nav-row[data-area="messenger"] .order-btns [data-dir="up"]'));
   });
 
@@ -227,7 +227,7 @@ describe("settings › Layout › Navigation", () => {
     const page = navigationPage(window);
     const row = page.querySelector('.nav-row[data-area="post"]');
     row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true }));
-    expect(window.eval("window.__posts[0].body.navigation")).toEqual(["timetable", "post", "absence", "messenger", "conferences"]);
+    expect(window.eval("window.__posts[0].body.navigation")).toEqual(["timetable", "post", "absence", "messenger", "conferences", "calendar"]);
     row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
     expect(window.eval("window.__posts.length")).toBe(1);
   });

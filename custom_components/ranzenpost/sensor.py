@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .api import Absence, Exam, Holiday, Info, Lesson, School, SchoolInfo, State
+from .api import Absence, Exam, Holiday, Info, Lesson, Notices, School, SchoolInfo, State
 from .const import (
     ATTR_ABSENCES,
     ATTR_CHANGES,
@@ -32,6 +32,7 @@ from .const import (
     ATTR_MODULES,
     ATTR_MODULES_DISABLED,
     ATTR_POSTS,
+    ATTR_PROFILES,
     ATTR_SCHOOL_DAY,
     ATTR_SOURCE,
     ATTR_START,
@@ -54,6 +55,7 @@ from .const import (
     KEY_SCHOOL_END_TODAY,
     KEY_TIMETABLE_LAST_UPDATED,
     KEY_UNREAD_LETTERS,
+    KEY_UNREAD_MAIL,
     KEY_UNREAD_POSTS,
     MODULE_ABSENCES,
     MODULE_CONFERENCES,
@@ -122,6 +124,14 @@ def _conference_attributes(school: School) -> dict[str, Any]:
     }
 
 
+def _notice_count(notices: Notices | None) -> int | None:
+    return notices.count if notices is not None else None
+
+
+def _notice_attributes(name: str, notices: Notices | None) -> dict[str, Any]:
+    return {name: notices.as_attributes()} if notices is not None else {}
+
+
 def _connection_attributes(listed: SchoolInfo, info: Info) -> dict[str, Any]:
     return {
         ATTR_LAST_POLL: listed.last_poll.isoformat() if listed.last_poll else None,
@@ -132,6 +142,7 @@ def _connection_attributes(listed: SchoolInfo, info: Info) -> dict[str, Any]:
         ATTR_MODULES_DISABLED: sorted(listed.modules.disabled),
         ATTR_FEED_PORT_OPEN: info.feed_port_open,
         ATTR_INGRESS_PATH: info.ingress_path,
+        ATTR_PROFILES: len(listed.children),
     }
 
 
@@ -147,6 +158,7 @@ class SchoolSensorDescription(SensorEntityDescription):
     value_fn: Callable[[School, SchoolInfo, Info], Any]
     attributes_fn: Callable[[School, SchoolInfo, Info], dict[str, Any]] = lambda school, listed, info: {}
     module: str | None = None
+    mail: bool = False
 
 
 CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
@@ -250,6 +262,23 @@ SCHOOL_SENSORS: tuple[SchoolSensorDescription, ...] = (
         module=MODULE_CONFERENCES,
     ),
     SchoolSensorDescription(
+        key=KEY_UNREAD_LETTERS,
+        value_fn=lambda school, listed, info: _notice_count(school.unread_letters),
+        attributes_fn=lambda school, listed, info: _notice_attributes(ATTR_LETTERS, school.unread_letters),
+        module=MODULE_LETTERS,
+    ),
+    SchoolSensorDescription(
+        key=KEY_UNREAD_POSTS,
+        value_fn=lambda school, listed, info: _notice_count(school.unread_posts),
+        attributes_fn=lambda school, listed, info: _notice_attributes(ATTR_POSTS, school.unread_posts),
+        module=MODULE_PINBOARD,
+    ),
+    SchoolSensorDescription(
+        key=KEY_UNREAD_MAIL,
+        value_fn=lambda school, listed, info: school.unread_mail,
+        mail=True,
+    ),
+    SchoolSensorDescription(
         key=KEY_CONNECTION,
         device_class=SensorDeviceClass.ENUM,
         options=list(CONNECTION_STATES),
@@ -270,7 +299,8 @@ async def async_setup_entry(
         entities.extend(
             RanzenpostSchoolSensor(coordinator, school, description)
             for description in SCHOOL_SENSORS
-            if description.module is None or school.modules.has(description.module)
+            if (description.module is None or school.modules.has(description.module))
+            and (not description.mail or school.mail)
         )
     for child in selected_children(info, entry):
         modules = info.modules_of(child)

@@ -226,7 +226,7 @@ def _parse_range(start, end, today):
     return first, last
 
 
-def register_integration_routes(app, service, store, holiday_calendar, access, warm=None, registry=None):
+def register_integration_routes(app, service, store, holiday_calendar, access, registry, warm=None):
     def _known_school(school_id):
         entry = store.connection(school_id) if school_id else None
         return entry is not None and bool(entry.get("setup_complete"))
@@ -249,8 +249,6 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         refusal = denied(request)
         if refusal is not None:
             return refusal
-        if registry is None:
-            return integration.build_info(service, store, access.now(), access.feed_port_open())
         feeds = registry.online_feeds()
         unreported = [feed["webhook_id"] for feed in feeds if not feed["reported"]]
         if unreported:
@@ -288,7 +286,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
             return _refusal(400, ERROR_BAD_KIND, BAD_KIND_KEY)
         if purpose not in integration.PURPOSES:
             return _refusal(400, ERROR_BAD_PURPOSE, BAD_PURPOSE_KEY)
-        if kind == integration.KIND_HOLIDAYS:
+        if kind in integration.SCHOOL_KINDS:
             child = ""
             if not _known_school(school):
                 return _refusal(404, ERROR_UNKNOWN_SCHOOL, UNKNOWN_SCHOOL_KEY)
@@ -325,7 +323,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         refusal = denied(request)
         if refusal is not None:
             return refusal
-        subscription = registry.find_online(id, webhook) if registry is not None else None
+        subscription = registry.find_online(id, webhook)
         if subscription is None:
             logger.info("Home Assistant asked for a calendar feed that is not online")
             return _refusal(404, ERROR_UNKNOWN_FEED, UNKNOWN_FEED_KEY)
@@ -342,7 +340,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, w
         if refusal is not None:
             return refusal
         reports = body.get("feeds") if isinstance(body, dict) else None
-        if registry is None or not isinstance(reports, list) or len(reports) > MAX_FEED_REPORTS:
+        if not isinstance(reports, list) or len(reports) > MAX_FEED_REPORTS:
             return _refusal(400, ERROR_BAD_FEEDS, BAD_FEEDS_KEY)
         outside = registry.record_outside_access(body.get("outside"))
         if outside is not None:

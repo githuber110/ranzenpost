@@ -9,6 +9,7 @@
     post: ["letters", "pinboard"],
     messenger: ["messenger"],
     conferences: ["conferences"],
+    calendar: ["calendar"],
   };
   const DEFAULT_NAVIGATION = ["timetable", "absence", "post", "messenger", "conferences"];
   const BAR_LIMIT = 5;
@@ -16,19 +17,21 @@
   const MORE_KEY = "more";
 
   const BLOCK_CATALOGUE = [
-    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"] },
-    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"] },
-    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"] },
+    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], childBound: true },
+    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], childBound: true },
+    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], childBound: true },
     { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"] },
     { key: "noticeboard", module: "pinboard", area: "post", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"] },
-    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"] },
+    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], childBound: true },
     { key: "conferences", module: "conferences", area: "conferences", compact: 1, normal: 3, size: "normal", surfaces: ["overview", "card"] },
-    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"] },
-    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"] },
+    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], schoolLevel: true },
+    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], childBound: true },
     { key: "chat", module: "messenger", area: "messenger", compact: 3, normal: 5, size: "compact", surfaces: ["overview"] },
+    { key: "school_events", module: "calendar", area: "calendar", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"] },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const DEFAULT_OVERVIEW_KEYS = ["today", "letters", "noticeboard", "conferences", "changes", "chat"];
+  const DEFAULT_CHILDLESS_KEYS = ["letters", "noticeboard", "conferences", "holidays", "chat", "school_events"];
 
   function blockOf(key) {
     return BLOCK_BY_KEY.get(key) || null;
@@ -52,17 +55,22 @@
     return { items: list.slice(0, limit), more: list.length > limit };
   }
 
-  function offeredBlocks(moduleOn, surface) {
-    return BLOCK_CATALOGUE.filter((block) => moduleOn(block.module) && (!surface || block.surfaces.includes(surface)));
+  function offeredBlocks(moduleOn, surface, childless) {
+    return BLOCK_CATALOGUE.filter((block) => {
+      if (surface && !block.surfaces.includes(surface)) return false;
+      if (childless) return !block.childBound && (block.schoolLevel || moduleOn(block.module));
+      return moduleOn(block.module);
+    });
   }
 
-  function defaultOverviewBlocks() {
-    return BLOCK_CATALOGUE.filter((block) => DEFAULT_OVERVIEW_KEYS.includes(block.key)).map((block) => ({ key: block.key, size: block.size }));
+  function defaultOverviewBlocks(childless) {
+    const keys = childless ? DEFAULT_CHILDLESS_KEYS : DEFAULT_OVERVIEW_KEYS;
+    return BLOCK_CATALOGUE.filter((block) => keys.includes(block.key)).map((block) => ({ key: block.key, size: block.size }));
   }
 
-  function normalizeOverviewBlocks(raw, offered) {
+  function normalizeOverviewBlocks(raw, offered, childless) {
     const allowed = new Set((offered || BLOCK_CATALOGUE).map((block) => block.key));
-    const source = Array.isArray(raw) ? raw : defaultOverviewBlocks();
+    const source = Array.isArray(raw) ? raw : defaultOverviewBlocks(childless);
     const kept = [];
     const seen = new Set();
     for (const entry of source) {
@@ -85,7 +93,7 @@
     for (const entry of Array.isArray(raw) ? raw : []) {
       if (typeof entry === "string" && AREA_MODULES[entry] && !kept.includes(entry)) kept.push(entry);
     }
-    for (const area of DEFAULT_NAVIGATION) {
+    for (const area of DEFAULT_NAVIGATION.concat(Object.keys(AREA_MODULES))) {
       if (!kept.includes(area)) kept.push(area);
     }
     return kept;

@@ -14,5 +14,20 @@
     ],
     "days_until": 61
   },
-  "region": "NI"
+  "region": "NI",
+  "unread_letters": {
+    "count": 1,
+    "items": [
+      {
+        "title": "Field trip",
+        "sender": "Mrs Example",
+        "date": "2026-09-04",
+        "child": "Alex"
+      }
+    ]
+  },
+  "unread_posts": {
+    "count": 0,
+    "items": []
+  }
 }

@@ -97,7 +97,7 @@ describe("toastNode draws the message in the slot", () => {
 
 function sheetSetup({ mode = "phone", initial = {} } = {}) {
   const { window } = new JSDOM("<!doctype html><html><body></body></html>");
-  const held = { ...Object.fromEntries(SHEET_KEYS.map((key) => [key, null])), sheetDiscardAsk: false, sheetFocused: false, ...initial };
+  const held = { ...Object.fromEntries(SHEET_KEYS.map((key) => [key, null])), sheetDiscardAsk: false, sheetFocused: false, sheetShown: false, ...initial };
   const touched = new Set();
   const slot = {
     read: (key) => {
@@ -182,7 +182,7 @@ describe("openSheet, closeSheet and discardSheet keep the sheet keys in the slot
     expect(held).toMatchObject({ sheet: null, sheetForm: null, sheetFormDefault: null, sheetDiscardAsk: false });
   });
 
-  test("the sheets read and write only the six sheet keys", () => {
+  test("the sheets read and write only the seven sheet keys", () => {
     const setup = sheetSetup();
     const { touched, openSheet, closeSheet, sheetState, isSheetFormDirty, draw, timers } = setup;
     openSheet(() => null, () => null);
@@ -317,11 +317,11 @@ describe("sheet draws the container", () => {
     const { layout, draw } = sheetSetup();
     expect(draw("title", []).className).toBe("scrim");
     layout.mode = "wide";
-    expect(draw("title", []).className).toBe("scrim dialog");
+    expect(draw("title", []).className).toBe("scrim dialog shown");
     layout.mode = "desk";
-    expect(draw("title", []).className).toBe("scrim dialog");
+    expect(draw("title", []).className).toBe("scrim dialog shown");
     layout.mode = "phone";
-    expect(draw("title", []).className).toBe("scrim");
+    expect(draw("title", []).className).toBe("scrim shown");
   });
 
   test("the scrim, the close button and Escape close the sheet, a click inside the panel does not", () => {
@@ -454,7 +454,7 @@ describe("openSheet can hand over the close, and the quiet primitives never repa
     };
     const { held, renders, dropSheet } = sheetSetup({ initial });
     expect(dropSheet()).toBe(undefined);
-    expect(held).toEqual({ sheet: null, onSheetClose: null, sheetForm: null, sheetFormDefault: null, sheetDiscardAsk: false, sheetFocused: true });
+    expect(held).toEqual({ sheet: null, onSheetClose: null, sheetForm: null, sheetFormDefault: null, sheetDiscardAsk: false, sheetFocused: true, sheetShown: false });
     expect(calls).toEqual([]);
     expect(renders).toEqual([]);
   });
@@ -597,4 +597,58 @@ test("the globals hand out the toast and sheet factories, frozen", () => {
   expect(Object.keys(globals)).toEqual(["createToast", "createSheets"]);
   expect(globals.createToast).toBe(createToast);
   expect(globals.createSheets).toBe(createSheets);
+});
+
+describe("a sheet slides in once and stays put when the app repaints it", () => {
+  test("the first drawing animates and every repaint after it is marked as shown", () => {
+    const { draw } = sheetSetup();
+    const first = draw("title", []);
+    expect(first.className).toBe("scrim");
+    expect(first.querySelector(".sheet").className).toBe("sheet");
+    const repaint = draw("title", ["rows arrived"]);
+    expect(repaint.className).toBe("scrim shown");
+    expect(repaint.querySelector(".sheet").className).toBe("sheet shown");
+  });
+
+  test("the dialog layout keeps its own class next to the shown mark", () => {
+    const { draw } = sheetSetup({ mode: "wide" });
+    draw("title", []);
+    expect(draw("title", []).className).toBe("scrim dialog shown");
+  });
+
+  test("opening another sheet lets it slide in again", () => {
+    const { held, draw, openSheet } = sheetSetup();
+    draw("title", []);
+    openSheet(() => null);
+    expect(held.sheetShown).toBe(false);
+    expect(draw("next", []).querySelector(".sheet").className).toBe("sheet");
+  });
+
+  test("closing a sheet lets the next placed sheet slide in", () => {
+    const { held, draw, openSheet, closeSheet } = sheetSetup();
+    openSheet(() => null);
+    draw("title", []);
+    closeSheet();
+    expect(held.sheetShown).toBe(false);
+  });
+
+  test("a sheet placed over an open one slides in", () => {
+    const { held, draw, openSheet, placeSheet } = sheetSetup();
+    openSheet(() => null);
+    draw("list", []);
+    placeSheet(() => null);
+    expect(held.sheetShown).toBe(false);
+    expect(draw("detail", []).querySelector(".sheet").className).toBe("sheet");
+  });
+
+  test("a nested sheet slides in, and so does the sheet it returns to", () => {
+    const { held, draw, openSheet, openNestedSheet, closeSheet } = sheetSetup();
+    openSheet(() => null);
+    draw("outer", []);
+    openNestedSheet(() => null);
+    expect(held.sheetShown).toBe(false);
+    draw("inner", []);
+    closeSheet();
+    expect(held.sheetShown).toBe(false);
+  });
 });

@@ -23,6 +23,12 @@ const CALENDAR_COMPONENT_PUBLIC_HOLIDAYS = "public_holidays";
 const CALENDAR_COMPONENT_MARKS = "marks";
 const CALENDAR_COMPONENT_ABSENCES = "absences";
 const CALENDAR_COMPONENT_OWN_ENTRIES = "own_entries";
+const CALENDAR_COMPONENT_SCHOOL_EVENTS = "school_events";
+const CALENDAR_SCHOOL_COMPONENTS = [
+  CALENDAR_COMPONENT_SCHOOL_HOLIDAYS,
+  CALENDAR_COMPONENT_PUBLIC_HOLIDAYS,
+  CALENDAR_COMPONENT_SCHOOL_EVENTS,
+];
 const CALENDAR_COMPONENTS = [
   CALENDAR_COMPONENT_TIMETABLE,
   CALENDAR_COMPONENT_SCHOOL_HOLIDAYS,
@@ -30,6 +36,7 @@ const CALENDAR_COMPONENTS = [
   CALENDAR_COMPONENT_MARKS,
   CALENDAR_COMPONENT_ABSENCES,
   CALENDAR_COMPONENT_OWN_ENTRIES,
+  CALENDAR_COMPONENT_SCHOOL_EVENTS,
 ];
 const CALENDAR_DEFAULT_COLOR = "#135859";
 const CALENDAR_DEFAULT_PORT = 8100;
@@ -166,11 +173,13 @@ const VIEWS = [
   { key: "post", label: "nav.post", icon: "inbox" },
   { key: "messenger", label: "nav.messenger", icon: "messages" },
   { key: "conferences", label: "nav.conferences", icon: "conferences" },
+  { key: "calendar", label: "nav.calendar", icon: "upcoming" },
 ];
 const VIEW_BY_KEY = Object.fromEntries(VIEWS.map((item) => [item.key, item]));
 const MORE_VIEW = { key: "more", label: "nav.more", icon: "more" };
 
-const MODULE_NAMES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger"];
+const MODULE_NAMES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger", "calendar"];
+const CONFIRMED_ONLY_MODULES = ["calendar"];
 const VIEW_MODULES = {
   overview: [],
   timetable: ["timetable"],
@@ -178,13 +187,14 @@ const VIEW_MODULES = {
   post: ["letters", "pinboard"],
   messenger: ["messenger"],
   conferences: ["conferences"],
+  calendar: ["calendar"],
   settings: [],
 };
 const MODULE_ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new";
 
 function defaultModules() {
   const available = {};
-  for (const name of MODULE_NAMES) available[name] = true;
+  for (const name of MODULE_NAMES) available[name] = !CONFIRMED_ONLY_MODULES.includes(name);
   return { available, unsupported: [], unknown: [], checkedAt: 0, iservVersion: "" };
 }
 
@@ -201,7 +211,7 @@ function applyModules(payload) {
   const parsed = defaultModules();
   const data = payload && typeof payload === "object" ? payload : {};
   const flags = data.modules && typeof data.modules === "object" ? data.modules : {};
-  for (const name of MODULE_NAMES) parsed.available[name] = flags[name] !== false;
+  for (const name of MODULE_NAMES) parsed.available[name] = CONFIRMED_ONLY_MODULES.includes(name) ? flags[name] === true : flags[name] !== false;
   parsed.unsupported = (Array.isArray(data.unsupported) ? data.unsupported : [])
     .filter((entry) => entry && typeof entry.segment === "string" && entry.segment)
     .map((entry) => ({
@@ -242,12 +252,12 @@ function layoutBlocks() {
 }
 
 function offeredBlocks(surface) {
-  return layoutBlocks().offeredBlocks(moduleOn, surface);
+  return layoutBlocks().offeredBlocks(moduleOn, surface, noChildren());
 }
 
 function enabledOverviewBlocks() {
   const raw = state.config && Array.isArray(state.config.overview_blocks) ? state.config.overview_blocks : null;
-  return layoutBlocks().normalizeOverviewBlocks(raw, offeredBlocks());
+  return layoutBlocks().normalizeOverviewBlocks(raw, offeredBlocks(), noChildren());
 }
 
 function hiddenOverviewBlocks() {
@@ -271,8 +281,15 @@ function anyModuleOn() {
   return MODULE_NAMES.some(moduleOn);
 }
 
+const CHILD_VIEWS = ["timetable", "absence"];
+
+function noChildren() {
+  return state.childrenRead === true && !state.childrenFailure && !state.children.length;
+}
+
 function viewAvailable(key) {
   if (key === "settings") return true;
+  if (noChildren() && CHILD_VIEWS.includes(key)) return false;
   if (!anyModuleOn()) return key === "overview";
   const needs = VIEW_MODULES[key] || [];
   return !needs.length || needs.some(moduleOn);
@@ -422,6 +439,7 @@ const state = {
   notifySupervisor: null,
   children: [],
   childrenFailure: null,
+  childrenRead: false,
   childrenRetrying: false,
   childId: null,
   overviewChildId: null,
@@ -469,6 +487,8 @@ const state = {
   absenceFormDefault: null,
   absenceHistoryOpen: false,
   conferences: null,
+  schoolEvents: null,
+  mail: null,
   theme: "light",
   account: "",
   onSheetClose: null,
@@ -491,6 +511,7 @@ const state = {
   refreshFailed: {},
   bulkProgress: null,
   sheetFocused: false,
+  sheetShown: false,
   colorDialogClose: null,
   sheetFormDefault: null,
   sheetDiscardAsk: false,
@@ -523,7 +544,7 @@ const stateStore = createStore(state, {
   reportError: (error) => (window.reportError ? window.reportError(error) : window.console.error(error)),
 });
 
-const OUTAGE_VIEWS = ["overview", "timetable", "absence", "post", "messenger", "conferences"];
+const OUTAGE_VIEWS = ["overview", "timetable", "absence", "post", "messenger", "conferences", "calendar"];
 const BOOT_TIMEOUT_MS = 25000;
 
 function hashIndex(text, length) {
@@ -845,6 +866,7 @@ const VIEW_ENTRY_DEFAULTS = {
     messengerRetryFailed: false,
   },
   conferences: {},
+  calendar: {},
   settings: { helpPage: false, settingsPage: null, blocksSearch: "" },
 };
 
@@ -1048,6 +1070,7 @@ function headerTitleFor(view) {
     return { text: t("messenger.title") };
   }
   if (view === "conferences") return { text: t("conferences.title") };
+  if (view === "calendar") return { text: t("schoolEvents.title") };
   if (view === "settings") {
     if (settingsPaneActive()) return { text: t("settings.title"), onBack: () => setView(state.settingsReturn || "overview") };
     if (state.helpPage) return { text: t("help.title"), onBack: closeHelpPage };
@@ -2060,10 +2083,12 @@ async function loadChildren() {
     state.childrenFailure = (error && error.body) || { error: code };
     state.children = [];
     state.childId = null;
+    state.childrenRead = false;
     return;
   }
   const list = Array.isArray(answer) ? answer : [];
   state.childrenFailure = null;
+  state.childrenRead = true;
   state.children = list;
   state.childId = list.length ? list[0].key : null;
 }
@@ -2126,10 +2151,12 @@ function loadRest() {
     rerender();
   }).catch(routeOrIgnoreBackgroundFailure);
   loadNotifyServices();
+  loadMailCounts();
   loadHolidays().then(rerender).catch(routeOrIgnoreBackgroundFailure);
   if (moduleOn("letters")) loadLetters("current");
   if (moduleOn("pinboard")) loadPinboard();
   if (moduleOn("conferences")) loadConferences();
+  if (moduleOn("calendar")) loadSchoolEvents();
   if (moduleOn("timetable")) {
     loadMarks();
     loadCancellations();
@@ -2156,12 +2183,14 @@ function activeViewLoadKeys() {
       return [MESSENGER_LOAD_KEY];
     case "conferences":
       return ["conferences"];
+    case "calendar":
+      return ["schoolEvents"];
     case "absence":
       return ["absence"];
     case "timetable":
       return ["timetable", "marks", "cancellations"];
     case "overview":
-      return ["pinboard", lettersLoadKey(state.lettersTab), "marks", "cancellations", "absence", "conferences", MESSENGER_LOAD_KEY];
+      return ["pinboard", lettersLoadKey(state.lettersTab), "marks", "cancellations", "absence", "conferences", "schoolEvents", MESSENGER_LOAD_KEY];
     default:
       return [];
   }
@@ -2220,7 +2249,9 @@ async function refreshActiveView() {
         loadLetters(state.lettersTab),
         loadPinboard(),
         loadConferences(),
+        moduleOn("calendar") ? loadSchoolEvents() : null,
         loadMessengerRooms(),
+        loadMailCounts(),
       ]);
       rerender();
       break;
@@ -2241,6 +2272,9 @@ async function refreshActiveView() {
       break;
     case "conferences":
       await loadConferences();
+      break;
+    case "calendar":
+      await loadSchoolEvents();
       break;
     default:
       rerender();
@@ -2266,8 +2300,10 @@ async function refreshEverything() {
   if (moduleOn("letters")) jobs.push(loadLetters(state.lettersTab));
   if (moduleOn("pinboard")) jobs.push(loadPinboard());
   if (moduleOn("conferences")) jobs.push(loadConferences());
+  if (moduleOn("calendar")) jobs.push(loadSchoolEvents());
   if (moduleOn("messenger")) jobs.push(loadMessengerRooms());
   if (state.messengerRoom) jobs.push(loadMessengerHistory());
+  jobs.push(loadMailCounts());
   await Promise.all(jobs);
   rerender();
 }
@@ -2509,6 +2545,7 @@ function viewFor(view) {
     case "post": return state.letterDetail && !paneOpen() ? letterDetailView() : postView();
     case "messenger": return state.messengerRoom && !paneOpen() ? messengerRoomView() : messengerView();
     case "conferences": return conferencesView();
+    case "calendar": return schoolEventsView();
     case "settings": return settingsPaneActive() ? settingsView() : state.helpPage ? helpPageView() : state.settingsPage ? settingsPageView() : state.settingsSchoolId && !paneOpen() ? schoolPageView() : settingsView();
     default: return overviewView();
   }
@@ -2806,7 +2843,7 @@ function todayChapter(size) {
   });
   const now = new Date();
   chapter.meta = formatWeekdayDay(now);
-  if (!moduleOn("timetable")) return null;
+  if (!moduleOn("timetable") || noChildren()) return null;
   if (state.childrenFailure) {
     chapter.bodyClass = "panel-rest";
     chapter.blocks = [overviewBlock("today:childrenfailed", childrenFailureCard())];
@@ -3173,6 +3210,85 @@ function conferencesChapter(size) {
   ), overviewAllRow("conferences:all", t("overview.all.conferences"), () => setView("conferences")));
 }
 
+function schoolEventDay(event) {
+  if (event.all_day) return parseIsoDay(event.start) ? String(event.start).slice(0, 10) : "";
+  const moment = new Date(event.start);
+  return Number.isNaN(moment.getTime()) ? "" : isoDate(moment);
+}
+
+function schoolEventLastDay(event) {
+  const first = schoolEventDay(event);
+  if (!event.all_day) return first;
+  const end = parseIsoDay(event.end);
+  if (!end) return first;
+  const last = isoDate(addDays(end, -1));
+  return last > first ? last : first;
+}
+
+function schoolEventEnded(event, now) {
+  if (event.all_day) return schoolEventLastDay(event) < isoDate(now);
+  const end = new Date(event.end || event.start);
+  return !Number.isNaN(end.getTime()) && end.getTime() < now.getTime();
+}
+
+function upcomingSchoolEvents() {
+  const list = state.schoolEvents && Array.isArray(state.schoolEvents.events) ? state.schoolEvents.events : [];
+  const now = new Date();
+  return list
+    .filter((event) => event && schoolEventDay(event) && !schoolEventEnded(event, now))
+    .sort((left, right) => schoolEventDay(left).localeCompare(schoolEventDay(right)) || String(left.start).localeCompare(String(right.start)));
+}
+
+const SCHOOL_EVENT_TIME = { hour: "2-digit", minute: "2-digit" };
+const SCHOOL_EVENT_DATE_TIME = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
+
+function schoolEventTimeText(event) {
+  if (event.all_day) {
+    const last = schoolEventLastDay(event);
+    return last > schoolEventDay(event) ? t("schoolEvents.allDay.until", { date: dateLabel(last) }) : t("schoolEvents.allDay");
+  }
+  const from = new Date(event.start);
+  const to = event.end ? new Date(event.end) : null;
+  if (!to || Number.isNaN(to.getTime()) || to.getTime() === from.getTime()) return formatTime(from);
+  const sameDay = isoDate(from) === isoDate(to);
+  const parts = sameDay ? SCHOOL_EVENT_TIME : SCHOOL_EVENT_DATE_TIME;
+  return dateFormatter(parts).formatRange(from, to);
+}
+
+function schoolEventSub(event) {
+  return [event.location, event.calendar].map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
+}
+
+function schoolEventsChapter(size) {
+  if (!moduleOn("calendar")) return null;
+  const block = layoutBlocks().blockOf("school_events");
+  const data = state.schoolEvents;
+  if (!data) return null;
+  const chapter = overviewChapter("school_events", t("blocks.school_events.title"), {
+    label: t("overview.viewAll"),
+    onclick: () => setView("calendar"),
+  });
+  if (data.error) {
+    chapter.bodyClass = "panel-rest";
+    chapter.blocks = [overviewFailureBlock("school_events:failed", loadSchoolEvents)];
+    return chapter;
+  }
+  const rows = upcomingSchoolEvents();
+  if (!rows.length) return null;
+  return chapterRows(chapter, size, block, rows, (event) => overviewBlock(
+    `school_event:${event.connection_id || ""}:${event.uid}`,
+    sizedRow(
+      size,
+      event.title || t("schoolEvents.untitled"),
+      schoolEventSub(event),
+      event.all_day ? isoLabel(schoolEventDay(event)) : `${formatWeekdayDay(new Date(event.start))} ${formatTime(new Date(event.start))}`,
+      false,
+      () => setView("calendar"),
+      [schoolTag(event)]
+    )
+  ), overviewAllRow("school_events:all", t("overview.all.school_events"), () => setView("calendar")));
+}
+
 function absenceEntries(todayIso, limitIso) {
   const box = state.absence;
   const entries = box && box.data && Array.isArray(box.data.entries) ? box.data.entries : [];
@@ -3245,7 +3361,7 @@ function holidayEntries(todayIso) {
 }
 
 function holidaysChapter(size) {
-  if (!moduleOn("timetable") || !state.holidays) return null;
+  if (!(moduleOn("timetable") || noChildren()) || !state.holidays) return null;
   const block = layoutBlocks().blockOf("holidays");
   const todayIso = isoDate(new Date());
   const rows = holidayEntries(todayIso);
@@ -3416,6 +3532,7 @@ const BLOCK_CHAPTERS = {
   noticeboard: pinboardChapter,
   absences: absencesChapter,
   conferences: conferencesChapter,
+  school_events: schoolEventsChapter,
   holidays: holidaysChapter,
   changes: changesChapter,
   chat: messengerChapter,
@@ -3885,13 +4002,12 @@ function overviewView() {
     if (anyOutage()) empty.push(outageBanner());
     if (moduleCardWanted()) empty.push(moduleCard(true));
     empty.push(overviewEmptyState());
-    const banner = schoolIssueBanner();
-    return el("div", { class: "overview-host" }, [banner, ...empty]);
+    return el("div", { class: "overview-host" }, [schoolIssueBanner(), mailNotice(), ...empty].filter(Boolean));
   }
   overviewFlatten(container, chapters);
-  const banner = schoolIssueBanner();
-  if (!banner) return container;
-  return el("div", { class: "overview-host" }, [banner, container]);
+  const notices = [schoolIssueBanner(), mailNotice()].filter(Boolean);
+  if (!notices.length) return container;
+  return el("div", { class: "overview-host" }, [...notices, container]);
 }
 
 function todayLessons(week, index) {
@@ -4714,12 +4830,26 @@ function calendarPort() {
   return Number.isInteger(port) && port > 0 ? port : CALENDAR_DEFAULT_PORT;
 }
 
-function calendarRegionSet() {
+function calendarRegionSet(schoolId) {
   const data = calendarData();
   const regions = data && data.holiday_regions && typeof data.holiday_regions === "object" ? data.holiday_regions : {};
-  const id = currentConnectionId();
+  const id = schoolId || currentConnectionId();
   if (id && Object.prototype.hasOwnProperty.call(regions, id)) return !!regions[id];
   return Object.values(regions).some(Boolean);
+}
+
+function calendarSchoolEventsOn(schoolId) {
+  const data = calendarData();
+  const offered = data && data.school_events && typeof data.school_events === "object" ? data.school_events : {};
+  return !!schoolId && offered[schoolId] === true && !moduleDisabled("calendar");
+}
+
+function calendarDraftSchool(draft) {
+  return draft.schoolId || connectionOfKey(draft.childId);
+}
+
+function calendarDraftKey(draft) {
+  return draft.childId || `school-${draft.schoolId}`;
 }
 
 function calendarFeedUrl(subscription, scheme) {
@@ -4795,7 +4925,7 @@ function calendarPageView() {
   else {
     const notice = calendarPortNotice(loaded.data);
     if (notice) body.push(notice);
-    for (const node of calendarChildCards(loaded.data)) body.push(node);
+    for (const node of calendarCards(loaded.data)) body.push(node);
   }
   return el("div", { class: "calendar-page" }, body);
 }
@@ -4916,13 +5046,68 @@ async function openCalendarPort() {
   toast(apiMessage(result, "api.calendar.error.portFailed"), "bad");
 }
 
-function calendarChildCards(data) {
+function calendarCards(data) {
   const subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-  if (!state.children.length) return [plainCard(t("overview.noChild"))];
-  return state.children.map((child) => {
+  const cards = state.children.map((child) => {
     const found = subscriptions.find((entry) => entry.child_key === child.key) || null;
     return calendarChildCard(child, found);
   });
+  for (const school of readySchools()) {
+    const found = subscriptions.find((entry) => !entry.child_key && entry.school_id === school.id) || null;
+    if (found || calendarSchoolWithoutChild(school.id)) cards.push(calendarSchoolCard(school.id, found));
+  }
+  return cards.length ? cards : [plainCard(t("overview.noChild"))];
+}
+
+function calendarSchoolWithoutChild(schoolId) {
+  if (state.childrenRead !== true || state.childrenFailure) return false;
+  return !state.children.some((child) => schoolOfChild(child) === schoolId);
+}
+
+function calendarSchoolName(schoolId) {
+  return t("calendar.name", { name: schoolFullName(schoolId) });
+}
+
+function calendarSchoolCard(schoolId, subscription) {
+  const card = el("div", { class: "cal-card cal-school-card" });
+  card.append(iservText("span", { class: "overline" }, t("calendar.subscribe.forSchool", { name: schoolFullName(schoolId) })));
+  card.append(el("p", { class: "cal-hint" }, t("calendar.subscribe.school.hint")));
+  const draft = state.calendarDraft;
+  if (draft && !draft.childId && draft.schoolId === schoolId) {
+    card.append(calendarForm(draft));
+    return card;
+  }
+  if (!subscription) {
+    card.append(
+      el("button", {
+        class: "btn",
+        type: "button",
+        onclick: () => { state.calendarDraft = calendarSchoolDraft(schoolId); rerender(); },
+      }, [icon("calendarAdd", 18), t("calendar.subscribe.create")])
+    );
+    return card;
+  }
+  for (const node of calendarSubscriptionBlock(subscription, null)) card.append(node);
+  return card;
+}
+
+function calendarHolidayComponentChosen(draft) {
+  return draft.components.includes(CALENDAR_COMPONENT_SCHOOL_HOLIDAYS) || draft.components.includes(CALENDAR_COMPONENT_PUBLIC_HOLIDAYS);
+}
+
+function calendarSchoolDraft(schoolId) {
+  return {
+    id: "",
+    childId: "",
+    schoolId,
+    components: [CALENDAR_COMPONENT_SCHOOL_HOLIDAYS].concat(calendarSchoolEventsOn(schoolId) ? [CALENDAR_COMPONENT_SCHOOL_EVENTS] : []),
+    label: "",
+    placeholder: calendarSchoolName(schoolId),
+    color: CALENDAR_DEFAULT_COLOR,
+    online: false,
+    error: "",
+    busy: false,
+  };
 }
 
 function calendarChildCard(child, subscription) {
@@ -4952,6 +5137,14 @@ function calendarDefaultName(child) {
   return first ? t("calendar.name", { name: first }) : t("calendar.name.fallback");
 }
 
+function calendarPlaceholderName(subscription, child) {
+  return subscription.child_key ? calendarDefaultName(child) : calendarSchoolName(subscription.school_id);
+}
+
+function calendarSubscriptionName(subscription, child) {
+  return subscription.label || calendarPlaceholderName(subscription, child);
+}
+
 function calendarNewDraft(child) {
   return {
     id: "",
@@ -4970,9 +5163,10 @@ function calendarEditDraft(subscription, child) {
   return {
     id: subscription.id,
     childId: subscription.child_key,
+    schoolId: subscription.child_key ? "" : subscription.school_id || "",
     components: (subscription.components || []).slice(),
     label: subscription.label || "",
-    placeholder: calendarDefaultName(child),
+    placeholder: calendarPlaceholderName(subscription, child),
     color: subscription.color || CALENDAR_DEFAULT_COLOR,
     online: !!subscription.online,
     wasOnline: !!subscription.online,
@@ -4982,6 +5176,7 @@ function calendarEditDraft(subscription, child) {
 }
 
 const CALENDAR_INTERNET_READY = "ready";
+const CALENDAR_INTERNET_CHECKING = "checking";
 const CALENDAR_INTERNET_REASONS = {
   checking: "calendar.subscribe.variant.internet.checking",
   no_integration: "calendar.subscribe.variant.internet.noIntegration",
@@ -4998,7 +5193,7 @@ function calendarInternetReason() {
 
 function calendarVariantOption(draft, online, refresh) {
   const reason = online && !draft.wasOnline ? calendarInternetReason() : "";
-  const input = el("input", { type: "radio", name: `cal-variant-${draft.childId}`, value: online ? "internet" : "local" });
+  const input = el("input", { type: "radio", name: `cal-variant-${calendarDraftKey(draft)}`, value: online ? "internet" : "local" });
   input.checked = draft.online === online;
   if (reason) input.disabled = true;
   input.addEventListener("change", () => {
@@ -5007,7 +5202,7 @@ function calendarVariantOption(draft, online, refresh) {
     refresh();
   });
   const key = online ? "internet" : "local";
-  const reasonId = `cal-variant-reason-${draft.childId}`;
+  const reasonId = `cal-variant-reason-${calendarDraftKey(draft)}`;
   if (reason) input.setAttribute("aria-describedby", reasonId);
   return el("label", { class: reason ? "cell check cal-variant cal-variant-off" : "cell check cal-variant" }, [
     input,
@@ -5030,8 +5225,11 @@ function calendarVariantField(draft, refresh) {
   ]);
 }
 
-function calendarComponents() {
-  return CALENDAR_COMPONENTS.filter((component) => {
+function calendarComponents(draft) {
+  const school = calendarDraftSchool(draft);
+  const offered = draft.childId ? CALENDAR_COMPONENTS : CALENDAR_SCHOOL_COMPONENTS;
+  return offered.filter((component) => {
+    if (component === CALENDAR_COMPONENT_SCHOOL_EVENTS) return calendarSchoolEventsOn(school) || draft.components.includes(component);
     if (component === CALENDAR_COMPONENT_ABSENCES) return moduleOn("absences");
     if (component === CALENDAR_COMPONENT_MARKS || component === CALENDAR_COMPONENT_TIMETABLE || component === CALENDAR_COMPONENT_OWN_ENTRIES) return moduleOn("timetable");
     return true;
@@ -5103,9 +5301,12 @@ function calendarForm(draft) {
   const submit = el("button", { class: "btn", type: "button" });
   const refresh = () => calendarFormRefresh(draft, wrap, problem, submit);
   wrap.append(el("span", { class: "lbl cal-form-lbl" }, t("calendar.subscribe.components")));
-  wrap.append(el("div", { class: "field-group" }, calendarComponents().map((component) => calendarComponentRow(draft, component, refresh))));
-  if (!calendarRegionSet()) {
+  wrap.append(el("div", { class: "field-group" }, calendarComponents(draft).map((component) => calendarComponentRow(draft, component, refresh))));
+  if (draft.childId && !calendarRegionSet()) {
     wrap.append(el("p", { class: "cal-hint" }, t("calendar.subscribe.region.locked")));
+    wrap.append(el("button", { class: "btn ghost slim", type: "button", onclick: openCalendarRegionSetting }, t("calendar.subscribe.region.open")));
+  } else if (!draft.childId && calendarHolidayComponentChosen(draft) && !calendarRegionSet(draft.schoolId)) {
+    wrap.append(el("p", { class: "cal-hint" }, t("calendar.subscribe.school.region")));
     wrap.append(el("button", { class: "btn ghost slim", type: "button", onclick: openCalendarRegionSetting }, t("calendar.subscribe.region.open")));
   }
   wrap.append(problem);
@@ -5166,7 +5367,7 @@ async function submitCalendarDraft(draft) {
   draft.error = "";
   rerender();
   const payload = {
-    child_key: draft.childId,
+    ...(draft.childId ? { child_key: draft.childId } : { school_id: draft.schoolId }),
     components: draft.components,
     label: draft.label,
     color: draft.color,
@@ -5197,8 +5398,8 @@ let calendarPendingWatch = 0;
 function calendarHasPending() {
   const data = calendarData();
   if (!data) return false;
-  if (data.internet === "checking") return true;
-  return (data.subscriptions || []).some((entry) => entry.online && calendarOnlineStatus(entry) === "pending");
+  if (data.internet === CALENDAR_INTERNET_CHECKING) return true;
+  return (data.subscriptions || []).some((entry) => entry.online && calendarOnlineStatus(entry) === CALENDAR_ONLINE_PENDING);
 }
 
 function watchCalendarPending(round = 0) {
@@ -5241,7 +5442,7 @@ function calendarSubscriptionBlock(subscription, child) {
   dot.style.background = subscription.color || CALENDAR_DEFAULT_COLOR;
   nodes.push(el("div", { class: "cal-name-row" }, [
     dot,
-    el("b", { class: "cal-name" }, subscription.label || calendarDefaultName(child)),
+    el("b", { class: "cal-name" }, calendarSubscriptionName(subscription, child)),
     el("span", { class: "tag cal-variant-tag" }, t(subscription.online ? "calendar.subscribe.variant.internet" : "calendar.subscribe.variant.local")),
     calendarMenuButton(subscription, child),
   ]));
@@ -5366,7 +5567,7 @@ function calendarActions(subscription) {
   if (subscription.online && calendarOnlineStatus(subscription) !== CALENDAR_ONLINE_READY) {
     const status = calendarOnlineStatus(subscription);
     nodes.push(el("p", { class: "cal-hint cal-online-status" }, [
-      status === "pending" ? el("span", { class: "spin" }) : null,
+      status === CALENDAR_ONLINE_PENDING ? el("span", { class: "spin" }) : null,
       t(CALENDAR_ONLINE_TEXTS[status]),
     ]));
     return nodes;
@@ -5383,10 +5584,7 @@ function calendarActions(subscription) {
     nodes.push(calendarAddButton(subscription, links.web));
   }
   if (state.calendarHandOffStalled === subscription.id) nodes.push(calendarHandOffStalledBlock());
-  const copied = !embedded ? links.plain
-    : links.local ? calendarSubscribeUrl(links.plain)
-    : isApplePlatform() ? links.web : links.plain;
-  const row = el("div", { class: "cal-action-row" }, [calendarCopyButton(copied)]);
+  const row = el("div", { class: "cal-action-row" }, [calendarCopyButton(calendarCopiedUrl(links, embedded))]);
   if (typeof qrMatrix === "function") row.append(calendarQrButton(subscription));
   nodes.push(row);
   if (state.calendarQr === subscription.id) {
@@ -5396,6 +5594,12 @@ function calendarActions(subscription) {
   nodes.push(calendarFetchLine(subscription));
   nodes.push(calendarHelp(subscription));
   return nodes;
+}
+
+function calendarCopiedUrl(links, embedded) {
+  if (!embedded) return links.plain;
+  if (links.local) return calendarSubscribeUrl(links.plain);
+  return isApplePlatform() ? links.web : links.plain;
 }
 
 function calendarHelp(subscription) {
@@ -5426,7 +5630,7 @@ function calendarMenuButton(subscription, child) {
 }
 
 function calendarMenuSheet(subscription, child) {
-  return sheet(subscription.label || calendarDefaultName(child), [el("div", { class: "rows flat" }, [
+  return sheet(calendarSubscriptionName(subscription, child), [el("div", { class: "rows flat" }, [
     letterActionRow("settings", t("calendar.subscribe.edit"), () => {
       closeSheet();
       state.calendarDraft = calendarEditDraft(subscription, child);
@@ -5438,6 +5642,7 @@ function calendarMenuSheet(subscription, child) {
 }
 
 const CALENDAR_ONLINE_READY = "ready";
+const CALENDAR_ONLINE_PENDING = "pending";
 const CALENDAR_ONLINE_TEXTS = {
   pending: "calendar.subscribe.online.pending",
   stalled: "calendar.subscribe.online.stalled",
@@ -5447,8 +5652,8 @@ const CALENDAR_ONLINE_TEXTS = {
 
 function calendarOnlineStatus(subscription) {
   const status = subscription.online_state;
-  if (status === CALENDAR_ONLINE_READY) return subscription.online_url ? CALENDAR_ONLINE_READY : "pending";
-  return Object.prototype.hasOwnProperty.call(CALENDAR_ONLINE_TEXTS, status) ? status : "pending";
+  if (status === CALENDAR_ONLINE_READY) return subscription.online_url ? CALENDAR_ONLINE_READY : CALENDAR_ONLINE_PENDING;
+  return Object.prototype.hasOwnProperty.call(CALENDAR_ONLINE_TEXTS, status) ? status : CALENDAR_ONLINE_PENDING;
 }
 
 function calendarCopyButton(url) {
@@ -8652,7 +8857,7 @@ let teacherSearchAbort = null;
 
 function teacherRoomEntry(className) {
   const data = state.messengerRooms;
-  if (!data || data.error || !data.can_write_to_teacher) return null;
+  if (!data || data.error || !data.can_write_to_teacher || noChildren()) return null;
   return el("button", { class: className, type: "button", onclick: startTeacherRoom }, [
     icon("plus", 16),
     el("span", {}, t("messenger.create.action")),
@@ -8705,14 +8910,24 @@ async function loadTeacherRoomChildren() {
   } catch (error) {
     if (state.teacherRoom !== form) return;
     form.childrenFailed = true;
-    teacherRoomRefresh();
+    teacherRoomChildrenArrived();
     return;
   }
   if (state.teacherRoom !== form) return;
   form.childOptions = (data && data.children) || [];
   form.allowed = !data || data.allowed !== false;
   form.childIds = form.childOptions.length === 1 ? [form.childOptions[0].id] : [];
-  teacherRoomRefresh();
+  teacherRoomChildrenArrived();
+}
+
+function teacherRoomChildrenArrived() {
+  if (!teacherRoomFlow) return;
+  if (teacherRoomFlow.current() !== "teacher") {
+    teacherRoomFlow.render();
+    return;
+  }
+  teacherRoomFlow.sync();
+  renderTeacherResults();
 }
 
 function closeTeacherRoom() {
@@ -8766,10 +8981,6 @@ function teacherRoomPath() {
   if (form.duplicate) path.push("duplicate");
   path.push("review");
   return path;
-}
-
-function teacherRoomRefresh() {
-  if (teacherRoomFlow) teacherRoomFlow.render();
 }
 
 function cancelTeacherSearch() {
@@ -8983,12 +9194,13 @@ function openDuplicateRoom() {
 
 const TEACHER_ROOM_STEPS = {
   teacher(form) {
-    teacherResultsHost = el("div", { class: "sw-results" });
-    window.setTimeout(renderTeacherResults, 0);
     return {
       list: true,
       question: t("messenger.create.step.teacher"),
-      body: [teacherSearchField(), teacherResultsHost],
+      body: () => {
+        teacherResultsHost = el("div", { class: "sw-results" }, teacherResultNodes());
+        return [teacherSearchField(), teacherResultsHost];
+      },
       block: form.teacher ? "" : t("messenger.create.block.teacher"),
     };
   },
@@ -9086,6 +9298,27 @@ async function finishTeacherRoom(form, result) {
   return true;
 }
 
+async function loadMailCounts() {
+  const outcome = await reload("mail", () => getJson("api/mail"), Array.isArray(state.mail));
+  if (!outcome) return;
+  if (outcome.data) state.mail = Array.isArray(outcome.data.schools) ? outcome.data.schools : [];
+  if (state.view === "overview") rerender();
+}
+
+function mailNotice() {
+  const listed = Array.isArray(state.mail) ? state.mail : [];
+  const unread = listed.filter((entry) => Number(entry.unread) > 0);
+  if (!unread.length) return null;
+  return el("div", { class: "mail-notice", role: "status" }, unread.map((entry) => el("div", { class: "mail-notice-row" }, [
+    iservText("span", { class: "mail-notice-text" }, manySchools()
+      ? tCount("mail.schoolUnread", Number(entry.unread), { school: schoolFullName(entry.connection_id) || entry.school || "" })
+      : tCount("mail.unread", Number(entry.unread))),
+    entry.open_url
+      ? el("a", { class: "btn ghost slim", href: entry.open_url, target: "_blank", rel: "noopener noreferrer" }, [externalIcon(16), t("mail.open")])
+      : null,
+  ].filter(Boolean))));
+}
+
 async function loadConferences() {
   const keep = !!(state.conferences && !state.conferences.error);
   const outcome = await reload("conferences", () => getJson("api/conferences"), keep);
@@ -9133,6 +9366,70 @@ function conferencesView() {
   }
   view.append(rows);
   return view;
+}
+
+async function loadSchoolEvents() {
+  const keep = !!(state.schoolEvents && !state.schoolEvents.error);
+  const outcome = await reload("schoolEvents", () => getJson("api/school-events"), keep);
+  if (!outcome) return;
+  if (outcome.data) state.schoolEvents = outcome.data;
+  else if (outcome.error) state.schoolEvents = { error: outcome.error };
+  if (state.view === "overview" || state.view === "calendar") rerender();
+}
+
+function schoolEventRow(event) {
+  const sub = schoolEventSub(event);
+  const tag = schoolTag(event);
+  return el("div", { class: "row read event-row" }, [
+    el("span", { class: "row-dot" }),
+    el("div", { class: "row-main" }, [
+      tag ? el("div", { class: "row-tags" }, [tag]) : null,
+      iservText("div", { class: "row-title" }, event.title || t("schoolEvents.untitled")),
+      el("div", { class: "row-sub event-time" }, schoolEventTimeText(event)),
+      sub ? iservText("div", { class: "row-sub" }, sub) : null,
+    ]),
+  ]);
+}
+
+function schoolEventsView() {
+  const view = el("div", {});
+  const data = state.schoolEvents;
+  if (!data) {
+    view.append(loadingBlock());
+    return view;
+  }
+  if (data.error) {
+    view.append(anyOutage()
+      ? outageEmptyBlock()
+      : emptyBlock("alert", t("schoolEvents.error.title"), t("schoolEvents.error.text"), retryButton(() => { state.schoolEvents = null; rerender(); loadSchoolEvents(); })));
+    return view;
+  }
+  const note = refreshFailureNote("schoolEvents");
+  if (note) view.append(note);
+  const events = upcomingSchoolEvents();
+  if (!events.length) {
+    view.append(emptyBlock("upcoming", t("schoolEvents.empty.title"), t("schoolEvents.empty.text")));
+    return view;
+  }
+  const days = [];
+  for (const event of events) {
+    const day = schoolEventDay(event);
+    const last = days[days.length - 1];
+    if (last && last.day === day) last.events.push(event);
+    else days.push({ day, events: [event] });
+  }
+  for (const group of days) {
+    view.append(el("section", { class: "event-day" }, [
+      el("div", { class: "section-head" }, [el("span", { class: "overline" }, schoolEventDayHeading(group.day))]),
+      el("div", { class: "rows" }, group.events.map(schoolEventRow)),
+    ]));
+  }
+  return view;
+}
+
+function schoolEventDayHeading(day) {
+  const date = parseIsoDay(day);
+  return date ? dateFormatter({ weekday: "long", day: "numeric", month: "long" }).format(date) : day;
 }
 
 function absenceSchoolId() {
@@ -10572,12 +10869,14 @@ function settingsView() {
 function schoolSettingRows(id) {
   const config = connectionConfig(id);
   const rows = [settingRow(t("holidays.settings.title"), holidayRegionValueLabel(), () => openSheet(holidayRegionSheet))];
-  if (moduleOn("timetable")) {
+  if (moduleOn("timetable") && !noChildren()) {
     rows.push(periodsSettingRow(id, config));
     rows.push(settingRow(t("settings.names"), "", openNamesPage, "names-setting", SETTINGS_PAGE_NAMES));
     rows.push(...courseSettingRows(id));
   }
-  rows.push(settingRow(t("settings.phones"), t("settings.phones.count", { count: formatNumber((config.phones || []).filter((p) => p.number).length) }), () => openSheet(phonesSheet)));
+  if (moduleOn("absences") && !noChildren()) {
+    rows.push(settingRow(t("settings.phones"), t("settings.phones.count", { count: formatNumber((config.phones || []).filter((p) => p.number).length) }), () => openSheet(phonesSheet)));
+  }
   return rows;
 }
 
@@ -12396,6 +12695,7 @@ const NOTIFY_EVENTS = [
   ["letters", "settings.notify.event.letters"],
   ["pinboard", "settings.notify.event.pinboard"],
   ["conferences", "settings.notify.event.conferences"],
+  ["messenger", "settings.notify.event.messenger"],
   ["outage", "settings.notify.event.outage"],
 ];
 
@@ -13008,7 +13308,9 @@ function schoolChildrenValue(id) {
   if (listState === "unreadable") return el("span", { class: "val warn" }, t("schools.children.unreadable"));
   const listed = state.children.some((child) => schoolOfChild(child) === id);
   if (listState === "refused" && !listed) return el("span", { class: "val" }, t("schools.children.refused"));
-  return el("span", { class: "val" }, tCount("schools.children", schoolChildrenCount(id)));
+  const count = schoolChildrenCount(id);
+  if (!count && listState === "listed") return el("span", { class: "val" }, t("schools.children.none"));
+  return el("span", { class: "val" }, tCount("schools.children", count));
 }
 
 function schoolRow(entry) {

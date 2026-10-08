@@ -89,9 +89,17 @@ describe("attachment click fetches in the current document context", () => {
     trackDownloads(window);
     let revoked = "";
     window.URL.revokeObjectURL = (url) => { revoked = url; };
+    const revokeDelay = window.eval("DOWNLOAD_REVOKE_DELAY");
+    const delays = [];
+    const realTimeout = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...rest) => {
+      delays.push(delay);
+      return realTimeout(callback, delay === revokeDelay ? 0 : delay, ...rest);
+    };
     tapAttachment(window, { filename: "Stundenplan.docx", url: "api/letters/attachment/x" });
     await settle(window, 6);
-    await new Promise((resolve) => window.setTimeout(resolve, 4100));
+    await new Promise((resolve) => realTimeout(resolve, 0));
+    expect(delays).toContain(revokeDelay);
     expect(revoked).toBe("blob:mock-url");
   });
 });

@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "العطل"
+      },
+      "school_events": {
+        "name": "فعاليات المدرسة"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "منشورات غير مقروءة"
       },
+      "unread_mail": {
+        "name": "رسائل بريد غير مقروءة"
+      },
       "open_absences": {
         "name": "غيابات مفتوحة"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "تغيّرت حالة غياب",
       "school_unreachable": "المدرسة غير قابلة للوصول",
       "school_reachable": "المدرسة قابلة للوصول مجددًا",
-      "login_needed": "يلزم تسجيل الدخول"
+      "login_needed": "يلزم تسجيل الدخول",
+      "school_new_letter": "رسالة جديدة",
+      "school_new_noticeboard_post": "منشور جديد على اللوحة"
     },
     "condition_type": {
       "is_school_day": "يوم دراسي",

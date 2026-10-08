@@ -1326,6 +1326,7 @@ button.section-head {
   margin-block-start: var(--s-6);
 }
 @keyframes rise { from { transform: translateY(100%); } }
+.scrim.shown, .scrim.shown > .sheet.shown { animation: none; }
 .sheet-head {
   display: flex;
   align-items: center;
@@ -2139,13 +2140,13 @@ button.section-head {
   .outage-row { flex-wrap: wrap; }
   .outage-row .btn { flex: 1 1 100%; }
 }
-.school-banner {
+.school-banner, .mail-notice {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
   margin-block-end: var(--s-5);
 }
-.school-banner-row {
+.school-banner-row, .mail-notice-row {
   display: flex;
   align-items: center;
   gap: var(--s-4);
@@ -2156,8 +2157,9 @@ button.section-head {
   color: var(--ink);
   font-size: 0.875rem;
 }
-.school-banner-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
-.school-banner-row .btn { flex: none; }
+.mail-notice-row { background: var(--surface-2); }
+.school-banner-text, .mail-notice-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
+.school-banner-row .btn, .mail-notice-row .btn { flex: none; }
 .swatch { width: 22px; height: 22px; border-radius: var(--r-xs); flex: none; border: 1px solid var(--line); }
 .swatch-grid {
   display: grid;
@@ -3933,3 +3935,7 @@ button.tt-cell.free { cursor: pointer; }
   .tt-own .sub { font-size: 0.875rem; }
   .tt-own .room { font-size: 0.6875rem; }
 }
+
+.event-day + .event-day { margin-block-start: var(--s-6); }
+.event-row .row-title, .event-row .row-sub { overflow-wrap: anywhere; }
+.event-row .event-time { font-variant-numeric: tabular-nums; color: var(--ink-2); }

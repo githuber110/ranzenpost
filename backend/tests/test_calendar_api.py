@@ -110,6 +110,7 @@ def test_the_api_creates_lists_updates_rotates_and_revokes(tmp_path):
         "marks",
         "absences",
         "own_entries",
+        "school_events",
     ]
 
     updated = client.post(

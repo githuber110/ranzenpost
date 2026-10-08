@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import MODULES, REQUEST_TIMEOUT
+from .const import CONFIRMED_ONLY_MODULES, MODULES, REQUEST_TIMEOUT
 
 ROUTE_INFO = "/api/integration/info"
 ROUTE_STATE = "/api/integration/state"
@@ -103,13 +103,19 @@ class Modules:
         flags = data if isinstance(data, dict) else {}
         switched_off = disabled if isinstance(disabled, dict) else {}
         off = frozenset(name for name in MODULES if switched_off.get(name) is True)
-        return cls(frozenset(name for name in MODULES if flags.get(name, True) is not False and name not in off), off)
+        return cls(frozenset(name for name in MODULES if _offered(flags, name) and name not in off), off)
 
     def has(self, name: str) -> bool:
         return name in self.available
 
     def as_dict(self) -> dict[str, bool]:
         return {name: name in self.available for name in MODULES}
+
+
+def _offered(flags: dict[str, Any], name: str) -> bool:
+    if name in CONFIRMED_ONLY_MODULES:
+        return flags.get(name) is True
+    return flags.get(name, True) is not False
 
 
 @dataclass(frozen=True)
@@ -124,6 +130,7 @@ class SchoolInfo:
     last_success: datetime | None = None
     status_reason: str = ""
     own_entries: bool = False
+    mail: bool = False
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> SchoolInfo:
@@ -139,6 +146,7 @@ class SchoolInfo:
             last_success=parse_datetime(data.get("last_success")),
             status_reason=str(data.get("status_reason") or ""),
             own_entries=data.get("own_entries") is True,
+            mail=data.get("mail") is True,
         )
 
     @property
@@ -572,12 +580,19 @@ def _holiday(data: Any) -> Holiday | None:
     )
 
 
+def _notices_or_none(data: Any) -> Notices | None:
+    return Notices.from_json(data) if isinstance(data, dict) else None
+
+
 @dataclass(frozen=True)
 class School:
     next_holiday: Holiday | None
     next_conference: Conference | None
     region: str
     next_free_day: Holiday | None = None
+    unread_letters: Notices | None = None
+    unread_posts: Notices | None = None
+    unread_mail: int | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> School:
@@ -596,7 +611,16 @@ class School:
                 else None
             ),
             region=str(data.get("region") or ""),
+            unread_letters=_notices_or_none(data.get("unread_letters")),
+            unread_posts=_notices_or_none(data.get("unread_posts")),
+            unread_mail=_count_or_none(data.get("unread_mail")),
         )
+
+
+def _count_or_none(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 @dataclass(frozen=True)

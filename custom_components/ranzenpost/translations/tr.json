@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "Tatiller"
+      },
+      "school_events": {
+        "name": "Okul etkinlikleri"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "Okunmamış pano gönderileri"
       },
+      "unread_mail": {
+        "name": "Okunmamış e-postalar"
+      },
       "open_absences": {
         "name": "Açık devamsızlıklar"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "Devamsızlık durumu değişti",
       "school_unreachable": "Okula erişilemiyor",
       "school_reachable": "Okula yeniden erişilebiliyor",
-      "login_needed": "Giriş gerekli"
+      "login_needed": "Giriş gerekli",
+      "school_new_letter": "Yeni veli mektubu",
+      "school_new_noticeboard_post": "Yeni pano gönderisi"
     },
     "condition_type": {
       "is_school_day": "Okul günü",

@@ -31,6 +31,7 @@ export const SHEET_KEYS = Object.freeze([
   "sheetFormDefault",
   "sheetDiscardAsk",
   "sheetFocused",
+  "sheetShown",
 ]);
 
 const snapshot = (value) => JSON.parse(JSON.stringify(value === undefined ? null : value));
@@ -46,6 +47,7 @@ export function createSheets({ slot, layout, t, dom, timers, rerender }) {
     slot.write("onSheetClose", onClose);
     resetSheetForm();
     slot.write("sheetDiscardAsk", false);
+    slot.write("sheetShown", false);
   };
 
   const openSheet = (factory, onClose = null) => {
@@ -56,6 +58,7 @@ export function createSheets({ slot, layout, t, dom, timers, rerender }) {
 
   const placeSheet = (factory) => {
     slot.write("sheet", factory);
+    slot.write("sheetShown", false);
   };
 
   const dropSheet = () => {
@@ -112,7 +115,9 @@ export function createSheets({ slot, layout, t, dom, timers, rerender }) {
   };
 
   const sheet = (title, body, foot, headerExtra) => {
-    const panel = dom.el("div", { class: "sheet", role: "dialog", "aria-modal": "true" }, [
+    const shown = slot.read("sheetShown") ? " shown" : "";
+    slot.write("sheetShown", true);
+    const panel = dom.el("div", { class: `sheet${shown}`, role: "dialog", "aria-modal": "true" }, [
       dom.el("div", { class: "sheet-head" }, [
         dom.el("div", { class: "sheet-title", tabindex: "-1" }, title),
         dom.el("div", { class: "sheet-head-actions" }, [
@@ -125,7 +130,7 @@ export function createSheets({ slot, layout, t, dom, timers, rerender }) {
     ]);
     if (slot.read("sheetDiscardAsk")) panel.append(discardPanel());
     panel.addEventListener("click", (event) => event.stopPropagation());
-    const scrim = dom.el("div", { class: layout() === "phone" ? "scrim" : "scrim dialog", onclick: closeSheet });
+    const scrim = dom.el("div", { class: (layout() === "phone" ? "scrim" : "scrim dialog") + shown, onclick: closeSheet });
     scrim.addEventListener("keydown", (event) => {
       if (event.key === "Escape") closeSheet();
     });
@@ -152,12 +157,14 @@ export function createSheets({ slot, layout, t, dom, timers, rerender }) {
       slot.write("sheetForm", previousForm);
       slot.write("sheetFormDefault", previousDefault);
       slot.write("sheetFocused", false);
+      slot.write("sheetShown", false);
       rerender();
     });
     slot.write("sheet", factory);
     slot.write("sheetForm", null);
     slot.write("sheetFormDefault", null);
     slot.write("sheetFocused", false);
+    slot.write("sheetShown", false);
     return rerender();
   };
 

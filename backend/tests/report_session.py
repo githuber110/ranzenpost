@@ -98,7 +98,7 @@ class PlantedClient:
             "/iserv/mail/": Response(200, base_url + "/iserv/mail/", MAIL_PAGE),
             "/iserv/klassengeld/redirect": Response(302, base_url + "/iserv/klassengeld/redirect", "", location=PLANTED_SSO),
             "/iserv/videoconference/room/Jonas-Pflanzkind": Response(302, base_url + "/iserv/videoconference/room/Jonas-Pflanzkind", "", location="/iserv/auth/login?user=Jonas-Pflanzkind"),
-            reportfacts.SCHOOL_ACCOUNT_ME_PATH: self._json(reportfacts.SCHOOL_ACCOUNT_ME_PATH, ME),
+            reportfacts.SCHOOL_ACCOUNT_PATH: self._json(reportfacts.SCHOOL_ACCOUNT_PATH, ME),
             reportfacts.SICK_NOTE_SELECTION_PATH: self._json(reportfacts.SICK_NOTE_SELECTION_PATH, STUDENTS),
             reportfacts.SCHOOL_SETTINGS_PATH: self._json(reportfacts.SCHOOL_SETTINGS_PATH, SETTINGS),
             reportfacts.CURRENT_TIMETABLE_QUERY_PATH: self._json(reportfacts.CURRENT_TIMETABLE_QUERY_PATH, TIMETABLE),

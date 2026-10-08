@@ -35,13 +35,22 @@ from .identifiers import as_int
 from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY
+from .iserv.badges import BADGES_PATH, MAIL_MODULE, MAIL_PAGE_PATH, BadgeShapeError, parse_badges
 from .iserv.conferences import parse_conferences
+from .iserv.school_calendar import (
+    CALENDAR_EVENTS_PATH,
+    CALENDAR_REFUSED_STATUSES,
+    CalendarShapeError,
+    events_params,
+    parse_events,
+)
 from .iserv.dsa import REGULAR_PLAN_SECONDS, SUBSTITUTIONS_SETTING, TIMETABLE_SETTING, DieSchulAppClient, SharedReads
 from .iserv import dsa_substitutions
 from .iserv.client import (
     LOGIN_TWOFACTOR_SETUP_KEY,
     PASSWORD_UNVERIFIED,
     REFUSAL_KEYS,
+    server_failure,
 )
 from .iserv.errors import (
     REASON_BAD_CREDENTIALS,
@@ -53,6 +62,7 @@ from .iserv.errors import (
     LoginError,
     OutageError,
     PasswordError,
+    SchoolCalendarRefusedError,
     TwoFactorError,
     status_reason,
     transport_outage,
@@ -69,6 +79,7 @@ from .sign_in import SignInService, next_totp_code, sign_in_failure_reason
 from .timetable_source import TimetableSources, has_lessons
 
 CONFERENCES_PATH = "/iserv/parentconference/attendee/"
+SCHOOL_EVENTS_DAYS = 60
 START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
 MODULES_RECHECKED_KEY = "api.modules.rechecked"
@@ -756,6 +767,35 @@ class ConnectionService:
             "school_address": address,
         }
 
+    def school_events(self, first, last):
+        client = self._session()
+        response = client.fetch(CALENDAR_EVENTS_PATH, params=events_params(first, last))
+        status = int(getattr(response, "status_code", 0) or 0)
+        if status in CALENDAR_REFUSED_STATUSES:
+            raise SchoolCalendarRefusedError("school calendar refused: %d" % status)
+        failure = server_failure(response)
+        if failure is not None:
+            raise failure
+        if status != 200:
+            raise DataError("school calendar answered %d" % status, detail={"path": CALENDAR_EVENTS_PATH})
+        try:
+            return parse_events(response.json())
+        except (ValueError, TypeError, CalendarShapeError) as error:
+            raise DataError("school calendar answered no readable events", detail={"path": CALENDAR_EVENTS_PATH}) from error
+
+    def badges(self):
+        response = self._session().fetch_or_raise(BADGES_PATH)
+        try:
+            return parse_badges(response.json())
+        except (ValueError, BadgeShapeError) as error:
+            raise DataError("navigation badges unreadable", detail={"path": BADGES_PATH}) from error
+
+    def mail_available(self):
+        return modules.lists_module(self.stored_modules(), MAIL_MODULE)
+
+    def school_calendar_available(self):
+        return self.module_available(modules.CALENDAR)
+
     def conferences(self):
         client = self._session()
         try:
@@ -910,6 +950,21 @@ def without_open_url(entry):
     return {key: value for key, value in entry.items() if key != "open_url"}
 
 
+def _school_calendar(connection, first, last):
+    if not connection.module_available(modules.CALENDAR):
+        return []
+    try:
+        return connection.school_events(first, last)
+    except SchoolCalendarRefusedError:
+        return []
+
+
+def _school_letters(connection, tab):
+    if not connection.module_available(modules.LETTERS):
+        return {"letters": []}
+    return connection.letters(tab)
+
+
 class IServService:
     def __init__(self, store, client_factory=None):
         self.store = store
@@ -1045,9 +1100,10 @@ class IServService:
                     logger.warning("child list of school#%s unavailable: %s", connection.id, failure_cause(error))
                 raw = [dict(child, unavailable=True) for child in connection.stored_children()]
             listed.extend(self._child(connection, child) for child in raw)
-        if failures and len(failures) == len(connections):
-            if not listed or not all(isinstance(failure, OutageError) for failure in failures):
-                raise failures[0]
+        if failures and not listed:
+            raise failures[0]
+        if failures and len(failures) == len(connections) and not all(isinstance(failure, OutageError) for failure in failures):
+            raise failures[0]
         listed.sort(key=child_sort_key)
         return listed
 
@@ -1151,8 +1207,28 @@ class IServService:
             raise failures[0][1]
         return results, [connection.id for connection, _ in failures]
 
+    def mail_counts(self):
+        schools = []
+        for connection in self.connections():
+            if not connection.mail_available():
+                continue
+            url = connection.store.load_config().get("school_url", "")
+            schools.append(self.annotate(connection, {
+                "unread": integration.school_mail(self.store, connection.id),
+                "open_url": modules.open_page_url(url, MAIL_PAGE_PATH),
+            }))
+        return {"schools": schools}
+
+    def school_events(self, days=SCHOOL_EVENTS_DAYS):
+        today = holidays.berlin_today()
+        last = today + timedelta(days=days)
+        results, unavailable = self._merge(lambda connection: _school_calendar(connection, today, last))
+        entries = [self.annotate(connection, dict(event)) for connection, events in results for event in events]
+        entries.sort(key=lambda event: (event.get("start") or "", event.get("title") or ""))
+        return {"events": entries, "unavailable": unavailable}
+
     def letters(self, tab="current"):
-        results, unavailable = self._merge(lambda connection: connection.letters(tab))
+        results, unavailable = self._merge(lambda connection: _school_letters(connection, tab))
         entries = []
         for connection, data in results:
             for entry in data.get("letters") or []:

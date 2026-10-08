@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "Каникулы"
+      },
+      "school_events": {
+        "name": "События школы"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "Непрочитанные записи на доске"
       },
+      "unread_mail": {
+        "name": "Непрочитанная почта"
+      },
       "open_absences": {
         "name": "Открытые пропуски"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "Статус пропуска изменился",
       "school_unreachable": "Школа недоступна",
       "school_reachable": "Школа снова доступна",
-      "login_needed": "Требуется вход"
+      "login_needed": "Требуется вход",
+      "school_new_letter": "Новое письмо",
+      "school_new_noticeboard_post": "Новая запись на доске"
     },
     "condition_type": {
       "is_school_day": "Учебный день",

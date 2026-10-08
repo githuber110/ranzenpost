@@ -241,15 +241,16 @@ describe("notification sheet: chip list + nested picker replace the old free-for
     expect(hint).not.toBeUndefined();
   });
 
-  test("the event section keeps all five events switched on by default", () => {
+  test("the event section keeps all six events switched on by default", () => {
     const { window, document } = openNotifySheet(ENRICHED);
     const groups = [...document.querySelectorAll(".field-group")];
     const eventGroup = groups[groups.length - 1];
     const checks = [...eventGroup.querySelectorAll("input[type=checkbox]")];
 
-    expect(checks.length).toBe(5);
+    expect(checks.length).toBe(6);
     expect(checks.every((check) => check.checked)).toBe(true);
     expect(eventGroup.textContent).toContain("Stundenplan-Änderungen");
+    expect(eventGroup.textContent).toContain("Neue Chat-Nachrichten");
     expect(window.eval("state.sheetForm.events")).toEqual({});
   });
 

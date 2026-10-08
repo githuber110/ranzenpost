@@ -393,6 +393,7 @@ OUTAGE_LAST_SUCCESS_EPOCH = 1_789_775_280
 MODULES_COOKIE = "e2e_modules"
 MODULES_ENV = "ISERV_E2E_MODULES"
 MODULES_NONE = "none"
+MODULES_ALL = "all"
 MODULES = contextvars.ContextVar("e2e_modules", default="")
 LONG_SUBJECTS_COOKIE = "e2e_long_subjects"
 LONG_SUBJECTS = contextvars.ContextVar("e2e_long_subjects", default="")
@@ -588,6 +589,9 @@ def module_registry():
     registry["checked_at"] = 1_756_800_000
     registry["iserv_version"] = FIXTURE_ISERV_VERSION
     if not chosen:
+        return registry
+    if chosen == MODULES_ALL:
+        registry["modules"] = {name: True for name in modules.MODULES}
         return registry
     wanted = set() if chosen == MODULES_NONE else {part.strip() for part in chosen.split(",") if part.strip()}
     registry["modules"] = {name: name in wanted for name in modules.MODULES}
@@ -1729,6 +1733,34 @@ class FixtureService:
             ],
             "unavailable": [],
         }
+
+    def mail_counts(self):
+        raise_when_unreachable()
+        return {"schools": []}
+
+    def school_events(self, days=60):
+        raise_when_unreachable()
+        if module_emptied(modules.CALENDAR):
+            return {"events": [], "unavailable": []}
+        today = fixture_today()
+
+        def stamp(offset, hour, minute=0):
+            return (today + timedelta(days=offset)).strftime("%Y-%m-%d") + f"T{hour:02d}:{minute:02d}:00+02:00"
+
+        def day(offset):
+            return (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+        events = [
+            {"uid": "ev-evening", "title": "Parents evening grade 3", "start": stamp(3, 19), "end": stamp(3, 21), "all_day": False, "location": "Hall A", "calendar": "School", "category": "", "description": ""},
+            {"uid": "ev-trip", "title": "Class trip", "start": day(6), "end": day(9), "all_day": True, "location": "Forest camp", "calendar": "Grade 4", "category": "", "description": ""},
+            {"uid": "ev-long", "title": "Information event about the planned reorganisation of the afternoon supervision and the lunch break arrangements for all grades", "start": stamp(10, 8, 30), "end": stamp(10, 10), "all_day": False, "location": "Assembly hall", "calendar": "School", "category": "", "description": ""},
+            {"uid": "ev-open", "title": "Open day", "start": stamp(12, 10), "end": stamp(12, 13), "all_day": False, "location": "", "calendar": "School", "category": "", "description": ""},
+        ]
+        listed = [tag(SCHOOL_ONE, event) for event in events]
+        if school_count() > 1:
+            listed.append(tag(SCHOOL_TWO, {"uid": "ev-two", "title": "Sports day", "start": day(5), "end": day(6), "all_day": True, "location": "Stadium", "calendar": "Sports", "category": "", "description": ""}))
+        listed.sort(key=lambda event: event["start"])
+        return {"events": listed, "unavailable": []}
 
     def absences_overview(self, connection_id=None):
         connection_id = self.pick_school(connection_id).id

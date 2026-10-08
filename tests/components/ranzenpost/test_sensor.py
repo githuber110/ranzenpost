@@ -157,9 +157,10 @@ async def test_every_child_gets_the_full_sensor_set(hass, aioclient_mock, frozen
     for prefix in (ALEX, KIM):
         for key in keys:
             assert hass.states.get(f"{prefix}_{key}") is not None, key
-    for key in ("next_holiday", "next_free_day", "next_conference", "connection"):
+    school_keys = ("next_holiday", "next_free_day", "next_conference", "unread_letters", "unread_posts", "connection")
+    for key in school_keys:
         assert hass.states.get(f"{SCHOOL}_{key}") is not None, key
-    assert len(hass.states.async_entity_ids("sensor")) == 2 * len(keys) + 4
+    assert len(hass.states.async_entity_ids("sensor")) == 2 * len(keys) + len(school_keys)
 
 
 async def test_next_absence_sensor_reads_the_earliest_open_absence(hass, aioclient_mock, frozen_now):

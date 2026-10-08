@@ -31,6 +31,7 @@ PINBOARD_FIELDS = (
 )
 PINBOARD_PARAMS = {"fields": PINBOARD_FIELDS}
 REFUSED_STATUSES = (403,)
+SICK_NOTE_SELECTION_PATH = "sickNotes/userSelection/"
 TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
 EXPIRED_STATUS = 401
@@ -515,21 +516,25 @@ class DieSchulAppClient:
     def pinboards_or_raise(self):
         return parse_pinboards(self._require("pinboards/", PINBOARD_PARAMS))
 
-    def sick_note_children_or_raise(self):
+    def _sick_note_selection(self):
         response = self._checked(
-            self.session.get(f"{self.base_url}{API_ROOT}/sickNotes/userSelection/", timeout=self.timeout)
+            self.session.get(f"{self.base_url}{API_ROOT}/{SICK_NOTE_SELECTION_PATH}", timeout=self.timeout)
         )
         if response.status_code == RATE_LIMIT_STATUS:
             raise rate_limit_outage(response)
-        if response.status_code in REFUSED_STATUSES:
-            return []
         if response.status_code == EXPIRED_STATUS:
             raise DataError("school app session expired", message_key=SCHOOL_APP_EXPIRED_KEY)
+        return response
+
+    def sick_note_children_or_raise(self):
+        response = self._sick_note_selection()
+        if response.status_code in REFUSED_STATUSES:
+            return []
         if response.status_code != 200:
             raise DataError(
                 "school app did not answer with data",
                 message_key=SCHOOL_APP_UNREADABLE_KEY,
-                detail={"path": "sickNotes/userSelection/", "status": response.status_code},
+                detail={"path": SICK_NOTE_SELECTION_PATH, "status": response.status_code},
             )
         try:
             return parse_students(response.json())
@@ -539,8 +544,18 @@ class DieSchulAppClient:
     def pinboards(self):
         return parse_pinboards(self._get("pinboards/", PINBOARD_PARAMS))
 
+    def sick_note_children_listed(self):
+        response = self._sick_note_selection()
+        if response.status_code != 200:
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            return None
+        return parse_students(payload) if isinstance(payload, list) else None
+
     def sick_note_children(self):
-        return parse_students(self._get("sickNotes/userSelection/"))
+        return parse_students(self._get(SICK_NOTE_SELECTION_PATH))
 
     def sick_notes(self, since=None):
         params = {"filterBy": f"sickTillDateAsString:greaterOrEqualThan({since})"} if since else None

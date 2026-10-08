@@ -12,6 +12,7 @@ from .failure import error_kind
 from .iserv.dsa import student_for_name
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
 from .iserv.timetable import time_table_refusal
+from .iserv.badges import MAIL_BADGE
 from .iserv.errors import (
     LOGIN_SESSION_KEY,
     LOGIN_TWOFACTOR_KEY,
@@ -25,6 +26,7 @@ from .iserv.errors import (
     DataError,
     LoginError,
     OutageError,
+    SchoolCalendarRefusedError,
     TwoFactorError,
     code_step_failed,
     login_reason,
@@ -100,6 +102,9 @@ OUTAGE_SINCE_KEY = "notify.outage.since"
 OUTAGE_BACK_KEY = "notify.outage.back"
 OUTAGE_PUSH_AFTER_SECONDS = 12 * 60 * 60
 SNAPSHOT_FIELD_DEPTH = 4
+SCHOOL_EVENTS_DAYS_BACK = 7
+SCHOOL_EVENTS_DAYS_AHEAD = 120
+SCHOOL_CALENDAR_EVENT = "school_calendar"
 _SCHOOL_LOCKS = {}
 _SCHOOL_LOCKS_GUARD = threading.Lock()
 DEFAULT_POLL_INTERVAL = 1800
@@ -821,6 +826,10 @@ class Poller:
             )
             if messenger_event is not None:
                 events.append(messenger_event)
+            calendar_event = self._poll_school_calendar(connection, connection_id)
+            if calendar_event is not None:
+                events.append(calendar_event)
+            self._poll_mail(connection, connection_id)
             if flags[modules.ABSENCES] and self._poll_absences(connection, connection_id, snapshot, absence_children, children):
                 snapshot_dirty = True
             if snapshot_dirty and self.store is not None:
@@ -913,6 +922,74 @@ class Poller:
                 )
             events.append({"module": event, "new": len(fresh)})
         return events
+
+    def _poll_school_calendar(self, connection, connection_id):
+        available = getattr(connection, "school_calendar_available", None)
+        reader = getattr(connection, "school_events", None)
+        if self.store is None or not callable(available) or not callable(reader):
+            return None
+        if not available():
+            self._drop_school_events(connection_id)
+            return None
+        today = self._today()
+        try:
+            listed = reader(today - timedelta(days=SCHOOL_EVENTS_DAYS_BACK), today + timedelta(days=SCHOOL_EVENTS_DAYS_AHEAD))
+        except OutageError:
+            raise
+        except SchoolCalendarRefusedError:
+            logger.info("poll school#%s school calendar refused for this account", connection_id)
+            self._drop_school_events(connection_id)
+            return {"module": SCHOOL_CALENDAR_EVENT, "state": "refused"}
+        except Exception as error:
+            logger.warning("poll school#%s school calendar failed: %s", connection_id, error_kind(error))
+            return {"module": SCHOOL_CALENDAR_EVENT, "error": str(error), "kind": error_kind(error)}
+        now = int(self.clock())
+
+        def change(snapshot):
+            if not connection_known(self.store, connection_id):
+                return
+            schools = snapshot.get("schools")
+            if not isinstance(schools, dict):
+                schools = {}
+                snapshot["schools"] = schools
+            schools[connection_id] = {"events": listed, "last_success": now}
+
+        edit(self.store, self.store.load_calendar_snapshot, self.store.save_calendar_snapshot, change)
+        return {"module": SCHOOL_CALENDAR_EVENT, "events": len(listed)}
+
+    def _poll_mail(self, connection, connection_id):
+        available = getattr(connection, "mail_available", None)
+        reader = getattr(connection, "badges", None)
+        if self.store is None or not callable(available) or not callable(reader):
+            return
+        if not available():
+            integration.record_school_mail(self.store, connection_id, None)
+            return
+        try:
+            counts = reader()
+        except OutageError:
+            raise
+        except DataError as error:
+            logger.info("poll school#%s mail count unreadable: %s", connection_id, error_kind(error))
+            integration.record_school_mail_failure(self.store, connection_id)
+            return
+        except Exception as error:
+            logger.warning("poll school#%s mail count unreadable: %s", connection_id, error_kind(error))
+            integration.record_school_mail_failure(self.store, connection_id)
+            return
+        integration.record_school_mail(self.store, connection_id, counts.get(MAIL_BADGE, 0))
+
+    def _drop_school_events(self, connection_id):
+        schools = self.store.load_calendar_snapshot().get("schools")
+        if not isinstance(schools, dict) or connection_id not in schools:
+            return
+
+        def change(snapshot):
+            stored = snapshot.get("schools")
+            if isinstance(stored, dict):
+                stored.pop(connection_id, None)
+
+        edit(self.store, self.store.load_calendar_snapshot, self.store.save_calendar_snapshot, change)
 
     def _messenger_push_ready(self):
         return any(name.startswith(f"{MESSENGER_KEY}.") for name in messages.BASE_MESSAGES)

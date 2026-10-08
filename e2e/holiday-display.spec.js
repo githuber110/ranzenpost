@@ -154,6 +154,7 @@ for (const viewport of VIEWPORTS) {
           await row.click();
           await waitForSheetSettled(page);
           await expect(page.locator(".sheet .opt-list .opt")).toHaveCount(17);
+          await waitForSheetSettled(page);
           await assertScreenClean(page, `${viewport.name}/${lang.key}/region-sheet`, failures);
           const containment = await checkSheetContainment(page);
           if (!containment.fitsViewport) failures.push(`${viewport.name}/${lang.key}/region-sheet: sheet taller than the viewport`);

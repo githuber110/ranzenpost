@@ -75,6 +75,9 @@ def mock_addon(
         aioclient_mock.get(
             route("events", base_url, kind="holidays", school=school["id"]), json=fixture("events_holidays", scenario)
         )
+        aioclient_mock.get(
+            route("events", base_url, kind="school_events", school=school["id"]), json=fixture("events_school_events")
+        )
         for index, child in enumerate(school.get("children") or []):
             key = child["key"]
             state = fixture("state_child_1" if key == CHILD_1 else "state_child_2", scenario)

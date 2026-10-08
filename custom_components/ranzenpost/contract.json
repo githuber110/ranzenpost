@@ -152,7 +152,8 @@
         "children",
         "last_poll",
         "last_success",
-        "own_entries"
+        "own_entries",
+        "mail"
       ],
       "properties": {
         "id": {
@@ -221,6 +222,10 @@
         "own_entries": {
           "type": "boolean",
           "description": "Whether the school's own entries go to a Home Assistant calendar. Only then /events answers kind=own_entries with purpose=calendar and the integration creates an own-entries calendar per child. The card asks with purpose=card and gets clubs and appointments either way. Breaks never leave the app."
+        },
+        "mail": {
+          "type": "boolean",
+          "description": "True when the school's menu offers IServ e-mail to this account."
         }
       },
       "additionalProperties": false
@@ -323,7 +328,8 @@
         "pinboard",
         "absences",
         "conferences",
-        "messenger"
+        "messenger",
+        "calendar"
       ],
       "properties": {
         "timetable": {
@@ -342,6 +348,9 @@
           "type": "boolean"
         },
         "messenger": {
+          "type": "boolean"
+        },
+        "calendar": {
           "type": "boolean"
         }
       },
@@ -356,7 +365,8 @@
         "pinboard",
         "absences",
         "conferences",
-        "messenger"
+        "messenger",
+        "calendar"
       ],
       "properties": {
         "timetable": {
@@ -375,6 +385,9 @@
           "type": "boolean"
         },
         "messenger": {
+          "type": "boolean"
+        },
+        "calendar": {
           "type": "boolean"
         }
       },
@@ -741,7 +754,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "The kind of absence for absences, own_entries for clubs and appointments, empty otherwise."
+          "description": "The kind of absence for absences, own_entries for clubs and appointments, school_event for events from the school calendar, empty otherwise."
         },
         "teacher": {
           "type": "string",
@@ -790,7 +803,8 @@
         "exams",
         "absences",
         "holidays",
-        "own_entries"
+        "own_entries",
+        "school_events"
       ]
     },
     "purpose": {
@@ -807,7 +821,10 @@
         "next_holiday",
         "next_free_day",
         "next_conference",
-        "region"
+        "region",
+        "unread_letters",
+        "unread_posts",
+        "unread_mail"
       ],
       "properties": {
         "next_holiday": {
@@ -915,6 +932,20 @@
         },
         "region": {
           "type": "string"
+        },
+        "unread_letters": {
+          "$ref": "#/$defs/notices"
+        },
+        "unread_posts": {
+          "$ref": "#/$defs/notices"
+        },
+        "unread_mail": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Unread e-mails in the IServ mailbox of this account from a recent poll; null when unknown, unreadable, failing for several polls in a row, or when the school has no e-mail."
         }
       },
       "additionalProperties": false

@@ -28,7 +28,7 @@ START_PAGE = """
 <html><body>
 <a href="/iserv/time-table/">Stundenplan</a>
 <a href="/iserv/parentletter/parent/index">Elternbriefe</a>
-<a href="/iserv/calendar/">Kalender</a>
+<a href="/iserv/news/">News</a>
 <a href="/iserv/mystery/">Mystery</a>
 <footer>IServ 3.9.1</footer>
 </body></html>
@@ -202,7 +202,7 @@ def two_school_service(tmp_path):
         "/iserv/messenger/": Response(200, SCHOOL_ONE_URL + "/iserv/messenger/", MESSENGER_PAGE),
     }
     client_one = Client(SCHOOL_ONE_URL, pages_one, {CHAT_SCRIPT: CHAT_SCRIPT_TEXT, VENDOR_SCRIPT: VENDOR_SCRIPT_TEXT})
-    me_one = {"forename": "Mia", "surname": "Musterkind", "username": USER_ONE, "email": USER_ONE, "is_guardian": True, "has_2nd_factor_active": True}
+    me_one = {"forename": "Mia", "surname": "Musterkind", "username": USER_ONE, "email": USER_ONE, "is_guardian": True, "has_2nd_factor_active": True, "roles": ["ROLE_GUARDIAN"]}
     first = Connection(store, one, client_one, registry_for(SCHOOL_ONE_URL, pages_one), me_one)
     second = Connection(store, two, Client(SCHOOL_TWO_URL, {}), modules.default_registry(), failure=LoginError("bad login"))
     return Service(store, [first, second]), first, second
@@ -232,6 +232,8 @@ def test_the_report_carries_every_section_in_order(tmp_path):
     assert "- Children: 1" in report
     assert "- Account: 2fa=yes guardian=yes" in report
     assert "- Account: 2fa=no guardian=unknown" in report
+    assert "- Account roles: ROLE_GUARDIAN" in report
+    assert "- Account roles: unknown" in report
     assert "- Language: " in report
     assert "- Timezone: Europe/Berlin" in report
 
@@ -338,16 +340,16 @@ def test_the_report_lists_every_module_row_with_probe_facts(tmp_path):
     slugs = {line.split("|")[2].strip() for line in rows}
     for slug in ("timetable", "dsa-timetable", "parentletter", "dsa-pinboard", "absence", "parentconference", "messenger"):
         assert slug in slugs
-    assert "calendar" in slugs
+    assert "news" in slugs
     assert "mystery" in slugs
     letters = next(line for line in rows if "| parentletter |" in line)
     assert "| supported |" in letters
     assert "| 200 |" in letters
     assert "| text/html |" in letters
     assert "| /iserv/parentletter/parent/index |" in letters
-    calendar = next(line for line in rows if "| calendar |" in line)
-    assert "| Kalender |" in calendar
-    assert "| present, not supported |" in calendar
+    news = next(line for line in rows if "| news |" in line)
+    assert "| News |" in news
+    assert "| present, not supported |" in news
     mystery = next(line for line in rows if "| mystery |" in line)
     assert "| unknown |" in mystery
     native = next(line for line in rows if "| timetable |" in line)
@@ -751,13 +753,13 @@ def test_the_registry_keeps_the_last_probe_answer_per_module():
 
 def test_the_report_segments_leave_out_modules_the_app_only_links_to():
     stored = {
-        "unsupported": [{"segment": "klassengeld", "label": "Klassengeld"}, {"segment": "calendar", "label": "Kalender"}],
+        "unsupported": [{"segment": "klassengeld", "label": "Klassengeld"}, {"segment": "news", "label": "News"}],
         "unknown": [{"segment": "mystery", "label": "Mystery"}],
     }
     assert modules.normalize(stored)["unsupported"][0].get("link_only") is True
     connection = SimpleNamespace(stored_modules=lambda: stored)
     service = SimpleNamespace(connections=lambda: [connection])
-    assert diagnostics.report_segments(service) == ["calendar", "mystery"]
+    assert diagnostics.report_segments(service) == ["news", "mystery"]
 
 
 def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path):
@@ -769,7 +771,7 @@ def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path
     body = answer.json()
     assert body["report"].startswith("# Ranzenpost report")
     assert "### Page structure" in body["report"]
-    assert body["segments"] == ["calendar", "mystery"]
+    assert body["segments"] == ["news", "mystery"]
     plain = client.get("/api/diagnostics?structure=0").json()["report"]
     assert "### Page structure" not in plain
 
@@ -2070,7 +2072,7 @@ QUERY_ACCOUNT = {"children": [
 def school_app_client(settings_payload, timetable_payload, account=QUERY_ACCOUNT):
     slots_payload = [{"number": 1}, {"number": 2}]
     pages = {
-        reportfacts.SCHOOL_ACCOUNT_ME_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=account),
+        reportfacts.SCHOOL_ACCOUNT_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=account),
         reportfacts.SCHOOL_SETTINGS_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=settings_payload),
         reportfacts.TIMETABLE_SLOTS_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=slots_payload),
         reportfacts.CURRENT_TIMETABLE_QUERY_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=timetable_payload),
@@ -2190,7 +2192,7 @@ def test_school_app_query_lines_survive_an_odd_answer_shape(payload, entries):
 def test_school_app_query_lines_say_when_the_school_account_was_not_read():
     settings = [{"timetable_availableForGuardiansAndStudents": True}]
     client, queries = school_app_client(settings, {"students": []}, account=None)
-    client.pages[reportfacts.SCHOOL_ACCOUNT_ME_PATH] = Response(403, SCHOOL_ONE_URL, "<html>Forbidden</html>", "text/html")
+    client.pages[reportfacts.SCHOOL_ACCOUNT_PATH] = Response(403, SCHOOL_ONE_URL, "<html>Forbidden</html>", "text/html")
     lines = reportfacts.school_app_query_lines(client, QUERY_CHILDREN, datetime(2026, 9, 23).date())
     assert "- Child 1: course ids not read, the school account did not answer" in lines
     assert queries == []
@@ -2260,7 +2262,7 @@ def test_children_lines_reads_each_live_source_and_counts_only():
     school_app_payload = [{"id": 2, "displayname": "Robin Example"}]
     letters_html = LETTERS_PAGE
     pages = {
-        reportfacts.SCHOOL_ACCOUNT_ME_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=me_payload),
+        reportfacts.SCHOOL_ACCOUNT_PATH: Response(200, SCHOOL_ONE_URL, "{}", "application/json", json_data=me_payload),
         reportfacts.SICK_NOTE_SELECTION_PATH: Response(200, SCHOOL_ONE_URL, "[]", "application/json", json_data=school_app_payload),
         reportfacts.TIME_TABLE_PAGE_PATH: Response(200, SCHOOL_ONE_URL + reportfacts.TIME_TABLE_PAGE_PATH,
                                                     "<select id='timetable-filter-child-select'><option value='9'>Robin Example</option></select>"),
@@ -2560,3 +2562,18 @@ def test_a_provider_crawl_skips_request_pages_and_apis():
     assert not reportcrawl.api_allowed("/api/requests", "/", reportcrawl.PROVIDER_SCOPE.api_routes, external=True)
     assert not reportcrawl.api_allowed("/api/v1/request", "/", reportcrawl.PROVIDER_SCOPE.api_routes, external=True)
     assert reportcrawl.path_allowed("/iserv/ausleihe/request", "/iserv/ausleihe/", reportcrawl.MODULE_SCOPE.routes)
+
+
+@pytest.mark.parametrize(
+    ("me", "fact"),
+    [
+        (None, "unknown"),
+        ({}, "unknown"),
+        ({"roles": []}, "none"),
+        ({"roles": ["ROLE_STUDENT", "guardian"]}, "ROLE_STUDENT, guardian"),
+        ({"roles": [{"name": "ROLE_PARENT"}, {"key": "student"}]}, "ROLE_PARENT, student"),
+        ({"roles": ["Musterkind", "Mia Musterkind", 7, {"name": None}]}, "<other>, <other>, <other>, <other>"),
+    ],
+)
+def test_the_report_names_the_account_roles_but_never_a_name(me, fact):
+    assert diagnostics.account_roles_fact(me) == fact

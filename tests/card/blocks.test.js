@@ -12,6 +12,7 @@ const TARGETS = {
   noticeboard: "view=post&segment=pinboard",
   absences: "view=absence",
   conferences: "view=conferences",
+  school_events: "view=calendar",
 };
 const ALL_CARD_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes"];
 

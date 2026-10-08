@@ -233,6 +233,7 @@ def test_school_matches_the_contract_filled_and_empty(tmp_path):
     client, store = _filled(tmp_path, calendar=calendar)
     body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
     assert body["next_holiday"] and body["next_conference"]
+    assert body["unread_letters"]["count"] == 1 and body["unread_posts"]["count"] == 1
     assert_matches("#/$defs/school", body)
 
     client, store, _ = _app(tmp_path / "empty")

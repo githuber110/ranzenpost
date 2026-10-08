@@ -304,6 +304,38 @@ def test_merged_letters_carry_the_school_and_a_prefixed_key(tmp_path):
     assert body["unavailable"] == []
 
 
+
+def test_a_school_without_the_letters_module_is_skipped_without_a_warning(tmp_path, caplog):
+    service, store, one, two, _ = two_schools(tmp_path)
+    store.connection_store(one).save_modules({"modules": {name: name != modules.LETTERS for name in modules.MODULES}})
+
+    def missing(tab="current"):
+        raise DataError("request failed: 404")
+
+    service.connection(one).letters = missing
+    service.connection(two).letters = lambda tab="current": {
+        "letters": [{"letter_id": "l1", "recipient_id": "r1", "title": "Two", "published": "03.09.2026"}]
+    }
+    with caplog.at_level(logging.WARNING):
+        body = service.letters()
+    assert [entry["title"] for entry in body["letters"]] == ["Two"]
+    assert body["unavailable"] == []
+    assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
+
+
+def test_a_school_whose_letters_module_is_unknown_is_still_asked(tmp_path, caplog):
+    service, _, one, two, _ = two_schools(tmp_path)
+
+    def missing(tab="current"):
+        raise DataError("request failed: 404")
+
+    service.connection(one).letters = missing
+    service.connection(two).letters = lambda tab="current": {"letters": []}
+    with caplog.at_level(logging.WARNING):
+        body = service.letters()
+    assert body["unavailable"] == [one]
+    assert any("did not answer" in record.getMessage() for record in caplog.records)
+
 def test_marking_letters_read_routes_every_key_to_its_school(tmp_path):
     service, _, one, two, _ = two_schools(tmp_path)
     seen = {}
@@ -578,3 +610,16 @@ def test_the_short_name_of_a_school_defaults_to_its_host_without_the_top_level_l
     store.update_connection(two, short_name="Gym Süd")
     assert connection_short_name(store.connection(two)) == "Gym Süd"
     assert [row["short_name"] for row in service.summaries()] == ["school-one", "Gym Süd"]
+
+
+def test_an_unreadable_child_list_is_not_hidden_behind_another_school_without_children(tmp_path):
+    service, _, one, two, _ = two_schools(tmp_path)
+
+    def unreadable():
+        raise DataError("child list page was not readable")
+
+    service.connection(one).children = unreadable
+    service.connection(one).stored_children = lambda: []
+    service.connection(two).children = lambda: []
+    with pytest.raises(DataError):
+        service.children()

@@ -326,7 +326,7 @@ def test_a_messenger_page_without_data_and_without_authenticate_is_quietly_missi
     assert service.modules()["modules"][modules.MESSENGER] is False
     assert pulses == []
     assert _warnings(caplog) == []
-    assert _registry_lines(caplog) == [f"school#{service.id} modules available: none; missing: timetable, letters, pinboard, absences, conferences, messenger; not supported: 1 (mail); unknown: 0"]
+    assert _registry_lines(caplog) == [f"school#{service.id} modules available: none; missing: timetable, letters, pinboard, absences, conferences, messenger, calendar; not supported: 1 (mail); unknown: 0"]
     assert len(_authenticate_calls(holder)) == 2 * 3
 
 

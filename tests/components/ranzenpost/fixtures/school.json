@@ -20,5 +20,34 @@
     ],
     "days_until": 64
   },
-  "region": "NI"
+  "region": "NI",
+  "unread_letters": {
+    "count": 2,
+    "items": [
+      {
+        "title": "Field trip",
+        "sender": "Mrs Example",
+        "date": "2026-09-01",
+        "child": "Alex"
+      },
+      {
+        "title": "Photo day",
+        "sender": "Head Office",
+        "date": "2026-08-28",
+        "child": "Alex"
+      }
+    ]
+  },
+  "unread_posts": {
+    "count": 1,
+    "items": [
+      {
+        "title": "Lost and found",
+        "sender": "Caretaker",
+        "date": "",
+        "child": ""
+      }
+    ]
+  },
+  "unread_mail": 2
 }

@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2610.1.1";
+  const CARD_VERSION = "2610.2.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -18,6 +18,7 @@
   const KEY_LESSONS = "lessons";
   const KEY_EXAMS = "exams";
   const KEY_HOLIDAYS = "holidays";
+  const KEY_SCHOOL_EVENTS = "school_events";
   const WS_OWN_ENTRIES = `${DOMAIN}/own_entries`;
   const OWN_PREFIX = "own:";
   const KEY_CHANGES = "changes_today";
@@ -40,22 +41,25 @@
   const SIZES = [SIZE_COMPACT, SIZE_NORMAL];
   const ABSENCE_DAYS_AHEAD = 14;
   const BLOCK_CATALOGUE = [
-    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
-    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child" },
-    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
+    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child", childBound: true },
+    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
     { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "family" },
     { key: "noticeboard", module: "pinboard", area: "post", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "family" },
-    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
     { key: "conferences", module: "conferences", area: "conferences", compact: 1, normal: 3, size: "normal", surfaces: ["overview", "card"], scope: "school" },
-    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], scope: "school" },
-    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "child" },
+    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], scope: "school", schoolLevel: true },
+    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "child", childBound: true },
     { key: "chat", module: "messenger", area: "messenger", compact: 3, normal: 5, size: "compact", surfaces: ["overview"], scope: "family" },
+    { key: "school_events", module: "calendar", area: "calendar", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const CARD_BLOCKS = BLOCK_CATALOGUE.filter((block) => block.surfaces.includes("card"));
+  const CONFIRMED_ONLY_MODULES = ["calendar"];
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
   const DAY_BLOCKS = ["today", "next_lesson", "week"];
   const HOLIDAY_AHEAD_DAYS = 365;
+  const SCHOOL_EVENTS_AHEAD_DAYS = 60;
   const COURSE_CELL_MIN = 3;
   const BLOCK_TARGETS = {
     today: "view=timetable",
@@ -66,6 +70,7 @@
     noticeboard: "view=post&segment=pinboard",
     absences: "view=absence",
     conferences: "view=conferences",
+    school_events: "view=calendar",
   };
   const MISSING_STATES = new Set(["unknown", "unavailable", "none", ""]);
   const BIDI_MARKS = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x061c)}]`, "g");
@@ -229,7 +234,7 @@
 
   const TEXTS = {
     de: {
-      "card.description": "Stundenplan, Vertretungen und Post aus Ranzenpost",
+      "card.description": "Stundenplan, Vertretungen und Elternbriefe aus Ranzenpost",
       "card.reload": "Lade die Seite neu, um das Update abzuschließen.",
       "view.family": "Familie",
       "today.free": "Heute ist schulfrei.",
@@ -280,6 +285,8 @@
       "block.conferences.explain": "Nur wenn ein Sprechtag eingetragen ist.",
       "block.holidays": "Ferien",
       "block.holidays.explain": "Die nächsten Ferien und freien Tage.",
+      "block.school_events": "Schultermine",
+      "block.school_events.explain": "Die nächsten Termine aus dem Schulkalender.",
       "block.changes": "Änderungen",
       "block.changes.explain": "Vertretungen und Ausfälle von heute.",
       "block.chat": "Chat",
@@ -303,7 +310,7 @@
       "status.rejected": "Abgelehnt",
     },
     en: {
-      "card.description": "Timetable, substitutions and school mail from Ranzenpost",
+      "card.description": "Timetable, substitutions and parent letters from Ranzenpost",
       "card.reload": "Reload the page to finish the update.",
       "view.family": "Family",
       "today.free": "No school today.",
@@ -354,6 +361,8 @@
       "block.conferences.explain": "Only when a conference day is listed.",
       "block.holidays": "Holidays",
       "block.holidays.explain": "The next holidays and free days.",
+      "block.school_events": "School events",
+      "block.school_events.explain": "The next events from the school calendar.",
       "block.changes": "Changes",
       "block.changes.explain": "Substitutions and cancellations of today.",
       "block.chat": "Chat",
@@ -377,7 +386,7 @@
       "status.rejected": "Rejected",
     },
     ar: {
-      "card.description": "الجدول الدراسي والبدائل ورسائل المدرسة من Ranzenpost",
+      "card.description": "الجدول الدراسي والبدائل ورسائل أولياء الأمور من Ranzenpost",
       "card.reload": "أعد تحميل الصفحة لإكمال التحديث.",
       "view.family": "العائلة",
       "today.free": "اليوم عطلة مدرسية.",
@@ -428,6 +437,8 @@
       "block.conferences.explain": "فقط عند وجود موعد لقاء مسجل.",
       "block.holidays": "العطل",
       "block.holidays.explain": "العطل والأيام الحرة القادمة.",
+      "block.school_events": "فعاليات المدرسة",
+      "block.school_events.explain": "الفعاليات القادمة من تقويم المدرسة.",
       "block.changes": "التغييرات",
       "block.changes.explain": "الحصص البديلة والملغاة اليوم.",
       "block.chat": "الدردشة",
@@ -451,7 +462,7 @@
       "status.rejected": "مرفوض",
     },
     tr: {
-      "card.description": "Ranzenpost'tan ders programı, vekil dersler ve okul postası",
+      "card.description": "Ranzenpost'tan ders programı, vekil dersler ve veli mektupları",
       "card.reload": "Güncellemeyi tamamlamak için sayfayı yenileyin.",
       "view.family": "Aile",
       "today.free": "Bugün okul yok.",
@@ -502,6 +513,8 @@
       "block.conferences.explain": "Yalnızca bir görüşme günü kayıtlıysa.",
       "block.holidays": "Tatiller",
       "block.holidays.explain": "Sıradaki tatiller ve boş günler.",
+      "block.school_events": "Okul etkinlikleri",
+      "block.school_events.explain": "Okul takviminden sıradaki etkinlikler.",
       "block.changes": "Değişiklikler",
       "block.changes.explain": "Bugünün vekil dersleri ve iptalleri.",
       "block.chat": "Sohbet",
@@ -525,7 +538,7 @@
       "status.rejected": "Reddedildi",
     },
     ru: {
-      "card.description": "Расписание, замены и школьная почта из Ranzenpost",
+      "card.description": "Расписание, замены и письма родителям из Ranzenpost",
       "card.reload": "Перезагрузите страницу, чтобы завершить обновление.",
       "view.family": "Семья",
       "today.free": "Сегодня занятий нет.",
@@ -576,6 +589,8 @@
       "block.conferences.explain": "Только если назначен день встреч.",
       "block.holidays": "Каникулы",
       "block.holidays.explain": "Ближайшие каникулы и свободные дни.",
+      "block.school_events": "События школы",
+      "block.school_events.explain": "Ближайшие события из школьного календаря.",
       "block.changes": "Изменения",
       "block.changes.explain": "Замены и отмены на сегодня.",
       "block.chat": "Чат",
@@ -599,7 +614,7 @@
       "status.rejected": "Отклонено",
     },
     uk: {
-      "card.description": "Розклад, заміни та шкільна пошта з Ranzenpost",
+      "card.description": "Розклад, заміни та листи батькам з Ranzenpost",
       "card.reload": "Перезавантажте сторінку, щоб завершити оновлення.",
       "view.family": "Сім'я",
       "today.free": "Сьогодні уроків немає.",
@@ -650,6 +665,8 @@
       "block.conferences.explain": "Лише якщо призначено день зустрічей.",
       "block.holidays": "Канікули",
       "block.holidays.explain": "Найближчі канікули та вільні дні.",
+      "block.school_events": "Події школи",
+      "block.school_events.explain": "Найближчі події зі шкільного календаря.",
       "block.changes": "Зміни",
       "block.changes.explain": "Заміни та скасування на сьогодні.",
       "block.chat": "Чат",
@@ -973,6 +990,10 @@
     return keys.map((key) => ({ key, size: view === "family" && key === "today" ? SIZE_COMPACT : blockOf(key).size }));
   }
 
+  function schoolBlocksOfLegacy() {
+    return blocksOfLegacy({ view: "family" }).filter((entry) => blockOf(entry.key).scope !== "child");
+  }
+
   function schoolModules(hass, school) {
     const state = stateOf(hass, school.entities[KEY_CONNECTION]);
     return state && state.attributes && typeof state.attributes.modules === "object" && state.attributes.modules ? state.attributes.modules : null;
@@ -987,8 +1008,13 @@
     });
   }
 
+  function blockOffered(hass, registry, block) {
+    if (block.schoolLevel && !registry.children.length && registry.schools.length) return true;
+    return moduleOffered(hass, registry, block.module);
+  }
+
   function offeredBlocks(hass, registry) {
-    return CARD_BLOCKS.filter((block) => moduleOffered(hass, registry, block.module));
+    return CARD_BLOCKS.filter((block) => blockOffered(hass, registry, block));
   }
 
   function appPanelPath(hass, path) {
@@ -1277,6 +1303,10 @@
     }
     const ordered = [...children.values()].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
     return { children: ordered, schools: listed };
+  }
+
+  function childlessSchools(registry) {
+    return registry.schools.filter((school) => !registry.children.some((child) => child.schoolId === school.id));
   }
 
   function schoolOfChild(registry, child) {
@@ -1588,7 +1618,9 @@
     static async getStubConfig(hass) {
       try {
         const registry = await discover(hass);
-        const blocks = offeredBlocks(hass, registry).slice(0, 2).map((block) => block.key);
+        const offered = offeredBlocks(hass, registry);
+        const schoolOnly = !registry.children.length && registry.schools.length > 0;
+        const blocks = (schoolOnly ? offered.filter((block) => block.scope !== "child") : offered).slice(0, 2).map((block) => block.key);
         return registry.children.length ? { blocks, children: [registry.children[0].slug] } : { blocks };
       } catch (error) {
         return { blocks: ["today"] };
@@ -1698,6 +1730,7 @@
         locale: localeOf(hass),
         registry,
         children: [],
+        childless: [],
         requests: [],
         stateKeys: [],
         message: null,
@@ -1705,13 +1738,17 @@
         blocks: null,
       };
       if (config.blocks) return this._planBlocks(plan, registry, hass, config);
+      if (!registry.children.length && childlessSchools(registry).length) {
+        return this._planBlocks(plan, registry, hass, { ...config, children: [], blocks: schoolBlocksOfLegacy() });
+      }
       if (config.view === "family") {
         const wanted = Array.isArray(config.children) ? config.children : [];
         plan.children = wanted.length
           ? wanted.map((reference) => findChild(registry.children, reference)).filter(Boolean)
           : registry.children;
+        const childless = wanted.length ? [] : childlessSchools(registry);
         if (!registry.children.length) plan.message = t("children.none");
-        plan.missing = plan.children.length < (wanted.length || 1);
+        plan.missing = plan.children.length < (wanted.length || 1) && !childless.length;
         plan.dayKeys = [todayKey];
         if (config.days === 2) plan.dayKeys.push(shiftKey(todayKey, 1, zone));
         plan.start = zonedMidnight(todayKey, zone);
@@ -1758,9 +1795,10 @@
       plan.children = wanted.length
         ? wanted.map((reference) => findChild(registry.children, reference)).filter(Boolean)
         : registry.children;
-      plan.missing = plan.children.length < (wanted.length || 1);
-      if (!registry.children.length) plan.message = plan.t("children.none");
-      plan.blocks = config.blocks.filter((entry) => moduleOffered(hass, registry, blockOf(entry.key).module));
+      plan.childless = wanted.length ? [] : childlessSchools(registry);
+      plan.missing = plan.children.length < (wanted.length || 1) && !plan.childless.length;
+      if (!registry.children.length && !plan.childless.length) plan.message = plan.t("children.none");
+      plan.blocks = config.blocks.filter((entry) => blockOffered(hass, registry, blockOf(entry.key)));
       if (!config.blocks.length) plan.message = plan.t("block.noBlocks");
       const keys = new Set(plan.blocks.map((entry) => entry.key));
       const mondayKey = mondayOf(todayKey, zone);
@@ -1778,16 +1816,22 @@
         }
       }
       const holidayEnd = zonedMidnight(shiftKey(todayKey, HOLIDAY_AHEAD_DAYS, zone), zone);
+      const eventsStart = zonedMidnight(todayKey, zone);
+      const eventsEnd = zonedMidnight(shiftKey(todayKey, SCHOOL_EVENTS_AHEAD_DAYS, zone), zone);
       for (const school of registry.schools) {
         const holidayCalendar = school.entities[KEY_HOLIDAYS];
-        const ofSchool = plan.children.some((child) => child.schoolId === school.id);
+        const eventsCalendar = school.entities[KEY_SCHOOL_EVENTS];
+        const ofSchool = plan.children.some((child) => child.schoolId === school.id) || plan.childless.includes(school);
+        if (eventsCalendar && ofSchool && keys.has(KEY_SCHOOL_EVENTS)) {
+          plan.requests.push({ entityId: eventsCalendar, start: eventsStart, end: eventsEnd });
+        }
         const wantedSchool = plan.children.some((child) => child.schoolId === school.id && child.entities[KEY_LESSONS]);
         if (holidayCalendar && ofSchool && keys.has("holidays")) {
           plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: holidayEnd > plan.end ? holidayEnd : plan.end });
         } else if (holidayCalendar && wantedSchool && needsDays) {
           plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: plan.end });
         }
-        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION]) {
+        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION, KEY_LETTERS, KEY_POSTS]) {
           plan.stateKeys.push(stateKeyOf(stateOf(hass, school.entities[key])));
         }
       }
@@ -2148,7 +2192,7 @@
 
     _renderBlocks(plan, byEntity, title) {
       const { t } = plan;
-      if (!plan.children.length) return (title ? `<h2 class="card-title" dir="auto">${esc(title)}</h2>` : "") + emptyBlock("alert", t("children.none"));
+      if (!plan.children.length && !plan.childless.length) return (title ? `<h2 class="card-title" dir="auto">${esc(title)}</h2>` : "") + emptyBlock("alert", t("children.none"));
       const parts = [];
       if (title) parts.push(`<h2 class="card-title" dir="auto">${esc(title)}</h2>`);
       const childBlocks = plan.blocks.filter((entry) => blockOf(entry.key).scope === "child");
@@ -2180,6 +2224,7 @@
         case "conferences": return this._conferencesBlock(plan, entry);
         case "holidays": return this._holidaysBlock(plan, entry, byEntity);
         case "changes": return this._changesBlock(plan, entry, child);
+        case KEY_SCHOOL_EVENTS: return this._schoolEventsBlock(plan, entry, byEntity);
         default: return "";
       }
     }
@@ -2233,8 +2278,8 @@
       const children = child ? [child] : plan.children;
       const items = [];
       const seen = new Set();
-      for (const member of children) {
-        const state = stateOf(this._hass, member.entities[key]);
+      const collect = (entityId, tagOf) => {
+        const state = stateOf(this._hass, entityId);
         const listed = state && Array.isArray(state.attributes[attribute]) ? state.attributes[attribute] : [];
         for (const notice of listed) {
           const title = String((notice && notice.title) || "");
@@ -2242,9 +2287,14 @@
           const id = `${title}|${date}|${String((notice && notice.sender) || "")}`;
           if (!title || seen.has(id)) continue;
           seen.add(id);
-          items.push({ title, date, sender: String((notice && notice.sender) || ""), child: String((notice && notice.child) || "") || this._childTag(plan, member) });
+          items.push({ title, date, sender: String((notice && notice.sender) || ""), tag: tagOf(notice) });
         }
+      };
+      for (const member of children) {
+        collect(member.entities[key], (notice) => (plan.children.length > 1 ? String((notice && notice.child) || "") || this._childTag(plan, member) : ""));
       }
+      const schoolTag = plan.children.length > 0 || plan.childless.length > 1;
+      for (const school of plan.childless) collect(school.entities[key], () => (schoolTag ? school.name : ""));
       if (!items.length) return "";
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.title,
@@ -2252,7 +2302,7 @@
         item.date ? formatShortDate(item.date, locale, zone) : "",
         true,
         compact,
-        [plan.children.length > 1 ? item.child : ""]
+        [item.tag]
       ), "", true);
     }
 
@@ -2277,7 +2327,7 @@
     }
 
     _schoolsOf(plan) {
-      return plan.registry.schools.filter((school) => plan.children.some((child) => child.schoolId === school.id));
+      return plan.registry.schools.filter((school) => plan.children.some((child) => child.schoolId === school.id) || plan.childless.includes(school));
     }
 
     _conferencesBlock(plan, entry) {
@@ -2332,6 +2382,49 @@
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.name,
         t("date.range", { from: formatShortDate(item.start, locale, zone), till: formatShortDate(item.end, locale, zone) }),
+        item.days > 0 ? relativeDays(item.days, locale) : t("day.today"),
+        false,
+        compact,
+        [item.school]
+      ), "", false);
+    }
+
+    _upcomingSchoolEvents(plan, byEntity, school, schoolName) {
+      const { now, todayKey, zone } = plan;
+      return (byEntity.get(school.entities[KEY_SCHOOL_EVENTS]) || [])
+        .filter((event) => (event.allDay ? event.lastDay > todayKey : event.end > now))
+        .map((event) => ({
+          event,
+          days: Math.max(0, Math.round((zonedMidnight(event.firstDay, zone) - zonedMidnight(todayKey, zone)) / DAY_MS)),
+          school: schoolName,
+        }));
+    }
+
+    _schoolEventWhen(plan, event) {
+      const { t, locale, zone } = plan;
+      if (event.allDay) {
+        const last = shiftKey(event.lastDay, -1, zone);
+        if (last <= event.firstDay) return formatWeekdayDay(event.firstDay, locale, zone);
+        return t("date.range", { from: formatShortDate(event.firstDay, locale, zone), till: formatShortDate(last, locale, zone) });
+      }
+      const endDay = dateKey(new Date(event.end.getTime() - 1), zone);
+      if (endDay !== event.firstDay) {
+        return t("date.range", { from: formatDateTime(event.start, locale, zone), till: formatDateTime(event.end, locale, zone) });
+      }
+      const times = t("date.range", { from: formatTime(event.start, locale, zone), till: formatTime(event.end, locale, zone) });
+      return `${formatWeekdayDay(event.firstDay, locale, zone)} · ${times}`;
+    }
+
+    _schoolEventsBlock(plan, entry, byEntity) {
+      const { t, locale } = plan;
+      const schools = this._schoolsOf(plan);
+      const items = schools
+        .flatMap((school) => this._upcomingSchoolEvents(plan, byEntity, school, schools.length > 1 ? school.name : ""))
+        .sort((left, right) => left.event.start - right.event.start || left.event.summary.localeCompare(right.event.summary));
+      if (!items.length) return "";
+      return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
+        item.event.summary,
+        [this._schoolEventWhen(plan, item.event), item.event.location].filter(Boolean).join(" · "),
         item.days > 0 ? relativeDays(item.days, locale) : t("day.today"),
         false,
         compact,
@@ -2414,7 +2507,7 @@
 
     _missingNames(t) {
       const offered = new Set(this._offered().map((block) => block.key));
-      return CARD_BLOCKS.filter((block) => !offered.has(block.key)).map((block) => t(`block.${block.key}`));
+      return CARD_BLOCKS.filter((block) => !offered.has(block.key) && !CONFIRMED_ONLY_MODULES.includes(block.module)).map((block) => t(`block.${block.key}`));
     }
 
     _emit() {

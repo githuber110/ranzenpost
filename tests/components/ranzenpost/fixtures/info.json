@@ -11,7 +11,8 @@
         "pinboard": true,
         "absences": true,
         "conferences": true,
-        "messenger": true
+        "messenger": true,
+        "calendar": false
       },
       "disabled": {
         "timetable": false,
@@ -19,7 +20,8 @@
         "pinboard": false,
         "absences": false,
         "conferences": false,
-        "messenger": false
+        "messenger": false,
+        "calendar": false
       },
       "status": "ok",
       "children": [
@@ -36,7 +38,8 @@
       ],
       "last_poll": "2026-09-02T09:00:00+02:00",
       "last_success": "2026-09-02T09:00:00+02:00",
-      "own_entries": false
+      "own_entries": false,
+      "mail": false
     }
   ],
   "language": "de",

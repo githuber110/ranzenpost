@@ -57,7 +57,7 @@ function label(window, key, vars) {
 function all(overrides = {}) {
   const available = {};
   for (const name of MODULES) available[name] = true;
-  return { ...available, ...overrides };
+  return { ...available, calendar: false, ...overrides };
 }
 
 describe("the module registry decides which views exist", () => {
@@ -150,18 +150,20 @@ describe("the settings follow the modules", () => {
     expect(rows(window.eval("settingsView()"))).not.toContain(label(window, "settings.names"));
     expect(rows(window.eval("settingsView()"))).not.toContain(label(window, "settings.periods.sheet"));
     expect(rows(window.eval("settingsView()"))).toContain(label(window, "settings.phones"));
+    seed(window, all({ absences: false }));
+    expect(rows(window.eval("settingsView()"))).not.toContain(label(window, "settings.phones"));
 
     seed(window, all());
-    expect(window.eval("calendarComponents()")).toContain("absences");
-    expect(window.eval("calendarComponents()")).toContain("marks");
+    expect(window.eval('calendarComponents({ childId: "s1:c1", components: [] })')).toContain("absences");
+    expect(window.eval('calendarComponents({ childId: "s1:c1", components: [] })')).toContain("marks");
     seed(window, all({ absences: false }));
-    expect(window.eval("calendarComponents()")).not.toContain("absences");
-    expect(window.eval("calendarComponents()")).toContain("marks");
+    expect(window.eval('calendarComponents({ childId: "s1:c1", components: [] })')).not.toContain("absences");
+    expect(window.eval('calendarComponents({ childId: "s1:c1", components: [] })')).toContain("marks");
   });
 
   test("notification toggles exist only for available modules, outage stays regardless", () => {
     const { window } = loadApp();
-    seed(window, all({ letters: false, conferences: false }));
+    seed(window, all({ letters: false, conferences: false, messenger: false }));
     expect(window.eval("notifyEvents().map((entry) => entry[0])")).toEqual(["timetable", "pinboard", "outage"]);
     seed(window, all());
     expect(window.eval("notifyEvents().map((entry) => entry[0])")).toEqual([
@@ -169,6 +171,7 @@ describe("the settings follow the modules", () => {
       "letters",
       "pinboard",
       "conferences",
+      "messenger",
       "outage",
     ]);
   });

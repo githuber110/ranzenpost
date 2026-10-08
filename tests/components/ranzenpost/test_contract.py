@@ -16,6 +16,7 @@ SHAPES = {
     "events_absences": "events",
     "events_holidays": "events",
     "events_own_entries": "events",
+    "events_school_events": "events",
     "school": "school",
     "changes": "changes",
 }

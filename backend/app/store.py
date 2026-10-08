@@ -206,6 +206,12 @@ def connection_of_key(key):
     return split_child_key(key)[0]
 
 
+def owning_connection(entry):
+    if entry.get("child_key"):
+        return connection_of_key(entry.get("child_key"))
+    return str(entry.get("school_id") or "")
+
+
 def normalize_connection(entry):
     merged = dict(CONNECTION_DEFAULTS)
     if isinstance(entry, dict):
@@ -519,7 +525,7 @@ class Store:
                 data[holder] = [
                     entry
                     for entry in entries
-                    if not (isinstance(entry, dict) and connection_of_key(entry.get("child_key")) == connection_id)
+                    if not (isinstance(entry, dict) and owning_connection(entry) == connection_id)
                 ]
 
             edit(self, load, save, drop)
@@ -530,6 +536,9 @@ class Store:
                 snapshot["children"] = {
                     key: value for key, value in children.items() if connection_of_key(key) != connection_id
                 }
+            schools = snapshot.get("schools")
+            if isinstance(schools, dict):
+                schools.pop(connection_id, None)
 
         edit(self, self.load_calendar_snapshot, self.save_calendar_snapshot, drop_children)
 

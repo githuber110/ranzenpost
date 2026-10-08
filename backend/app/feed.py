@@ -1,21 +1,23 @@
 import hashlib
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from . import cancellations, feed_ics, holidays, marks, messages, own_entries, period_grid
 from .iserv.absences import berlin_offset
 from .mapping import configured_time, subject_base
-from .store import config_for_connection, connection_of_key, split_child_key
+from .store import config_for_connection, connection_display_name, owning_connection, split_child_key
 from .subscriptions import (
     COMPONENT_ABSENCES,
     COMPONENT_MARKS,
     COMPONENT_OWN_ENTRIES,
     COMPONENT_PUBLIC_HOLIDAYS,
+    COMPONENT_SCHOOL_EVENTS,
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_TIMETABLE,
     child_first_name,
     child_name,
+    allowed_components,
     label_carries_child_name,
 )
 
@@ -27,8 +29,9 @@ MARK_DAYS_BACK = 30
 STALE_AFTER_SECONDS = 24 * 60 * 60
 STATE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 STATE_TOUCH_SECONDS = 60 * 60
-CHILD_TAG_LENGTH = 16
+TAG_LENGTH = 16
 UID_DOMAIN = "ranzenpost.local"
+SCHOOL_EVENT_KIND = "school_event"
 DEFAULT_CALENDAR_COLOR = "#0e6b70"
 WEEK_SPAN_DAYS = 6
 
@@ -111,9 +114,20 @@ class FeedEvent:
     teacher: str = ""
 
 
+def _short_tag(seed):
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:TAG_LENGTH]
+
+
 def child_tag(child_key):
-    raw_id = split_child_key(child_key)[1] or str(child_key or "")
-    return hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:CHILD_TAG_LENGTH]
+    return _short_tag(split_child_key(child_key)[1] or str(child_key or ""))
+
+
+def subscription_tag(subscription):
+    child_id = subscription.get("child_key", "")
+    stored = str(subscription.get("id") or "")
+    if child_id or not stored:
+        return child_tag(child_id)
+    return _short_tag("subscription:" + stored)
 
 
 def lesson_window(today):
@@ -894,6 +908,60 @@ def holiday_events(language, tag, day_map, start, end, kind, split_days):
     return events
 
 
+def school_calendar_events(language, snapshot, school_id):
+    entry = ((snapshot or {}).get("schools") or {}).get(school_id) or {}
+    events = []
+    for item in entry.get("events") or []:
+        event = _school_feed_event(language, school_id, item) if isinstance(item, dict) else None
+        if event is not None:
+            events.append(event)
+    return events
+
+
+def _school_moment(text, all_day):
+    value = str(text or "")
+    try:
+        if all_day:
+            return date.fromisoformat(value[:10])
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        return moment
+    return berlin_moment(int(moment.timestamp()))
+
+
+def _school_feed_event(language, school_id, item):
+    title = str(item.get("title") or "").strip()
+    all_day = item.get("all_day") is True
+    start = _school_moment(item.get("start"), all_day)
+    if not title or start is None:
+        return None
+    end = _school_moment(item.get("end"), all_day)
+    if all_day and (end is None or end <= start):
+        end = start + timedelta(days=1)
+    elif not all_day and (end is None or end < start):
+        end = start
+    details = []
+    if item.get("calendar"):
+        details.append(_detail_line(language, "calendar.detail.calendar", str(item["calendar"])))
+    if item.get("description"):
+        details.append(str(item["description"]))
+    seed = "%s:%s:%s" % (school_id, item.get("uid") or title, item.get("start"))
+    return FeedEvent(
+        uid=f"school-{_short_tag(seed)}@{UID_DOMAIN}",
+        summary=title,
+        description="\n".join(details),
+        location=str(item.get("location") or ""),
+        start=start,
+        end=end,
+        all_day=all_day,
+        transparent=all_day,
+        category=str(item.get("category") or ""),
+        kind=SCHOOL_EVENT_KIND,
+    )
+
+
 def _days_between(start, end):
     days = []
     day = start
@@ -1039,7 +1107,8 @@ def calendar_name(language, subscription, config):
     label = subscription.get("label") or ""
     if label:
         return label
-    first = child_first_name(child_name(config, subscription.get("child_key", "")))
+    child_id = subscription.get("child_key", "")
+    first = child_first_name(child_name(config, child_id)) if child_id else connection_display_name(config)
     if first:
         return _text(language, CALENDAR_NAME_KEY, {"name": first})
     return _text(language, "calendar.name.fallback")
@@ -1051,8 +1120,9 @@ def build_events(
 ):
     language = messages.normalize_language(config.get("language"))
     child_id = subscription.get("child_key", "")
-    tag = child_tag(child_id)
-    components = subscription.get("components") or []
+    tag = subscription_tag(subscription)
+    allowed = allowed_components(subscription)
+    components = [name for name in subscription.get("components") or [] if name in allowed]
     window = lesson_window(today)
     events = []
     collected = (
@@ -1106,6 +1176,8 @@ def build_events(
         events.extend(absence_events(language, tag, config, snapshot, child_id, today))
     if COMPONENT_OWN_ENTRIES in components:
         events.extend(own_entry_events(language, tag, config, snapshot, child_id, day_map, blocked, window))
+    if COMPONENT_SCHOOL_EVENTS in components:
+        events.extend(school_calendar_events(language, snapshot, owning_connection(subscription)))
     holiday_end = today + timedelta(days=HOLIDAY_DAYS_AHEAD)
     if COMPONENT_SCHOOL_HOLIDAYS in components:
         events.extend(
@@ -1192,8 +1264,7 @@ def _moment(now):
 
 
 def subscription_config(store, subscription):
-    school_id = subscription.get("school_id") or connection_of_key(subscription.get("child_key", ""))
-    return config_for_connection(store, school_id)
+    return config_for_connection(store, owning_connection(subscription))
 
 
 def gather_events(subscription, store, holiday_calendar, now=None):

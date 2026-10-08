@@ -42,6 +42,7 @@ FILE_EXTENSIONS = frozenset(
 IDENTIFIER_PART = re.compile(r"(<[a-z]+>|[^\W\d_]+|\d+)")
 SHORT_PARTS = frozenset({"id", "is", "at", "to", "of", "on", "in", "by", "no", "js", "ui", "x", "y"})
 LOGIN_LIKE = re.compile(r"@[\w.:-]+|[^\W\d_][\w-]*(?:[.:][\w-]+)+")
+KEY_DIGITS = re.compile(r"\d+")
 
 
 def _starts_part(run, index):
@@ -108,8 +109,13 @@ def safe_key(key):
         if not KEY_PART.match(part):
             shaped.append(KEY_MARK)
             continue
-        shaped.append(identifier_shape(part, KEY_MARK))
+        shaped.append(_key_part_shape(part))
     return ".".join(shaped)
+
+
+def _key_part_shape(part):
+    shaped = identifier_shape(part, KEY_MARK)
+    return shaped if shaped.isdigit() else KEY_DIGITS.sub("<n>", shaped)
 
 
 def _query_note(text):
@@ -206,30 +212,77 @@ def _join(path, key):
     return "%s.%s" % (path, key) if path else key
 
 
-def _walk(value, path, depth, lines, seen, limit):
+def _collect(value, path, depth, stats):
+    label = path or ROOT_LABEL
+    entry = stats.setdefault(label, {"count": 0, "lengths": [], "empty": 0, "null": 0})
+    entry["count"] += 1
+    if isinstance(value, str):
+        entry["lengths"].append(len(value))
+        if not value.strip():
+            entry["empty"] += 1
+    elif value is None:
+        entry["null"] += 1
+    if depth >= MAX_DEPTH:
+        return
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _collect(child, _join(path, safe_key(key)), depth + 1, stats)
+    elif isinstance(value, (list, tuple)):
+        for item in value[:MAX_ITEMS]:
+            _collect(item, (path or "") + "[]", depth + 1, stats)
+
+
+def _parent_label(label):
+    head, _dot, _tail = label.rpartition(".")
+    return head
+
+
+def spread_note(label, stats):
+    entry = stats.get(label)
+    if not entry:
+        return ""
+    parent = stats.get(_parent_label(label)) if _parent_label(label).endswith("[]") else None
+    missing = parent["count"] - entry["count"] if parent and parent["count"] > entry["count"] else 0
+    parts = []
+    if entry["count"] > 1:
+        lengths = entry["lengths"]
+        if lengths and min(lengths) != max(lengths):
+            parts.append("len %d-%d of %d" % (min(lengths), max(lengths), len(lengths)))
+        if entry["empty"]:
+            parts.append("empty %d" % entry["empty"])
+        if entry["null"]:
+            parts.append("null %d" % entry["null"])
+    if missing:
+        parts.append("missing %d" % missing)
+    return " (%s)" % ", ".join(parts) if parts else ""
+
+
+def _walk(value, path, depth, lines, seen, limit, stats):
     if len(lines) >= limit:
         return
     label = path or ROOT_LABEL
     if label not in seen:
         seen.add(label)
-        lines.append("%s: %s" % (label, value_shape(value)))
+        lines.append("%s: %s%s" % (label, value_shape(value), spread_note(label, stats)))
     if depth >= MAX_DEPTH:
         return
     if isinstance(value, dict):
         for key, child in value.items():
-            _walk(child, _join(path, safe_key(key)), depth + 1, lines, seen, limit)
+            _walk(child, _join(path, safe_key(key)), depth + 1, lines, seen, limit, stats)
             if len(lines) >= limit:
                 return
     elif isinstance(value, (list, tuple)):
         for item in value[:MAX_ITEMS]:
-            _walk(item, (path or "") + "[]", depth + 1, lines, seen, limit)
+            _walk(item, (path or "") + "[]", depth + 1, lines, seen, limit, stats)
             if len(lines) >= limit:
                 return
 
 
 def shape_lines(data, limit=MAX_LINES):
+    stats = {}
+    _collect(data, "", 0, stats)
     lines = []
-    _walk(data, "", 0, lines, set(), limit)
+    _walk(data, "", 0, lines, set(), limit, stats)
     return lines
 
 

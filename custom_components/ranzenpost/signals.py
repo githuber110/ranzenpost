@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 
-from .api import Absence, Change, Info, Notice, Notices, SchoolInfo, State
+from .api import Absence, Change, Info, Notice, Notices, School, SchoolInfo, State
 from .const import (
     ATTR_CHILD_KEY,
     ATTR_COUNT,
@@ -33,6 +33,8 @@ from .const import (
     TRIGGER_LOGIN_NEEDED,
     TRIGGER_NEW_LETTER,
     TRIGGER_NEW_POST,
+    TRIGGER_SCHOOL_NEW_LETTER,
+    TRIGGER_SCHOOL_NEW_POST,
     TRIGGER_SCHOOL_REACHABLE,
     TRIGGER_SCHOOL_UNREACHABLE,
     TRIGGER_SUBSTITUTION,
@@ -120,12 +122,25 @@ def school_signals(previous: SchoolInfo, current: SchoolInfo) -> list[Signal]:
     return signals
 
 
+def school_notice_signals(school_id: str, previous: School, current: School) -> list[Signal]:
+    signals: list[Signal] = []
+    for trigger, before, now in (
+        (TRIGGER_SCHOOL_NEW_LETTER, previous.unread_letters, current.unread_letters),
+        (TRIGGER_SCHOOL_NEW_POST, previous.unread_posts, current.unread_posts),
+    ):
+        if before is not None and now is not None:
+            signals.extend(Signal(trigger, school_id, "", data) for data in _new_notices(before, now))
+    return signals
+
+
 def signals_between(
     previous_info: Info | None,
     previous_states: dict[str, State],
     info: Info,
     states: dict[str, State],
     new_changes: list[Change],
+    previous_schools: dict[str, School] | None = None,
+    schools: dict[str, School] | None = None,
 ) -> list[Signal]:
     if previous_info is None:
         return []
@@ -134,6 +149,10 @@ def signals_between(
         before = previous_info.school(school.id)
         if before is not None:
             signals.extend(school_signals(before, school))
+        known = (previous_schools or {}).get(school.id)
+        current = (schools or {}).get(school.id)
+        if known is not None and current is not None:
+            signals.extend(school_notice_signals(school.id, known, current))
     for child in info.children:
         before = previous_states.get(child.key)
         current = states.get(child.key)

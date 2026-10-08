@@ -105,6 +105,12 @@ class ProbeClient:
             return Response(200, self.base_url + path, json_data=self.authenticate)
         return Response(200, self.base_url + path)
 
+    def fetch_or_raise(self, path, params=None):
+        response = self.fetch(path, params)
+        if response.status_code != 200:
+            raise DataError("request failed: %d" % response.status_code)
+        return response
+
     def get_children(self):
         self.calls.append("/iserv/time-table/")
         if set(TIMETABLE_PATHS) <= self.missing:
@@ -166,7 +172,7 @@ def test_a_login_detects_the_modules_and_stores_them(tmp_path, caplog):
     lines = [record.getMessage() for record in caplog.records if record.levelno == logging.INFO]
     assert lines == [
         f"school#{service.id} modules available: timetable, letters, pinboard, conferences, messenger; "
-        "missing: absences; not supported: 1 (mail); unknown: 0"
+        "missing: absences, calendar; not supported: 1 (mail); unknown: 0"
     ]
     assert holder["client"].calls.count("/iserv/") == 1
 
@@ -218,9 +224,9 @@ def test_a_module_that_appears_later_is_picked_up_by_the_next_refresh_with_one_l
     prefix = f"school#{service.id} "
     lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert lines == [
-        "modules available: timetable, pinboard, absences, conferences, messenger; missing: letters; "
+        "modules available: timetable, pinboard, absences, conferences, messenger; missing: letters, calendar; "
         "not supported: 1 (mail); unknown: 0",
-        "modules available: timetable, letters, pinboard, absences, conferences, messenger; missing: none; "
+        "modules available: timetable, letters, pinboard, absences, conferences, messenger; missing: calendar; "
         "not supported: 1 (mail); unknown: 0",
     ]
 
@@ -427,6 +433,7 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
         modules.ABSENCES: False,
         modules.CONFERENCES: False,
         modules.MESSENGER: False,
+        modules.CALENDAR: False,
     }
     assert [child["name"] for child in children] == ["Alex Example", "Robin Example"]
     assert children[0]["child_id"] == "letters:alex-example"
@@ -436,7 +443,7 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
     prefix = f"school#{service.id} "
     module_lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert module_lines == [
-        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger; "
+        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger, calendar; "
         "not supported: 1 (mail); unknown: 0"
     ]
     assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
@@ -476,7 +483,7 @@ def _stored_klassengeld(store, url):
     connection_id = add_school(store, url)
     scoped_store = connection_service(store, connection_id).store
     scoped_store.save_modules(
-        modules.normalize({"unsupported": [{"segment": "klassengeld"}, {"segment": "calendar"}], "checked_at": 5})
+        modules.normalize({"unsupported": [{"segment": "klassengeld"}, {"segment": "news"}], "checked_at": 5})
     )
     return connection_service(store, connection_id)
 
@@ -489,7 +496,7 @@ def test_each_school_offers_its_own_klassengeld_link(tmp_path):
     second_entries = {entry["segment"]: entry for entry in second.modules()["unsupported"]}
     assert first_entries["klassengeld"]["open_url"] == "https://one.example/iserv/klassengeld/redirect"
     assert second_entries["klassengeld"]["open_url"] == "https://two.example/iserv/klassengeld/redirect"
-    assert "open_url" not in first_entries["calendar"]
+    assert "open_url" not in first_entries["news"]
 
 
 def test_the_combined_registry_keeps_the_link_for_one_school_and_drops_it_for_several(tmp_path):

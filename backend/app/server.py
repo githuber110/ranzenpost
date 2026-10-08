@@ -279,6 +279,14 @@ def create_app(
     def conferences():
         return read_endpoint(service.conferences)
 
+    @app.get("/api/school-events")
+    def school_events():
+        return read_endpoint(service.school_events)
+
+    @app.get("/api/mail")
+    def mail_counts():
+        return read_endpoint(service.mail_counts)
+
     register_absence_routes(app, service)
 
     @app.post("/api/notify-test")

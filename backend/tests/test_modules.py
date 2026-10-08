@@ -2,6 +2,8 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+
+from app.iserv.school_calendar import CALENDAR_EVENTS_PATH
 import requests
 
 from app import module_catalogue, modules
@@ -41,7 +43,7 @@ START_PAGE = """
 DOCUMENTED_PAGE = """
 <html><body><nav>
   <a href="/iserv/dsa-classregister/">Klassenbuch</a>
-  <a href="/iserv/calendar/">Kalender</a>
+  <a href="/iserv/news/">News</a>
   <a href="/iserv/mystery/">Mystery</a>
 </nav></body></html>
 """
@@ -211,7 +213,7 @@ def test_documented_segments_are_listed_as_not_supported_and_the_rest_as_unknown
 
 def test_present_but_not_supported_is_told_apart_from_unknown():
     unsupported, unknown = modules.split_links(modules.harvest_links(DOCUMENTED_PAGE))
-    assert [entry["slug"] for entry in unsupported] == ["dsa-classregister", "calendar"]
+    assert [entry["slug"] for entry in unsupported] == ["dsa-classregister", "news"]
     assert unsupported[0] == {"segment": "dsa-classregister", "slug": "dsa-classregister", "label": "Klassenbuch", "name": "Klassenbuch"}
     assert unknown == [{"segment": "mystery", "label": "Mystery"}]
     assert modules.split_links([{"segment": "time-table", "label": "Stundenplan"}]) == ([], [])
@@ -373,6 +375,7 @@ def test_detect_marks_every_module_from_its_probe():
         ABSENCES: False,
         CONFERENCES: True,
         MESSENGER: False,
+        modules.CALENDAR: False,
     }
     assert registry["iserv_version"] == "3.2.1"
     assert registry["checked_at"] > 0
@@ -405,9 +408,9 @@ def test_without_any_earlier_state_an_unreachable_probe_falls_back_to_the_start_
     assert registry["modules"][MESSENGER] is False
 
 
-def test_without_any_earlier_state_and_without_a_start_page_everything_stays_shown():
+def test_without_any_earlier_state_and_without_a_start_page_everything_but_the_confirmed_only_modules_stays_shown():
     registry = modules.detect("", failing_everywhere(), None)
-    assert registry["modules"] == {name: True for name in MODULES}
+    assert registry["modules"] == {name: name not in modules.CONFIRMED_ONLY for name in MODULES}
 
 
 def test_a_session_that_lost_its_login_does_not_wipe_the_registry():
@@ -441,7 +444,7 @@ def test_a_lost_login_is_read_from_the_pages_even_when_the_school_app_api_refuse
 
 def test_the_default_registry_shows_everything_and_was_never_checked():
     registry = modules.default_registry()
-    assert registry["modules"] == {name: True for name in MODULES}
+    assert registry["modules"] == {name: name not in modules.CONFIRMED_ONLY for name in MODULES}
     assert registry["unsupported"] == []
     assert registry["unknown"] == []
     assert registry["checked_at"] == 0
@@ -456,7 +459,7 @@ def test_summary_line_names_available_missing_unsupported_and_unknown_segments_w
     line = modules.summary(registry)
     assert line == (
         "modules available: timetable, letters, pinboard, conferences, messenger; "
-        "missing: absences; not supported: 4 (mail, file, videoconference, exercise); unknown: 1 (mystery)"
+        "missing: absences, calendar; not supported: 4 (mail, file, videoconference, exercise); unknown: 1 (mystery)"
     )
     assert "E-Mail" not in line
     assert "Aufgaben" not in line
@@ -489,11 +492,11 @@ def test_registry_of_falls_back_to_the_default_for_a_service_without_the_reader(
 def test_normalize_fills_missing_fields_and_drops_foreign_ones():
     registry = modules.normalize({
         "modules": {LETTERS: False, "other": True},
-        "unsupported": [{"segment": "calendar"}, {"segment": ""}],
+        "unsupported": [{"segment": "news"}, {"segment": ""}],
         "unknown": [{"segment": "mystery"}],
     })
-    assert registry["modules"] == {name: name != LETTERS for name in MODULES}
-    assert registry["unsupported"] == [{"segment": "calendar", "slug": "calendar", "label": "calendar", "name": "Kalender"}]
+    assert registry["modules"] == {name: name != LETTERS and name not in modules.CONFIRMED_ONLY for name in MODULES}
+    assert registry["unsupported"] == [{"segment": "news", "slug": "news", "label": "news", "name": "News"}]
     assert registry["unknown"] == [{"segment": "mystery", "label": "mystery"}]
     assert registry["checked_at"] == 0
     assert registry["iserv_version"] == ""
@@ -556,7 +559,7 @@ def test_a_covered_module_that_disappears_is_a_change():
 KLASSENGELD_PAGE = """
 <html><body>
 <a href="/iserv/klassengeld/redirect">Klassengeld</a>
-<a href="/iserv/calendar/">Kalender</a>
+<a href="/iserv/news/">News</a>
 </body></html>
 """
 
@@ -564,7 +567,7 @@ KLASSENGELD_PAGE = """
 def test_klassengeld_is_flagged_link_only_and_other_modules_are_not():
     unsupported, unknown = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
     flags = {entry["segment"]: entry.get("link_only", False) for entry in unsupported}
-    assert flags == {"klassengeld": True, "calendar": False}
+    assert flags == {"klassengeld": True, "news": False}
     assert unknown == []
 
 
@@ -587,4 +590,43 @@ def test_open_urls_are_added_only_to_link_only_entries():
     unsupported, _ = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
     registry = modules.with_open_urls(modules.normalize({"unsupported": unsupported}), "https://school.example")
     urls = {entry["segment"]: entry.get("open_url") for entry in registry["unsupported"]}
-    assert urls == {"klassengeld": "https://school.example/iserv/klassengeld/redirect", "calendar": None}
+    assert urls == {"klassengeld": "https://school.example/iserv/klassengeld/redirect", "news": None}
+
+
+def test_the_calendar_needs_its_probe_and_not_just_a_menu_link():
+    page = '<html><body><a href="/iserv/calendar/">Kalender</a><a href="/iserv/time-table/">Plan</a></body></html>'
+
+    def unanswered(path, params=None):
+        raise OSError("no answer")
+
+    assert modules.detect(page, unanswered, None)["modules"][modules.CALENDAR] is False
+    assert modules.detect("", unanswered, None)["modules"][modules.CALENDAR] is False
+
+
+def test_a_confirmed_calendar_survives_one_unanswered_probe():
+    page = '<html><body><a href="/iserv/calendar/">Kalender</a></body></html>'
+    confirmed = probe_map({
+        modules.PROBES[modules.CALENDAR][0]: Response(200, "https://school.example" + modules.PROBES[modules.CALENDAR][0], "[]", json_data=[]),
+        CALENDAR_EVENTS_PATH: Response(200, "https://school.example" + CALENDAR_EVENTS_PATH, "{}", json_data={}),
+    })
+    first = modules.detect(page, confirmed, None)
+    assert first["modules"][modules.CALENDAR] is True
+
+    def unanswered(path, params=None):
+        raise OSError("no answer")
+
+    assert modules.detect(page, unanswered, first)["modules"][modules.CALENDAR] is True
+
+
+def test_a_calendar_page_that_is_no_json_list_is_missing():
+    html = probe_map({modules.PROBES[modules.CALENDAR][0]: Response(200, "https://school.example" + modules.PROBES[modules.CALENDAR][0], "<html>start</html>")})
+    assert modules.detect("", html, None)["modules"][modules.CALENDAR] is False
+
+
+def test_a_calendar_whose_events_are_refused_is_missing():
+    sources = modules.PROBES[modules.CALENDAR][0]
+    refused = probe_map({
+        sources: Response(200, "https://school.example" + sources, "[]", json_data=[{"id": "/f.parent/home", "label": "Mine", "type": "cal"}]),
+        CALENDAR_EVENTS_PATH: Response(403, "https://school.example" + CALENDAR_EVENTS_PATH, "denied"),
+    })
+    assert modules.detect("", refused, None)["modules"][modules.CALENDAR] is False

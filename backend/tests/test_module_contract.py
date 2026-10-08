@@ -118,6 +118,7 @@ BLOCK_EMPTY_MARKER = {
     "absences": 'module_emptied(modules.ABSENCES)',
     "conferences": 'module_emptied(modules.CONFERENCES)',
     "chat": 'block_emptied("chat")',
+    "school_events": 'module_emptied(modules.CALENDAR)',
     "holidays": 'block_emptied("holidays")',
     "changes": 'block_emptied("changes")',
 }

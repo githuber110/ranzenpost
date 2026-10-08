@@ -16,7 +16,7 @@ from pytest_homeassistant_custom_component.common import (
     async_mock_service,
 )
 
-from custom_components.ranzenpost.const import CHILD_TRIGGERS, DOMAIN, SCHOOL_TRIGGERS
+from custom_components.ranzenpost.const import CHILD_TRIGGERS, DOMAIN, SCHOOL_NOTICE_TRIGGERS, SCHOOL_TRIGGERS
 from custom_components.ranzenpost.device_trigger import async_validate_trigger_config
 
 from . import CHILD_1, CHILD_2, SCHOOL, fixture, mock_addon, setup_entry
@@ -89,7 +89,7 @@ async def test_child_devices_list_the_child_triggers_and_school_devices_the_scho
     every_child_trigger = await async_get_device_automations(hass, DeviceAutomationType.TRIGGER, child.id)
 
     assert [item["type"] for item in child_triggers] == list(CHILD_TRIGGERS)
-    assert [item["type"] for item in school_triggers] == list(SCHOOL_TRIGGERS)
+    assert [item["type"] for item in school_triggers] == list(SCHOOL_TRIGGERS + SCHOOL_NOTICE_TRIGGERS)
     assert all(item["device_id"] == child.id and item["platform"] == "device" for item in child_triggers)
     assert {item["domain"] for item in every_child_trigger} == {DOMAIN, "binary_sensor"}
 
@@ -196,7 +196,7 @@ async def test_a_restart_fires_nothing_for_changes_that_were_already_known(hass,
 
 def test_every_trigger_and_condition_has_a_translated_name():
     strings = json.loads((INTEGRATION / "strings.json").read_text(encoding="utf-8"))["device_automation"]
-    assert set(strings["trigger_type"]) == set(CHILD_TRIGGERS) | set(SCHOOL_TRIGGERS)
+    assert set(strings["trigger_type"]) == set(CHILD_TRIGGERS) | set(SCHOOL_TRIGGERS) | set(SCHOOL_NOTICE_TRIGGERS)
     assert set(strings["condition_type"]) == {"is_school_day", "lesson_running"}
     assert all(value.strip() for value in strings["trigger_type"].values())
     assert all(value.strip() for value in strings["condition_type"].values())

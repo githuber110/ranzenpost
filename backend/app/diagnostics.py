@@ -23,6 +23,8 @@ from .reportcrawl import (
     CrawlBudget,
     capped_module,
     linked_rows,
+    account_api_lines,
+    known_api_lines,
     menu_lines,
     menu_paths_by_segment,
     menu_shape,
@@ -74,6 +76,7 @@ KNOWN_ROWS = (
     (modules.ABSENCES, "absence", "/iserv/dsa-absences/"),
     (modules.CONFERENCES, "parentconference", modules.PROBES[modules.CONFERENCES][0]),
     (modules.MESSENGER, "messenger", modules.PROBES[modules.MESSENGER][0]),
+    (modules.CALENDAR, "calendar", "/iserv/calendar/"),
 )
 CATALOGUE_SLUGS = {LEGACY_TIMETABLE: "timetable"}
 TIME_TABLE_SLUG = "timetable"
@@ -90,6 +93,7 @@ JSON_PROBES = {
     "dsa-timetable": modules.TIMETABLE,
     "dsa-pinboard": modules.PINBOARD,
     "absence": modules.ABSENCES,
+    "calendar": modules.CALENDAR,
 }
 TABLE_HEAD = "| Module | Slug | Edition | Status | Probe | HTTP | Content type | Length | Final path |"
 TABLE_RULE = "|---|---|---|---|---|---|---|---|---|"
@@ -272,6 +276,20 @@ def _yes_no(value):
     if value is None:
         return "unknown"
     return "yes" if value else "no"
+
+
+ROLE_TOKEN = re.compile(r"^(?:[A-Z][A-Z0-9_]{0,47}|[a-z][a-z0-9_]{0,47})$")
+
+
+def account_roles_fact(me):
+    if not me or not isinstance(me.get("roles"), list):
+        return "unknown"
+    names = []
+    for role in me["roles"]:
+        if isinstance(role, dict):
+            role = role.get("name") or role.get("role") or role.get("key")
+        names.append(role if isinstance(role, str) and ROLE_TOKEN.match(role) else "<other>")
+    return ", ".join(names) or "none"
 
 
 def _stamp(epoch):
@@ -545,7 +563,7 @@ def _change_record_lines(response):
 def page_structure(client, row, today, cache=None, child_id="", children=(), listed=None, nav_paths=None):
     cache = {} if cache is None else cache
     if row.get("guessed_page"):
-        return module_link_structure(client, row, nav_paths, cache)
+        return module_link_structure(client, row, nav_paths, cache, today)
     lines = ["#### %s (%s)" % (row["slug"], row["name"])]
     answers = {}
     for path, params in structure_targets(row, today, child_id):
@@ -555,6 +573,8 @@ def page_structure(client, row, today, cache=None, child_id="", children=(), lis
     landing = answers.get(row["page"])
     if landing is not None and status_of(landing) == 200 and body_kind(landing) == "html" and callable(getattr(client, "fetch_unfollowed", None)):
         lines.extend(module_crawl(client, landing, module_prefix(row["page"]), menu_shape, cache, SCRIPT_ROOT))
+    if callable(getattr(client, "fetch_unfollowed", None)):
+        lines.extend(known_api_lines(client, row["slug"], today, skip=tuple(answers)))
     return capped_module(lines)
 
 
@@ -690,6 +710,7 @@ def school_section(index, connection, structure, today, module="", budget=None):
     lines = ["## School %d" % index]
     lines.append("- Children: %d" % len([child for child in config.get("children") or [] if isinstance(child, dict)]))
     lines.append("- Account: 2fa=%s guardian=%s" % (_yes_no(has_2fa), _yes_no(guardian)))
+    lines.append("- Account roles: %s" % account_roles_fact(me))
     lines.append("- Two-factor: has_2fa=%s, totp stored=%s, IServ says=%s" % (_yes_no(has_2fa), _yes_no(stored_secret), _yes_no(server_2fa)))
     lines.append("- IServ version: %s" % (registry["iserv_version"] or "unknown"))
     lines.append("- Modules checked: %s" % (_stamp(registry["checked_at"]) if registry["checked_at"] else "never"))
@@ -713,6 +734,7 @@ def school_section(index, connection, structure, today, module="", budget=None):
         start = start_page_links(fetcher) if fetcher is not None else None
         nav_paths = menu_paths_by_segment(start[0]) if start is not None else {}
         lines.extend(menu_lines(start, linked_rows(rows, nav_paths)))
+        lines.extend(account_api_lines(fetcher, today))
         lines.extend(iserv_version_lines(fetcher))
         lines.extend(unsupported_module_lines(fetcher, rows, nav_paths))
         lines.append("### Page structure")

@@ -93,6 +93,10 @@ RATE_LIMIT_STATUS = 429
 RATE_LIMIT_CAP_SECONDS = 2 * 60 * 60
 
 
+class SchoolCalendarRefusedError(DataError):
+    pass
+
+
 class OutageError(IServError, RequestException):
     def __init__(self, reason, note="", message_key="", detail=None, retry_after=None):
         super().__init__(note or f"iserv unreachable: {reason}", message_key=message_key or OUTAGE_KEY, detail=detail)

@@ -54,6 +54,7 @@ for (const viewport of VIEWPORTS) {
 
           await page.locator(".swatch-trigger").first().click();
           await expect(page.locator(".color-dialog")).toBeVisible();
+          await waitForSheetSettled(page);
           await assertScreenClean(page, `${viewport.name}/${lang.key}/color-dialog`);
 
           await page.locator(".color-dialog .colour-own-toggle").click();

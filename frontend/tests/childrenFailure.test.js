@@ -89,12 +89,20 @@ describe("a child list that could not be loaded is not sold as an empty selectio
     );
   });
 
-  test("an account that really has no child keeps the old wording", async () => {
+  test("an account that really has no child is not told that nobody is selected", async () => {
     const { window, document } = await bootWith(() => jsonResponse([]));
     window.eval("state.view = 'overview'; rerender();");
     const text = document.getElementById("app").textContent;
-    expect(text).toContain(window.eval('t("overview.noChild")'));
+    expect(window.eval("noChildren()")).toBe(true);
+    expect(text).not.toContain(window.eval('t("overview.noChild")'));
     expect(text).not.toContain(window.eval('t("overview.children.failed")'));
+  });
+
+  test("a failed list is never taken for an empty one", async () => {
+    const { window } = await bootWith(() => jsonResponse(UPSTREAM_FAILURE));
+    expect(window.eval("noChildren()")).toBe(false);
+    expect(window.eval("viewAvailable('timetable')")).toBe(true);
+    expect(window.eval("viewAvailable('absence')")).toBe(true);
   });
 
   test("retrying clears the message once the list arrives", async () => {

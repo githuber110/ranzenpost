@@ -11,7 +11,8 @@
         "pinboard": true,
         "absences": true,
         "conferences": true,
-        "messenger": true
+        "messenger": true,
+        "calendar": false
       },
       "disabled": {
         "timetable": false,
@@ -19,7 +20,8 @@
         "pinboard": false,
         "absences": false,
         "conferences": false,
-        "messenger": false
+        "messenger": false,
+        "calendar": false
       },
       "status": "ok",
       "children": [

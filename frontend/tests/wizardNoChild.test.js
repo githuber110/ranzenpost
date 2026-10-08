@@ -31,7 +31,9 @@ describe("wizard: child step with 0 children", () => {
     await flush();
     await flush();
 
-    expect(app.textContent).toContain("Deinem Konto ist kein Profil zugeordnet. Bitte wende dich an die Schule.");
+    expect(app.textContent).toContain("Deinem Konto ist kein Profil verknüpft. Du kannst die Einrichtung trotzdem abschließen.");
+    expect(app.textContent).not.toContain("Schule");
+    expect([...app.querySelectorAll("button.sw-next")].map((b) => b.textContent)).toEqual(["Einrichtung abschließen"]);
 
     const finishButton = [...app.querySelectorAll("button")].find((b) => b.textContent === "Einrichtung abschließen");
     expect(finishButton).toBeTruthy();

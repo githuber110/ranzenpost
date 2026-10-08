@@ -22,6 +22,7 @@ confirm confirmation filter filters week day days month year entry entries item 
 state states version versions config configuration module modules group groups class classes course courses subject
 subjects teacher teachers student students child children lesson lessons period periods substitution substitutions
 change changes cancelled cancellation event events appointment appointments json html text plain xml http https www
+feed upcoming eventsources navigation badges raw multi
 """.split()
 
 UI_WORDS = """
@@ -79,6 +80,8 @@ column pinboard pinboards description reason comment comments tags tag category 
 avatar email phone mobile address language locale timezone role roles permission permissions flag flags token csrf secret
 session expires expiry format version api success error errors result results response params query payload map object
 array php routing basepath authentication messenger matrix typing sync filter dow payment return x y empty pay amount balance iban fee price sum currency
+all recurring recurrence alarm alarms trigger editable deletable droppable subscription subscriptions organizer
+creator participants partstat location locations hash when mailbox bare answered flagged forwarded unsent upcoming
 """.split()
 
 

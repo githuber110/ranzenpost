@@ -9,7 +9,8 @@
       "exams": { "default": "mdi:pencil-ruler" },
       "absences": { "default": "mdi:account-off" },
       "own_entries": { "default": "mdi:calendar-star" },
-      "holidays": { "default": "mdi:beach" }
+      "holidays": { "default": "mdi:beach" },
+      "school_events": { "default": "mdi:calendar-text" }
     },
     "event": {
       "timetable_changed": { "default": "mdi:calendar-sync" }
@@ -24,6 +25,7 @@
       "exams_upcoming": { "default": "mdi:clipboard-list-outline" },
       "unread_letters": { "default": "mdi:email-outline" },
       "unread_posts": { "default": "mdi:bulletin-board" },
+      "unread_mail": { "default": "mdi:email-outline" },
       "open_absences": { "default": "mdi:account-clock" },
       "next_absence": { "default": "mdi:calendar-account" },
       "timetable_last_updated": { "default": "mdi:update" },

@@ -162,6 +162,13 @@ class ChildService:
         if error is not None:
             fallback = self._children_from_school_app()
             if not fallback:
+                if error.message_key == CHILD_PAGE_MESSAGE_KEY and self._school_app_lists_none():
+                    logger.info(
+                        "school#%s the timetable page offers no child selection and the school app lists none",
+                        self.connection.id,
+                    )
+                    self._remember_page_ids({})
+                    return self._keep([], marker)
                 raise error.with_traceback(None)
             logger.warning(
                 "the timetable page refused the child list, using the school app list instead: %s",
@@ -376,6 +383,17 @@ class ChildService:
                 raise failure
             raise DataError("child list unreadable", message_key=CHILD_PAGE_MESSAGE_KEY) from failure
         return []
+
+    def _school_app_lists_none(self):
+        if not self.connection.module_available(modules.ABSENCES):
+            return False
+        try:
+            return self.connection._dsa().sick_note_children_listed() == []
+        except (OutageError, NotConfiguredError, requests.RequestException) + UPSTREAM_SIGN_IN_ERRORS:
+            raise
+        except Exception:
+            logger.debug("school app child list lookup failed", exc_info=True)
+            return False
 
     def _school_app_children_or_raise(self):
         return self._school_app_rows(self.connection._dsa().sick_note_children_or_raise())

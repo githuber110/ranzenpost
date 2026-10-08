@@ -1,7 +1,7 @@
 name: Ranzenpost (IServ)
-version: "2610.1.1"
+version: "2610.2.0"
 slug: ranzenpost
-description: A parent frontend for IServ school servers. Timetable with substitutions, letters, pinboards and absences.
+description: A parent frontend for IServ school servers. Timetable with substitutions, letters, noticeboards, absences, chat and school events.
 url: https://github.com/githuber110/ranzenpost
 image: ghcr.io/githuber110/ranzenpost
 arch:

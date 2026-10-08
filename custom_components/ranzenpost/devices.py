@@ -70,5 +70,8 @@ def device_id_of(hass: HomeAssistant, identifier: tuple[str, str]) -> str | None
 @callback
 def modules_of_device(hass: HomeAssistant, ref: DeviceRef) -> Modules:
     data = data_of_device(hass, ref)
+    if not ref.is_child:
+        school = data.info.school(ref.key) if data else None
+        return school.modules if school else Modules(frozenset(MODULES))
     child = next((child for child in data.info.children if child.key == ref.key), None) if data else None
     return data.info.modules_of(child) if child else Modules(frozenset(MODULES))

@@ -137,6 +137,108 @@ describe("the wizard path", () => {
     expect([boxes[0].checked, boxes[1].checked]).toEqual([false, true]);
   });
 
+  test("typing a name keeps its field and focus when the child list arrives late", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    let answer = null;
+    window.fetch = (input) => {
+      if (String(input).includes("api/messenger/room/teacher/children")) {
+        return new Promise((resolve) => { answer = resolve; });
+      }
+      return jsonReply({ teachers: [], allowed: true });
+    };
+    window.eval("startTeacherRoom()");
+    await settle();
+    window.document.body.append(flow(window).node);
+    const field = flow(window).node.querySelector(".sw-body .search-input");
+    field.focus();
+    field.value = "Zwe";
+    field.dispatchEvent(new window.Event("input"));
+    expect(window.document.activeElement).toBe(field);
+
+    answer(await jsonReply({ children: [MIA], allowed: true }));
+    await settle();
+    await settle();
+
+    expect(flow(window).node.querySelector(".sw-body .search-input")).toBe(field);
+    expect(window.document.activeElement).toBe(field);
+    expect(window.eval("state.teacherRoom.query")).toBe("Zwe");
+    expect(flow(window).path).toEqual(["teacher", "parents", "review"]);
+  });
+
+  test("hits found after the child list arrived show in the visible result list", async () => {
+    vi.useFakeTimers();
+    try {
+      const { window } = loadApp();
+      seed(window, ONE_CHILD);
+      let answer = null;
+      window.fetch = (input) => {
+        if (String(input).includes("api/messenger/room/teacher/children")) {
+          return new Promise((resolve) => { answer = resolve; });
+        }
+        return jsonReply({ teachers: [TEACHER_A], allowed: true });
+      };
+      window.eval("startTeacherRoom()");
+      window.eval("queueTeacherSearch('Ost')");
+      answer(await jsonReply({ children: [MIA], allowed: true }));
+      await vi.advanceTimersByTimeAsync(300);
+      const results = flow(window).node.querySelector(".sw-body .sw-results");
+      expect(results.textContent).toContain(TEACHER_A.label);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a refusal in the late child list shows in the visible result list", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    let answer = null;
+    window.fetch = () => new Promise((resolve) => { answer = resolve; });
+    window.eval("startTeacherRoom()");
+    answer(await jsonReply({ children: [MIA], allowed: false }));
+    await settle();
+    await settle();
+    const results = flow(window).node.querySelector(".sw-body .sw-results");
+    expect(results.textContent).toContain(window.eval("t('messenger.create.search.forbidden.title')"));
+  });
+
+  test("searching again after choosing a teacher still fills the visible result list", async () => {
+    vi.useFakeTimers();
+    try {
+      const { window } = loadApp();
+      seed(window, ONE_CHILD);
+      answerChildren(window, [MIA], () => jsonReply({ teachers: [TEACHER_A, TEACHER_B], allowed: true }));
+      window.eval("startTeacherRoom()");
+      await vi.advanceTimersByTimeAsync(0);
+      window.eval("queueTeacherSearch('r')");
+      await vi.advanceTimersByTimeAsync(300);
+      flow(window).node.querySelector(".sw-body .sw-results .opt").click();
+      window.eval("queueTeacherSearch('Beh')");
+      await vi.advanceTimersByTimeAsync(300);
+      const results = flow(window).node.querySelector(".sw-body .sw-results");
+      expect(results.querySelectorAll(".opt").length).toBe(2);
+      expect(results.querySelector(".loading")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a child list that arrives on the child step replaces the waiting state", async () => {
+    const { window } = loadApp();
+    seed(window, ONE_CHILD);
+    let answer = null;
+    window.fetch = () => new Promise((resolve) => { answer = resolve; });
+    window.eval("startTeacherRoom()");
+    window.eval("teacherRoomFlow.go('children')");
+    expect(flow(window).node.querySelector(".loading")).not.toBeNull();
+
+    answer(await jsonReply({ children: [MIA, TOM], allowed: true }));
+    await settle();
+    await settle();
+
+    expect(flow(window).node.querySelectorAll(".sw-body input[type=checkbox]").length).toBe(2);
+  });
+
   test("the step waits for IServ instead of showing an empty choice", () => {
     const { window } = loadApp();
     seed(window, ONE_CHILD);

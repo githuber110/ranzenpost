@@ -269,7 +269,7 @@ def test_info_describes_the_add_on_the_schools_and_the_children(tmp_path):
     assert body["version"] == "2609.02.00"
     assert set(body) == {"version", "schools", "language", "timezone", "feed_port_open", "last_poll", "ingress_path", "online_feeds", "outside_access"}
     assert set(body["schools"][0]) == {
-        "id", "name", "url_host", "modules", "disabled", "status", "status_reason", "children", "last_poll", "last_success", "own_entries"
+        "id", "name", "url_host", "modules", "disabled", "status", "status_reason", "children", "last_poll", "last_success", "own_entries", "mail"
     }
     assert body["schools"][0]["own_entries"] is False
     assert body["ingress_path"] == ""
@@ -749,7 +749,48 @@ def test_school_admits_when_nothing_is_ahead(tmp_path):
 
     body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
 
-    assert body == {"next_holiday": None, "next_free_day": None, "next_conference": None, "region": "DE-NI"}
+    assert body == {
+        "next_holiday": None,
+        "next_free_day": None,
+        "next_conference": None,
+        "region": "DE-NI",
+        "unread_letters": {"count": 0, "items": []},
+        "unread_posts": {"count": 0, "items": []},
+        "unread_mail": None,
+    }
+
+
+def test_school_hands_out_the_stored_mail_count(tmp_path):
+    client, store, _ = _app(tmp_path)
+    integration.record_school_mail(store, SCHOOL, 4)
+    assert client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()["unread_mail"] == 4
+    integration.record_school_mail(store, SCHOOL, None)
+    assert client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()["unread_mail"] is None
+
+
+def test_school_hands_out_its_unread_letters_and_posts_without_a_child(tmp_path):
+    store = _store(tmp_path)
+    store.add_connection("https://family.example.test/iserv", connection_id="c0ffee00", setup_complete=True, children=[])
+    client, _, _ = _app(tmp_path, store=store)
+    integration.record_school_poll(
+        store,
+        "c0ffee00",
+        NOW_EPOCH,
+        True,
+        letters=[
+            {"title": "Wandertag", "sender": "Sekretariat", "date": "01.09.2026", "child": ""},
+            {"title": "Elternabend", "sender": "", "date": "", "child": ""},
+        ],
+        posts=[{"title": "Mensa", "sender": "", "date": "", "child": ""}],
+    )
+
+    body = client.get(PREFIX + "/school?id=c0ffee00", headers=_auth(store)).json()
+    info = client.get(PREFIX + "/info", headers=_auth(store)).json()
+
+    assert next(school for school in info["schools"] if school["id"] == "c0ffee00")["children"] == []
+    assert body["unread_letters"]["count"] == 2
+    assert body["unread_letters"]["items"][0] == {"title": "Wandertag", "sender": "Sekretariat", "date": "2026-09-01", "child": ""}
+    assert body["unread_posts"] == {"count": 1, "items": [{"title": "Mensa", "sender": "", "date": "", "child": ""}]}
 
 
 def test_school_answers_per_school_and_refuses_an_unknown_one(tmp_path):
@@ -911,7 +952,7 @@ def test_the_feed_window_start_and_end_default_around_today(tmp_path):
 def test_info_carries_the_module_registry_of_each_school(tmp_path):
     store = _store(tmp_path, schools=2)
     store.connection_store(SCHOOL).save_modules({
-        "modules": {"timetable": True, "letters": False, "pinboard": True, "absences": False, "conferences": True, "messenger": False},
+        "modules": {"timetable": True, "letters": False, "pinboard": True, "absences": False, "conferences": True, "messenger": False, "calendar": True},
         "unknown": [{"segment": "mail", "label": "E-Mail"}],
         "checked_at": NOW_EPOCH,
         "iserv_version": "3.9",
@@ -926,15 +967,16 @@ def test_info_carries_the_module_registry_of_each_school(tmp_path):
         "absences": False,
         "conferences": True,
         "messenger": False,
+        "calendar": True,
     }
-    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")}
+    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False}
     assert "unknown" not in schools[0]
 
 
 def test_info_shows_every_module_for_a_school_without_a_registry(tmp_path):
     client, store, _ = _app(tmp_path)
     body = client.get(PREFIX + "/info", headers=_auth(store)).json()
-    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")}
+    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False}
 
 
 def test_state_reads_unread_counts_from_the_school_of_the_child(tmp_path):

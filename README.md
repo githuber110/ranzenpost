@@ -7,7 +7,7 @@
   </picture>
 </p>
 
-<p align="center"><b>Your children's school day in Home Assistant.</b><br>Timetable, substitutions, parent letters, the noticeboard and sick notes from your school's <a href="https://iserv.de">IServ</a>, as an app in the sidebar, a dashboard card and entities for your automations.</p>
+<p align="center"><b>Your children's school day in Home Assistant.</b><br>Timetable, substitutions, parent letters, the noticeboard, chat, school events and sick notes from your school's <a href="https://iserv.de">IServ</a>, as an app in the sidebar, a dashboard card and entities for your automations.</p>
 
 <p align="center">
   <a href="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml"><img src="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg" alt="Build"></a>
@@ -89,7 +89,7 @@ The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](ise
 
 ### Dashboard card
 
-The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences` and `holidays`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link, since the app keeps no separate list for it. With several children the day blocks sit side by side and the family blocks come once.
+The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays` and `school_events`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link. With several children the day blocks sit side by side and the family blocks come once. An account without a child still gets letters, noticeboard, conferences, holidays and school events of its school.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -165,16 +165,20 @@ Each school adds its own device. With several schools, the school's name joins t
 | Entity | What it holds | Attributes |
 | --- | --- | --- |
 | `calendar.ranzenpost_school_holidays` | School holidays and public holidays | The next holiday: `summary`, `start`, `end` |
+| `calendar.ranzenpost_school_school_events` | Events from the school calendar, only when the school offers the calendar module | The next event: `summary`, `start`, `end` |
 | `sensor.ranzenpost_school_next_holiday` | The name of the next school holidays | `start`, `end`, `days_until` |
 | `sensor.ranzenpost_school_next_free_day` | The name of the next day off, school holidays or a public holiday | `start`, `end`, `days_until` |
 | `sensor.ranzenpost_school_next_conference` | The date of the next parent-teacher conference | `date`, `title`, `details`, `days_until` |
-| `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` or `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path` |
+| `sensor.ranzenpost_school_unread_letters` | Number of unread parent letters of the school, also for an account without a child | `letters`, up to ten with `title`, `sender`, `date`, `child` |
+| `sensor.ranzenpost_school_unread_posts` | Number of new noticeboard posts of the school | `posts`, up to ten with `title`, `sender`, `date` |
+| `sensor.ranzenpost_school_unread_e_mails` | Unread e-mails in the IServ mailbox of the account, only when the school offers IServ e-mail; `unknown` when the count could not be read | none |
+| `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` or `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path`, `profiles` |
 
 A counter reads `0` and an empty list when there is nothing, a text sensor reads `none`, and a timestamp sensor stays `unknown` only while no such moment exists. Times are ISO 8601 in the school's time zone, dates are `YYYY-MM-DD`, weekdays are English names such as `monday`. The integration asks the app every 60 seconds and never talks to IServ itself. The calendars also show up in Home Assistant's calendar panel.
 
 ### Automations
 
-In the automation editor, pick a child's device and choose a trigger: **Timetable changed**, **Lesson cancelled**, **Substitution**, **New letter**, **New noticeboard post** or **Absence status changed**. A school's device offers **School unreachable**, **School reachable again** and **Login needed**. Two conditions check a child: **Is a school day** and **A lesson is running**. No YAML needed.
+In the automation editor, pick a child's device and choose a trigger: **Timetable changed**, **Lesson cancelled**, **Substitution**, **New letter**, **New noticeboard post** or **Absence status changed**. A school's device offers **School unreachable**, **School reachable again**, **Login needed**, **New letter** and **New noticeboard post**. Two conditions check a child: **Is a school day** and **A lesson is running**. No YAML needed.
 
 The sensors carry enough for the rest. Four ideas to copy:
 
@@ -260,7 +264,7 @@ actions:
 
 ### Push messages and repairs
 
-The app sends a message for every timetable change, new letter, new post and new conference day to the notify services you pick, for example the Home Assistant app on your phone. Each target has a test button, and the texts come in all six languages. When a school's login needs you, Home Assistant shows a repair that names the school and says what to do. It clears on its own once the login works.
+The app sends a message for every timetable change, new letter, new post, new conference day and new chat message to the notify services you pick, for example the Home Assistant app on your phone. Every kind except the sign-in alert can be switched off in the settings. Each target has a test button, and the texts come in all six languages. When a school's login needs you, Home Assistant shows a repair that names the school and says what to do. It clears on its own once the login works.
 
 ## The app
 
@@ -281,6 +285,12 @@ The app sends a message for every timetable change, new letter, new post and new
 
 <p align="center"><b>Today</b> opens on the current day and marks the running lesson. <b>Mail</b> merges the letters of both schools. <b>A sick note</b> is a few taps, and the last step restates everything before anything is sent.</p>
 
+### Overview
+
+The overview collects what matters today in blocks you choose and order: today's lessons, the next lesson, the week, changes, letters, posts, absences, chat, parent-teacher days, holidays and the school's events. If the account has an IServ mailbox, the overview shows how many e-mails are unread there, with a link that opens IServ. Ranzenpost only reads the count and never opens a mail.
+
+School events also get their own view: the shared calendars the account sees in IServ, for the next weeks.
+
 ### Timetable
 
 The week per child, with substitutions and cancellations marked, never dropped. Tap a lesson to mark an exam. Each school has a lesson times page: every period gets a start and a duration, from IServ or set by hand. Your own breaks, clubs and appointments repeat daily, weekly or every few weeks up to the summer holidays, for one child or all. Lessons come first: an entry that a lesson covers is shortened, never deleted. Subjects get one of 24 colours or your own, in light and dark. A class timetable with parallel courses shows one cell for the group; pick once which courses each child attends, and only those show up.
@@ -299,7 +309,7 @@ Each school or account keeps its own login, children, names and lesson times. Le
 
 ### The lessons in your phone's calendar
 
-A feed per child that your calendar app subscribes to: lessons, school holidays, public holidays, marked exams, approved absences and your own entries, each switchable. Link or QR code. The link can be renewed or deleted at any time.
+A feed per child that your calendar app subscribes to: lessons, school holidays, public holidays, marked exams, approved absences, your own entries and the school's events, each switchable. An account without a child gets a feed per school with holidays and school events. Link or QR code. The link can be renewed or deleted at any time.
 
 The feed is served on a second port, 8100, which is **off by default**. Switch it on under **Settings, Apps, Ranzenpost (IServ), Configuration, Network**. Whoever has the link sees that child's timetable, so treat the link as the secret. Nabu Casa remote access does not forward app ports, so outside your home network the feed needs your own remote access or a VPN.
 
@@ -327,6 +337,8 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Absences (`dieschulapp`) | Absences (Schul-App). The older absences module is unverified | Reported absences and their status, the school's rules | Sick note, leave request with attachments, deregistration, day-care deregistration |
 | Parent-teacher conferences (`parentconference`) | Parent conferences | Dates and titles | Nothing |
 | Chat (`messenger`) | Messenger, where the school opens it to parents | Rooms and messages | Send a message, mark as read, open a room with a teacher |
+| School events (`calendar`) | Calendar, where the account sees it | Events of the shared calendars the account sees, for the next weeks. The account's personal calendar is left out | Nothing |
+| E-mail (`mail`) | IServ mailbox | Only the number of unread mails | Nothing |
 
 Klassengeld is recognised but not supported. Settings offer a link that opens it in IServ. It runs as a separate service behind an IServ consent step, and it is open for a contributor whose school uses Klassengeld and who would like to build the support. See [issue #5](https://github.com/githuber110/ranzenpost/issues/5).
 

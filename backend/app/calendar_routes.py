@@ -3,11 +3,19 @@ import os
 from fastapi import Body
 from fastapi.responses import JSONResponse
 
-from . import messages, subscriptions
+from . import messages, modules, subscriptions
 from .calendar_listener import DEFAULT_PORT as CALENDAR_PORT
 
 
-def register_routes(app, service, subscription_registry, warm, integration_seen=None):
+def school_calendar_ready(store, connection_id):
+    scoped = getattr(store, "connection_store", None)
+    if not callable(scoped):
+        return False
+    stored = scoped(connection_id).load_modules()
+    return bool(stored) and modules.available(stored, modules.CALENDAR)
+
+
+def register_routes(app, service, subscription_registry, warm, integration_seen):
     def _warm_after(entry):
         wanted = (subscriptions.COMPONENT_TIMETABLE, subscriptions.COMPONENT_MARKS, subscriptions.COMPONENT_OWN_ENTRIES)
         if any(name in (entry.get("components") or []) for name in wanted):
@@ -15,9 +23,8 @@ def register_routes(app, service, subscription_registry, warm, integration_seen=
         return entry
 
     def _internet():
-        seen = integration_seen() if integration_seen else 0
         return subscriptions.internet_access(
-            subscription_registry.outside_access, seen, int(subscription_registry.clock()), subscription_registry.started
+            subscription_registry.outside_access, integration_seen(), int(subscription_registry.clock()), subscription_registry.started
         )
 
     def _internet_refused(subscription_id=""):
@@ -36,7 +43,7 @@ def register_routes(app, service, subscription_registry, warm, integration_seen=
     def calendar_subscriptions():
         from .supervisor import calendar_access
 
-        seen = integration_seen() if integration_seen else 0
+        seen = integration_seen()
         now = int(subscription_registry.clock())
         body = {
             "subscriptions": [
@@ -45,6 +52,9 @@ def register_routes(app, service, subscription_registry, warm, integration_seen=
             "components": list(subscriptions.COMPONENTS),
             "holiday_regions": {
                 entry["id"]: entry.get("holiday_region") or "" for entry in service.store.connections()
+            },
+            "school_events": {
+                entry["id"]: school_calendar_ready(service.store, entry["id"]) for entry in service.store.connections()
             },
             "path_template": "/calendar/{token}.ics",
             "port": int(os.environ.get("ISERV_CALENDAR_PORT", str(CALENDAR_PORT))),
@@ -78,6 +88,7 @@ def register_routes(app, service, subscription_registry, warm, integration_seen=
                     body.get("label", ""),
                     body.get("color", ""),
                     online=body.get("online") is True,
+                    school_id=body.get("school_id", ""),
                 )
             )
         except subscriptions.SubscriptionError as error:

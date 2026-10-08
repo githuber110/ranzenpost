@@ -20,7 +20,7 @@ HA_ATTRIBUTES = {
     "supported_features",
     "attribution",
 }
-MODULES = {"timetable": True, "letters": True, "pinboard": True, "absences": True, "conferences": True, "messenger": True}
+MODULES = {"timetable": True, "letters": True, "pinboard": True, "absences": True, "conferences": True, "messenger": True, "calendar": False}
 
 
 def extra(hass, entity_id):
@@ -139,6 +139,7 @@ async def test_every_entity_on_a_school_morning(hass, aioclient_mock, frozen_now
             "modules_disabled": [],
             "feed_port_open": True,
             "ingress_path": "/hassio/ingress/ranzenpost",
+            "profiles": 2,
         },
     )
 
@@ -233,6 +234,7 @@ async def test_every_entity_on_a_saturday_night(hass, aioclient_mock, frozen_sat
             "modules_disabled": [],
             "feed_port_open": True,
             "ingress_path": "/hassio/ingress/ranzenpost",
+            "profiles": 2,
         },
     )
 
@@ -258,7 +260,10 @@ async def test_the_entity_set_is_complete_in_both_scenarios(hass, aioclient_mock
         "calendar": ("lessons", "exams", "absences"),
         "event": ("timetable_changed",),
     }
-    school_keys = {"sensor": ("next_holiday", "next_free_day", "next_conference", "connection"), "calendar": ("holidays",)}
+    school_keys = {
+        "sensor": ("next_holiday", "next_free_day", "next_conference", "unread_letters", "unread_posts", "connection"),
+        "calendar": ("holidays",),
+    }
     expected = {
         f"{platform}.{child}_{key}" for child in (ALEX, KIM) for platform, keys in child_keys.items() for key in keys
     } | {f"{platform}.{SCHOOL}_{key}" for platform, keys in school_keys.items() for key in keys}

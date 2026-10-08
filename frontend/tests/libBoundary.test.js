@@ -654,7 +654,7 @@ describe("the lib folder stays free of the browser", () => {
       window.matchMedia = () => ({ matches: false });
       phone = window.eval("sheet('Phone', [])");
       window.matchMedia = (query) => ({ matches: query.includes("900") });
-      wide = window.eval("sheet('Wide', [])");
+      wide = window.eval("state.sheetShown = false; sheet('Wide', [])");
     } finally {
       window.matchMedia = realMatch;
       window.setTimeout = realSet;

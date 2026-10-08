@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import blocks, cancellations, feed, holidays, marks, messages, modules, supervisor
 from .iserv.absences import berlin_offset
+from .iserv.badges import MAIL_MODULE
 from .iserv.errors import QUIET_SIGN_IN_REASONS, REASON_CODE_STEP_FAILED, REASON_RATE_LIMITED
 from .mapping import configured_time
 from .store import (
@@ -22,6 +23,7 @@ from .subscriptions import (
     COMPONENT_MARKS,
     COMPONENT_OWN_ENTRIES,
     COMPONENT_PUBLIC_HOLIDAYS,
+    COMPONENT_SCHOOL_EVENTS,
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_TIMETABLE,
     child_first_name,
@@ -63,6 +65,9 @@ INTEGRATION_VERSION = "integration_version"
 INTEGRATION_INSTALLED = "integration_installed"
 INTEGRATION_UNVERSIONED = "integration_unversioned"
 CHANGE_KEYS = "change_keys"
+MAIL_UNREAD = "mail_unread"
+MAIL_FAILURES = "mail_failures"
+MAIL_FAILURE_LIMIT = 3
 
 STATUS_OK = "ok"
 STATUS_ERROR = "error"
@@ -75,13 +80,16 @@ KIND_EXAMS = "exams"
 KIND_ABSENCES = "absences"
 KIND_HOLIDAYS = "holidays"
 KIND_OWN_ENTRIES = "own_entries"
+KIND_SCHOOL_EVENTS = "school_events"
 EVENT_COMPONENTS = {
     KIND_LESSONS: [COMPONENT_TIMETABLE],
     KIND_EXAMS: [COMPONENT_MARKS],
     KIND_ABSENCES: [COMPONENT_ABSENCES],
     KIND_HOLIDAYS: [COMPONENT_SCHOOL_HOLIDAYS, COMPONENT_PUBLIC_HOLIDAYS],
     KIND_OWN_ENTRIES: [COMPONENT_OWN_ENTRIES],
+    KIND_SCHOOL_EVENTS: [COMPONENT_SCHOOL_EVENTS],
 }
+SCHOOL_KINDS = (KIND_HOLIDAYS, KIND_SCHOOL_EVENTS)
 OWN_ENTRIES_SETTING = "own_entries_ha"
 PURPOSE_CALENDAR = "calendar"
 PURPOSE_CARD = "card"
@@ -380,6 +388,32 @@ def record_school_poll(
     _edit_school_slot(store, school_id, change)
 
 
+def record_school_mail(store, school_id, unread):
+    def change(slot):
+        slot.pop(MAIL_FAILURES, None)
+        if isinstance(unread, int) and not isinstance(unread, bool) and unread >= 0:
+            slot[MAIL_UNREAD] = unread
+        else:
+            slot.pop(MAIL_UNREAD, None)
+
+    _edit_school_slot(store, school_id, change)
+
+
+def record_school_mail_failure(store, school_id):
+    def change(slot):
+        failures = int(slot.get(MAIL_FAILURES) or 0) + 1
+        slot[MAIL_FAILURES] = failures
+        if failures >= MAIL_FAILURE_LIMIT:
+            slot.pop(MAIL_UNREAD, None)
+
+    _edit_school_slot(store, school_id, change)
+
+
+def school_mail(store, school_id):
+    value = school_state(store, school_id).get(MAIL_UNREAD)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def outage_backoff(count, poll_interval):
     if count < OUTAGE_SKIP_AFTER:
         return 0
@@ -539,13 +573,14 @@ def build_schools(service, store):
         if not entry.get("setup_complete"):
             continue
         connection = service.connection(entry["id"])
+        registry = modules.registry_of(connection)
         slot = school_state(store, entry["id"])
         schools.append(
             {
                 "id": entry["id"],
                 "name": school_name_of(store, entry),
                 "url_host": supervisor.sanitize_host(entry.get("school_url")),
-                "modules": modules.registry_of(connection)["modules"],
+                "modules": registry["modules"],
                 "disabled": dict(disabled),
                 "status": _school_status(connection, slot),
                 "status_reason": _status_reason(connection, slot),
@@ -553,6 +588,7 @@ def build_schools(service, store):
                 "last_poll": _iso_or_none(_epoch(slot.get("last_poll"))),
                 "last_success": _iso_or_none(_epoch(slot.get(LAST_SUCCESS))),
                 "own_entries": entry.get(OWN_ENTRIES_SETTING) is True,
+                "mail": modules.lists_module(registry, MAIL_MODULE),
             }
         )
     return schools
@@ -895,11 +931,15 @@ def build_school(store, holiday_calendar, now_epoch, school_id=""):
     school = _upcoming_spans(language, day_map, today, horizon, holidays.KIND_SCHOOL)
     free = school + _upcoming_spans(language, day_map, today, horizon, holidays.KIND_PUBLIC)
     free.sort(key=lambda span: (span["start"], span["end"]))
+    state = school_state(store, school_id)
     return {
         "next_holiday": _holiday_payload(school[0], today) if school else None,
         "next_free_day": _holiday_payload(free[0], today) if free else None,
-        "next_conference": next_conference(school_state(store, school_id), today),
+        "next_conference": next_conference(state, today),
         "region": str(config.get("holiday_region") or ""),
+        "unread_letters": _counted(state.get("letters")),
+        "unread_posts": _counted(state.get("posts")),
+        "unread_mail": school_mail(store, school_id),
     }
 
 

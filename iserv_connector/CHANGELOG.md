@@ -3,6 +3,45 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.2.0
+
+### New
+
+- School events from the IServ calendar: their own view in the app, an optional overview block, a Home Assistant
+  calendar per school and a card block. They appear once the school's calendar answers. The account's personal
+  calendar is left out.
+- Accounts without a linked profile work fully. The setup finishes without an error. The app hides timetable and
+  absences and shows the holidays on the overview.
+- Home Assistant gets sensors for the school's unread letters and noticeboard posts, with matching triggers on the
+  school device. `profiles` on the school's connection sensor counts the linked profiles, so 0 shows up without a
+  repair.
+- The card shows the school's blocks without a linked profile. Cards still set to the today, week or family view show
+  the school's letters, noticeboard and holidays instead of "no profiles". The holidays block stays for a school
+  without a timetable, as in the app.
+- Unread IServ e-mails show on the overview with a link to IServ, and as a sensor on the school device. Ranzenpost
+  only reads the count and never opens a mail.
+- Calendar subscriptions work without a linked profile, as a school feed with holidays and school events.
+  Subscriptions for a profile can add the school events.
+- Push messages for new chat messages get a switch in the settings, like the other kinds.
+- The problem report reads more of IServ. It follows redirects inside the school, reads a few known module interfaces
+  and records how long values are. It still records only structure, never content.
+
+### Fixed
+
+- A timetable page without a child choice no longer leaves the account in a permanent error when the school app
+  confirms there is no child.
+- A school without the parent letters module no longer logs a warning on every refresh.
+- An open sheet no longer slides in a second time when its data arrives.
+- When writing to a teacher, the search field keeps what you type while the list of children loads, and new hits
+  show again after a teacher was chosen.
+- The unread mail count refreshes with a pull to refresh and names the school whenever there are several.
+- The phone numbers setting only shows where sick notes can be sent.
+
+### Note
+
+- Before you go back to an older version, delete the school calendar subscriptions in the settings. The older
+  version does not remove them when you disconnect a school.
+
 ## 2610.1.1
 
 ### Fixed

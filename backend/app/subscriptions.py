@@ -5,7 +5,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-from .store import children_of_config, config_for_child
+from .store import children_of_config, config_for_child, owning_connection
 
 COMPONENT_TIMETABLE = "timetable"
 COMPONENT_SCHOOL_HOLIDAYS = "school_holidays"
@@ -13,6 +13,7 @@ COMPONENT_PUBLIC_HOLIDAYS = "public_holidays"
 COMPONENT_MARKS = "marks"
 COMPONENT_ABSENCES = "absences"
 COMPONENT_OWN_ENTRIES = "own_entries"
+COMPONENT_SCHOOL_EVENTS = "school_events"
 COMPONENTS = (
     COMPONENT_TIMETABLE,
     COMPONENT_SCHOOL_HOLIDAYS,
@@ -20,6 +21,12 @@ COMPONENTS = (
     COMPONENT_MARKS,
     COMPONENT_ABSENCES,
     COMPONENT_OWN_ENTRIES,
+    COMPONENT_SCHOOL_EVENTS,
+)
+SCHOOL_COMPONENTS = (
+    COMPONENT_SCHOOL_HOLIDAYS,
+    COMPONENT_PUBLIC_HOLIDAYS,
+    COMPONENT_SCHOOL_EVENTS,
 )
 
 LAST_FETCH_FIELD = "last_fetched_at"
@@ -59,6 +66,7 @@ INTERNET_REFUSALS = {
 
 ERROR_COMPONENTS = "api.calendar.error.components"
 ERROR_CHILD = "api.calendar.error.child"
+ERROR_SCHOOL = "api.calendar.error.school"
 ERROR_LABEL_LENGTH = "api.calendar.error.labelLength"
 ERROR_REGION = "api.calendar.error.region"
 ERROR_NOT_FOUND = "api.calendar.error.notFound"
@@ -73,11 +81,11 @@ class SubscriptionError(Exception):
         self.message_key = message_key
 
 
-def normalize_components(values):
+def normalize_components(values, allowed=COMPONENTS):
     if not isinstance(values, (list, tuple)):
         raise SubscriptionError(ERROR_COMPONENTS)
-    selected = [name for name in COMPONENTS if name in values]
-    unknown = [str(name) for name in values if name not in COMPONENTS]
+    selected = [name for name in allowed if name in values]
+    unknown = [str(name) for name in values if name not in allowed]
     if unknown or not selected:
         raise SubscriptionError(ERROR_COMPONENTS)
     return selected
@@ -145,6 +153,23 @@ def child_first_name(name):
 
 def known_child(config, child_key):
     return any(child.get("key") == child_key for child in children_of_config(config))
+
+
+def known_school(config, school_id):
+    listed = (config or {}).get("connections")
+    if not school_id or not isinstance(listed, list):
+        return False
+    return any(
+        isinstance(entry, dict) and entry.get("id") == school_id and entry.get("setup_complete") is True for entry in listed
+    )
+
+
+def is_school_subscription(entry):
+    return not entry.get("child_key")
+
+
+def allowed_components(entry):
+    return SCHOOL_COMPONENTS if is_school_subscription(entry) else COMPONENTS
 
 
 def token_log_prefix(token):
@@ -242,6 +267,7 @@ def public_view(entry):
     return {
         "id": entry.get("id", ""),
         "child_key": entry.get("child_key", ""),
+        "school_id": owning_connection(entry),
         "label": entry.get("label", ""),
         "components": list(entry.get("components") or []),
         "color": entry.get("color", ""),
@@ -317,8 +343,10 @@ class SubscriptionRegistry:
         self._outside = {"cloud": outside.get("cloud") is True, "external": outside.get("external") is True}
         return dict(self._outside)
 
-    def create(self, child_key, components, label="", color="", online=False):
+    def create(self, child_key, components, label="", color="", online=False, school_id=""):
         config = self.store.load_config()
+        if not child_key and school_id:
+            return self._create_for_school(config, school_id, components, label, color, online)
         selected = normalize_components(components)
         if not known_child(config, child_key):
             raise SubscriptionError(ERROR_CHILD)
@@ -326,9 +354,20 @@ class SubscriptionRegistry:
         if COMPONENT_TIMETABLE in selected and not region:
             raise SubscriptionError(ERROR_REGION)
         resolved = normalize_label(label, config, child_key)
+        return self._store_new({"child_key": child_key}, selected, resolved, color, online)
+
+    def _create_for_school(self, config, school_id, components, label, color, online):
+        school = str(school_id)
+        if not known_school(config, school):
+            raise SubscriptionError(ERROR_SCHOOL)
+        selected = normalize_components(components, SCHOOL_COMPONENTS)
+        resolved = normalize_label(label, config, "")
+        return self._store_new({"child_key": "", "school_id": school}, selected, resolved, color, online)
+
+    def _store_new(self, owner, selected, resolved, color, online):
         entry = {
             "id": secrets.token_hex(IDENTIFIER_BYTES),
-            "child_key": child_key,
+            **owner,
             "label": resolved,
             "components": selected,
             "color": normalize_color(color),
@@ -340,6 +379,11 @@ class SubscriptionRegistry:
         if online is True:
             _go_online(entry)
         with self._lock:
+            config = self.store.load_config()
+            if owner.get("child_key") and not known_child(config, owner["child_key"]):
+                raise SubscriptionError(ERROR_CHILD)
+            if not owner.get("child_key") and not known_school(config, owner.get("school_id", "")):
+                raise SubscriptionError(ERROR_SCHOOL)
             entries = self._read()
             entries.append(entry)
             self._write(entries)
@@ -368,7 +412,7 @@ class SubscriptionRegistry:
             if color is not None:
                 entry["color"] = normalize_color(color)
             if components is not None:
-                selected = normalize_components(components)
+                selected = normalize_components(components, allowed_components(entry))
                 region = config_for_child(self.store, entry.get("child_key", "")).get("holiday_region")
                 if COMPONENT_TIMETABLE in selected and not region:
                     raise SubscriptionError(ERROR_REGION)

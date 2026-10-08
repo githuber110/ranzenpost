@@ -513,7 +513,7 @@ def _time_value(value, fallback):
         return fallback
 
 
-def _berlin_date_from_utc(utc_naive):
+def berlin_date_from_utc(utc_naive):
     if berlin_offset(utc_naive + timedelta(hours=2)) == 2:
         local = utc_naive + timedelta(hours=2)
     else:
@@ -530,10 +530,10 @@ def _date_part(value):
     try:
         if isinstance(value, (int, float)):
             utc_naive = datetime.fromtimestamp(value, timezone.utc).replace(tzinfo=None)
-            return _berlin_date_from_utc(utc_naive).isoformat()
+            return berlin_date_from_utc(utc_naive).isoformat()
         if "T" in text and text.endswith("Z"):
             utc_naive = datetime.fromisoformat(text[:-1])
-            return _berlin_date_from_utc(utc_naive).isoformat()
+            return berlin_date_from_utc(utc_naive).isoformat()
     except (ValueError, OverflowError, OSError):
         return ""
     return text[:10]

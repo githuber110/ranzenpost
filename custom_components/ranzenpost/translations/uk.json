@@ -108,6 +108,9 @@
       },
       "holidays": {
         "name": "Канікули"
+      },
+      "school_events": {
+        "name": "Події школи"
       }
     },
     "event": {
@@ -153,6 +156,9 @@
       "unread_posts": {
         "name": "Непрочитані дописи на дошці"
       },
+      "unread_mail": {
+        "name": "Непрочитана пошта"
+      },
       "open_absences": {
         "name": "Відкриті пропуски"
       },
@@ -193,7 +199,9 @@
       "absence_status_changed": "Статус пропуску змінився",
       "school_unreachable": "Школа недоступна",
       "school_reachable": "Школа знову доступна",
-      "login_needed": "Потрібен вхід"
+      "login_needed": "Потрібен вхід",
+      "school_new_letter": "Новий лист",
+      "school_new_noticeboard_post": "Новий допис на дошці"
     },
     "condition_type": {
       "is_school_day": "Навчальний день",

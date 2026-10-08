@@ -2,6 +2,7 @@ import logging
 
 import pytest
 
+from app import modules
 from app.iserv.children import CHILD_PAGE_FORBIDDEN_KEY, CHILD_PAGE_MESSAGE_KEY
 from app.iserv.errors import DataError
 from app.iserv.models import Child
@@ -38,9 +39,10 @@ class WorkingClient(RefusingClient):
 
 
 class SchoolApp:
-    def __init__(self, children=None, fail=False):
+    def __init__(self, children=None, fail=False, listed=True):
         self._children = children if children is not None else []
         self.fail = fail
+        self.listed = listed
         self.settings = {"timetable_availableForGuardiansAndStudents": True}
 
     def sick_note_children(self):
@@ -49,6 +51,11 @@ class SchoolApp:
         return list(self._children)
 
     def sick_note_children_or_raise(self):
+        return self.sick_note_children()
+
+    def sick_note_children_listed(self):
+        if not self.listed:
+            return None
         return self.sick_note_children()
 
     def students(self):
@@ -212,3 +219,30 @@ def test_a_page_message_is_not_remembered_as_a_refusal(tmp_path):
     now[0] += 60
     service._child_service.children()
     assert CountingRefusal.asked == 2
+
+
+def test_a_page_without_a_child_selection_and_an_empty_school_app_list_is_no_children(tmp_path):
+    service = make(tmp_path, school_app=SchoolApp([]), message_key=CHILD_PAGE_MESSAGE_KEY)
+    assert service.children() == []
+
+
+def test_a_page_without_a_child_selection_and_a_broken_school_app_stays_unreadable(tmp_path):
+    service = make(tmp_path, school_app=SchoolApp(fail=True), message_key=CHILD_PAGE_MESSAGE_KEY)
+    with pytest.raises(DataError) as caught:
+        service.children()
+    assert caught.value.message_key == CHILD_PAGE_MESSAGE_KEY
+
+
+def test_a_page_without_a_child_selection_stays_unreadable_without_the_school_app_module(tmp_path):
+    service = make(tmp_path, school_app=SchoolApp([]), message_key=CHILD_PAGE_MESSAGE_KEY)
+    service.store.save_modules({"modules": {name: name != modules.ABSENCES for name in modules.MODULES}})
+    with pytest.raises(DataError) as caught:
+        service.children()
+    assert caught.value.message_key == CHILD_PAGE_MESSAGE_KEY
+
+
+def test_a_page_without_a_child_selection_and_a_refused_or_shapeless_school_app_list_stays_unreadable(tmp_path):
+    service = make(tmp_path, school_app=SchoolApp([], listed=False), message_key=CHILD_PAGE_MESSAGE_KEY)
+    with pytest.raises(DataError) as caught:
+        service.children()
+    assert caught.value.message_key == CHILD_PAGE_MESSAGE_KEY

@@ -7,9 +7,9 @@ function catalogue() {
 }
 
 describe("the block catalogue is one shared list with rules", () => {
-  test("ten blocks, each with a module, an area, two limits and a default size", () => {
+  test("eleven blocks, each with a module, an area, two limits and a default size", () => {
     const blocks = catalogue();
-    expect(blocks.blockKeys()).toEqual(["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat"]);
+    expect(blocks.blockKeys()).toEqual(["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events"]);
     for (const block of blocks.BLOCK_CATALOGUE) {
       expect(blocks.AREA_MODULES[block.area]).toContain(block.module);
       expect(block.compact).toBeGreaterThanOrEqual(1);
@@ -61,13 +61,13 @@ describe("the block catalogue is one shared list with rules", () => {
     const blocks = catalogue();
     const offered = blocks.offeredBlocks(() => true);
     const hidden = blocks.hiddenBlocks([{ key: "today", size: "normal" }, { key: "chat", size: "compact" }], offered);
-    expect(hidden.map((block) => block.key)).toEqual(["next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes"]);
+    expect(hidden.map((block) => block.key)).toEqual(["next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "school_events"]);
   });
 
   test("navigation keeps known areas in order and appends the missing ones", () => {
     const blocks = catalogue();
-    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger"]);
-    expect(blocks.normalizeNavigation(undefined)).toEqual(blocks.DEFAULT_NAVIGATION);
+    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger", "calendar"]);
+    expect(blocks.normalizeNavigation(undefined)).toEqual([...blocks.DEFAULT_NAVIGATION, "calendar"]);
   });
 
   test("moving a key swaps it with its neighbour and stops at the ends", () => {

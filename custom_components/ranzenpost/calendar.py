@@ -23,6 +23,7 @@ from .const import (
     CHILD_CALENDAR_KINDS,
     KIND_HOLIDAYS,
     OPT_IN_CALENDAR_KINDS,
+    SCHOOL_CALENDAR_MODULES,
     UPCOMING_WINDOW_DAYS,
 )
 from .coordinator import RanzenpostConfigEntry, RanzenpostCoordinator, selected_children
@@ -38,6 +39,12 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     info = coordinator.data.info
     entities: list[CalendarEntity] = [RanzenpostSchoolCalendar(coordinator, school) for school in info.schools]
+    entities.extend(
+        RanzenpostSchoolCalendar(coordinator, school, kind)
+        for school in info.schools
+        for kind, module in SCHOOL_CALENDAR_MODULES.items()
+        if school.modules.has(module)
+    )
     for child in selected_children(info, entry):
         modules = info.modules_of(child)
         school = info.school_of(child)
@@ -180,9 +187,9 @@ class RanzenpostChildCalendar(RanzenpostCalendarMixin, RanzenpostChildEntity):
 
 
 class RanzenpostSchoolCalendar(RanzenpostCalendarMixin, RanzenpostSchoolEntity):
-    def __init__(self, coordinator: RanzenpostCoordinator, school: SchoolInfo) -> None:
-        super().__init__(coordinator, CALENDAR_DOMAIN, school, KIND_HOLIDAYS)
+    def __init__(self, coordinator: RanzenpostCoordinator, school: SchoolInfo, kind: str = KIND_HOLIDAYS) -> None:
+        super().__init__(coordinator, CALENDAR_DOMAIN, school, kind)
         self.child_key = SCHOOL_CHILD_ID
         self.school_query = school.id
-        self.kind = KIND_HOLIDAYS
+        self.kind = kind
         self._init_calendar()

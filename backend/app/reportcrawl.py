@@ -1,13 +1,18 @@
 import re
 import time
 from collections import namedtuple
-from urllib.parse import parse_qsl, urljoin, urlsplit
+from datetime import timedelta
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
 from . import modules, valueshape
+from .iserv.badges import BADGES_PATH
 from .iserv.client import REDIRECT_NONE, REDIRECT_OTHER_HOST, REDIRECT_SAME_HOST
 from .iserv.forms import find_login_form, parse_forms
+from .iserv.pages import path_of
+from .iserv.dsa import CHILDREN_FIELDS
+from .iserv.school_calendar import CALENDAR_EVENTS_PATH, CALENDAR_SOURCES_PATH, events_params
 from .module_catalogue import slug_of
 from .pageshape import body_kind, code_text, response_skeleton, status_of
 from .pathpattern import path_only, placeholders
@@ -16,7 +21,7 @@ from .valueshape import table_cell
 from .vocabulary import known_word
 
 MAX_PAGES_PER_MODULE = 5
-MAX_PAGES_PER_REPORT = 40
+MAX_PAGES_PER_REPORT = 64
 MAX_APIS_PER_MODULE = 5
 MAX_MODULE_LINES = 400
 REPORT_SECONDS = 60
@@ -62,9 +67,14 @@ SCRIPT_TIMEOUT = REQUEST_SECONDS
 MAX_PROBE_BYTES = 1024 * 1024
 PROBE_TIMEOUT = REQUEST_SECONDS
 MAX_CHAIN_HOPS = 5
-CrawlScope = namedtuple("CrawlScope", "pages scripts apis routes api_routes external")
+CrawlScope = namedtuple("CrawlScope", "pages scripts apis routes api_routes external details any_text", defaults=(False, False))
 MODULE_SCOPE = CrawlScope(MAX_PAGES_PER_MODULE, MAX_SCRIPTS_PER_MODULE, MAX_APIS_PER_MODULE, READ_ROUTES, READ_ROUTES | API_ROUTES, False)
 PROVIDER_SCOPE = CrawlScope(8, 20, 15, PROVIDER_ROUTES, PROVIDER_API_ROUTES, True)
+MODULE_ROUTES = {
+    "exercise": frozenset({"past", "exercise"}),
+    "infodisplay": frozenset({"show", "view", "display"}),
+}
+DETAIL_MODULES = frozenset({"infodisplay"})
 PROVIDER_PAGES = 30
 PROVIDER_SECONDS = 45
 MAX_PROVIDER_LINES = 1200
@@ -80,6 +90,40 @@ MENU_SOURCE_PAGE = "whole start page, no navigation found"
 UNSUPPORTED_TABLE_HEAD = "| Module | Link | Status | Redirect |"
 UNSUPPORTED_TABLE_RULE = "|---|---|---|---|"
 CrawlLink = namedtuple("CrawlLink", "target path")
+MAX_SAME_HOST_HOPS = 3
+SIGN_IN_SEGMENTS = frozenset({"login", "logout", "logoff", "auth", "oauth", "sso", "saml", "signin", "signout"})
+CALENDAR_PROBE_DAYS = 30
+KNOWN_API_LABEL = "##### Known API GET %s"
+ACCOUNT_API_HEAD = "### Account APIs"
+UPCOMING_PATH = "/iserv/calendar/api/upcoming"
+MAIL_FOLDERS_PATH = "/iserv/mail/api/folder/list"
+MAIL_LIST_PATH = "/iserv/mail/api/message/list"
+PLAN_RAW_PATH = "/iserv/plan/show/raw"
+SCHOOL_ACCOUNT_PATH = modules.DSA_API + "/users/me"
+
+
+def upcoming_params(_today):
+    return {"limit": "5", "includeSubscriptions": "true"}
+
+
+def school_account_params(_today):
+    return {"fields": CHILDREN_FIELDS}
+
+
+def calendar_window(today):
+    return events_params(today, today + timedelta(days=CALENDAR_PROBE_DAYS))
+
+
+def mail_list_params(_today):
+    return {"path": "INBOX", "length": "5", "start": "0", "order[column]": "date", "order[dir]": "desc"}
+
+
+KNOWN_APIS = {
+    "calendar": ((CALENDAR_SOURCES_PATH, None), (UPCOMING_PATH, upcoming_params), (CALENDAR_EVENTS_PATH, calendar_window)),
+    "mail": ((MAIL_FOLDERS_PATH, None), (MAIL_LIST_PATH, mail_list_params)),
+    "plan": ((PLAN_RAW_PATH, None),),
+}
+ACCOUNT_APIS = ((BADGES_PATH, None), (SCHOOL_ACCOUNT_PATH, school_account_params))
 
 
 def _is_id(part):
@@ -140,7 +184,17 @@ def _query_keys(query):
     return tuple(sorted({key for key, _value in parse_qsl(query, keep_blank_values=True)}))
 
 
-def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES, external=False):
+def module_scope(prefix, scope=MODULE_SCOPE):
+    if scope.external:
+        return scope
+    segment = _menu_segment(prefix)
+    extra = MODULE_ROUTES.get(segment)
+    if not extra:
+        return scope
+    return scope._replace(routes=scope.routes | extra, details=segment in DETAIL_MODULES, any_text=True)
+
+
+def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES, external=False, details=False, any_text=False):
     soup = BeautifulSoup(html or "", "html.parser")
     page = urlsplit(page_url or "")
     chosen = []
@@ -164,7 +218,7 @@ def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES, external=Fals
             skip(SKIP_ATTRIBUTE)
             continue
         detail = has_id(target.path)
-        if detail and not external:
+        if detail and not external and not details:
             skip(SKIP_DETAIL)
             continue
         if not path_allowed(target.path, prefix, routes, ids=detail, external=external):
@@ -173,10 +227,10 @@ def crawl_links(html, page_url, prefix, limit, routes=READ_ROUTES, external=Fals
         if not query_allowed(target.query, routes):
             skip(SKIP_QUERY)
             continue
-        if not text_allowed(text):
+        if not any_text and not text_allowed(text):
             skip(SKIP_TEXT)
             continue
-        key = (_shape_key(target.path) if external else placeholders(target.path), _query_keys(target.query))
+        key = (_shape_key(target.path) if external or details else placeholders(target.path), _query_keys(target.query))
         if key in seen:
             skip(SKIP_SAME)
             continue
@@ -306,8 +360,17 @@ def script_section(client, response, cache, root=SCRIPT_ROOT, link_shape=None):
     return script_facts(client, response, cache, root, link_shape)[0]
 
 
+def own_scripts_first(sources, page_url):
+    segment = _menu_segment(path_of(page_url))
+    if not segment:
+        return list(sources)
+    own = [path for path in sources if "/%s/" % segment in path_only(path) or path_only(path).rsplit("/", 1)[-1].startswith(segment)]
+    return own + [path for path in sources if path not in own]
+
+
 def script_facts(client, response, cache, root=SCRIPT_ROOT, link_shape=None, limit=MAX_SCRIPTS_PER_MODULE, counted=False):
-    sources = script_sources(getattr(response, "text", "") or "", str(getattr(response, "url", "") or ""), root)
+    page_url = str(getattr(response, "url", "") or "")
+    sources = own_scripts_first(script_sources(getattr(response, "text", "") or "", page_url, root), page_url)
     if not sources:
         return [], {}
     lines = ["##### Script endpoints"]
@@ -329,7 +392,7 @@ def script_facts(client, response, cache, root=SCRIPT_ROOT, link_shape=None, lim
     return lines, found
 
 
-def module_link_structure(client, row, nav_paths, cache):
+def module_link_structure(client, row, nav_paths, cache, today):
     lines = ["#### %s (%s)" % (row["slug"], row["name"])]
     real = (nav_paths or {}).get(row.get("segment") or row["slug"])
     path = real or row["page"]
@@ -337,17 +400,99 @@ def module_link_structure(client, row, nav_paths, cache):
     answer, problem = read_unfollowed(client, path)
     if answer is None:
         lines.append("- Page: %s -> %s" % (label, problem))
-        return lines
+        lines.extend(known_api_lines(client, row["slug"], today))
+        return capped_module(lines)
     lines.append(page_answer_line(label, answer))
-    if status_of(answer) == 200:
+    followed = redirect_of(answer) == REDIRECT_SAME_HOST
+    if followed:
+        answer, hop_lines = follow_same_host(client, answer)
+        lines.extend(hop_lines)
+        path = path_of(getattr(answer, "url", "")) if answer is not None else path
+    if answer is not None and status_of(answer) == 200:
         lines.extend(response_skeleton(answer))
         if body_kind(answer) == "html":
             lines.extend(script_section(client, answer, cache))
             lines.extend(module_crawl(client, answer, module_prefix(path), menu_shape, cache, SCRIPT_ROOT))
-    elif redirect_of(answer) == REDIRECT_OTHER_HOST and callable(getattr(client, "continue_chain", None)):
+    elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and followed:
+        lines.append("- Redirect: to another host after a same-host redirect, not followed")
+    elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and callable(getattr(client, "continue_chain", None)):
         lines.extend(external_chain_lines(client, answer))
         return capped_module(lines, MAX_PROVIDER_LINES)
+    lines.extend(known_api_lines(client, row["slug"], today))
     return capped_module(lines)
+
+
+def sign_in_path(path):
+    lowered = unquote(path).casefold()
+    if any(marker in lowered for marker in modules.LOGIN_MARKERS):
+        return True
+    return any(segment in SIGN_IN_SEGMENTS for segment in lowered.split("/"))
+
+
+def sign_in_page(answer):
+    if status_of(answer) != 200 or body_kind(answer) != "html":
+        return False
+    return find_login_form(parse_forms(getattr(answer, "text", "") or "", str(getattr(answer, "url", "") or ""))) is not None
+
+
+def follow_same_host(client, answer):
+    budget = budget_of(client)
+    lines = []
+    seen = set()
+    current = answer
+    while redirect_of(current) == REDIRECT_SAME_HOST:
+        target = str(getattr(current, "next_url", "") or "")
+        path = path_of(target)
+        shape = menu_shape(path)
+        if not path.startswith(MENU_LINK_PREFIX) or sign_in_path(path):
+            lines.append("- Redirect: stopped before %s, not a module page" % shape)
+            return None, lines
+        if path in seen or len(seen) >= MAX_SAME_HOST_HOPS:
+            lines.append("- Redirect: stopped before %s, too many hops" % shape)
+            return None, lines
+        if not budget.take():
+            lines.append(budget.stop_line("Redirect"))
+            return None, lines
+        seen.add(path)
+        current, problem = read_unfollowed(client, target)
+        if current is None:
+            lines.append("- Redirect: %s -> %s" % (shape, problem))
+            return None, lines
+        if sign_in_page(current):
+            lines.append("- Redirect: %s landed on the IServ sign-in page" % shape)
+            return None, lines
+        lines.append("- Redirect: %s -> %s" % (shape, _answer_facts(current)))
+    return current, lines
+
+
+def known_api_lines(client, slug, today, skip=()):
+    return api_probe_lines(client, [target for target in KNOWN_APIS.get(slug) or () if target[0] not in skip], today)
+
+
+def account_api_lines(client, today):
+    if client is None:
+        return []
+    return [ACCOUNT_API_HEAD] + api_probe_lines(client, ACCOUNT_APIS, today)
+
+
+def api_probe_lines(client, targets, today):
+    budget = budget_of(client)
+    lines = []
+    for path, params in targets:
+        if not budget.take():
+            lines.append(budget.stop_line("Known API reads"))
+            break
+        query = params(today) if callable(params) else None
+        label = path + (" +query" if query else "")
+        lines.append(KNOWN_API_LABEL % label)
+        answer, problem = read_unfollowed(client, path + ("?" + urlencode(query) if query else ""))
+        if answer is None:
+            lines.append("- Answer: %s" % problem)
+            continue
+        lines.append(page_answer_line(label, answer))
+        if status_of(answer) == 200:
+            lines.extend(response_skeleton(answer, menu_shape))
+    return lines
 
 
 def module_prefix(path):
@@ -400,8 +545,10 @@ def _api_targets(endpoints, prefix, scope=MODULE_SCOPE):
 
 def module_crawl(client, landing, prefix, link_shape, cache, root, scope=MODULE_SCOPE):
     budget = budget_of(client)
+    scope = module_scope(prefix, scope)
     links, skipped = crawl_links(
         getattr(landing, "text", "") or "", str(getattr(landing, "url", "") or ""), prefix, scope.pages, scope.routes, scope.external,
+        scope.details, scope.any_text,
     )
     lines = ["- Crawl: %d linked pages, skipped %s" % (len(links), skipped_text(skipped))]
     entries, endpoints = _write_entries(landing, script_facts(client, landing, cache, root, link_shape, scope.scripts, scope.external)[1], link_shape)

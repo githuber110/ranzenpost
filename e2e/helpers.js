@@ -132,8 +132,8 @@ async function checkTapTargets(page) {
           tag: el.tagName,
           className: typeof el.className === "string" ? el.className : "",
           text: (el.textContent || "").trim().slice(0, 30),
-          width: Math.round(size.width),
-          height: Math.round(size.height),
+          width: Number(size.width.toFixed(2)),
+          height: Number(size.height.toFixed(2)),
         });
       }
     }
@@ -246,31 +246,31 @@ async function checkTapTargetOverlaps(page, minGap = 0) {
 async function waitForSheetSettled(page) {
   await page.waitForSelector(".sheet", { timeout: 5000 });
   await page.evaluate(async () => {
-    const sheet = document.querySelector(".sheet");
-    if (!sheet) return;
-    if (typeof sheet.getAnimations === "function") {
-      await Promise.all(sheet.getAnimations().map((animation) => animation.finished.catch(() => {})));
+    const deadline = performance.now() + 8000;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    let last = null;
+    let stableFrames = 0;
+    while (performance.now() < deadline) {
+      const current = document.querySelector(".sheet");
+      if (!current) return;
+      const owners = [current, current.parentElement].filter(Boolean);
+      const running = owners.flatMap((owner) => owner.getAnimations()).filter((animation) => {
+        const timing = animation.effect ? animation.effect.getComputedTiming() : null;
+        return timing && Number.isFinite(timing.endTime);
+      });
+      if (running.length) {
+        await Promise.all(running.map((animation) => animation.finished.catch(() => {})));
+        last = null;
+        stableFrames = 0;
+        continue;
+      }
+      const rect = current.getBoundingClientRect();
+      const same = last && last.element === current && last.top === rect.top && last.height === rect.height;
+      stableFrames = same ? stableFrames + 1 : 0;
+      if (stableFrames >= 2) return;
+      last = { element: current, top: rect.top, height: rect.height };
+      await frame();
     }
-    await new Promise((resolve) => {
-      const deadline = performance.now() + 8000;
-      let lastHeight = null;
-      let stableFrames = 0;
-      const step = () => {
-        const current = document.querySelector(".sheet");
-        if (!current) return resolve();
-        const height = current.getBoundingClientRect().height;
-        if (height === lastHeight) {
-          stableFrames += 1;
-          if (stableFrames >= 2) return resolve();
-        } else {
-          stableFrames = 0;
-          lastHeight = height;
-        }
-        if (performance.now() > deadline) return resolve();
-        requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    });
   });
 }
 

@@ -21,10 +21,9 @@ from .iserv.letters import parse_letter_list
 from .iserv.timetable import DATE_FORMAT, week_bounds
 from .pageshape import code_text, json_of, status_of, unique
 from .pathpattern import path_pattern, placeholders
-from .reportcrawl import MENU_LINK_PREFIX
+from .reportcrawl import MENU_LINK_PREFIX, SCHOOL_ACCOUNT_PATH
 from .valueshape import table_cell
 
-SCHOOL_ACCOUNT_ME_PATH = modules.DSA_API + "/users/me"
 SICK_NOTE_SELECTION_PATH = modules.DSA_API + "/sickNotes/userSelection/"
 TIME_TABLE_PAGE_PATH = "/iserv/time-table/"
 CHILDREN_TABLE_HEAD = "| Source | Count | Duplicate ids | Duplicate names |"
@@ -111,7 +110,7 @@ def fetch_json(client, path, params=None):
 
 
 def _school_account_children(client):
-    payload = fetch_json(client, SCHOOL_ACCOUNT_ME_PATH, {"fields": CHILDREN_FIELDS})
+    payload = fetch_json(client, SCHOOL_ACCOUNT_PATH, {"fields": CHILDREN_FIELDS})
     return parse_children_from_me(payload) if isinstance(payload, dict) else None
 
 
