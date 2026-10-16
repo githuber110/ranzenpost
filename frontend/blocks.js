@@ -10,6 +10,14 @@
     messenger: ["messenger"],
     conferences: ["conferences"],
     calendar: ["calendar"],
+    tasks: ["tasks"],
+    news: ["news"],
+    mail: ["mail"],
+    files: ["file"],
+    contacts: ["addressbook", "mailinglist"],
+    forums: ["forums"],
+    texts: ["texts"],
+    infodisplay: ["infodisplay"],
   };
   const DEFAULT_NAVIGATION = ["timetable", "absence", "post", "messenger", "conferences"];
   const BAR_LIMIT = 5;
@@ -17,21 +25,26 @@
   const MORE_KEY = "more";
 
   const BLOCK_CATALOGUE = [
-    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], childBound: true },
-    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], childBound: true },
-    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], childBound: true },
-    { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"] },
-    { key: "noticeboard", module: "pinboard", area: "post", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"] },
-    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], childBound: true },
-    { key: "conferences", module: "conferences", area: "conferences", compact: 1, normal: 3, size: "normal", surfaces: ["overview", "card"] },
-    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], schoolLevel: true },
-    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], childBound: true },
-    { key: "chat", module: "messenger", area: "messenger", compact: 3, normal: 5, size: "compact", surfaces: ["overview"] },
-    { key: "school_events", module: "calendar", area: "calendar", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"] },
+    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child" },
+    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "family" },
+    { key: "noticeboard", module: "pinboard", area: "post", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "family" },
+    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "conferences", module: "conferences", area: "conferences", compact: 1, normal: 3, size: "normal", surfaces: ["overview", "card"], scope: "school" },
+    { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], scope: "school", schoolLevel: true },
+    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "child" },
+    { key: "chat", module: "messenger", area: "messenger", compact: 3, normal: 5, size: "compact", surfaces: ["overview"], scope: "family" },
+    { key: "school_events", module: "calendar", area: "calendar", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "school" },
+    { key: "tasks", module: "tasks", area: "tasks", compact: 3, normal: 6, size: "normal", surfaces: ["overview", "card"], scope: "school" },
+    { key: "news", module: "news", area: "news", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
-  const DEFAULT_OVERVIEW_KEYS = ["today", "letters", "noticeboard", "conferences", "changes", "chat"];
-  const DEFAULT_CHILDLESS_KEYS = ["letters", "noticeboard", "conferences", "holidays", "chat", "school_events"];
+  const DEFAULT_OVERVIEW_KEYS = ["today", "letters", "noticeboard", "conferences", "changes", "chat", "tasks", "news", "forums"];
+  const DEFAULT_CHILDLESS_KEYS = ["letters", "noticeboard", "conferences", "holidays", "chat", "school_events", "tasks", "news", "forums"];
 
   function blockOf(key) {
     return BLOCK_BY_KEY.get(key) || null;
@@ -58,7 +71,7 @@
   function offeredBlocks(moduleOn, surface, childless) {
     return BLOCK_CATALOGUE.filter((block) => {
       if (surface && !block.surfaces.includes(surface)) return false;
-      if (childless) return !block.childBound && (block.schoolLevel || moduleOn(block.module));
+      if (childless) return block.scope !== "child" && (block.schoolLevel || moduleOn(block.module));
       return moduleOn(block.module);
     });
   }

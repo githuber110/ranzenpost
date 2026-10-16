@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "Непрочитанная почта"
       },
+      "open_tasks": {
+        "name": "Открытые задания"
+      },
+      "news": {
+        "name": "Новости"
+      },
+      "unread_forum_posts": {
+        "name": "Непрочитанные сообщения на форумах"
+      },
+      "texts": {
+        "name": "Тексты"
+      },
       "open_absences": {
         "name": "Открытые пропуски"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "Школа снова доступна",
       "login_needed": "Требуется вход",
       "school_new_letter": "Новое письмо",
-      "school_new_noticeboard_post": "Новая запись на доске"
+      "school_new_noticeboard_post": "Новая запись на доске",
+      "school_new_task": "Новое задание",
+      "school_new_news": "Свежая новость",
+      "school_new_forum_post": "Новое сообщение на форуме",
+      "school_new_text": "Новый текст"
     },
     "condition_type": {
       "is_school_day": "Учебный день",

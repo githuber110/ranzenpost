@@ -49,10 +49,11 @@ describe("card editor with Home Assistant's form", () => {
     expect(root.querySelector("ha-form")).toBeNull();
     expect(root.querySelector("input[name=title]")).not.toBeNull();
     expect(root.querySelectorAll("input[name=blocks]").length).toBeGreaterThan(0);
-    expect(root.querySelectorAll(".order-row").length).toBe(2);
+    expect(root.querySelectorAll(".block-row.on").length).toBe(2);
+    expect(root.querySelector(".children")).not.toBeNull();
   });
 
-  it("keeps the order list next to the form and hands the new order to the form", async () => {
+  it("keeps the block list next to the form and leaves the form alone when the order changes", async () => {
     const editor = await mountEditor({ blocks: ["today", "letters"], children: ["alex"] });
     const root = editor.shadowRoot;
     const form = root.querySelector("ha-form");
@@ -61,7 +62,7 @@ describe("card editor with Home Assistant's form", () => {
     root.querySelector('.order-move[data-block="letters"][data-move="up"]').click();
     expect(emitted.at(-1).blocks).toEqual(["letters", "today"]);
     expect(root.querySelector("ha-form")).toBe(form);
-    expect(form.data.blocks).toEqual(["letters", "today"]);
-    expect(form.schema.map((entry) => entry.name).slice(3)).toEqual(["size_letters", "size_today"]);
+    expect([...root.querySelectorAll(".block-row.on")].map((row) => row.dataset.block)).toEqual(["letters", "today"]);
+    expect(form.schema.map((entry) => entry.name)).toEqual(["title", "children"]);
   });
 });

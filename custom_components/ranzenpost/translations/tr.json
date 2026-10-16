@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "Okunmamış e-postalar"
       },
+      "open_tasks": {
+        "name": "Açık görevler"
+      },
+      "news": {
+        "name": "Haberler"
+      },
+      "unread_forum_posts": {
+        "name": "Okunmamış forum gönderileri"
+      },
+      "texts": {
+        "name": "Metinler"
+      },
       "open_absences": {
         "name": "Açık devamsızlıklar"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "Okula yeniden erişilebiliyor",
       "login_needed": "Giriş gerekli",
       "school_new_letter": "Yeni veli mektubu",
-      "school_new_noticeboard_post": "Yeni pano gönderisi"
+      "school_new_noticeboard_post": "Yeni pano gönderisi",
+      "school_new_task": "Yeni görev",
+      "school_new_news": "Yeni haber",
+      "school_new_forum_post": "Yeni forum gönderisi",
+      "school_new_text": "Yeni metin"
     },
     "condition_type": {
       "is_school_day": "Okul günü",

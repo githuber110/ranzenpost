@@ -8,7 +8,7 @@ from app.service import IServService, NotConfiguredError
 from app.store import LOGIN_REVISION_KEY
 from tests.support import single_school
 from tests.test_child_list_states import rerun, wizard_with_child
-from tests.test_connections import FakeClient, two_schools
+from tests.test_connections import TOKEN_LIST_WITHOUT_APP_TOKEN, FakeClient, two_schools
 
 LISTED = [{"child_id": "uuid-1", "name": "Bella", "class_name": "2b"}]
 
@@ -25,6 +25,9 @@ class ListingClient:
     def login(self, username, password, code_provider):
         self.authed = True
         return self
+
+    def get_twofactor_list_page(self):
+        return type("Page", (), {"text": TOKEN_LIST_WITHOUT_APP_TOKEN})()
 
     def is_authenticated(self):
         return self.authed

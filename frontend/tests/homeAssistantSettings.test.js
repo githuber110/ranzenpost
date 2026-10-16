@@ -52,7 +52,7 @@ describe("the settings carry a Home Assistant block", () => {
 
     expect(heads[1]).toBe(label(window, "settings.section.notifications"));
     const rows = [...view.querySelectorAll(".settings-group")[1].querySelectorAll(".setting-row .lbl")].map((node) => node.textContent);
-    expect(rows).toEqual([label(window, "settings.notify.service"), label(window, "schools.calendar.access"), label(window, "settings.ha.integration")]);
+    expect(rows).toEqual([label(window, "settings.notify.sheet"), label(window, "schools.calendar.access"), label(window, "settings.ha.integration")]);
   });
 
   test("the row shows the connection state once the status is known", async () => {

@@ -414,3 +414,19 @@ def test_a_time_table_week_without_a_child_leaves_the_child_out_of_the_query():
 
     params = data_params("", date(2026, 9, 9))
     assert params == {"filter": '{"startDate":"07.09.2026","endDate":"13.09.2026","classes":[],"teachers":[],"rooms":[]}'}
+
+
+@pytest.mark.parametrize("token_id", [
+    "",
+    "../../logout",
+    "b2b6b8b0-1111-4a2a-9c3c-abcdef123456/../x",
+    "b2b6b8b0-1111-4a2a-9c3c-abcdef12345g",
+    "b2b6b8b0-1111-4a2a-9c3c-abcdef123456?x=1",
+    "b2b6b8b011114a2a9c3cabcdef123456",
+])
+def test_delete_totp_token_refuses_an_id_that_is_not_a_uuid(token_id):
+    session = SecuritySession("security_2fa_add.html", "security_2fa_added.html", token_list="twofactor_list_uuid.html")
+    client = IServClient(BASE, session=session)
+    with pytest.raises(DataError):
+        client.delete_totp_token(token_id, "654321", "csrf-delete-token")
+    assert session.deleted_url is None

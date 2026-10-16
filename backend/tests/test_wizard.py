@@ -4,6 +4,7 @@ from app.store import Store
 from app.wizard import ACCOUNT_KEY, SCHOOL_KEY, Wizard
 
 VALID_SECRET = "JBSWY3DPEHPK3PXP"
+SETUP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 CODE = "123456"
 CODE2 = "654321"
 
@@ -32,6 +33,14 @@ class FakeProber:
         self.begin_calls = 0
         self.verify_calls = 0
         self.verify_totp_result = "ok"
+        self.setup_calls = 0
+        self.setup_begin = {"status": "awaiting_setup_code"}
+        self.setup_open = False
+        self.setup_codes = []
+        self.setup_results = []
+        self.registration_check = {"status": "missing"}
+        self.stale_answer = {"status": "ok", "left": []}
+        self.stale_calls = []
 
     def probe_url(self, base):
         if self.url_ok:
@@ -53,6 +62,33 @@ class FakeProber:
     def confirm_2fa(self, url, username, password, code, name="ISERV-Connector"):
         self.register_calls += 1
         return self.register
+
+    def begin_setup(self, url, username, password):
+        self.setup_calls += 1
+        self.setup_open = self.setup_begin.get("status") == "awaiting_setup_code"
+        return self.setup_begin
+
+    def setup_key(self, url, username):
+        if not self.setup_open:
+            return None
+        return {"secret": SETUP_SECRET, "uri": "otpauth://totp/IServ:parent?secret=" + SETUP_SECRET + "&issuer=IServ"}
+
+    def confirm_setup(self, url, username, password, code):
+        self.setup_codes.append(code)
+        result = self.setup_results.pop(0) if self.setup_results else {"status": "ok"}
+        if result.get("status") != "rejected":
+            self.setup_open = False
+        return result
+
+    def drop_setup(self):
+        self.setup_open = False
+
+    def check_registration(self, url, username, name="ISERV-Connector"):
+        return self.registration_check
+
+    def remove_stale_tokens(self, url, username, password, secret, uuids):
+        self.stale_calls.append((secret, list(uuids)))
+        return self.stale_answer
 
 
 
@@ -1009,7 +1045,7 @@ def test_a_code_while_iserv_still_waits_for_the_setup_is_explained_and_burns_no_
     assert prober.begin_calls == 4
 
 
-def test_after_the_setup_in_the_browser_the_normal_connect_finishes(tmp_path):
+def test_a_finished_setup_leads_back_to_the_normal_connect(tmp_path):
     wizard, store, prober, _ = make(tmp_path, login="twofactor_required_setup")
     wizard.set_url("myschool.example")
     wizard.set_login("parent", "secret")

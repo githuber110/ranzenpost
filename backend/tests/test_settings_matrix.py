@@ -135,6 +135,9 @@ class FakeDsa:
     def sick_notes(self, since=None):
         return []
 
+    def sick_notes_or_raise(self, since=None):
+        return []
+
     def sick_note_children(self):
         return [{"id": STUDENT_ID, "name": CHILD_NAME, "class_name": "5A"}]
 
@@ -216,7 +219,7 @@ class FakeLetters:
         self.current.extend(moved)
         return True
 
-    def confirm_letter(self, letter_id, recipient_id, text=None):
+    def confirm_letter(self, letter_id, recipient_id, text=None, choices=None):
         records = self.store.load_letters_confirmations()
         records[f"{letter_id}:{recipient_id}"] = {"type": "read", "confirmed_at": "2026-09-02T08:10:00"}
         self.store.save_letters_confirmations(records)

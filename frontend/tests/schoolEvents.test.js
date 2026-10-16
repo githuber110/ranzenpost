@@ -251,3 +251,14 @@ describe("the time range of a school event", () => {
     expect(twoDays).toContain(dayOf("2026-10-13T10:00:00+02:00"));
   });
 });
+
+describe("a school whose calendar could not be read", () => {
+  test("with no event from any school the view and the chapter show the failure, not an empty calendar", () => {
+    const { window } = loadApp();
+    seed(window);
+    setEvents(window, [], { unavailable: ["a1b2c3d4"] });
+    const view = viewOf(window);
+    expect(view.querySelector(".empty b").textContent).toBe(evalWith(window, "t('schoolEvents.error.title')"));
+    expect(window.eval("schoolEventsChapter('normal').blocks.map((block) => block.key)")).toEqual(["school_events:failed"]);
+  });
+});

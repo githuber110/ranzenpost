@@ -81,10 +81,19 @@ for (const viewport of VIEWPORTS) {
           await prepare(page);
           await openCalendarPage(page);
           await calendarMenu(page, 0);
-          await page.waitForSelector(".cal-swatches");
+          await page.waitForSelector(".cal-more summary");
+          await expect(page.locator(".cal-swatches")).toBeHidden();
           await expect(page.locator(".cal-form .check:not(.cal-variant)")).toHaveCount(6);
           await expect(page.locator(".cal-form .cal-variant")).toHaveCount(2);
           await assertClean(page, `${viewport.name}/${language.key}/edit-form`);
+          await page.locator(".cal-more summary").focus();
+          await page.keyboard.press("Enter");
+          await expect(page.locator(".cal-swatches")).toBeVisible();
+          await expect(page.locator(".cal-form input.inp")).toBeVisible();
+          const gaps = await page.locator(".cal-more > .field").evaluateAll((fields) => fields.map((field) => getComputedStyle(field).marginBlockStart));
+          expect(gaps.length).toBe(2);
+          expect(gaps[1]).not.toBe(gaps[0]);
+          await assertClean(page, `${viewport.name}/${language.key}/edit-form-more`);
         });
 
         test(`asks for no address and shows no setup steps (${language.key})`, async ({ page }) => {

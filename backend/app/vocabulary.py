@@ -22,7 +22,7 @@ confirm confirmation filter filters week day days month year entry entries item 
 state states version versions config configuration module modules group groups class classes course courses subject
 subjects teacher teachers student students child children lesson lessons period periods substitution substitutions
 change changes cancelled cancellation event events appointment appointments json html text plain xml http https www
-feed upcoming eventsources navigation badges raw multi
+feed upcoming eventsources navigation badges raw multi plugin plugins add
 """.split()
 
 UI_WORDS = """
@@ -41,9 +41,14 @@ von an und oder mit ohne für fuer der die das den dem des ein eine einer
 archiv übersicht uebersicht liste listen weiter zurück zurueck vorherige startseite verlauf details alle
 projekte projekt umsätze umsaetze buchungen kontoauszug rechnungen rechnung
 antrag anträge antraege anfrage anfragen formular formulare meldung meldungen neue neuer neues
+gruppe gruppen stufe jahrgang erstellt eingetragen angelegt am um beginn ende dauer zeitpunkt abwesend fehlzeit
+fehlzeiten entschuldigt unentschuldigt entschuldigung krank krankmeldung krankheit hinzufügen hinzufuegen
+schülername schuelername vorname nachname benutzer
 title sender recipient recipients published date subject time room teacher class course action actions description
 note notes comment comments reason period from to until all none new read unread yes no open done
 monday tuesday wednesday thursday friday saturday sunday january february march may june july october december
+group created added on at end begin duration absent absence absences excused unexcused sick illness pupil
+first last
 """.split()
 
 CHANGE_TYPE_WORDS = ("entfall", "vertretung", "verlegung", "verschoben")
@@ -85,6 +90,29 @@ creator participants partstat location locations hash when mailbox bare answered
 """.split()
 
 
+TASK_NEWS_WORDS = """
+aufgabe aufgaben starttermin startdatum starttag beginn abgabetermin abgabedatum abgabe abgaben abgegeben fällig faellig
+ende enddatum frist tags schlagwörter schlagworte stichwörter rückgabe rueckgabe zurückgegeben bewertung erstellt
+ersteller lehrkraft teilnehmer bearbeitet bearbeitung
+task tasks exercise exercises start starts due deadline submitted submission completed finished handed tag tags created
+creator teacher
+news neuigkeiten mitteilung mitteilungen kategorie kategorien category categories autor autorin author weiterlesen mehr
+lesen more
+""".split()
+
+TASK_NEWS_ROUTE_WORDS = ["past"]
+
+EXPLORE_WORDS = """
+lists todo todos tasks forum forums topic topics thread threads posts reply replies poll polls quick participate
+participation vote votes answer answers question questions result results pad pads board boards whiteboard printer
+printers job jobs queue credit credits redeem voucher join meeting meetings guest guests running locked slide slides
+screen screens displays fullscreen contact contacts private personal vcard cloud webdav caldav carddav selection
+selections choice choices election elections wish wishes waitlist assignment mailinglist mailinglists address addresses
+export import abuse spam junk copy move rename extract compress zip unzip share unlink trash duplicate hide unhide restore
+highlight notify size pagesize general preferences notice notices widget widgets
+""".split()
+
+
 def fold_variants(token):
     lowered = token.casefold()
     variants = {lowered}
@@ -106,7 +134,7 @@ def _catalogue_words():
 
 def _build():
     words = set()
-    for word in ROUTE_WORDS + UI_WORDS + MARKER_WORDS + sorted(_catalogue_words()):
+    for word in ROUTE_WORDS + TASK_NEWS_ROUTE_WORDS + EXPLORE_WORDS + UI_WORDS + MARKER_WORDS + sorted(_catalogue_words()):
         words.update(fold_variants(word))
     return frozenset(words)
 
@@ -125,7 +153,7 @@ IDENTIFIER_EXCLUDED = frozenset(
 
 def _build_identifiers():
     words = set()
-    for word in ROUTE_WORDS + UI_WORDS + MARKER_WORDS + HTML_WORDS + API_WORDS:
+    for word in ROUTE_WORDS + EXPLORE_WORDS + UI_WORDS + MARKER_WORDS + HTML_WORDS + API_WORDS:
         if word not in IDENTIFIER_EXCLUDED:
             words.update(fold_variants(word))
     return frozenset(words)
@@ -140,3 +168,10 @@ def known_word(token):
 
 def known_identifier(token):
     return any(variant in IDENTIFIER_WORDS for variant in fold_variants(token))
+
+
+HEADER_WORDS = frozenset(variant for word in TASK_NEWS_WORDS for variant in fold_variants(word))
+
+
+def known_header_word(token):
+    return known_word(token) or any(variant in HEADER_WORDS for variant in fold_variants(token))

@@ -4,7 +4,7 @@ import math
 import threading
 import time
 
-from . import requestlog
+from . import code_windows, requestlog
 from .iserv.client import LOGIN_SESSION_KEY, LOGIN_TWOFACTOR_KEY, LOGIN_TWOFACTOR_SETUP_KEY, REFUSAL_KEYS
 from .iserv.errors import (
     REASON_BAD_CREDENTIALS,
@@ -21,13 +21,11 @@ from .iserv.errors import (
     login_reason,
     session_never_opened,
 )
-from .iserv.totp import generate_code
 from .not_configured import NotConfiguredError
 from .store import LOGIN_HOLD, edit_secrets
 
 logger = logging.getLogger(__name__)
 
-TOTP_PERIOD = 30
 EXPIRY_TRUST_SECONDS = 10 * 60
 EXPIRY_TRUST_MAX_SECONDS = 24 * 60 * 60
 SETUP_RETRY_SECONDS = 6 * 60 * 60
@@ -51,14 +49,7 @@ HELD_REFUSALS = (REASON_BAD_CREDENTIALS, REASON_UNKNOWN_ACCOUNT, REASON_DEFAULT_
 
 
 def next_totp_code(secret, used=None, sleeper=time.sleep, clock=time.time):
-    code = generate_code(secret)
-    if used is not None and used.get("code") == code:
-        now = clock()
-        sleeper(max(0.0, TOTP_PERIOD - (now % TOTP_PERIOD)) + 1)
-        code = generate_code(secret)
-    if used is not None:
-        used["code"] = code
-    return code
+    return code_windows.next_code(secret, used, sleeper, clock)
 
 
 def _code_provider(secrets, used=None, sleeper=time.sleep, clock=time.time):
@@ -244,6 +235,7 @@ class SignInService:
         self._release_login_hold(fingerprint)
         self._client = client
         self._signed_in_at = self.connection.clock()
+        self.connection._refusals.clear()
         self.connection._detect_modules(client)
         return client
 

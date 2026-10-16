@@ -57,7 +57,7 @@ function label(window, key, vars) {
 function all(overrides = {}) {
   const available = {};
   for (const name of MODULES) available[name] = true;
-  return { ...available, calendar: false, ...overrides };
+  return { ...available, calendar: false, tasks: false, news: false, forums: false, texts: false, infodisplay: false, ...overrides };
 }
 
 describe("the module registry decides which views exist", () => {
@@ -171,6 +171,10 @@ describe("the settings follow the modules", () => {
       "letters",
       "pinboard",
       "conferences",
+      "conference_booking_open",
+      "conference_cancelled",
+      "conference_reminder",
+      "conference_booking_reminder",
       "messenger",
       "outage",
     ]);
@@ -273,7 +277,7 @@ describe("the settings follow the modules", () => {
     seed(window, all(), `state.modules.unsupported = [{ segment: "calendar", slug: "calendar", label: "Kalender", name: "Kalender" }];`);
     expect(window.eval("settingsView()").querySelector(".module-card")).not.toBeNull();
     const parsed = window.eval("applyModules({ modules: {}, unsupported: [{ segment: 'calendar' }, { label: 'x' }], unknown: [] })");
-    expect(parsed.unsupported).toEqual([{ segment: "calendar", slug: "calendar", label: "calendar", name: "calendar", linkOnly: false, openUrl: "" }]);
+    expect(parsed.unsupported).toEqual([{ segment: "calendar", slug: "calendar", label: "calendar", name: "calendar" }]);
     expect(window.eval("catalogueModuleName({ segment: 'odd', slug: 'odd', label: 'Odd', name: 'Official' })")).toBe("Official");
   });
 });
@@ -435,77 +439,46 @@ describe("an account whose modules need no child", () => {
   });
 });
 
-describe("a module that only opens in IServ", () => {
-  const KLASSENGELD = `{ segment: "klassengeld", slug: "klassengeld", label: "Klassengeld", name: "Klassengeld", linkOnly: true, openUrl: "https://school.example/iserv/klassengeld/redirect" }`;
+describe("a module Ranzenpost does not show yet", () => {
+  const KLASSENGELD = `{ segment: "klassengeld", slug: "klassengeld", label: "Klassengeld", name: "Klassengeld" }`;
 
-  test("it shows a note and a secondary link that opens in a new tab", () => {
+  test("it joins the help-us-add-it path instead of a link to the school", () => {
     const { window } = loadApp();
     seed(window, all(), `state.modules.unsupported = [${KLASSENGELD}];`);
+    expect(window.eval("moduleCardWanted()")).toBe(true);
+    expect(window.eval("moduleSegments()")).toEqual(["klassengeld"]);
     const block = window.eval("settingsView()").querySelector(".modules-block");
-    const link = block.querySelector(".module-open-link");
-    expect(link.getAttribute("href")).toBe("https://school.example/iserv/klassengeld/redirect");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toContain("noopener");
-    expect(link.textContent).toContain(label(window, "settings.modules.openInIserv"));
-    expect(block.querySelector(".module-link-note").textContent).toBe(label(window, "settings.modules.linkOnly", { name: label(window, "modules.catalogue.klassengeld") }));
-    expect(block.querySelectorAll(".btn").length).toBe(0);
+    expect(block.querySelector(".module-card")).not.toBeNull();
+    expect(block.querySelector(".module-open-link")).toBeNull();
+    expect(block.querySelector("a")).toBeNull();
   });
 
-  test("it neither raises the report card nor enters the issue prefill or the unknown hint", () => {
+  test("an old link field from the server is ignored", () => {
     const { window } = loadApp();
-    seed(window, all(), `state.modules.unsupported = [${KLASSENGELD}];`);
-    expect(window.eval("moduleCardWanted()")).toBe(false);
-    expect(window.eval("moduleSegments()")).toEqual([]);
-    expect(window.eval("settingsView()").querySelector(".module-card")).toBeNull();
-    const plain = new window.URLSearchParams(window.eval("moduleIssueUrl()").slice(ISSUE_URL.length));
-    expect(plain.get("title")).toBe(label(window, "help.issue.titlePlain"));
+    const parsed = window.eval(`applyModules({ modules: {}, unsupported: [
+      { segment: "klassengeld", link_only: true, open_url: "https://a.example/iserv/klassengeld/redirect" },
+    ] })`);
+    expect(Object.keys(parsed.unsupported[0]).sort()).toEqual(["label", "name", "segment", "slug"]);
   });
 
-  test("next to an unknown module the card and the link both appear and only the unknown one is reported", () => {
+  test("the settings page links nowhere into the school and opens a new tab only for the help issue", () => {
     const { window } = loadApp();
     seed(window, all(), `
       state.modules.unsupported = [${KLASSENGELD}];
       state.modules.unknown = [{ segment: "mystery", label: "Mystery" }];
-      state.config.reported_modules = ["mystery"];
+      state.config.reported_modules = ["klassengeld", "mystery"];
+      state.config.school_url = "https://school.example";
     `);
-    const block = window.eval("settingsView()").querySelector(".modules-block");
-    expect(block.querySelector(".modules-unknown").textContent).toBe(label(window, "settings.modules.unknown", { labels: "Mystery" }));
-    expect(block.querySelector(".module-open-link")).not.toBeNull();
-  });
-
-  test("without a link the note stays and no anchor is drawn, and only http links are kept", () => {
-    const { window } = loadApp();
-    seed(window, all(), `state.modules.unsupported = [{ segment: "klassengeld", slug: "klassengeld", label: "Klassengeld", name: "Klassengeld", linkOnly: true, openUrl: "" }];`);
-    const block = window.eval("settingsView()").querySelector(".modules-block");
-    expect(block.querySelector(".module-link-note")).not.toBeNull();
-    expect(block.querySelector(".module-open-link")).toBeNull();
-    const parsed = window.eval(`applyModules({ modules: {}, unsupported: [
-      { segment: "klassengeld", link_only: true, open_url: "javascript:alert(1)" },
-      { segment: "klassengeld", link_only: true, open_url: "https://a.example/iserv/klassengeld/redirect" },
-    ] })`);
-    expect(parsed.unsupported.map((entry) => entry.openUrl)).toEqual(["", "https://a.example/iserv/klassengeld/redirect"]);
-    expect(parsed.unsupported.every((entry) => entry.linkOnly)).toBe(true);
-  });
-
-  test("an open link is only taken when it is a well formed https address", () => {
-    const { window } = loadApp();
-    const addresses = [
-      "http://a.example/iserv/klassengeld/redirect",
-      "javascript://a.example/%0Aalert(1)",
-      "data://a.example/text",
-      "https://",
-      "https://a b.example/",
-      "HTTPS://A.example/iserv/klassengeld/redirect",
-    ];
-    const parsed = evalWith(window, "applyModules({ modules: {}, unsupported: testArgs[0] })", addresses.map((open_url) => ({ segment: "klassengeld", link_only: true, open_url })));
-    expect(parsed.unsupported.map((entry) => entry.openUrl)).toEqual(["", "", "", "", "", "https://a.example/iserv/klassengeld/redirect"]);
-  });
-
-  test("each school page shows its own link", () => {
-    const { window } = loadApp();
-    seed(window, all());
-    const first = window.eval(`(() => { state.modules = applyModules({ modules: {}, unsupported: [{ segment: "klassengeld", link_only: true, open_url: "https://one.example/iserv/klassengeld/redirect" }] }); return modulesHelpBlock().querySelector(".module-open-link").getAttribute("href"); })()`);
-    const second = window.eval(`(() => { state.modules = applyModules({ modules: {}, unsupported: [{ segment: "klassengeld", link_only: true, open_url: "https://two.example/iserv/klassengeld/redirect" }] }); return modulesHelpBlock().querySelector(".module-open-link").getAttribute("href"); })()`);
-    expect([first, second]).toEqual(["https://one.example/iserv/klassengeld/redirect", "https://two.example/iserv/klassengeld/redirect"]);
+    const pages = [window.eval("settingsView()")];
+    window.eval("state.helpPage = true;");
+    pages.push(window.eval("settingsView()"));
+    for (const page of pages) {
+      for (const anchor of page.querySelectorAll("a[href]")) {
+        expect(anchor.getAttribute("href").includes("school.example") || anchor.getAttribute("href").includes("/iserv/")).toBe(false);
+      }
+      for (const anchor of page.querySelectorAll("[target=_blank]")) {
+        expect(["github.com", "my.home-assistant.io"].includes(new window.URL(anchor.getAttribute("href")).host)).toBe(true);
+      }
+    }
   });
 });

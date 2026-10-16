@@ -2,12 +2,12 @@ import logging
 
 import requests
 from fastapi import Body
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse
 
 from .failure import failure_cause
 from .iserv.errors import LoginError, TwoFactorError
 from .service import NotConfiguredError
-from .upstream import binary_upstream_response, read_endpoint, write_endpoint
+from .upstream import binary_upstream_response, read_endpoint, upstream_file, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +35,4 @@ def register_routes(app, service):
         except Exception as error:
             logger.warning("pinboard attachment was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid attachment", status_code=400)
-        headers = {}
-        disposition = upstream.headers.get("content-disposition")
-        if disposition:
-            headers["Content-Disposition"] = disposition
-        return Response(
-            content=upstream.content,
-            media_type=upstream.headers.get("content-type", "application/octet-stream"),
-            headers=headers,
-        )
+        return upstream_file(upstream)

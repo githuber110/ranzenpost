@@ -89,7 +89,8 @@ for (const viewport of VIEWPORTS) {
           expect(failures, failures.join("\n")).toEqual([]);
         });
 
-        test(`an accept/decline letter offers no send button (${lang.key})`, async ({ page }) => {
+        test(`an accept/decline letter offers its answers in the app and fits (${lang.key})`, async ({ page }) => {
+          const failures = [];
           await goto(page);
           await openLetters(page);
           await page.locator(".row").nth(1).click();
@@ -97,7 +98,13 @@ for (const viewport of VIEWPORTS) {
 
           const block = page.locator(".confirm-card");
           await expect(block).toBeVisible();
-          await expect(block.locator("button")).toHaveCount(0);
+          await expect(block.locator(".opt.letter-choice")).toHaveCount(2);
+          await expect(block.locator(".letter-answer-send")).toBeDisabled();
+          await expect(block.locator("a")).toHaveCount(0);
+          await block.locator(".opt.letter-choice").first().click();
+          await expect(block.locator(".letter-answer-send")).toBeEnabled();
+          assertClean(await collectOverflow(page), `${viewport.name}/${lang.key}/letter-choice`, failures);
+          expect(failures, failures.join("\n")).toEqual([]);
         });
       });
     }

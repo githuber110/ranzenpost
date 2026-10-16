@@ -739,3 +739,71 @@ def test_a_password_repaired_while_the_bootstrap_runs_is_never_undone():
     assert secrets["password"] == f"repaired-{len(client.fetched_paths) - 1}"
     assert secrets["messenger_access_token"] == "tok-1"
     assert secrets["messenger_privileges_known"] == "1"
+
+
+def sending(plan):
+    store = DictStore({"messenger_access_token": "tok-1"})
+    clients = []
+
+    def factory(base_url, access_token):
+        client = FakeMatrixClient(base_url, access_token, plan)
+        clients.append(client)
+        return client
+
+    return MessengerService(FakeIServ(store), matrix_client_factory=factory), clients
+
+
+def sent_txns(clients):
+    return [call[3] for client in clients for call in client.calls if call[0] == "send_message"]
+
+
+def test_send_message_uses_the_transaction_id_of_the_browser_so_a_retry_is_the_same_message():
+    service, clients = sending({"send_message": FakeMatrixResponse(status_code=200, json_data={"event_id": "$abc"})})
+    service.send_message("!room:school.example", "hello", "draft-0001-abcdef")
+    service.send_message("!room:school.example", "hello", "draft-0001-abcdef")
+    assert sent_txns(clients) == ["draft-0001-abcdef", "draft-0001-abcdef"]
+
+
+def test_send_message_replaces_an_unusable_transaction_id():
+    service, clients = sending({})
+    service.send_message("!room:school.example", "hello", "bad id/../x")
+    assert sent_txns(clients)[0] != "bad id/../x"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [requests.ReadTimeout("late"), requests.ConnectionError("reset by peer"), FakeMatrixResponse(status_code=502), FakeMatrixResponse(status_code=504)],
+)
+def test_a_send_without_a_clear_answer_is_unclear_and_never_resent(outcome):
+    service, clients = sending({"send_message": outcome})
+    result = service.send_message("!room:school.example", "hello", "draft-0001-abcdef")
+    assert result["ok"] is False
+    assert result["uncertain"] is True
+    assert result["message_key"] == "api.messenger.send.unclear"
+    assert sent_txns(clients) == ["draft-0001-abcdef"]
+
+
+def test_a_send_that_never_left_stays_a_network_error():
+    service, clients = sending({"send_message": requests.ConnectionError("Connection refused")})
+    with pytest.raises(requests.RequestException):
+        service.send_message("!room:school.example", "hello", "draft-0001-abcdef")
+
+
+def test_the_send_route_hands_the_transaction_id_of_the_browser_through():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app import messenger_routes
+    from app.upstream import binary_upstream_response, read_endpoint, write_endpoint
+
+    seen = []
+
+    class Service:
+        def messenger_send(self, connection_id, room_id, text, txn_id=""):
+            seen.append(txn_id)
+            return {"ok": True}
+
+    app = FastAPI()
+    messenger_routes.register_routes(app, Service(), read_endpoint, write_endpoint, binary_upstream_response)
+    TestClient(app).post("/api/messenger/send", json={"room_id": "!r:x", "text": "hi", "txn_id": "draft-0001-abcdef"})
+    assert seen == ["draft-0001-abcdef"]

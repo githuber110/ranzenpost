@@ -7,7 +7,7 @@ import threading
 import time
 import zipfile
 
-from . import feed, integration, logfile, modules, namebook, supervisor, valueshape
+from . import berlin, integration, logfile, modules, namebook, supervisor, valueshape
 from .iserv.children import (
     child_select_present,
     parse_children,
@@ -17,8 +17,10 @@ from .iserv.children import (
 )
 from .iserv.timetable import change_record_facts, change_type_texts, data_params, with_time_table_changes
 from .module_catalogue import edition_of, official_name
-from .pageshape import body_kind, json_of, response_skeleton, shape_block, status_of, visible_text
+from .iserv.pages import status_of
+from .pageshape import body_kind, json_of, response_skeleton, shape_block, visible_text
 from .pathpattern import MATRIX_ROOM, ROOM_MARK
+from .reportmail import mail_lines
 from .reportcrawl import (
     CrawlBudget,
     capped_module,
@@ -33,14 +35,17 @@ from .reportcrawl import (
     module_prefix,
     MAX_SCRIPTS_PER_MODULE,
     script_section,
+    start_notice_lines,
     start_page_links,
     unsupported_module_lines,
 )
+from .reportlists import EXERCISE_SLUG, extra_targets, list_lines, task_detail_lines
 from .reportfacts import (
     OLDER_ABSENCE_SLUG,
     absence_evidence_lines,
     children_lines,
     iserv_version_lines,
+    letter_reply_form_lines,
     letters_summary_lines,
     listed_children,
     school_app_query_lines,
@@ -64,6 +69,9 @@ STATUS_NOT_PROBED = "not probed"
 STATUS_ASSUMED = "assumed, never checked"
 STATUS_UNSUPPORTED = "present, not supported"
 STATUS_COVERED = "present, covered by the school app"
+STATUS_OLDER_SOURCE = "present, supported as the absences source"
+STATUS_READ_BY_APP = "present, read by the app"
+OLDER_ABSENCE_SLUG = "absence_obsolete"
 UNVERSIONED_INTEGRATION = "older (sends no version)"
 VERDICT_STATUS = {modules.AVAILABLE: STATUS_SUPPORTED, modules.MISSING: STATUS_MISSING, modules.UNKNOWN: STATUS_UNKNOWN}
 LEGACY_TIMETABLE = modules.LEGACY_TIMETABLE
@@ -77,6 +85,11 @@ KNOWN_ROWS = (
     (modules.CONFERENCES, "parentconference", modules.PROBES[modules.CONFERENCES][0]),
     (modules.MESSENGER, "messenger", modules.PROBES[modules.MESSENGER][0]),
     (modules.CALENDAR, "calendar", "/iserv/calendar/"),
+    (modules.TASKS, "exercise", modules.PROBES[modules.TASKS][0]),
+    (modules.NEWS, "news", modules.PROBES[modules.NEWS][0]),
+    (modules.FORUMS, "forum", modules.PROBES[modules.FORUMS][0]),
+    (modules.TEXTS, "etherpad", modules.PROBES[modules.TEXTS][0]),
+    (modules.INFODISPLAY, "infodisplay", modules.PROBES[modules.INFODISPLAY][0]),
 )
 CATALOGUE_SLUGS = {LEGACY_TIMETABLE: "timetable"}
 TIME_TABLE_SLUG = "timetable"
@@ -293,9 +306,7 @@ def account_roles_fact(me):
 
 
 def _stamp(epoch):
-    local = feed.berlin_moment(epoch)
-    offset = feed.berlin_offset(local)
-    return local.isoformat(timespec="seconds") + "+%02d:00" % offset
+    return berlin.iso_from_epoch(epoch)
 
 
 def _module_row(name, slug, edition, status, probe):
@@ -355,14 +366,25 @@ def timetable_source_fact(config, registry):
     return SCHOOL_APP_SOURCE
 
 
+def _covered_status(entry, older):
+    if older and entry.get("slug") == OLDER_ABSENCE_SLUG:
+        return STATUS_OLDER_SOURCE
+    if modules.read_by_app(entry):
+        return STATUS_READ_BY_APP
+    return STATUS_COVERED
+
+
 def module_rows(registry):
     rows = []
+    older = modules.older_absences(registry)
     for name, slug, page in KNOWN_ROWS:
         if name == modules.TIMETABLE:
             status, probe = _timetable_pair(registry, slug)
         else:
             probe = registry["probes"].get(name)
             status = STATUS_SUPPORTED if registry["modules"][name] else STATUS_MISSING
+            if name == modules.ABSENCES and older:
+                status = STATUS_MISSING
             if probe and probe.get("verdict") == modules.UNKNOWN and probe.get("status") == 0:
                 status = STATUS_ERROR
         if not registry["checked_at"]:
@@ -379,7 +401,7 @@ def module_rows(registry):
             "data": DATA_PATHS.get(slug),
         })
     present = [(entry, STATUS_UNSUPPORTED) for entry in registry["unsupported"]]
-    present += [(entry, STATUS_COVERED) for entry in registry["covered"]]
+    present += [(entry, _covered_status(entry, older)) for entry in registry["covered"]]
     for entry, status in present:
         if entry.get("segment") == modules.LEGACY_TIMETABLE_SEGMENT:
             continue
@@ -428,6 +450,7 @@ def _data_params(child_id, today):
 
 def structure_targets(row, today, child_id=""):
     targets = [(row["page"], None)]
+    targets.extend(extra_targets(row["slug"]))
     if row["json"]:
         targets.extend(modules.probes_of(row["json"], today)[:1])
     if row.get("data") and row["slug"] != TIME_TABLE_SLUG:
@@ -570,11 +593,12 @@ def page_structure(client, row, today, cache=None, child_id="", children=(), lis
         answers[path] = _probe(client, path, params, cache, lines)
     if row["slug"] == TIME_TABLE_SLUG and row.get("data"):
         lines.extend(time_table_data_lines(client, answers.get(row["page"]), today, children, listed, cache))
+    lines.extend(list_lines(row["slug"], answers, client))
     landing = answers.get(row["page"])
     if landing is not None and status_of(landing) == 200 and body_kind(landing) == "html" and callable(getattr(client, "fetch_unfollowed", None)):
         lines.extend(module_crawl(client, landing, module_prefix(row["page"]), menu_shape, cache, SCRIPT_ROOT))
     if callable(getattr(client, "fetch_unfollowed", None)):
-        lines.extend(known_api_lines(client, row["slug"], today, skip=tuple(answers)))
+        lines.extend(known_api_lines(client, row["slug"], today, skip=tuple(answers), answers=answers))
     return capped_module(lines)
 
 
@@ -690,11 +714,16 @@ class ReportFetcher:
     def _fetch_capped(self, path, limit, timeout, expired=None):
         return self._once(("capped", path, limit), lambda: self.client.fetch_capped(path, limit, timeout, expired=expired))
 
-    def _fetch_unfollowed(self, path, limit, timeout, expired=None):
+    def _fetch_unfollowed(self, path, limit, timeout, expired=None, headers=None):
+        if headers:
+            key = ("unfollowed", path, limit, tuple(sorted(headers.items())))
+            return self._once(key, lambda: self.client.fetch_unfollowed(path, limit, timeout, expired=expired, headers=headers))
         return self._once(("unfollowed", path, limit), lambda: self.client.fetch_unfollowed(path, limit, timeout, expired=expired))
 
-    def _continue_chain(self, answer, max_hops, limit, timeout, expired=None):
-        return self._once(("chain", str(answer.url), limit), lambda: self.client.continue_chain(answer, max_hops, limit, timeout, expired=expired))
+    def _continue_chain(self, answer, max_hops, limit, timeout, expired=None, home_steps=(), stop_words=frozenset()):
+        key = ("chain", str(answer.url), str(getattr(answer, "next_url", "") or ""), limit)
+        extra = {name: value for name, value in (("home_steps", home_steps), ("stop_words", stop_words)) if value}
+        return self._once(key, lambda: self.client.continue_chain(answer, max_hops, limit, timeout, expired=expired, **extra))
 
 
 def school_section(index, connection, structure, today, module="", budget=None):
@@ -729,12 +758,16 @@ def school_section(index, connection, structure, today, module="", budget=None):
     if structure:
         lines.extend(school_app_query_lines(fetcher, config, today, time_table_status(rows)))
         if any(row["slug"] == OLDER_ABSENCE_SLUG for row in rows):
-            lines.extend(absence_evidence_lines(fetcher, today))
+            lines.extend(absence_evidence_lines(fetcher, today, [child for child in config.get("children") or [] if isinstance(child, dict)]))
         lines.extend(letters_summary_lines(fetcher))
+        lines.extend(letter_reply_form_lines(connection.store))
         start = start_page_links(fetcher) if fetcher is not None else None
         nav_paths = menu_paths_by_segment(start[0]) if start is not None else {}
         lines.extend(menu_lines(start, linked_rows(rows, nav_paths)))
+        lines.extend(start_notice_lines(fetcher))
         lines.extend(account_api_lines(fetcher, today))
+        if modules.lists_module(registry, modules.MAIL):
+            lines.extend(mail_lines(fetcher, connection))
         lines.extend(iserv_version_lines(fetcher))
         lines.extend(unsupported_module_lines(fetcher, rows, nav_paths))
         lines.append("### Page structure")
@@ -751,6 +784,8 @@ def school_section(index, connection, structure, today, module="", budget=None):
             listed = _listed_count(connection, config.get("children")) if any(row["slug"] == TIME_TABLE_SLUG for row in chosen) else None
             for row in chosen:
                 lines.extend(page_structure(fetcher, row, today, cache, child_id, config.get("children"), listed, nav_paths))
+                if row["slug"] == EXERCISE_SLUG:
+                    lines.extend(task_detail_lines(getattr(connection, "store", None), getattr(connection, "id", "")))
     return lines, words
 
 
@@ -848,7 +883,7 @@ def report_parts(service, structure=True, log_lines=None, clock=time.time, versi
     _learn_store(book, service)
     module = module_filter(module)
     now = clock()
-    today = feed.berlin_moment(now).date()
+    today = berlin.local_from_epoch(now).date()
     connections = list(service.connections())
     config = service.store.load_config() if hasattr(service, "store") else {}
     app_version, home_assistant = _versions(versions)
@@ -906,7 +941,7 @@ def log_text(log, words, book=None):
 
 
 def bundle_bytes(report, log, words, clock=time.time, book=None):
-    moment = feed.berlin_moment(clock())
+    moment = berlin.local_from_epoch(clock())
     stamp = (moment.year, moment.month, moment.day, moment.hour, moment.minute, moment.second)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -927,8 +962,6 @@ def report_segments(service):
     for connection in service.connections():
         registry = _registry_without_network(connection)
         for entry in registry["unsupported"] + registry["unknown"]:
-            if entry.get("link_only"):
-                continue
             if entry["segment"] not in segments:
                 segments.append(entry["segment"])
     return segments

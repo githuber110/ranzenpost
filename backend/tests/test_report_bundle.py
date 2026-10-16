@@ -504,7 +504,7 @@ def test_a_school_without_the_timetable_we_read_lists_the_old_module_as_present_
     assert entry["name"] == "Stundenplan (veraltet)"
     assert registry["probes"][modules.LEGACY_TIMETABLE]["status"] == 200
     assert modules.normalize(registry)["probes"][modules.LEGACY_TIMETABLE]["verdict"] == modules.AVAILABLE
-    assert "not supported: 2 (news, timetable)" in modules.summary(registry)
+    assert "not supported: 2 (todo, timetable)" in modules.summary(registry)
     rows = diagnostics.module_rows(modules.normalize(registry))
     legacy = next(row for row in rows if row["slug"] == diagnostics.LEGACY_TIMETABLE)
     assert legacy["status"] == diagnostics.STATUS_UNSUPPORTED
@@ -540,7 +540,7 @@ def test_a_school_without_either_timetable_stays_missing_without_an_extra_entry(
     registry = registry_for(SCHOOL_ONE_URL, {"/iserv/time-table/": Response(404, SCHOOL_ONE_URL + "/iserv/time-table/", "")})
     assert registry["modules"][modules.TIMETABLE] is False
     assert registry["probes"][modules.LEGACY_TIMETABLE]["verdict"] == modules.MISSING
-    assert [entry["segment"] for entry in registry["unsupported"]] == ["news"]
+    assert [entry["segment"] for entry in registry["unsupported"]] == ["todo"]
     legacy = next(row for row in diagnostics.module_rows(modules.normalize(registry)) if row["slug"] == diagnostics.LEGACY_TIMETABLE)
     assert legacy["status"] == diagnostics.STATUS_MISSING
 
@@ -735,3 +735,38 @@ def test_fuzzed_names_that_the_store_no_longer_knows_never_reach_report_or_log(t
             assert_no_former_name(text)
             assert book.salt not in text
             assert not any(digest in text for digest in list(book.hashes)[:50])
+
+
+def test_option_values_appear_only_in_write_forms_and_hide_ids_and_names():
+    html = """
+    <form method="post" id="edit"><select name="booking[child]"><option value="">-</option><option value="501">Mia</option></select>
+    <select name="settings[limit]"><option value="10">10</option><option value="50">50</option></select>
+    <select name="owner"><option value="mia.musterkind">Mia</option><option>Tom Beispiel</option></select></form>
+    <form method="get"><select name="filter[group]"><option value="elternrat">Elternrat</option></select></form>
+    <input type="checkbox" name="rows[]" value="77" form="edit">
+    """
+    lines = pageshape.html_skeleton(html)
+    assert "  - <word>[child] (select, options 2, values <n>)" in lines
+    assert "  - settings[limit] (select, options 2, values 10 / 50)" in lines
+    assert "  - owner (select, options 2, values <word>.<word>)" in lines
+    assert "  - filter[group] (select, options 1)" in lines
+    assert "  - rows[] (checkbox)" in lines
+    joined = " ".join(lines).casefold()
+    for word in ("musterkind", "elternrat", "501", "beispiel"):
+        assert word not in joined, word
+
+
+def test_digits_inside_option_values_are_masked_unless_the_field_counts():
+    html = """
+    <form method="post"><select name="owner"><option value="user:42">a</option><option value="id-987">b</option>
+    <option value="k:7:331">c</option></select>
+    <select name="student[number]"><option value="501">Mia</option><option value="77">Tom</option></select>
+    <select name="amount"><option value="12">x</option></select>
+    <select name="copies"><option value="2">2</option></select></form>
+    """
+    lines = pageshape.html_skeleton(html)
+    owner = next(line for line in lines if line.startswith("  - owner "))
+    assert "42" not in owner and "987" not in owner and "331" not in owner
+    assert "  - student[number] (select, options 2, values <n>)" in lines
+    assert "  - amount (select, options 1, values <n>)" in lines
+    assert "  - <word> (select, options 1, values 2)" in lines

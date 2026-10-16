@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { FRONTEND, readShipped, scriptNames } from "./shippedSources.js";
+import { LOADED_SCRIPTS, ON_DEMAND_SCRIPTS } from "./loadApp.js";
+import { APP_PARTS_DIR, FRONTEND, appSourceNames, readShipped, scriptNames } from "./shippedSources.js";
 
 const indexHtml = readShipped("index.html");
 
@@ -44,6 +45,31 @@ describe("the page loads its scripts in a fixed order", () => {
       "qr.js",
       "pdfviewer.js",
       "colour.js",
+      "app/files.js",
+      "app/overview.js",
+      "app/holidays.js",
+      "app/calendar.js",
+      "app/marks.js",
+      "app/timetable.js",
+      "app/post.js",
+      "app/messenger.js",
+      "app/events.js",
+      "app/conferences.js",
+      "app/schoolLists.js",
+      "app/accountLists.js",
+      "app/mail.js",
+      "app/mailCompose.js",
+      "app/mailSettings.js",
+      "app/schoolFiles.js",
+      "app/contacts.js",
+      "app/taskDetail.js",
+      "app/absences.js",
+      "app/settings.js",
+      "app/layout.js",
+      "app/names.js",
+      "app/schools.js",
+      "app/periodsPage.js",
+      "app/ownPlan.js",
       "lib/globals.js",
       "app.js",
     ]);
@@ -75,6 +101,32 @@ describe("the page loads its scripts in a fixed order", () => {
       expect(app, global).toMatch(new RegExp(`\\} = window\\.${global};`));
     }
     expect(bridge.split("\n").filter((line) => line.startsWith("window.")).length).toBe(installed.length);
+  });
+
+  test("the test loader runs the page's scripts in the page's order and holds back only the ones tests load on demand", () => {
+    expect(ON_DEMAND_SCRIPTS.every((name) => bodyScripts.some((script) => script.name === name))).toBe(true);
+    expect(LOADED_SCRIPTS.map((script) => script.name)).toEqual(
+      bodyScripts.map((script) => script.name).filter((name) => !ON_DEMAND_SCRIPTS.includes(name))
+    );
+    expect(readTestHelper("loadApp.js")).not.toMatch(/\.js"\), "utf8"\)/);
+  });
+
+  test("the app parts load together right before the globals, so app.js still comes last", () => {
+    const parts = scriptNames().filter((name) => name.startsWith(`${APP_PARTS_DIR}/`));
+    const names = bodyScripts.map((script) => script.name);
+    const first = names.indexOf("lib/globals.js") - parts.length;
+    expect([...names.slice(first, first + parts.length)].sort()).toEqual([...parts].sort());
+    expect(appSourceNames()).toEqual([...names.slice(first, first + parts.length), "app.js"]);
+  });
+
+  test("the app parts only declare at their top level, so nothing runs before app.js boots", () => {
+    const declaresOnly = (source) =>
+      source.split("\n").filter((line) => !/^(?:async function |function |const |let |[}\])]|$|\s)/.test(line));
+    expect(declaresOnly("function a() {\n  run();\n}\nconst b = 1;\nlet c;\n")).toEqual([]);
+    expect(declaresOnly("function a() {}\nboot();\nif (x) y();\nvar z = 1;\n")).toEqual(["boot();", "if (x) y();", "var z = 1;"]);
+    const parts = appSourceNames().filter((name) => name !== "app.js");
+    expect(parts.length).toBeGreaterThan(0);
+    for (const name of parts) expect(declaresOnly(readShipped(name)), name).toEqual([]);
   });
 
   test("every body script is deferred, so modules and classic scripts run in one queue", () => {

@@ -80,11 +80,11 @@ describe("today view", () => {
 
   it("names an unknown child and asks for one when none is configured", async () => {
     const unknown = await mountCard({ view: "today", child: "nobody" }, makeHass());
-    expect(unknown.shadowRoot.querySelector(".empty b").textContent).toBe("Person „nobody“ nicht gefunden.");
+    expect(unknown.shadowRoot.querySelector(".empty b").textContent).toBe("Profil „nobody“ nicht gefunden.");
     expect(unknown.shadowRoot.querySelector(".empty .ico-slot .ico")).not.toBeNull();
 
     const missing = await mountCard({ view: "today" }, makeHass());
-    expect(missing.shadowRoot.querySelector(".empty b").textContent).toBe("Keine Person gewählt. Trage in der Karte „child“ ein.");
+    expect(missing.shadowRoot.querySelector(".empty b").textContent).toBe("Kein Profil gewählt. Trage in der Karte „child“ ein.");
   });
 
   it("defaults to the today view and rejects an unknown view", async () => {

@@ -166,9 +166,22 @@ def test_a_registration_nobody_confirmed_is_refused_instead_of_stored():
     assert caught.value.detail["token_listed"] is False
 
 
-def test_a_registration_the_answer_lists_counts_even_when_the_list_page_is_refused():
+def test_a_registration_the_answer_lists_stays_unconfirmed_when_the_list_page_is_refused():
     client = _registering(FakeAnswer(403, REFUSED_PAGE), FakeAnswer(200, token_page("Ranzenpost")))
-    assert client.confirm_totp_registration(REGISTRATION, "Ranzenpost", "000000") == REGISTRATION.secret
+    with pytest.raises(TwoFactorError) as caught:
+        client.confirm_totp_registration(REGISTRATION, "Ranzenpost", "000000")
+    assert caught.value.message_key == REGISTRATION_UNCONFIRMED_KEY
+
+
+def test_an_old_entry_in_the_answer_never_counts_as_the_new_one_after_a_list_read_failed():
+    client = _registering(
+        FakeAnswer(200, token_page("Ranzenpost")),
+        FakeAnswer(200, token_page("Ranzenpost")),
+        list_after=FakeAnswer(500, "<html><body>Fehler</body></html>"),
+    )
+    with pytest.raises(TwoFactorError) as caught:
+        client.confirm_totp_registration(REGISTRATION, "Ranzenpost", "000000")
+    assert caught.value.message_key == REGISTRATION_UNCONFIRMED_KEY
 
 
 def test_a_rejected_code_keeps_its_own_wording():

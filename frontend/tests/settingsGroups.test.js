@@ -65,14 +65,19 @@ describe("the settings list has no group with a single row", () => {
     expect(lonely(page)).toEqual([]);
   });
 
-  test("the calendar subscription has a row next to push and Home Assistant in single-school mode too", () => {
+  test("the calendar subscription row sits next to notifications and Home Assistant and counts calendars instead of naming the port", () => {
     const { window } = loadApp();
     single(window);
     window.eval('state.calendar = { data: { port: 8199, port_open: true, subscriptions: [] } }; state.view = "settings"; render();');
     const row = window.document.querySelector(".calendar-setting");
     expect(row.closest(".settings-group").querySelector(".overline").textContent).toBe(label(window, "settings.section.notifications"));
-    expect(row.querySelector(".val").textContent).toBe(label(window, "schools.calendar.portOpen"));
-    row.click();
+    expect(row.querySelector(".val")).toBeNull();
+    window.eval('state.calendar = { data: { port: 8100, port_open: false, subscriptions: [] } }; render();');
+    expect(window.document.querySelector(".calendar-setting .val")).toBeNull();
+    window.eval('state.calendar = { data: { port: 8100, port_open: false, subscriptions: [{ id: "a", online: true }] } }; render();');
+    expect(window.document.querySelector(".calendar-setting .val").textContent).toBe(window.eval('tCount("schools.calendar.count", 1)'));
+    expect(window.document.querySelector(".calendar-setting .val").classList.contains("warn")).toBe(false);
+    window.document.querySelector(".calendar-setting").click();
     expect(window.eval("state.settingsPage")).toBe("calendar");
     expect(window.eval("state.sheet")).toBe(null);
   });

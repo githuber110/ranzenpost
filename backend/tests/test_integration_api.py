@@ -757,6 +757,10 @@ def test_school_admits_when_nothing_is_ahead(tmp_path):
         "unread_letters": {"count": 0, "items": []},
         "unread_posts": {"count": 0, "items": []},
         "unread_mail": None,
+        "open_tasks": None,
+        "news": None,
+        "unread_forum_posts": None,
+        "texts": None,
     }
 
 
@@ -968,15 +972,20 @@ def test_info_carries_the_module_registry_of_each_school(tmp_path):
         "conferences": True,
         "messenger": False,
         "calendar": True,
+        "tasks": False,
+        "news": False,
+        "forums": False,
+        "texts": False,
+        "infodisplay": False,
     }
-    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False}
+    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False}
     assert "unknown" not in schools[0]
 
 
 def test_info_shows_every_module_for_a_school_without_a_registry(tmp_path):
     client, store, _ = _app(tmp_path)
     body = client.get(PREFIX + "/info", headers=_auth(store)).json()
-    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False}
+    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False}
 
 
 def test_state_reads_unread_counts_from_the_school_of_the_child(tmp_path):

@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from . import modules, valueshape
 from .pathpattern import path_only, placeholders
-from .vocabulary import TOKEN, known_word
+from .vocabulary import TOKEN, known_header_word, known_word
 
 LANDMARK_TAGS = ("header", "nav", "main", "section", "article", "aside", "footer", "form", "table", "iframe", "dialog")
 FIELD_TAGS = ("input", "select", "textarea", "button")
@@ -14,6 +14,9 @@ MAX_LINKS = 200
 MAX_ENDPOINTS = 120
 MAX_HEADERS = 60
 MAX_TABLE_ROWS_LINES = 20
+MAX_OPTION_VALUES = 12
+COUNT_WORDS = frozenset("size pagesize count limit length per copies days hours minutes".split())
+NAME_WORD = re.compile(r"[A-Z]?[a-z]+")
 HEADER_CHARS = 40
 SCRIPT_PATH = re.compile(r"[\"'](/(?:iserv|_matrix)/[^\"'\s<>]*)[\"']")
 JSON_SCRIPT_TYPES = ("application/json", "application/ld+json")
@@ -25,10 +28,10 @@ def code_text(text):
     return valueshape.identifier_shape(text)
 
 
-def visible_text(text):
+def visible_text(text, known=known_word):
     def keep(match):
         token = match.group(0)
-        return token if token.isdigit() or known_word(token) else valueshape.WORD_MARK
+        return token if token.isdigit() or known(token) else valueshape.WORD_MARK
 
     return TOKEN.sub(keep, placeholders(str(text or "")))
 
@@ -56,7 +59,35 @@ def _field_label(field):
     return label_shape(node.get_text(" ")) if node is not None else ""
 
 
-def _field_line(field):
+def _choice_counts(form):
+    counts = {}
+    for field in form.find_all("input"):
+        if str(field.get("type") or "").lower() != "radio":
+            continue
+        name = str(field.get("name") or "").strip()
+        total, disabled = counts.get(name, (0, 0))
+        counts[name] = (total + 1, disabled + (1 if field.has_attr("disabled") else 0))
+    return counts
+
+
+def _option_value(value, counted):
+    text = str(value or "").strip()
+    if counted:
+        return code_text(text)
+    return code_text(DIGIT_RUN.sub("<n>", text))
+
+
+def option_values(select):
+    counted = bool({word.casefold() for word in NAME_WORD.findall(str(select.get("name") or ""))} & COUNT_WORDS)
+    options = [option for option in select.find_all("option") if option.has_attr("value")]
+    values = unique((_option_value(option.get("value"), counted) for option in options), MAX_OPTION_VALUES + 1)
+    if not values:
+        return ""
+    shown = " / ".join(values[:MAX_OPTION_VALUES])
+    return "values " + shown + (" / more" if len(values) > MAX_OPTION_VALUES else "")
+
+
+def _field_line(field, choices=None, values=False):
     name = str(field.get("name") or "").strip()
     if not name:
         return ""
@@ -65,7 +96,18 @@ def _field_line(field):
     if field.has_attr("required"):
         facts.append("required")
     if field.name == "select":
-        facts.append("options %d" % len(field.find_all("option")))
+        options = field.find_all("option")
+        facts.append("options %d" % len(options))
+        disabled = sum(1 for option in options if option.has_attr("disabled"))
+        if disabled:
+            facts.append("disabled %d" % disabled)
+        shown = option_values(field) if values else ""
+        if shown:
+            facts.append(shown)
+    if kind == "radio" and choices and choices.get(name, (0, 0))[0] > 1:
+        total, disabled = choices[name]
+        facts.append("choices %d" % total + (", disabled %d" % disabled if disabled else ""))
+        return "  - %s (%s)" % (code_text(placeholders(name)), ", ".join(facts))
     label = _field_label(field)
     if label:
         facts.append("label '%s'" % label)
@@ -121,15 +163,17 @@ def html_skeleton(html, link_shape=None):
     if landmarks:
         lines.append("- Landmarks: " + " | ".join(landmarks))
     for form in soup.find_all("form"):
-        head = "- Form: %s (%s)" % (link_shape(form.get("action") or "") or "-", str(form.get("method") or "get").lower())
+        method = str(form.get("method") or "get").lower()
+        head = "- Form: %s (%s)" % (link_shape(form.get("action") or "") or "-", method)
         if form.get("id"):
             head += " #" + code_text(placeholders(str(form.get("id"))))
         lines.append(head)
-        lines.extend(unique((_field_line(field) for field in form.find_all(FIELD_TAGS)), MAX_HEADERS))
+        choices = _choice_counts(form)
+        lines.extend(unique((_field_line(field, choices, method != "get") for field in form_fields(soup, form)), MAX_HEADERS))
     tables = soup.find_all("table")
     for index, table in enumerate(tables):
         heads = unique(
-            (visible_text(" ".join(th.get_text(" ").split()))[:HEADER_CHARS] for th in table.find_all("th")),
+            (visible_text(" ".join(th.get_text(" ").split()), known_header_word)[:HEADER_CHARS] for th in table.find_all("th")),
             MAX_HEADERS,
         )
         if heads:
@@ -152,6 +196,13 @@ def html_skeleton(html, link_shape=None):
         lines.append("- Endpoints: " + " | ".join(endpoints))
     lines.extend(embedded_json(soup))
     return lines
+
+
+def form_fields(soup, form):
+    fields = form.find_all(FIELD_TAGS)
+    if form.get("id"):
+        fields.extend(field for field in soup.find_all(FIELD_TAGS, attrs={"form": form.get("id")}) if field not in fields)
+    return fields
 
 
 def table_rows(table):
@@ -225,7 +276,3 @@ def body_kind(response):
     if "html" in content_type or "<" in text[:200]:
         return "html"
     return content_type or "unknown type"
-
-
-def status_of(response):
-    return int(getattr(response, "status_code", 0) or 0)

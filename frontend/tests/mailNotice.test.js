@@ -25,16 +25,16 @@ function notice(window) {
 }
 
 describe("the unread mail notice on the overview", () => {
-  test("names the unread count and links to IServ", () => {
+  test("names the unread count and opens the mail in the app, never IServ", () => {
     const { window } = loadApp();
-    seed(window, [{ connection_id: "a1", school: "School One", unread: 3, open_url: "https://school.example/iserv/mail" }]);
+    seed(window, [{ connection_id: "a1", school: "School One", unread: 3 }]);
     const shown = notice(window);
     expect(shown).not.toBeNull();
     expect(shown.textContent).toContain(evalWith(window, "tCount('mail.unread', 3)"));
-    const link = shown.querySelector("a");
-    expect(link.getAttribute("href")).toBe("https://school.example/iserv/mail");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(shown.querySelector("a")).toBeNull();
+    expect(shown.querySelector("[target]")).toBeNull();
+    const button = shown.querySelector("button.mail-notice-open");
+    expect(button.textContent).toContain(evalWith(window, "t('mail.show')"));
   });
 
   test("stays away without unread mail or with an unknown count", () => {
@@ -74,9 +74,10 @@ describe("the unread mail notice on the overview", () => {
     expect(asked.some((url) => url.includes("api/mail"))).toBe(true);
   });
 
-  test("shows no link without an address", () => {
+  test("shows no link even when an old answer still carries one", () => {
     const { window } = loadApp();
-    seed(window, [{ connection_id: "a1", school: "School One", unread: 1, open_url: "" }]);
+    seed(window, [{ connection_id: "a1", school: "School One", unread: 1, open_url: "https://school.example/iserv/mail" }]);
     expect(notice(window).querySelector("a")).toBeNull();
+    expect(notice(window).innerHTML).not.toContain("/iserv/");
   });
 });

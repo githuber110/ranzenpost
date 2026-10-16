@@ -1,17 +1,21 @@
 import ipaddress
 import json
+import logging
+import re
 import socket
 import time
 from collections import namedtuple
 from datetime import date
-from urllib.parse import urldefrag, urljoin, urlparse, urlsplit
+from urllib.parse import unquote, urldefrag, urljoin, urlparse, urlsplit
 
 import requests
+from bs4 import BeautifulSoup
 
 from .. import requestlog
 from ..lockout import LOCKED, classify_login_response, login_refusal
 from .auth import apply_login_fields, fill_two_factor_code
 from .pages import base_shape, refusal_of
+from .query import query_key
 from .children import (
     child_page_message_key,
     child_select_present,
@@ -29,7 +33,10 @@ from .errors import (
     LoginError,
     OutageError,
     PasswordError,
+    PasswordUnclearError,
     RATE_LIMIT_STATUS,
+    REASON_CONNECTION,
+    REASON_TIMEOUT,
     REASON_BAD_CREDENTIALS,
     REASON_DEFAULT_PASSWORD,
     REASON_LOCKED,
@@ -59,17 +66,29 @@ from .timetable import (
 )
 from .totp import generate_code
 from .twofactor import (
+    SETUP_STEP_ACTIVATE,
+    SETUP_STEP_NAME,
+    TOKEN_ID,
     build_confirm_payload,
     build_password_payload,
+    build_setup_payload,
     extract_form_errors,
     parse_password_form,
     parse_registration,
+    parse_setup_page,
+    parse_delete_token,
+    parse_token_list,
     parse_token_names,
     parse_token_rows,
     password_changed,
+    recognised_token_list,
     registration_rejected,
     setup_required,
+    setup_shape,
+    token_listed,
 )
+
+logger = logging.getLogger(__name__)
 
 LOGIN_FAILED_MARKER = "Anmeldung fehlgeschlagen"
 LOGIN_RETRY_SECONDS = 3
@@ -79,9 +98,20 @@ SECURITY_PATH = "/iserv/account/settings/security"
 TWOFACTOR_ADD_PATH = "/iserv/auth/settings/twofactor/add"
 TWOFACTOR_LIST_PATH = "/iserv/auth/settings/twofactor/"
 TWOFACTOR_DELETE_PATH = "/iserv/auth/settings/twofactor/delete/{uuid}"
+TOKEN_LIST_UNCLEAR_KEY = "api.disconnect.unclear"
+GONE_STATUS = 404
 MAX_REDIRECTS = 6
 TIME_TABLE_PAGE = "/iserv/time-table/"
 TIME_TABLE_DATA = "/iserv/time-table/data"
+KEPT_ANSWER_SECONDS = 120
+SETUP_NO_FORM_KEY = "api.wizard.setup.noForm"
+SETUP_LINK_LIMIT = 3
+SETUP_LINK_SKIPS = ("delete", "remove", "logout")
+SETUP_LINK_ROOT = "/iserv/"
+SETUP_OK = "ok"
+SETUP_REJECTED = "rejected"
+SETUP_UNCERTAIN = "uncertain"
+SetupOutcome = namedtuple("SetupOutcome", "status setup")
 
 
 ACCEPTED_LOGIN_STATUSES = (200, 302)
@@ -163,6 +193,7 @@ def password_outcome(answer, cookie_names):
 
 
 CappedBody = namedtuple("CappedBody", "status_code text truncated")
+FileBody = namedtuple("FileBody", "status_code url headers content truncated")
 TimeTablePage = namedtuple("TimeTablePage", "absent select children")
 CAPPED_CHUNK = 64 * 1024
 REDIRECT_NONE = "none"
@@ -186,7 +217,12 @@ CHAIN_TOO_LONG = "too many redirects"
 CHAIN_OUT_OF_TIME = "time budget reached"
 CHAIN_ISERV_PAGE = "chain stopped at an IServ page"
 CHAIN_ISERV_SIGN_IN = "chain stopped at the IServ sign-in page"
+CHAIN_BLOCKED_PATH = "chain stopped before a write or sign-out path"
+CHAIN_STEP_AGAIN = "chain stopped at a repeated IServ sign-in step"
+HOP_WORD = re.compile(r"[^a-z]+")
 ISERV_SIGN_IN_PATHS = ("/iserv/auth/auth",)
+MODULE_SIGN_IN_STEP = re.compile(r"^/iserv/[a-z0-9-]{1,40}/auth$")
+FRAME_HEADERS = ("X-Frame-Options", "Content-Security-Policy")
 ISERV_LOGIN_PREFIX = "/iserv/auth/login"
 CHAIN_BLOCKED_HOSTS = ("localhost",)
 CHAIN_BLOCKED_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa")
@@ -195,10 +231,11 @@ RedirectChain = namedtuple("RedirectChain", "hops landing stop reader")
 
 
 class UnfollowedAnswer:
-    def __init__(self, status_code, url, content_type, text, truncated, redirect, next_url=""):
+    def __init__(self, status_code, url, content_type, text, truncated, redirect, next_url="", kept=None):
         self.status_code = status_code
         self.url = url
         self.headers = {"Content-Type": content_type} if content_type else {}
+        self.headers.update(kept or {})
         self.text = text
         self.content = text.encode("utf-8")
         self.truncated = truncated
@@ -259,13 +296,28 @@ def chain_target_allowed(url, resolver=resolve_host):
     return bool(addresses) and all(_public_address(address) for address in addresses)
 
 
-def iserv_sign_in_step(url):
+def module_sign_in_steps(steps):
+    return tuple(step for step in steps or () if isinstance(step, str) and MODULE_SIGN_IN_STEP.match(step))
+
+
+def iserv_sign_in_step(url, steps=()):
     text = str(url or "")
     try:
         path = urlsplit(text).path
-        return path in ISERV_SIGN_IN_PATHS and urlsplit(requests.Request("GET", text).prepare().url).path == path
+        allowed = ISERV_SIGN_IN_PATHS + module_sign_in_steps(steps)
+        return path in allowed and urlsplit(requests.Request("GET", text).prepare().url).path == path
     except (requests.RequestException, ValueError, UnicodeError):
         return False
+
+
+def blocked_hop(url, words):
+    if not words:
+        return False
+    try:
+        path = unquote(urlsplit(str(url or "")).path).casefold()
+    except ValueError:
+        return True
+    return any(word in words for part in path.split("/") for word in HOP_WORD.split(part) if word)
 
 
 def iserv_stop(url):
@@ -277,17 +329,18 @@ def iserv_stop(url):
 
 
 class ChainSessions:
-    def __init__(self, home_url, home, own):
+    def __init__(self, home_url, home, own, steps=()):
         self.home_origin = _https_origin(home_url)
         self.home = home
         self.own = own
+        self.steps = module_sign_in_steps(steps)
 
     def at_home(self, url):
         origin = _https_origin(url)
         return origin is not None and origin == self.home_origin
 
     def session_for(self, url):
-        return self.home if self.at_home(url) and iserv_sign_in_step(url) else self.own
+        return self.home if self.at_home(url) and iserv_sign_in_step(url, self.steps) else self.own
 
     def get(self, url, **kwargs):
         return self.session_for(url).get(url, **kwargs)
@@ -316,8 +369,9 @@ def capped_get(session, url, limit, timeout, expired=None):
     return CappedBody(int(response.status_code or 0), text, truncated)
 
 
-def unfollowed_get(session, url, limit, timeout, home_url, expired=None):
-    response = session.get(url, timeout=timeout, stream=True, allow_redirects=False)
+def unfollowed_get(session, url, limit, timeout, home_url, expired=None, headers=None):
+    extra = {"headers": dict(headers)} if headers else {}
+    response = session.get(url, timeout=timeout, stream=True, allow_redirects=False, **extra)
     try:
         status = int(response.status_code or 0)
         location = response.headers.get("Location")
@@ -326,7 +380,8 @@ def unfollowed_get(session, url, limit, timeout, home_url, expired=None):
         text, truncated = ("", False) if next_url else _read_capped(response, limit, expired)
     finally:
         response.close()
-    return UnfollowedAnswer(status, url, str(response.headers.get("Content-Type") or ""), text, truncated, redirect, next_url)
+    kept = {name: str(response.headers.get(name)) for name in FRAME_HEADERS if response.headers.get(name)}
+    return UnfollowedAnswer(status, url, str(response.headers.get("Content-Type") or ""), text, truncated, redirect, next_url, kept)
 
 
 def _read_capped(response, limit, expired=None):
@@ -345,7 +400,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2610.2.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2610.3.0")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -353,6 +408,8 @@ class IServClient:
         self.refusal = ""
         self.answered = False
         self.sleeper = time.sleep
+        self.clock = time.time
+        self._kept = {}
         self.new_chain_session = requests.Session
         self.resolve_host = resolve_host
 
@@ -426,33 +483,96 @@ class IServClient:
     def fetch(self, path, params=None):
         return self._get(path, params=params)
 
+    @staticmethod
+    def _kept_key(path, params):
+        return path, query_key(params)
+
+    def fetch_live(self, path, params=None):
+        return self._get_live(path, params=params)
+
+    def fetch_and_keep(self, path, params=None):
+        response = self._get_live(path, params=params)
+        if int(getattr(response, "status_code", 0) or 0) == 200:
+            now = self.clock()
+            self._kept = {
+                key: entry for key, entry in self._kept.items() if now - entry[0] < KEPT_ANSWER_SECONDS
+            }
+            self._kept[self._kept_key(path, params)] = (now, response)
+        return response
+
+    def forget_kept(self):
+        self._kept = {}
+
+    def _take_kept(self, path, kwargs):
+        if not self._kept or set(kwargs) - {"params"}:
+            return None
+        entry = self._kept.pop(self._kept_key(path, kwargs.get("params")), None)
+        if entry is None or self.clock() - entry[0] >= KEPT_ANSWER_SECONDS:
+            return None
+        return entry[1]
+
     def fetch_capped(self, path, limit, timeout, expired=None):
         try:
             return capped_get(self.session, self._url(path), limit, timeout, expired)
         except requests.RequestException as error:
             raise transport_outage(error) from error
 
-    def fetch_unfollowed(self, path, limit, timeout, expired=None):
+    def fetch_file(self, path, limit, timeout=60):
+        url = self._url(path)
         try:
-            return unfollowed_get(self.session, self._url(path), limit, timeout, self.base_url, expired)
+            for _ in range(MAX_REDIRECTS):
+                response = self.session.get(url, timeout=timeout, stream=True, allow_redirects=False)
+                location = response.headers.get("location") if 300 <= int(response.status_code or 0) < 400 else ""
+                if not location:
+                    break
+                response.close()
+                url = urljoin(url, location)
+                if not self._is_same_origin(url):
+                    raise DataError("file redirected to another host")
+            else:
+                raise DataError("file redirected too often")
+            try:
+                body = bytearray()
+                truncated = False
+                for chunk in response.iter_content(chunk_size=CAPPED_CHUNK):
+                    body.extend(chunk)
+                    if len(body) > limit:
+                        truncated = True
+                        break
+            finally:
+                response.close()
+        except requests.RequestException as error:
+            raise transport_outage(error) from error
+        return FileBody(int(response.status_code or 0), url, response.headers, bytes(body), truncated)
+
+    def fetch_unfollowed(self, path, limit, timeout, expired=None, headers=None):
+        try:
+            return unfollowed_get(self.session, self._url(path), limit, timeout, self.base_url, expired, headers)
         except requests.RequestException as error:
             raise transport_outage(error) from error
 
-    def continue_chain(self, answer, max_hops, limit, timeout, expired=None):
+    def continue_chain(self, answer, max_hops, limit, timeout, expired=None, home_steps=(), stop_words=frozenset()):
         hops = [ChainHop(int(answer.status_code or 0), host_kind(answer.url, self.base_url))]
         target = getattr(answer, "next_url", "")
         if getattr(answer, "redirect", REDIRECT_NONE) != REDIRECT_OTHER_HOST or not target:
             return RedirectChain(hops, None, CHAIN_REFUSED, None)
         own = requestlog.install(self.new_chain_session(), urlparse(self.base_url).hostname or "")
         own.headers["User-Agent"] = self.session.headers.get("User-Agent", "")
-        chain = self.chain_sessions(own)
+        chain = self.chain_sessions(own, home_steps)
+        taken = set()
         for _ in range(max_hops):
             if expired is not None and expired():
                 return RedirectChain(hops, None, CHAIN_OUT_OF_TIME, None)
             if not chain_target_allowed(target, self.resolve_host):
                 return RedirectChain(hops, None, CHAIN_REFUSED, None)
-            if chain.at_home(target) and not iserv_sign_in_step(target):
+            if chain.at_home(target) and not iserv_sign_in_step(target, chain.steps):
                 return RedirectChain(hops, None, iserv_stop(target), None)
+            if blocked_hop(target, stop_words):
+                return RedirectChain(hops, None, CHAIN_BLOCKED_PATH, None)
+            if chain.at_home(target) and urlsplit(target).path in chain.steps + ISERV_SIGN_IN_PATHS:
+                if urlsplit(target).path in taken:
+                    return RedirectChain(hops, None, CHAIN_STEP_AGAIN, None)
+                taken.add(urlsplit(target).path)
             try:
                 reply = unfollowed_get(chain, target, limit, timeout, self.base_url, expired)
             except requests.RequestException as error:
@@ -464,8 +584,8 @@ class IServClient:
                 return RedirectChain(hops, reply, "", reader)
         return RedirectChain(hops, None, CHAIN_TOO_LONG, None)
 
-    def chain_sessions(self, own):
-        return ChainSessions(self.base_url, self.session, own)
+    def chain_sessions(self, own, steps=()):
+        return ChainSessions(self.base_url, self.session, own, steps)
 
     def fetch_or_raise(self, path, params=None):
         response = self._get(path, params=params)
@@ -490,17 +610,55 @@ class IServClient:
     def list_totp_token_rows(self):
         return parse_token_rows(self.fetch_or_raise(TWOFACTOR_LIST_PATH).text)
 
-    def delete_totp_token(self, uuid, code, csrf_token):
-        path = TWOFACTOR_DELETE_PATH.format(uuid=uuid)
-        answer = self._delete(path, {"delete[code]": code, "delete[_token]": csrf_token})
-        status = int(getattr(answer, "status_code", 0) or 0)
-        if status >= 400:
-            raise DataError(f"two-factor delete failed: {status}")
-        remaining = {row["uuid"] for row in self.list_totp_token_rows()}
-        return uuid not in remaining
+    def read_token_list(self):
+        return parse_token_list(self.fetch_or_raise(TWOFACTOR_LIST_PATH).text)
 
-    def _token_count(self, name):
-        return sum(1 for entry in self.list_totp_tokens() if entry == name)
+    def delete_totp_token(self, uuid, code, csrf_token):
+        if not isinstance(uuid, str) or not TOKEN_ID.fullmatch(uuid):
+            raise DataError("two-factor token id refused")
+        path = TWOFACTOR_DELETE_PATH.format(uuid=uuid)
+        try:
+            answer = self._delete(path, {"delete[code]": code, "delete[_token]": csrf_token})
+        except OutageError as error:
+            logger.warning("two-factor delete answer: none, the request failed on the way: %s", error.reason)
+            answer = None
+        status = int(getattr(answer, "status_code", 0) or 0)
+        if answer is not None and status >= 400 and status != GONE_STATUS:
+            raise DataError(f"two-factor delete failed: {status}")
+        html, rows, _token = self.token_removal_list()
+        return not token_listed(html, rows, uuid)
+
+    def token_removal_list(self):
+        try:
+            response = self.fetch_or_raise(TWOFACTOR_LIST_PATH)
+        except (DataError, requests.RequestException) as error:
+            raise DataError("two-factor token list not read", message_key=TOKEN_LIST_UNCLEAR_KEY) from error
+        html = getattr(response, "text", "") or ""
+        rows = recognised_token_list(html)
+        if rows is None:
+            logger.warning("two-factor token list not recognised: %s", json.dumps(base_shape(response), sort_keys=True))
+            raise DataError("two-factor token list not recognised", message_key=TOKEN_LIST_UNCLEAR_KEY)
+        return html, rows, parse_delete_token(html)
+
+    def _token_listing(self, name):
+        try:
+            response = self.fetch_or_raise(TWOFACTOR_LIST_PATH)
+        except (DataError, requests.RequestException):
+            return None, None
+        text = getattr(response, "text", "") or ""
+        url = getattr(response, "url", "") or ""
+        if parse_setup_page(text, url) is not None or setup_required(text, url, True):
+            return None, response
+        return sum(1 for entry in parse_token_names(text) if entry == name), response
+
+    def _listed_count(self, name):
+        return self._token_listing(name)[0]
+
+    @staticmethod
+    def _listed_more(before, after):
+        if before is None or after is None:
+            return None
+        return after > before
 
     def confirm_totp_registration(self, registration, name, verification_code, at=None):
         payload = build_confirm_payload(
@@ -509,18 +667,9 @@ class IServClient:
             verification_code,
             generate_code(registration.secret, at=at),
         )
-        try:
-            before = self._token_count(name)
-        except (DataError, requests.RequestException):
-            before = None
+        before = self._listed_count(name)
         result = self._post(registration.action, payload)
-        try:
-            registered = self._token_count(name) > before if before is not None else None
-        except (DataError, requests.RequestException):
-            registered = None
-        if registered is None:
-            registered = name in parse_token_names(result.text)
-        if registered:
+        if self._listed_more(before, self._listed_count(name)):
             return registration.secret
         errors = extract_form_errors(result.text)
         if errors or registration_rejected(result.text):
@@ -531,13 +680,98 @@ class IServClient:
             detail=registration_shape(result, name),
         )
 
+    def open_twofactor_setup(self, name, password):
+        before, listed = self._token_listing(name)
+        setup = self._read_setup(listed, "listed") if before is None else None
+        page = listed
+        if setup is None:
+            page = self.landing_page
+            setup = self._read_setup(page, "landing")
+        if setup is None:
+            for target in self._setup_targets(page):
+                page = self._get(target)
+                self._raise_server_failure(page)
+                setup = self._read_setup(page, "linked")
+                if setup is not None:
+                    break
+        if setup is not None and setup.step == SETUP_STEP_NAME:
+            page = self._post(setup.action, build_setup_payload(setup, name, "", password))
+            self._raise_server_failure(page)
+            setup = self._read_setup(page, "named")
+        if setup is None or setup.step != SETUP_STEP_ACTIVATE:
+            raise TwoFactorError(
+                "two-factor setup form not found",
+                message_key=SETUP_NO_FORM_KEY,
+                detail=dict(base_shape(page), setup=setup_shape(page)),
+            )
+        setup.listed_before = before
+        return setup
+
+    def _read_setup(self, response, where):
+        if response is None:
+            return None
+        setup = parse_setup_page(getattr(response, "text", "") or "", getattr(response, "url", ""))
+        if setup is not None and not self._is_same_origin(setup.action):
+            setup = None
+        shape = dict(base_shape(response), setup=setup_shape(response, setup), where=where)
+        logger.info("two-factor setup page: %s", json.dumps(shape, sort_keys=True))
+        return setup
+
+    def _setup_targets(self, response):
+        targets = []
+        text = getattr(response, "text", "") or ""
+        base = getattr(response, "url", "") or self.base_url
+        for link in BeautifulSoup(text, "html.parser").find_all("a", href=True):
+            target = urldefrag(urljoin(base, link["href"]))[0]
+            path = urlsplit(target).path.lower()
+            if not self._is_same_origin(target) or not path.startswith(SETUP_LINK_ROOT):
+                continue
+            if "twofactor" not in path.replace("-", ""):
+                continue
+            if any(word in path for word in SETUP_LINK_SKIPS) or target in targets:
+                continue
+            targets.append(target)
+        add = self._url(TWOFACTOR_ADD_PATH)
+        if add not in targets:
+            targets.append(add)
+        return targets[:SETUP_LINK_LIMIT]
+
+    def confirm_twofactor_setup(self, setup, name, code, password):
+        before = setup.listed_before
+        try:
+            answer = self._post(setup.action, build_setup_payload(setup, name, code, password))
+        except OutageError:
+            logger.warning("two-factor setup answer: none, the request failed on the way")
+            return SetupOutcome(SETUP_UNCERTAIN, None)
+        after = self._listed_count(name)
+        status = int(getattr(answer, "status_code", 0) or 0)
+        again = parse_setup_page(getattr(answer, "text", "") or "", getattr(answer, "url", ""))
+        if again is not None and not self._is_same_origin(again.action):
+            again = None
+        shape = dict(base_shape(answer), setup=setup_shape(answer, again), listed_before=before, listed_after=after)
+        logger.info("two-factor setup answer: %s", json.dumps(shape, sort_keys=True))
+        if self._listed_more(before, after):
+            return SetupOutcome(SETUP_OK, None)
+        if after is not None and status < 500 and again is not None and again.step == SETUP_STEP_ACTIVATE:
+            text = getattr(answer, "text", "") or ""
+            if extract_form_errors(text) or registration_rejected(text):
+                again.listed_before = before
+                return SetupOutcome(SETUP_REJECTED, again)
+        return SetupOutcome(SETUP_UNCERTAIN, None)
+
     def change_password(self, current, new):
         response = self.get_security_page()
         form = parse_password_form(response.text, response.url)
         if form is None:
             raise PasswordError("password change form not found")
         payload = build_password_payload(form, current, new)
-        result = self._post(form.action, payload)
+        try:
+            result = self._post(form.action, payload)
+        except OutageError as error:
+            if error.reason not in (REASON_TIMEOUT, REASON_CONNECTION):
+                raise
+            logger.warning("password change answer: none, the request failed on the way: %s", error.reason)
+            raise PasswordUnclearError("the password change answer was lost") from error
         return self._verify_password_change(current, new, result.text)
 
     def _verify_password_change(self, current, new, html):
@@ -688,18 +922,26 @@ class IServClient:
         return response
 
     def _get(self, path, **kwargs):
+        kept = self._take_kept(path, kwargs)
+        if kept is not None:
+            return kept
+        return self._get_live(path, **kwargs)
+
+    def _get_live(self, path, **kwargs):
         try:
             return self.session.get(self._url(path), timeout=self.timeout, **kwargs)
         except requests.RequestException as error:
             raise transport_outage(error) from error
 
     def _post(self, path, data):
+        self.forget_kept()
         try:
             return self.session.post(self._url(path), data=data, timeout=self.timeout)
         except requests.RequestException as error:
             raise transport_outage(error) from error
 
     def _delete(self, path, data):
+        self.forget_kept()
         try:
             return self.session.request("DELETE", self._url(path), data=data, timeout=self.timeout)
         except requests.RequestException as error:
@@ -717,8 +959,18 @@ class IServClient:
             return path
         return f"{self.base_url}{path}"
 
+    def post_form(self, url, data, files=None, headers=None, timeout=60):
+        if not self._is_same_origin(url):
+            raise DataError("cross-origin request blocked")
+        self.forget_kept()
+        extra = {"headers": headers} if headers else {}
+        if files:
+            extra["files"] = files
+        return self.session.post(url, data=data, timeout=timeout, **extra)
+
     def post_absolute(self, url, data, timeout=30, follow_redirects=True, headers=None):
         if not self._is_same_origin(url):
             raise DataError("cross-origin request blocked")
+        self.forget_kept()
         extra = {"headers": headers} if headers else {}
         return self.session.post(url, data=data, timeout=timeout, allow_redirects=follow_redirects, **extra)

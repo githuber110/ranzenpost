@@ -33,11 +33,17 @@ class StubClient:
     def is_authenticated(self):
         return self._authed
 
-    def list_totp_token_rows(self):
+    def read_token_list(self):
         return list(self._token_rows)
 
     def add_token_row(self, name, uuid):
         self._token_rows.append({"name": name, "uuid": uuid})
+
+
+def quiet_prober():
+    prober = IServProber()
+    prober.sleeper = lambda seconds: None
+    return prober
 
 
 def patch(monkeypatch, stubs):
@@ -130,22 +136,22 @@ def test_a_code_while_iserv_still_forces_the_setup_is_not_a_wrong_password(monke
 
 def test_a_stored_secret_check_names_the_forced_setup(monkeypatch):
     patch(monkeypatch, [StubClient(login_exc=TwoFactorSetupRequired("setup"))])
-    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "twofactor_required_setup"
+    assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == "twofactor_required_setup"
 
 
 def test_a_stored_secret_check_keeps_the_reason_iserv_named(monkeypatch):
     for reason in ("locked", "unknown_account", "default_password_blocked", "bad_credentials"):
         patch(monkeypatch, [StubClient(login_exc=LoginError("refused", reason=reason))])
-        assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == reason
+        assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == reason
 
 
 def test_a_stored_secret_check_without_a_session_is_unknown_and_not_a_wrong_code(monkeypatch):
     never_opened = TwoFactorError("no session", detail={"login_stage": "session"})
     patch(monkeypatch, [StubClient(login_exc=never_opened)])
-    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
+    assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
     refused = TwoFactorError("code", detail={"login_stage": "two_factor"})
     patch(monkeypatch, [StubClient(login_exc=refused)])
-    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
+    assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
 
 
 def test_a_stored_secret_check_that_opens_no_session_after_the_code_is_unknown_like_the_running_connection(monkeypatch):
@@ -153,10 +159,10 @@ def test_a_stored_secret_check_that_opens_no_session_after_the_code_is_unknown_l
         "no session", message_key="api.login.session", detail={"login_stage": "two_factor"}
     )
     patch(monkeypatch, [StubClient(login_exc=after_the_code)])
-    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
+    assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == "unknown"
     refused = TwoFactorError("code", message_key="api.login.twofactor", detail={"login_stage": "two_factor"})
     patch(monkeypatch, [StubClient(login_exc=refused)])
-    assert IServProber().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
+    assert quiet_prober().verify_totp("https://x", "u", "p", VALID_SECRET) == "bad_code"
 
 
 def test_starting_the_setup_without_a_session_is_unknown_and_not_a_wrong_code(monkeypatch):
@@ -166,3 +172,32 @@ def test_starting_the_setup_without_a_session_is_unknown_and_not_a_wrong_code(mo
     refused = TwoFactorError("code", message_key="api.login.twofactor", detail={"login_stage": "two_factor"})
     patch(monkeypatch, [StubClient(login_exc=refused)])
     assert IServProber().begin_2fa("https://x", "u", "p", "123456") == {"status": "bad_code"}
+
+
+def test_a_confirm_that_timed_out_after_sending_asks_to_check_the_registration(monkeypatch):
+    import requests
+
+    from app.iserv.errors import transport_outage
+
+    from types import SimpleNamespace
+
+    stub = StubClient(register=VALID_SECRET, authed=True, confirm_exc=transport_outage(requests.ReadTimeout("late")))
+    stub.start_totp_registration = lambda: SimpleNamespace(secret=VALID_SECRET)
+    patch(monkeypatch, [stub])
+    prober = quiet_prober()
+    prober.begin_2fa("https://x", "u", "p", "123456")
+    assert prober.confirm_2fa("https://x", "u", "p", "123456") == {"status": "unconfirmed"}
+    stub.add_token_row("ISERV-Connector", "new-uuid")
+    assert prober.check_registration("https://x", "u")["status"] == "ok"
+
+
+def test_a_confirm_that_never_left_stays_an_outage(monkeypatch):
+    import requests
+
+    from app.iserv.errors import transport_outage
+
+    refused = transport_outage(requests.ConnectionError("Connection refused"))
+    patch(monkeypatch, [StubClient(register=VALID_SECRET, authed=True, confirm_exc=refused)])
+    prober = quiet_prober()
+    prober.begin_2fa("https://x", "u", "p", "123456")
+    assert prober.confirm_2fa("https://x", "u", "p", "123456")["status"] != "unconfirmed"

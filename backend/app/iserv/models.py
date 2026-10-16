@@ -12,7 +12,7 @@ class Child:
 class Lesson:
     date: str
     day_of_week: int
-    period: int
+    period: Optional[int]
     subject: str
     teacher: str
     room: str

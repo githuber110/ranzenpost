@@ -1,3 +1,4 @@
+import json
 import inspect
 
 import pytest
@@ -8,6 +9,7 @@ from app.iserv.errors import DataError
 from app.server import create_app
 from app.service import SCHOOL_REQUIRED_KEY, UNKNOWN_CONNECTION_KEY, IServService, SchoolRequiredError
 from app.store import Store
+from app.uploads import UPLOAD_FIELD
 from tests.support import SCHOOL_ONE, SCHOOL_TWO, add_school
 
 ALL_SCHOOL_METHODS = {
@@ -33,6 +35,12 @@ SCHOOL_ROUTES = {
     ("GET", "/api/me"): {},
     ("GET", "/api/absences"): {},
     ("GET", "/api/absences/sick-note-pdf"): {"params": {"id": "7"}},
+    ("GET", "/api/absences/older-form"): {},
+    ("GET", "/api/absences/older-detail"): {"params": {"id": "481"}},
+    ("GET", "/api/absences/older-attachment"): {"params": {"id": "481", "key": "k"}},
+    ("GET", "/api/absences/older-export"): {},
+    ("POST", "/api/absences/older-attachment/delete"): {"json": {"id": "481", "key": "k"}},
+    ("POST", "/api/absences/older-attachment"): {"multipart": {"id": "481"}},
     ("GET", "/api/absences/attachment/{filename}"): {"path": "/api/absences/attachment/file.pdf"},
     ("GET", "/api/holidays"): {},
     ("GET", "/api/holidays/region-suggestion"): {},
@@ -41,9 +49,17 @@ SCHOOL_ROUTES = {
     ("GET", "/api/messenger/room/teacher/children"): {},
     ("GET", "/api/messenger/media/{server_name}/{media_id}"): {"path": "/api/messenger/media/school.example/abc"},
     ("GET", "/api/letters/detail"): {"params": {"letter_id": "1", "recipient_id": "2"}},
+    ("GET", "/api/letters/answer"): {"params": {"letter_id": "1", "recipient_id": "2"}},
     ("GET", "/api/letters/attachment/{attachment_id}"): {"path": "/api/letters/attachment/1"},
     ("GET", "/api/pinboard/attachment/{filename}"): {"path": "/api/pinboard/attachment/file.pdf"},
+    ("GET", "/api/conferences/page"): {"params": {"page": "0" * 24}},
+    ("GET", "/api/tasks/detail"): {"params": {"task": "t1"}},
+    ("GET", "/api/tasks/file"): {"params": {"task": "t1", "kind": "file", "index": 0}},
+    ("GET", "/api/news/file"): {"params": {"item": "general/1", "kind": "file", "index": 0}},
+    ("GET", "/api/news/section/detail"): {"params": {"section": "archive", "item": "general/1"}},
+    ("POST", "/api/conferences/submit"): {"json": {"page": "0" * 24, "form": 0, "values": {}, "request_id": "r1", "confirmed": True}},
     ("POST", "/api/modules/recheck"): {"json": {}},
+    ("POST", "/api/forums/read"): {"json": {"confirmed": True}},
     ("POST", "/api/password"): {"json": {"current": "old-secret", "new": "new-secret"}},
     ("POST", "/api/password/repair"): {"json": {"password": "secret"}},
     ("POST", "/api/account/disconnect"): {"json": {}},
@@ -56,6 +72,42 @@ SCHOOL_ROUTES = {
     ("POST", "/api/letters/reply"): {"json": {"letter_id": "1", "recipient_id": "2", "text": "Ja", "request_id": "r1"}},
     ("POST", "/api/letters/archive"): {"json": {"letter_id": "1", "recipient_id": "2"}},
     ("POST", "/api/letters/restore"): {"json": {"letter_id": "1", "recipient_id": "2"}},
+    ("GET", "/api/mail/folders"): {},
+    ("GET", "/api/mail/messages"): {"params": {"folder": "INBOX"}},
+    ("GET", "/api/mail/message"): {"params": {"folder": "INBOX", "uid": "7"}},
+    ("GET", "/api/mail/source"): {"params": {"folder": "INBOX", "uid": "7"}},
+    ("GET", "/api/mail/compose"): {},
+    ("GET", "/api/mail/account"): {},
+    ("GET", "/api/mail/recipients"): {"params": {"q": "Beh"}},
+    ("GET", "/api/mail/settings"): {},
+    ("GET", "/api/mail/settings/page"): {"params": {"path": "/iserv/mail/settings/vacation"}},
+    ("GET", "/api/mail/event"): {"params": {"folder": "INBOX", "uid": "7"}},
+    ("GET", "/api/mail/attachment"): {"params": {"folder": "INBOX", "uid": "7", "part": "2"}},
+    ("GET", "/api/mail/body"): {"params": {"folder": "INBOX", "uid": "7"}},
+    ("POST", "/api/mail/seen"): {"json": {"folder": "INBOX", "uid": "7"}},
+    ("POST", "/api/mail/flag"): {"json": {"folder": "INBOX", "uids": ["7"], "flag": "flagged", "on": True}},
+    ("POST", "/api/mail/move"): {"json": {"folder": "INBOX", "uids": ["7"], "target": "Archive"}},
+    ("POST", "/api/mail/archive"): {"json": {"folder": "INBOX", "uids": ["7"]}},
+    ("POST", "/api/mail/trash"): {"json": {"folder": "INBOX", "uids": ["7"]}},
+    ("POST", "/api/mail/spam"): {"json": {"folder": "INBOX", "uids": ["7"], "confirmed": True}},
+    ("POST", "/api/mail/folder/create"): {"json": {"name": "Elternrat"}},
+    ("POST", "/api/mail/folder/rename"): {"json": {"folder": "Elternrat", "name": "Klasse"}},
+    ("POST", "/api/mail/folder/delete"): {"json": {"folder": "Elternrat", "confirmed": True}},
+    ("POST", "/api/mail/draft/delete"): {"json": {"folder": "Drafts", "uid": "4", "confirmed": True}},
+    ("POST", "/api/mail/receipt"): {"json": {"folder": "INBOX", "uid": "7", "send": False}},
+    ("POST", "/api/mail/settings/page"): {"json": {"path": "/iserv/mail/settings/vacation", "form": 0, "values": {}, "confirmed": True}},
+    ("POST", "/api/mail/event"): {"json": {"path": "/iserv/calendar/create", "form": 0, "values": {}, "confirmed": True}},
+    ("POST", "/api/mail/draft"): {"multipart": {"to": []}},
+    ("POST", "/api/mail/send"): {"multipart": {"to": ["a@school.example"], "request_id": "a" * 32, "confirmed": True}},
+    ("GET", "/api/files"): {},
+    ("GET", "/api/files/search"): {"params": {"path": "own", "q": "plan"}},
+    ("GET", "/api/files/file"): {"params": {"path": "/iserv/file/-/Files/a.pdf"}},
+    ("POST", "/api/files/upload"): {"multipart": {"path": "own", "confirmed": True}},
+    ("GET", "/api/addressbook/search"): {"params": {"q": "Beh"}},
+    ("GET", "/api/mailinglists"): {},
+    ("GET", "/api/mailinglists/detail"): {"params": {"list_id": "41"}},
+    ("POST", "/api/mailinglists/import"): {"multipart": {"confirmed": True}},
+    ("POST", "/api/mailinglists/delete"): {"json": {"list_id": "41", "confirmed": True}},
 }
 REFUSALS = {SCHOOL_REQUIRED_KEY, UNKNOWN_CONNECTION_KEY}
 
@@ -179,6 +231,10 @@ def call(client, key, extra=None):
     if method == "GET":
         return client.get(url, params=params)
     body = dict(spec.pop("json", {}), **(extra or {}).get("json", {}))
+    if "multipart" in spec:
+        fields = dict(spec.pop("multipart"), **body)
+        upload = {UPLOAD_FIELD: ("note.pdf", b"%PDF-1.4", "application/pdf")}
+        return client.post(url, params=params, data={"data": json.dumps(fields)}, files=upload)
     return client.post(url, params=params, json=body)
 
 

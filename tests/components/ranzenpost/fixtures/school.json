@@ -49,5 +49,67 @@
       }
     ]
   },
-  "unread_mail": 2
+  "unread_mail": 2,
+  "open_tasks": {
+    "count": 2,
+    "items": [
+      {
+        "title": "Worksheet fractions",
+        "sender": "",
+        "date": "2026-09-04",
+        "child": ""
+      },
+      {
+        "title": "Poster",
+        "sender": "",
+        "date": "2026-09-10",
+        "child": ""
+      }
+    ]
+  },
+  "news": {
+    "count": 1,
+    "items": [
+      {
+        "title": "Library opens later",
+        "sender": "General",
+        "date": "2026-09-01",
+        "child": ""
+      }
+    ]
+  },
+  "unread_forum_posts": {
+    "count": 4,
+    "items": [
+      {
+        "title": "School yard",
+        "sender": "General forums",
+        "date": "2026-09-01",
+        "child": "",
+        "id": "4101:a1b2c3d4e5f60718",
+        "text": "Lunch break games 01.09.2026 09:40"
+      }
+    ],
+    "fresh": []
+  },
+  "texts": {
+    "count": 2,
+    "items": [
+      {
+        "title": "Minutes of the class council",
+        "sender": "Class teacher",
+        "date": "2026-09-01",
+        "child": "",
+        "id": "p1"
+      },
+      {
+        "title": "Ideas for the school fair",
+        "sender": "Parents' association",
+        "date": "2026-08-28",
+        "child": "",
+        "id": "p2"
+      }
+    ],
+    "fresh": []
+  }
 }

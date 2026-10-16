@@ -3,6 +3,72 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.3.0
+
+### New
+
+- Tasks from IServ in their own view: open and past tasks with text, files, feedback and model solutions, read when
+  you open a task. Hand in files or text, remove a handed-in file and mark a task done, each after a confirmation.
+- News from IServ with full text, files and images. Archive and package news come through the filter, with search.
+- IServ email inside Ranzenpost: folders, search, reading, replying, forwarding, drafts, attachments, read receipts,
+  tags, sender addresses, recipient and group search, and an event from a mail. Out-of-office note, forwarding,
+  filter rules and signatures are edited in the app through IServ's own settings forms.
+- Parent-teacher conferences inside the app: teachers, rooms, free slots and your bookings. Book, change and cancel a
+  slot after a confirmation. Push messages when booking opens, when a booking is cancelled, three days before and
+  shortly before.
+- Letters that ask for a choice are answered in Ranzenpost, and a sent answer can be changed.
+- Schools that still use IServ's older absence page can report absences with attachments, read the change log,
+  export the list and withdraw entries in the app.
+- When a school requires two-factor sign-in and the account has none yet, the setup sets it up with you: QR code,
+  key and code. Old Ranzenpost entries left in IServ can be removed from the setup.
+- School events include every calendar the account sees in IServ, plugin calendars such as an exam plan and the
+  account's personal calendar included.
+- Task and news blocks on the overview and the card. Home Assistant sensors and triggers for new tasks and news.
+- Forums: every forum with its unread posts, a push and a Home Assistant sensor and trigger for new posts, and
+  marking everything as read after a confirmation. The forums block is on the overview by default. Forums appear
+  only where the account has the module.
+- Texts: every text the account sees in IServ, hidden ones too, with filter, tags and search. A push and a Home
+  Assistant sensor and trigger for new texts.
+- Info screens: the list of info screens the account sees.
+- Files: your own files and group folders. Search, open and save files, and upload into a folder after a
+  confirmation.
+- Contacts: search the school address book and write an email to a person. See mailing lists, import one from a text
+  or CSV file, or delete one, each after a confirmation.
+- Mail can mark an email as spam, with undo, and move it back with Not spam. Recipients can come from the address
+  book or a mailing list.
+
+### Changed
+
+- Ranzenpost no longer sends you to IServ. Everything that opened IServ before now happens in the app.
+- Pages the school refuses or does not have are asked for again once a day, after sign-in or when you check the
+  modules again. Each page is read once per refresh.
+- Disconnecting keeps the school until its Ranzenpost entry in IServ is removed. You can try again or disconnect
+  anyway.
+- The problem report records the structure of more IServ pages: calendar sources, task and news pages, mail settings,
+  forms and the lesson slot numbers. It explores forums, course selection, polls, files, to-do, texts, whiteboards,
+  mailing lists, printing, video conferences, info screens and connected services more deeply. It still records no
+  content.
+- Settings show how many calendars you subscribed to. Notifications have one name in the settings and in their
+  sheet. The card editor lists each block once. In English the letters tab is called "Letters".
+- The school subscription hint no longer promises "no names".
+
+### Fixed
+
+- The week timetable shows period 0, for example an 08:00 first lesson, as its own row.
+- A sick note sent to a slow school is no longer shown as failed, and it is not sent twice.
+- A password change interrupted by the connection no longer leaves the old password stored.
+- One failed school answer no longer hides a module for a day.
+- On the day summer time starts, times between 01:00 and 02:00 are no longer shown an hour late.
+- Letters, noticeboard posts and absence answers can no longer carry hidden code into the app. School files download
+  as files unless they are images or PDFs. Mail bodies are shown in a closed frame.
+- Updated source-map-js in the test tools to close a security alert. The app itself does not use it.
+- The app refuses write requests that another website sends to it.
+
+### Note
+
+- Before you go back to an older version, delete the school calendar subscriptions in the settings. Older versions do
+  not remove them when you disconnect a school.
+
 ## 2610.2.0
 
 ### New

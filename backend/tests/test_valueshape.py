@@ -36,3 +36,33 @@ def test_strings_across_entries_show_their_length_range_empties_and_gaps():
 
 def test_a_single_value_keeps_the_plain_shape():
     assert shape_lines({"title": "abc"}) == ["(root): object keys 1", "title: string len 3, letters"]
+
+
+def test_shape_lines_keep_order_spread_and_limits_of_the_tree_walk():
+    from app import valueshape
+
+    data = {"rows": [{"name": "a", "note": None}, {"name": "bcd"}], "total": 3}
+    assert valueshape.shape_lines(data) == [
+        "(root): object keys 2",
+        "rows: array len 2 of object",
+        "rows[]: object keys 2",
+        "rows[].name: string len 1, letters (len 1-3 of 2)",
+        "rows[].note: null (missing 1)",
+        "total: int >0",
+    ]
+    assert valueshape.shape_lines(data, 2) == ["(root): object keys 2", "rows: array len 2 of object"]
+    deep = "x"
+    for _ in range(valueshape.MAX_DEPTH + 3):
+        deep = {"a": deep}
+    assert len(valueshape.shape_lines(deep)) == valueshape.MAX_DEPTH + 1
+
+
+def test_numbers_across_entries_count_their_zeros_and_values_below_zero():
+    data = {"slots": [{"number": 1}, {"number": 0}, {"number": 2}, {"number": -1}, {"number": 0}]}
+
+    assert "slots[].number: int >0 (zero 2, below zero 1)" in shape_lines(data)
+
+
+def test_numbers_that_share_one_sign_keep_the_plain_shape():
+    assert "slots[].number: int >0" in shape_lines({"slots": [{"number": 1}, {"number": 5}]})
+    assert "slots[].number: int 0" in shape_lines({"slots": [{"number": 0}, {"number": 0}]})

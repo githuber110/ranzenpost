@@ -77,6 +77,22 @@ describe("week view", () => {
     expect(pair.shadowRoot.querySelector(".tt-cell.courses")).toBeNull();
   });
 
+  it("shows an 08:00 first lesson on one day as its own earlier row", async () => {
+    const lesson = (uid, day, start, end) => ({
+      uid, summary: "Maths", description: "", location: "R1", start: `2026-09-${day}T${start}:00+02:00`, end: `2026-09-${day}T${end}:00+02:00`,
+      all_day: false, cancelled: false, color: "#3366cc", subject_code: "M", subject: "Maths",
+    });
+    const hass = makeHass({ events: { lessons: [lesson("zero@s", "04", "08:00", "08:45"), lesson("one@s", "03", "08:50", "09:35"), lesson("two@s", "04", "08:50", "09:35")] } });
+    const card = await mountCard({ view: "week", child: "alex" }, hass);
+    const root = card.shadowRoot;
+    expect(texts(root, ".tt-hour b")).toEqual(["08:00", "08:50"]);
+    const early = root.querySelector('.tt-cell[data-uid="zero@s"]');
+    expect(early.style.gridRow).toBe("2");
+    expect(early.style.gridColumn).toBe("6");
+    expect(root.querySelector('.tt-cell[data-uid="one@s"]').style.gridRow).toBe("3");
+    expect(root.querySelectorAll(".tt-cell.free[style*='grid-row:2']")).toHaveLength(4);
+  });
+
   it("marks only the subject of an exam when two lessons share the period", async () => {
     const lesson = (uid, code, subject) => ({
       uid, summary: subject, description: "", location: "R1", start: "2026-09-03T08:00:00+02:00", end: "2026-09-03T08:45:00+02:00",

@@ -329,32 +329,46 @@ class Notice:
     sender: str
     date: date | None
     child: str
+    id: str = ""
+    text: str = ""
+    seen: int = 0
 
     @classmethod
     def from_json(cls, data: Any) -> Notice:
         if not isinstance(data, dict):
             return cls(title=str(data or ""), sender="", date=None, child="")
+        seen = data.get("seen")
         return cls(
             title=str(data.get("title") or ""),
             sender=str(data.get("sender") or ""),
             date=parse_date(data.get("date")),
             child=str(data.get("child") or ""),
+            id=str(data.get("id") or ""),
+            text=str(data.get("text") or ""),
+            seen=seen if isinstance(seen, int) and not isinstance(seen, bool) and seen > 0 else 0,
         )
 
     def as_attributes(self) -> dict[str, Any]:
-        return {"title": self.title, "sender": self.sender, "date": _isoformat(self.date), "child": self.child}
+        attributes = {"title": self.title, "sender": self.sender, "date": _isoformat(self.date), "child": self.child}
+        for name in ("id", "text"):
+            if getattr(self, name):
+                attributes[name] = getattr(self, name)
+        return attributes
 
 
 @dataclass(frozen=True)
 class Notices:
     count: int
     items: tuple[Notice, ...]
+    fresh: tuple[Notice, ...] | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Notices:
+        fresh = data.get("fresh")
         return cls(
             count=int(data.get("count") or 0),
             items=tuple(Notice.from_json(item) for item in data.get("items") or []),
+            fresh=tuple(Notice.from_json(item) for item in fresh) if isinstance(fresh, list) else None,
         )
 
     def as_attributes(self) -> list[dict[str, Any]]:
@@ -593,6 +607,10 @@ class School:
     unread_letters: Notices | None = None
     unread_posts: Notices | None = None
     unread_mail: int | None = None
+    open_tasks: Notices | None = None
+    news: Notices | None = None
+    unread_forum_posts: Notices | None = None
+    texts: Notices | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> School:
@@ -614,6 +632,10 @@ class School:
             unread_letters=_notices_or_none(data.get("unread_letters")),
             unread_posts=_notices_or_none(data.get("unread_posts")),
             unread_mail=_count_or_none(data.get("unread_mail")),
+            open_tasks=_notices_or_none(data.get("open_tasks")),
+            news=_notices_or_none(data.get("news")),
+            unread_forum_posts=_notices_or_none(data.get("unread_forum_posts")),
+            texts=_notices_or_none(data.get("texts")),
         )
 
 

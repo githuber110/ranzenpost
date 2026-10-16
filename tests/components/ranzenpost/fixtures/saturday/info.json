@@ -12,7 +12,12 @@
         "absences": true,
         "conferences": true,
         "messenger": true,
-        "calendar": false
+        "calendar": false,
+        "tasks": false,
+        "news": false,
+        "forums": false,
+        "texts": false,
+        "infodisplay": false
       },
       "disabled": {
         "timetable": false,
@@ -21,7 +26,12 @@
         "absences": false,
         "conferences": false,
         "messenger": false,
-        "calendar": false
+        "calendar": false,
+        "tasks": false,
+        "news": false,
+        "forums": false,
+        "texts": false,
+        "infodisplay": false
       },
       "status": "ok",
       "children": [

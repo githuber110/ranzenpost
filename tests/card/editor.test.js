@@ -43,6 +43,10 @@ function checkedValues(root, name) {
   return [...root.querySelectorAll(`input[name=${name}]:checked`)].map((input) => input.value);
 }
 
+function shownRows(root) {
+  return [...root.querySelectorAll(".block-row.on")].map((row) => row.dataset.block);
+}
+
 describe("config editor with blocks", () => {
   it("offers the children and the blocks of the account and emits a blocks config", async () => {
     const editor = await mountEditor({ blocks: ["today", { key: "letters", size: "compact" }], children: ["alex"] });
@@ -53,23 +57,28 @@ describe("config editor with blocks", () => {
     expect(texts(root, ".children label")).toEqual(["Alex", "Kim"]);
     expect(checkedValues(root, "children")).toEqual(["alex"]);
     expect([...root.querySelectorAll("input[name=blocks]")].map((input) => input.value)).toEqual([
-      "today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes",
+      "today", "letters", "next_lesson", "week", "noticeboard", "absences", "conferences", "holidays", "changes",
     ]);
     expect(checkedValues(root, "blocks")).toEqual(["today", "letters"]);
-    expect(texts(root, ".blocks label .hint")[0]).toBe("Stunden von heute, Änderungen, Schulschluss.");
-    expect([...root.querySelectorAll(".size-row")].map((row) => row.dataset.block)).toEqual(["today", "letters"]);
+    expect(texts(root, ".blocks .block-row .hint")[0]).toBe("Stunden von heute, Änderungen, Schulschluss.");
+    expect(shownRows(root)).toEqual(["today", "letters"]);
     expect(root.querySelector("select[name=size_letters]").value).toBe("compact");
+    expect(root.querySelector('.block-row:not(.on)[data-block="week"] select')).toBeNull();
 
+    root.querySelector("input[name=blocks][value=holidays]").focus();
     tick(root, "input[name=blocks][value=holidays]", true);
     expect(emitted.at(-1)).toEqual({ type: "custom:ranzenpost-card", blocks: ["today", { key: "letters", size: "compact" }, "holidays"], children: ["alex"] });
-    expect([...root.querySelectorAll(".size-row")].map((row) => row.dataset.block)).toEqual(["today", "letters", "holidays"]);
+    expect(shownRows(root)).toEqual(["today", "letters", "holidays"]);
+    expect(root.activeElement).toBe(root.querySelector("input[name=blocks][value=holidays]"));
 
     change(root, "select[name=size_holidays]", "normal");
     expect(emitted.at(-1).blocks).toEqual(["today", { key: "letters", size: "compact" }, { key: "holidays", size: "normal" }]);
 
     tick(root, "input[name=blocks][value=today]", false);
     expect(emitted.at(-1).blocks).toEqual([{ key: "letters", size: "compact" }, { key: "holidays", size: "normal" }]);
-    expect(root.querySelector('.size-row[data-block="today"]')).toBeNull();
+    expect(shownRows(root)).not.toContain("today");
+    expect(root.querySelector("input[name=blocks][value=today]").checked).toBe(false);
+    expect(root.querySelector("select[name=size_today]")).toBeNull();
 
     change(root, "input[name=title]", "Schule");
     expect(emitted.at(-1).title).toBe("Schule");
@@ -82,10 +91,10 @@ describe("config editor with blocks", () => {
     const root = editor.shadowRoot;
     const emitted = [];
     editor.addEventListener("config-changed", (event) => emitted.push(event.detail.config));
-    const order = () => [...root.querySelectorAll(".order-row")].map((row) => row.dataset.block);
-    const button = (block, move) => root.querySelector(`.order-move[data-block="${block}"][data-move="${move}"]`);
+    const order = () => shownRows(root);
+    const button = (block, move) => root.querySelector(`.block-row.on[data-block="${block}"] .order-move[data-move="${move}"]`);
 
-    expect(root.querySelector(".order-host .hint").textContent).toBe("Reihenfolge");
+    expect(root.querySelector(".order-host")).toBeNull();
     expect(order()).toEqual(["today", "letters", "holidays"]);
     expect(button("today", "up").disabled).toBe(true);
     expect(button("holidays", "down").disabled).toBe(true);
@@ -95,7 +104,6 @@ describe("config editor with blocks", () => {
     button("holidays", "up").click();
     expect(emitted.at(-1).blocks).toEqual(["today", "holidays", "letters"]);
     expect(order()).toEqual(["today", "holidays", "letters"]);
-    expect([...root.querySelectorAll(".size-row")].map((row) => row.dataset.block)).toEqual(["today", "holidays", "letters"]);
     expect(root.activeElement).toBe(button("holidays", "up"));
 
     button("holidays", "up").click();
@@ -116,9 +124,31 @@ describe("config editor with blocks", () => {
     expect(read.has("blocks") && read.has("title") && read.has("children")).toBe(true);
   });
 
-  it("shows no order list for a single block", async () => {
+  it("shows no move buttons for a single block", async () => {
     const editor = await mountEditor({ blocks: ["today"], children: ["alex"] });
-    expect(editor.shadowRoot.querySelector(".order-list")).toBeNull();
+    expect(editor.shadowRoot.querySelectorAll(".order-move")).toHaveLength(0);
+    expect(editor.shadowRoot.querySelector("select[name=size_today]")).not.toBeNull();
+  });
+
+  it("shows one row per block with its name, its size and its moves, and explains each block once", async () => {
+    const editor = await mountEditor({ blocks: ["today", "letters"], children: ["alex"] });
+    const root = editor.shadowRoot;
+    const row = root.querySelector('.block-row.on[data-block="letters"]');
+    expect(row.querySelector(".block-name").textContent).toBe("Elternbriefe");
+    expect(row.querySelector("select").getAttribute("aria-label")).toBe("Größe von Elternbriefe");
+    expect(row.querySelectorAll(".order-move")).toHaveLength(2);
+    expect(root.innerHTML.split("Ungelesene Elternbriefe.")).toHaveLength(2);
+    expect(root.querySelectorAll(".size-row, .order-list, .sizes")).toHaveLength(0);
+    expect(root.querySelectorAll(".blocks")).toHaveLength(1);
+  });
+
+  it("hides the profile field while the integration has no profile", async () => {
+    const editor = await mountEditor({ blocks: ["letters"] }, makeHass({ childless: true }));
+    const root = editor.shadowRoot;
+    expect(root.querySelector(".children")).toBeNull();
+    expect(root.textContent).not.toContain("Leer lassen für alle Profile");
+    expect(root.querySelector("input[name=title]")).not.toBeNull();
+    expect(checkedValues(root, "blocks")).toEqual(["letters"]);
   });
 
   it("turns a legacy view config into blocks on the first change", async () => {
@@ -160,7 +190,8 @@ describe("config editor with blocks", () => {
     const root = editor.shadowRoot;
     expect(root.querySelector("label[for=title]").textContent).toBe("Title");
     expect(texts(root, ".blocks label")[0]).toContain("Today");
-    expect(root.querySelector("label[for=size_today]").textContent).toBe("Size of Today");
+    expect(root.querySelector("select[name=size_today]").getAttribute("aria-label")).toBe("Size of Today");
+    expect(root.querySelector(".children").closest(".field").querySelector(".lbl").textContent).toBe("Profiles");
   });
 
   it("registers the card and proposes the first child with two blocks as stub config", async () => {
@@ -237,23 +268,30 @@ describe("config editor with blocks", () => {
       const editor = await mountEditor({ blocks: ["today", "letters"], children: ["alex"], title: "Schule" });
       const form = editor.shadowRoot.querySelector("ha-form");
       expect(form).not.toBeNull();
-      expect(form.schema.map((entry) => entry.name)).toEqual(["title", "children", "blocks", "size_today", "size_letters"]);
-      expect(form.schema[2].selector.select.multiple).toBe(true);
-      expect(form.schema[2].selector.select.options.map((option) => option.value)).toContain("holidays");
-      expect(form.schema[2].selector.select.options[0].description).toBe("Stunden von heute, Änderungen, Schulschluss.");
-      expect(form.schema[3].selector.select.options.map((option) => option.value)).toEqual(["compact", "normal"]);
-      expect(form.data).toEqual({ title: "Schule", children: ["alex"], blocks: ["today", "letters"], size_today: "normal", size_letters: "normal" });
-      expect(form.computeLabel(form.schema[2])).toBe("Bausteine");
-      expect(form.computeHelper(form.schema[2])).toBe("Nur Bausteine der Module, die dein Konto hat.");
-      expect(form.computeHelper(form.schema[3])).toBe("Stunden von heute, Änderungen, Schulschluss.");
+      expect(form.schema.map((entry) => entry.name)).toEqual(["title", "children"]);
+      expect(form.schema[1].selector.select.multiple).toBe(true);
+      expect(form.data).toEqual({ title: "Schule", children: ["alex"] });
+      expect(form.computeLabel(form.schema[1])).toBe("Profile");
+      expect(form.computeHelper(form.schema[1])).toBe("Leer lassen für alle Profile");
+      const root = editor.shadowRoot;
+      expect(root.querySelector(".blocks-host .lbl").textContent).toBe("Bausteine");
+      expect(root.querySelector(".blocks-host .hint").textContent).toBe("Nur Bausteine der Module, die dein Konto hat.");
+      expect(shownRows(root)).toEqual(["today", "letters"]);
 
       const emitted = [];
       editor.addEventListener("config-changed", (event) => emitted.push(event.detail.config));
-      form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { title: "Schule", children: ["alex"], blocks: ["letters", "week"], size_letters: "compact", size_today: "normal" } }, bubbles: true, composed: true }));
-      expect(emitted.at(-1)).toEqual({ type: "custom:ranzenpost-card", title: "Schule", blocks: [{ key: "letters", size: "compact" }, "week"], children: ["alex"] });
+      form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { title: "Schulweg", children: ["alex", "kim"] } }, bubbles: true, composed: true }));
+      expect(emitted.at(-1)).toEqual({ type: "custom:ranzenpost-card", title: "Schulweg", blocks: ["today", "letters"], children: ["alex", "kim"] });
+      tick(root, "input[name=blocks][value=week]", true);
+      change(root, "select[name=size_letters]", "compact");
+      root.querySelector('.block-row.on[data-block="week"] .order-move[data-move="up"]').click();
+      expect(emitted.at(-1)).toEqual({ type: "custom:ranzenpost-card", title: "Schulweg", blocks: ["today", "week", { key: "letters", size: "compact" }], children: ["alex", "kim"] });
       expect(editor.shadowRoot.querySelector("ha-form")).toBe(form);
-      expect(form.schema.map((entry) => entry.name)).toEqual(["title", "children", "blocks", "size_letters", "size_week"]);
-      expect(form.data.size_week).toBe("normal");
+      expect(form.schema.map((entry) => entry.name)).toEqual(["title", "children"]);
+
+      CardClass.resetCaches();
+      const childless = await mountEditor({ blocks: ["letters"] }, makeHass({ childless: true }));
+      expect(childless.shadowRoot.querySelector("ha-form").schema.map((entry) => entry.name)).toEqual(["title"]);
     } finally {
       document.body.innerHTML = "";
     }

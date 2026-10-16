@@ -28,6 +28,11 @@ LISTED_ROW = (
     "</td></tr></tbody></table>"
 )
 INDEX_LIST = "<html><body>" + LISTED_ROW + "</body></html>"
+EMPTY_INDEX = '<html><body><table id="crud-table"><tbody></tbody></table></body></html>'
+SIGN_IN = (
+    "<form action='/iserv/auth/login' method='post'><input name='_username'>"
+    "<input type='password' name='_password'></form>"
+)
 ARCHIVE_LIST = (
     '<html><body><form action="/iserv/parentletter/parent/archive" method="post">'
     '<input name="iserv_crud_multi_select[_token]" value="tok">'
@@ -93,8 +98,8 @@ def make(tmp_path, client):
     return service, service.store
 
 
-def _archive_client(post_status=200):
-    return Client(
+def _archive_client(post_status=200, kept=False):
+    client = Client(
         "https://school.example",
         pages={
             "parent/index": Answer(200, INDEX_LIST),
@@ -103,16 +108,28 @@ def _archive_client(post_status=200):
         },
         post_status=post_status,
     )
+    original = client.post_absolute
+
+    def post(url, data=None, timeout=30):
+        answer = original(url, data, timeout)
+        if answer.status_code < 400 and not kept:
+            client.pages["parent/index"] = Answer(200, EMPTY_INDEX)
+        return answer
+
+    client.post_absolute = post
+    return client
 
 
-def _restore_client(post_status=200):
-    pages = {"archive": Answer(200, ARCHIVE_LIST)}
+def _restore_client(post_status=200, kept=False):
+    pages = {"archive": Answer(200, ARCHIVE_LIST), "parent/index": Answer(200, EMPTY_INDEX)}
     client = Client("https://school.example", pages=pages, post_status=post_status)
     original = client.post_absolute
 
     def post(url, data=None, timeout=30):
         answer = original(url, data, timeout)
         answer.text = BATCH_CONFIRM
+        if "batch/confirm" in url and answer.status_code < 400 and not kept:
+            client.pages["parent/index"] = Answer(200, INDEX_LIST)
         return answer
 
     client.post_absolute = post
@@ -172,6 +189,55 @@ def test_a_refused_restore_is_reported_instead_of_claimed_as_done(tmp_path):
     with pytest.raises(DataError) as caught:
         service.restore_letter(LETTER_ID, RECIPIENT_ID)
     assert caught.value.message_key == LETTER_RESTORE_FAILED_KEY
+
+
+def _signing_in(client):
+    original = client.post_absolute
+
+    def post(url, data=None, timeout=30):
+        answer = original(url, data, timeout)
+        answer.text = SIGN_IN
+        return answer
+
+    client.post_absolute = post
+    return client
+
+
+@pytest.mark.parametrize("action", ["archive", "restore"])
+def test_a_sign_in_page_as_the_answer_is_never_a_done_move(tmp_path, action):
+    client = _signing_in(_archive_client() if action == "archive" else _restore_client())
+    service, _ = make(tmp_path, client)
+    move = service.archive_letter if action == "archive" else service.restore_letter
+    with pytest.raises(DataError) as caught:
+        move(LETTER_ID, RECIPIENT_ID)
+    assert caught.value.message_key == (LETTER_ARCHIVE_FAILED_KEY if action == "archive" else LETTER_RESTORE_FAILED_KEY)
+
+
+@pytest.mark.parametrize("action", ["archive", "restore"])
+def test_a_move_the_list_read_again_does_not_show_is_not_done(tmp_path, action):
+    client = _archive_client(kept=True) if action == "archive" else _restore_client(kept=True)
+    service, _ = make(tmp_path, client)
+    move = service.archive_letter if action == "archive" else service.restore_letter
+    with pytest.raises(DataError) as caught:
+        move(LETTER_ID, RECIPIENT_ID)
+    assert caught.value.detail == {"state": "uncertain"}
+
+
+def test_a_sign_in_page_when_the_list_is_read_again_is_not_done(tmp_path):
+    client = _archive_client()
+    service, _ = make(tmp_path, client)
+    service.letters()
+    original = client.post_absolute
+
+    def post(url, data=None, timeout=30):
+        answer = original(url, data, timeout)
+        client.pages["parent/index"] = Answer(200, SIGN_IN)
+        return answer
+
+    client.post_absolute = post
+    with pytest.raises(DataError) as caught:
+        service.archive_letter(LETTER_ID, RECIPIENT_ID)
+    assert caught.value.detail == {"state": "signed_out"}
 
 
 def test_a_letter_list_the_server_refused_is_a_failure_not_an_empty_inbox(tmp_path):

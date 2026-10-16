@@ -120,18 +120,13 @@ test.describe("setup names why IServ refused the sign-in", () => {
     await expect(page.locator('input[name="password"]')).toBeVisible();
   });
 
-  test("a forced two-factor setup leads to the code step with an explanation, not an error", async ({ page }) => {
+  test("a forced two-factor setup leads to the setup in the app, not an error", async ({ page }) => {
     await openLiveWizard(page);
     await login(page, "forced-2fa");
-    await expect(page.locator('input[name="code"]')).toBeVisible();
-    await expect(page.locator(".wz-sub")).toHaveText(await text(page, "wizard.connect.setupRequired"));
+    await expect(page.locator(".wz-sub")).toHaveText(await text(page, "wizard.setup.start.text"));
+    await expect(page.locator(".sw-next")).toContainText(await text(page, "wizard.setup.start.button"));
+    await expect(page.locator('input[name="code"]')).toHaveCount(0);
     await expect(page.locator(".wz-error")).toHaveCount(0);
-    await page.locator('input[name="code"]').fill("123456");
-    const answered = page.waitForResponse((response) => response.url().includes("api/wizard/connect"));
-    await page.locator(".sw-next").click();
-    await answered;
-    await expect(page.locator(".wz-error")).toContainText(await text(page, "api.wizard.twofactorSetupPending"));
     await expect(page.locator(".wz-error-pause")).toHaveCount(0);
-    await expect(page.locator(".wz-sub")).toHaveText(await text(page, "wizard.connect.setupRequired"));
   });
 });

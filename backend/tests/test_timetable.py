@@ -540,3 +540,26 @@ def test_crowded_keys_add_the_room_when_one_teacher_has_two_groups():
     crowded = crowded_keys(week.combined)
     assert change_key(week.combined[0], crowded) == "01.09.2026|3|SP|SCH|GYM1"
     assert change_key(week.combined[1], crowded) == "01.09.2026|3|SP|SCH|GYM2"
+
+
+def test_a_lesson_without_a_period_stays_unknown_and_period_zero_is_kept():
+    from app.iserv.timetable import _change_periods, _raw_slot, _to_lesson, period_number
+
+    base = {"date": "2026-10-16", "dow": 5, "subject": "M"}
+    assert _to_lesson(dict(base)).period is None
+    assert _to_lesson(dict(base, period=None)).period is None
+    assert _to_lesson(dict(base, period="")).period is None
+    assert _to_lesson(dict(base, period=0)).period == 0
+    assert _raw_slot(dict(base)) != _raw_slot(dict(base, period=0))
+    assert period_number("x") is None and period_number(True) is None and period_number(-1) is None
+    assert list(_change_periods({"periodStart": 0, "periodEnd": 1})) == [0, 1]
+    assert list(_change_periods({"period": 0})) == [0]
+    assert list(_change_periods({})) == []
+
+
+def test_a_lesson_without_a_period_never_lands_in_a_row():
+    from app.iserv.timetable import _to_lesson
+    from app.mapping import to_display
+
+    shown = to_display(_to_lesson({"date": "2026-10-16", "dow": 5, "subject": "M"}), {})
+    assert shown["period"] is None

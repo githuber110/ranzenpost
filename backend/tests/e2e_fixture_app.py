@@ -1,4 +1,5 @@
 import contextvars
+import html
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ from app import courses, haservices, messages, modules, own_entries, subscriptio
 from app.iserv.errors import DataError, OutageError
 from app.iserv.letters import REPLY_PRESENT, parse_reply_form
 from app.letter_service import LETTERS_SHOW_PATH, LetterService
+from app.conference_service import TAB_ARCHIVE as CONFERENCE_TAB_ARCHIVE, ConferenceService
 from app.messenger import (
     READ_FAILED_KEY,
     READ_OK_KEY,
@@ -18,9 +20,15 @@ from app.messenger import (
     ROOM_OK_KEY,
 )
 from app.mapping import derive_subject_code
+from app.mail_service import MailFile, MailService
+from app.mail_settings import MailWebService
+from app.file_service import FileService
+from app.contacts_service import ContactsService
+from tests import account_fakes, mail_fakes, mail_web_fakes
 from app.server import create_app
 from app.service import SchoolRequiredError
 from app.wizard import Wizard
+from tests import conference_school
 from app.sorting import child_sort_key
 from app.store import CONNECTION_DEFAULTS, DEFAULT_CONFIG, INTEGRATION_SCHOOLS_KEY, LAYOUT_KEYS, Store, connection_short_name, normalize_layout
 
@@ -182,11 +190,16 @@ CONFIRMED_AT = "2026-09-03T14:05:00"
 REPLY_LETTER_ID = "d4e5f6a7b8c9401234d5e6f7a8b9c012"
 CONFIRMED_LETTER_ID = "e5f6a7b8c9d0412345e6f7a8b9c0d123"
 CONFIRMED_RECIPIENT_ID = "f6a7b8c9d0e1423456f7a8b9c0d1e234"
+CHOICE_LETTER_ID = "a7b8c9d0e1f2434567a8b9c0d1e2f345"
 FIXTURE_ORIGIN = "https://school.example"
 LETTER_PAGES = {
     REPLY_LETTER_ID: BACKEND_DIR / "tests" / "fixtures" / "letter_reply_form.html",
     CONFIRMED_LETTER_ID: BACKEND_DIR / "tests" / "fixtures" / "letter_confirm_done.html",
+    CHOICE_LETTER_ID: BACKEND_DIR / "tests" / "fixtures" / "letter_confirm_choice.html",
 }
+CHOICE_ANSWERED_PAGE = BACKEND_DIR / "tests" / "fixtures" / "letter_confirm_done.html"
+ANSWER_SENT = threading.local()
+REPLIES_SENT = {}
 
 
 def done_confirmation():
@@ -195,9 +208,15 @@ def done_confirmation():
 
 def letter_page(letter_id, recipient_id):
     path = LETTERS_SHOW_PATH.format(letter=letter_id, recipient=recipient_id)
-    return SimpleNamespace(
-        status_code=200, url=FIXTURE_ORIGIN + path, text=LETTER_PAGES[letter_id].read_text(encoding="utf-8")
-    )
+    source = LETTER_PAGES[letter_id]
+    if getattr(ANSWER_SENT, "letter", None) == letter_id:
+        ANSWER_SENT.letter = None
+        source = CHOICE_ANSWERED_PAGE
+    text = source.read_text(encoding="utf-8")
+    replies = "".join("<p>%s</p>" % html.escape(reply) for reply in REPLIES_SENT.get(letter_id, []))
+    if replies:
+        text = text.replace('<form name="reply"', '<div class="parent-letter-reply">%s</div><form name="reply"' % replies, 1)
+    return SimpleNamespace(status_code=200, url=FIXTURE_ORIGIN + path, text=text)
 
 
 def letter_list_page(path):
@@ -227,6 +246,10 @@ class FixtureLetterClient:
 
     def post_absolute(self, url, data, timeout=30, headers=None):
         self.sent.append(dict(data))
+        if CHOICE_LETTER_ID in url:
+            ANSWER_SENT.letter = CHOICE_LETTER_ID
+        if REPLY_LETTER_ID in url and "reply[text][plain]" in data:
+            REPLIES_SENT.setdefault(REPLY_LETTER_ID, []).append(data["reply[text][plain]"])
         return SimpleNamespace(status_code=200, url=url, text="", history=[])
 
 
@@ -243,8 +266,30 @@ class FixtureReplyStore:
     def load_letters_search_cache(self):
         return {}
 
+    def save_letters_search_cache(self, data):
+        return None
+
     def load_letters_confirmations(self):
         return {}
+
+    def save_letters_confirmations(self, data):
+        return None
+
+
+def conference_rig():
+    key = CONFERENCE_RUN.get("")
+    rig = CONFERENCE_RIGS.get(key)
+    if rig is None:
+        school = conference_school.ConferenceSchool()
+        school.browser_checks = False
+        school.failing_slot = "103"
+        unmatched = key.startswith(CONFERENCE_UNMATCHED_PREFIX)
+        profiles = [{"child_id": "child-9", "name": "Ola Fremd"}] if unmatched else [{"child_id": "child-1", "name": "Kim Muster"}]
+        rig = (school, ConferenceService(SimpleNamespace(id=SCHOOL_ONE, _session=lambda: school, stored_children=lambda: profiles)))
+        if len(CONFERENCE_RIGS) >= CONFERENCE_RIG_LIMIT:
+            CONFERENCE_RIGS.pop(next(iter(CONFERENCE_RIGS)))
+        CONFERENCE_RIGS[key] = rig
+    return rig
 
 
 FIXTURE_LETTER_CLIENT = FixtureLetterClient()
@@ -386,6 +431,13 @@ SCHOOL_TWO_ROOM = "!roomtwo:school-two.example"
 SCHOOL_TWO_ROOM_NAME = "Klassenleitung 5a"
 ROOM_WRITES_COOKIE = "e2e_room_writes"
 ROOM_WRITES = contextvars.ContextVar("e2e_room_writes", default="")
+FORUM_RUN_COOKIE = "e2e_forum_run"
+FORUM_RUN = contextvars.ContextVar("e2e_forum_run", default="")
+CONFERENCE_COOKIE = "e2e_conference"
+CONFERENCE_RUN = contextvars.ContextVar("e2e_conference", default="")
+CONFERENCE_RIGS = {}
+CONFERENCE_RIG_LIMIT = 50
+CONFERENCE_UNMATCHED_PREFIX = "unmatched-"
 OUTAGE_COOKIE = "e2e_outage"
 OUTAGE = contextvars.ContextVar("e2e_outage", default="")
 OUTAGE_SINCE_EPOCH = 1_789_777_080
@@ -403,6 +455,14 @@ LONG_SUBJECT_NAMES = [
     "Musische Bildung und Kreativitaet",
     "Gesellschaftswissenschaften",
 ]
+MAIL_COOKIE = "e2e_mail"
+MAIL = contextvars.ContextVar("e2e_mail", default="")
+MAIL_BOXES = {}
+MAIL_LOCK = threading.Lock()
+ACCOUNT_COOKIE = "e2e_account"
+ACCOUNT = contextvars.ContextVar("e2e_account", default="")
+ACCOUNT_BOXES = {}
+ACCOUNT_LOCK = threading.Lock()
 REPORTS_COOKIE = "e2e_reports"
 REPORTS = contextvars.ContextVar("e2e_reports", default="")
 EMPTY_COOKIE = "e2e_empty"
@@ -461,6 +521,7 @@ SCENARIOS = {
     "two-long": {"children": 2, "periods": 8, "letters": 3, "posts": 3},
     "full-cap": {"children": 2, "periods": 8, "letters": 20, "posts": 20},
     "showcase": {"children": 2, "periods": 5, "letters": 0, "posts": 0, "showcase": True},
+    "no-children": {"children": 0, "periods": 5, "letters": 3, "posts": 3},
 }
 
 SCENARIO_WEEKDAYS = range(1, 8)
@@ -609,9 +670,13 @@ class ScenarioMiddleware:
             ROOM_WRITES.set(read_cookie(scope, ROOM_WRITES_COOKIE))
             MODULES.set(read_cookie(scope, MODULES_COOKIE))
             REPORTS.set(read_cookie(scope, REPORTS_COOKIE))
+            MAIL.set(read_cookie(scope, MAIL_COOKIE))
+            ACCOUNT.set(read_cookie(scope, ACCOUNT_COOKIE))
             SCHOOLS.set(read_cookie(scope, SCHOOLS_COOKIE))
             LANG.set(read_cookie(scope, LANG_COOKIE))
             OUTAGE.set(read_cookie(scope, OUTAGE_COOKIE))
+            CONFERENCE_RUN.set(read_cookie(scope, CONFERENCE_COOKIE))
+            FORUM_RUN.set(read_cookie(scope, FORUM_RUN_COOKIE))
             LONG_SUBJECTS.set(read_cookie(scope, LONG_SUBJECTS_COOKIE))
             EMPTY.set(read_cookie(scope, EMPTY_COOKIE))
             LAYOUT.set(read_cookie(scope, LAYOUT_COOKIE))
@@ -754,6 +819,9 @@ def course_week(week_offset=0):
         "change_count": sum(1 for lesson in lessons if lesson["change_kind"]),
         "week_offset": week_offset,
     }
+
+
+FORUMS_MARKED = set()
 
 
 def module_emptied(name):
@@ -1066,6 +1134,134 @@ def messenger_older_page():
     ]
 
 
+class FixtureMailStore:
+    def load_config(self):
+        return {"school_url": SCHOOL_ONE_URL}
+
+    def load_secrets(self):
+        return {"username": "alexa.muster", "password": "p"}
+
+
+class FixtureMailConnection:
+    id = SCHOOL_ONE
+    store = FixtureMailStore()
+
+    def __init__(self, web):
+        self.web = web
+        self.web_service = MailWebService(self)
+
+    def me_if_signed_in(self):
+        return {"displayname": "Alexa Muster"}
+
+    def iserv_session(self):
+        return self.web
+
+    def mail_web(self):
+        return self.web_service
+
+    def mail(self):
+        return self.mail_service
+
+
+def script_mail(uid, date_text):
+    message = mail_fakes.EmailMessage()
+    message["From"] = "Unbekannt <x@else.example>"
+    message["To"] = "Alexa Muster <alexa.muster@school-one.example>"
+    message["Subject"] = "Dateien mit Skript"
+    message["Date"] = date_text
+    message["Message-ID"] = "<fixture-%d@school-one.example>" % uid
+    message.set_content("Bitte nicht ausfuehren.")
+    message.add_attachment(b"window.__mailScript = 'ran';", maintype="application", subtype="javascript", filename="run.js")
+    message.add_attachment(b"<script>parent.__mailScript = 'ran'</script><p>page</p>", maintype="text", subtype="html", filename="page.html")
+    return {"uid": uid, "flags": {"\\Seen"}, "raw": message.as_bytes()}
+
+
+def fixture_mail_folders():
+    today = date.today()
+
+    def stamp(offset, hour):
+        moment = datetime(today.year, today.month, today.day, hour, 15) - timedelta(days=offset)
+        return moment.strftime("%a, %d %b %Y %H:%M:00 +0200")
+
+    def plain(uid, sender, subject, offset, hour, body, seen=True, flags=()):
+        message = mail_fakes.EmailMessage()
+        message["From"] = sender
+        message["To"] = "Alexa Muster <alexa.muster@school-one.example>"
+        message["Subject"] = subject
+        message["Date"] = stamp(offset, hour)
+        message["Message-ID"] = "<fixture-%d@school-one.example>" % uid
+        message.set_content(body)
+        listed = set(flags)
+        if seen:
+            listed.add("\\Seen")
+        return {"uid": uid, "flags": listed, "raw": message.as_bytes()}
+
+    inbox = [
+        {"uid": 3, "flags": {"\\Seen", "\\Flagged", "$label1"}, "raw": mail_fakes.html_mail(stamp(8, 10), "Ausflug zum Wildpark am Freitag mit allen Klassen der Jahrgangsstufe drei und vier")},
+        plain(4, "Schulbuero <office@school-one.example>", "Elternabend", 3, 18, "Liebe Eltern,\nder Elternabend findet am Dienstag statt.\n", True, ("\\Answered",)),
+        plain(5, "Mensa <mensa@school-one.example>", "Speiseplan der kommenden Woche", 1, 7, "Der Speiseplan ist angehaengt.\n"),
+        plain(6, "Klassenleitung 3b <teacher@school-one.example>", "Rueckmeldung zum Lesetagebuch", 0, 8, "Bitte das Lesetagebuch bis Freitag mitgeben.\nDanke!\n", False),
+        plain(7, "Sportverein <info@sport.example>", "Training faellt aus", 0, 11, "Das Training heute faellt aus.\n", False),
+        script_mail(2, stamp(12, 9)),
+    ]
+    return {
+        "INBOX": inbox,
+        "Drafts": [],
+        "Sent": [{"uid": 2, "flags": {"\\Seen"}, "raw": mail_fakes.sent_mail()}],
+        "Archive": [],
+        "Junk": [],
+        "Trash": [],
+        "Elternrat": [plain(1, "Elternrat <elternrat@school-one.example>", "Protokoll der Sitzung", 20, 20, "Das Protokoll folgt.\n")],
+    }
+
+
+def fixture_mailbox():
+    raw = MAIL.get("")
+    if not raw:
+        return None
+    mode = raw.partition(":")[0]
+    with MAIL_LOCK:
+        box = MAIL_BOXES.get(raw)
+        if box is None:
+            imap = mail_fakes.FakeImap(password="other" if mode == "refused" else "p", folders=fixture_mail_folders())
+            smtp = mail_fakes.FakeSmtp()
+            web = mail_web_fakes.FakeMailWeb(addresses=("alexa.muster@school-one.example", "elternrat@school-one.example"))
+            connection = FixtureMailConnection(web)
+            service = MailService(connection, opener=lambda host: imap, submitter=lambda host: smtp)
+            connection.mail_service = service
+            box = {"imap": imap, "smtp": smtp, "service": service, "web": connection.web_service, "refused": mode == "refused"}
+            MAIL_BOXES[raw] = box
+        return box
+
+
+class FixtureAccountConnection:
+    id = SCHOOL_ONE
+    store = FixtureMailStore()
+
+    def __init__(self, school):
+        self.school = school
+
+    def iserv_session(self):
+        return self.school
+
+
+def fixture_account():
+    raw = ACCOUNT.get("")
+    if not raw:
+        return None
+    with ACCOUNT_LOCK:
+        box = ACCOUNT_BOXES.get(raw)
+        if box is None:
+            school = account_fakes.FakeAccountSchool(base=SCHOOL_ONE_URL)
+            if raw == "empty":
+                school.own = {"": []}
+                school.lists = []
+            connection = FixtureAccountConnection(school)
+            box = {"school": school, "files": FileService(connection), "contacts": ContactsService(connection)}
+            ACCOUNT_BOXES[raw] = box
+        return box
+
+
 class FixtureConnection:
     def __init__(self, service, connection_id):
         self.id = connection_id
@@ -1083,6 +1279,103 @@ class FixtureConnection:
 
     def check_connection(self):
         return "outage" if outage_active() else "ok"
+
+
+FIXTURE_PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+
+
+def fixture_task_detail(task_id):
+    today = fixture_today()
+
+    def day(offset):
+        return (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+    base = {
+        "text": [], "facts": [], "start": day(-3), "start_text": "", "due": "", "due_text": "", "tags": [], "state_text": "",
+        "files": [], "images": [], "links": [],
+        "submission": {"text": [], "facts": [], "files": [], "links": []},
+        "feedback": {"text": [], "facts": [], "files": [], "links": []},
+        "solution": {"text": [], "facts": [], "files": [], "links": []},
+        "actions": {}, "read_at": 1_756_800_000,
+    }
+    if task_id == "1":
+        return dict(
+            base,
+            text=["Solve the exercises 1 to 4 on page 12.", "Hand in a photo or a PDF of your working."],
+            facts=[{"label": "Teacher", "value": "Teacher A"}],
+            due=day(2) + "T08:00", tags=["Maths"], state_text="Started",
+            files=[{"label": "worksheet-fractions-with-a-very-long-name-for-the-whole-class.pdf", "meta": "120 KB", "path": "/iserv/fs/file/exercise-dl/1/worksheet.pdf"}],
+            links=[{"label": "Explainer video", "url": "https://video.example.org/fractions"}],
+            submission={"text": [], "facts": [], "files": [{"label": "page-12.jpg", "meta": "2 MB", "path": "/iserv/fs/file/exercise-submission/701/page-12.jpg"}], "links": []},
+            actions={
+                "upload": {"form": "f-upload", "multiple": True, "accept": ""},
+                "text": {"form": "f-text", "text": ["My answer to exercise 1"], "max_length": 0},
+                "confirm": {"form": "f-confirm"},
+                "delete": [{"form": "f-files", "target": 0, "label": "page-12.jpg", "value": "701", "file": 0}],
+            },
+        )
+    if task_id == "4":
+        return dict(
+            base,
+            text=["Learn the words of unit 3."],
+            due=day(1), state_text="Done",
+            submission={"text": ["Learned all words."], "facts": [], "files": [], "links": []},
+            feedback={
+                "text": ["Very good, only two mistakes.", "Look at the spelling of the colours again."],
+                "facts": [{"label": "Feedback from", "value": "Teacher B"}],
+                "files": [{"label": "corrections.pdf", "path": "/iserv/fs/file/exercise-feedback/901/corrections.pdf"}],
+                "links": [],
+            },
+            actions={"undo": {"form": "f-undo"}},
+        )
+    if task_id == "5":
+        return dict(
+            base,
+            text=["Learn the poem by heart."],
+            due=day(-30), state_text="Past",
+            submission={"text": [], "facts": [], "files": [{"label": "poem.docx", "path": "/iserv/fs/file/exercise-submission/801/poem.docx"}], "links": []},
+            feedback={"text": ["Well recited."], "facts": [], "files": [], "links": []},
+            solution={"text": [], "facts": [], "files": [{"label": "poem-solution.pdf", "path": "/iserv/fs/file/exercise-solution/951/poem-solution.pdf"}], "links": []},
+        )
+    if task_id in ("2", "3"):
+        return dict(base, text=["Follow the instructions in class."], actions={"upload": {"form": "f-upload", "multiple": False, "accept": ".pdf"}})
+    return None
+
+
+def fixture_task_act(task_id, action, form_id, target, text, files, confirmed):
+    detail = fixture_task_detail(task_id)
+    if detail is None:
+        return messages.result(False, "api.tasks.unknown")
+    if confirmed is not True:
+        return messages.result(False, "api.tasks.act.unconfirmed")
+    offered = detail["actions"].get(action)
+    if not offered:
+        return messages.result(False, "api.tasks.act.unavailable", outcome="unavailable", detail=detail)
+    if action == "upload":
+        names = [str(upload.get("filename") or "") for upload in files]
+        if not names:
+            return messages.result(False, "api.tasks.act.empty")
+        if any(name.startswith("rejected") for name in names):
+            return messages.result(False, "api.tasks.act.rejected", outcome="rejected", errors=["The file type is not allowed."], detail=detail)
+        if any(name.startswith("unclear") for name in names):
+            return messages.result(False, "api.tasks.act.uncertain", outcome="uncertain", detail=detail)
+        own = detail["submission"]["files"] + [{"label": name, "meta": "1 KB", "path": "/iserv/fs/file/exercise-submission/9/%s" % name} for name in names]
+        detail["submission"] = dict(detail["submission"], files=own)
+    elif action == "text":
+        if not str(text or "").strip():
+            return messages.result(False, "api.tasks.act.empty")
+        detail["actions"]["text"] = dict(offered, text=str(text).splitlines())
+    elif action == "confirm":
+        detail["actions"].pop("confirm")
+        detail["actions"]["undo"] = {"form": "f-undo"}
+        detail["state_text"] = "Done"
+    elif action == "undo":
+        detail["actions"].pop("undo")
+        detail["actions"]["confirm"] = {"form": "f-confirm"}
+    elif action == "delete":
+        detail["submission"] = dict(detail["submission"], files=[])
+        detail["actions"].pop("delete")
+    return messages.result(True, "api.tasks.act.done", outcome="done", detail=detail)
 
 
 class FixtureService:
@@ -1236,7 +1529,7 @@ class FixtureService:
             "self_user_id": MESSENGER_SELF,
         }
 
-    def messenger_send(self, connection_id, room_id, text):
+    def messenger_send(self, connection_id, room_id, text, txn_id=""):
         self.pick_school(connection_id)
         if not str(text or "").strip():
             return {"ok": False, "message_key": "api.messenger.send.empty"}
@@ -1619,8 +1912,8 @@ class FixtureService:
                 "confirmation": self._confirmation_state(),
             },
             {
-                "letter_id": "l2",
-                "recipient_id": "r1",
+                "letter_id": CHOICE_LETTER_ID,
+                "recipient_id": CONFIRMED_RECIPIENT_ID,
                 "title": text("letter_conference"),
                 "child": "Mia Musterkind",
                 "recipients": text("class_3b"),
@@ -1632,7 +1925,7 @@ class FixtureService:
                     "type": "confirmation",
                     "open": True,
                     "done": False,
-                    "sendable": False,
+                    "sendable": True,
                     "confirmed_at": "",
                 },
             },
@@ -1669,8 +1962,10 @@ class FixtureService:
     def mark_letters_read(self, keys=None, mark_all=False):
         return {"read": len(keys or [])}
 
-    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
+    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None, choices=None):
         self.known_connection(connection_id)
+        if letter_id == CHOICE_LETTER_ID:
+            return FIXTURE_LETTERS.confirm_letter(letter_id, recipient_id, text, choices)
         return {
             "ok": True,
             "message_key": "api.letters.confirm.ok",
@@ -1685,6 +1980,8 @@ class FixtureService:
 
     def letter_detail(self, connection_id, letter_id, recipient_id):
         self.known_connection(connection_id)
+        if letter_id == CHOICE_LETTER_ID:
+            return FIXTURE_LETTERS.letter_detail(letter_id, recipient_id)
         if letter_id in LETTER_PAGES:
             return {
                 "title": "Letter",
@@ -1718,25 +2015,109 @@ class FixtureService:
         self.known_connection(connection_id)
         return True
 
-    def conferences(self):
+    def conferences(self, tab="current"):
         raise_when_unreachable()
-        if module_emptied(modules.CONFERENCES):
+        if module_emptied(modules.CONFERENCES) or tab == CONFERENCE_TAB_ARCHIVE:
             return {"empty": True, "items": [], "unavailable": []}
+        detail = conference_rig()[1].token(conference_school.DETAIL_PATH)
         today = fixture_today()
         first = (today + timedelta(days=CONFERENCE_FIRST_OFFSET)).strftime("%d.%m.%Y")
         second = (today + timedelta(days=CONFERENCE_SECOND_OFFSET)).strftime("%d.%m.%Y")
         return {
             "empty": False,
             "items": [
-                tag(SCHOOL_ONE, {"cells": [text("conference_class"), f"{first}, 16:00"], "links": []}),
-                tag(SCHOOL_ONE, {"cells": [text("conference_individual"), f"{second}, 17:30"], "links": []}),
+                tag(SCHOOL_ONE, {"cells": [text("conference_class"), f"{first}, 16:00"], "headers": [], "page": detail}),
+                tag(SCHOOL_ONE, {"cells": [text("conference_individual"), f"{second}, 17:30"], "headers": [], "page": ""}),
             ],
             "unavailable": [],
         }
 
+    def conference_page(self, connection_id, page):
+        self.known_connection(connection_id)
+        return dict(conference_rig()[1].page(page), connection_id=connection_id)
+
+    def submit_conference_form(self, connection_id, page, form, check, submit, values, request_id="", confirmed=False):
+        self.known_connection(connection_id)
+        result = conference_rig()[1].submit(page, form, check, submit, values, request_id, confirmed)
+        if isinstance(result.get("page"), dict):
+            result["page"] = dict(result["page"], connection_id=connection_id)
+        return result
+
     def mail_counts(self):
         raise_when_unreachable()
-        return {"schools": []}
+        box = fixture_mailbox()
+        if box is None:
+            return {"schools": []}
+        inbox = box["imap"].folders["INBOX"]
+        unread = None if box["refused"] else len([entry for entry in inbox if "\\Seen" not in entry["flags"]])
+        return {"schools": [tag(SCHOOL_ONE, {"unread": unread})]}
+
+    def mail_call(self, connection_id, action, *args, **kwargs):
+        self.pick_school(connection_id)
+        raise_when_unreachable()
+        box = fixture_mailbox()
+        if box is None:
+            raise DataError("no mail", message_key="api.mail.notOffered")
+        result = getattr(box["service"], action)(*args, **kwargs)
+        if action in ("mark_seen", "set_flag", "move", "archive", "trash", "spam"):
+            result["unread_mail"] = len([entry for entry in box["imap"].folders["INBOX"] if "\\Seen" not in entry["flags"]])
+        return tag(SCHOOL_ONE, result)
+
+    def mail_web_call(self, connection_id, action, *args, **kwargs):
+        self.pick_school(connection_id)
+        raise_when_unreachable()
+        box = fixture_mailbox()
+        if box is None:
+            raise DataError("no mail", message_key="api.mail.notOffered")
+        return tag(SCHOOL_ONE, getattr(box["web"], action)(*args, **kwargs))
+
+    def account_modules(self):
+        if fixture_account() is None:
+            return {"schools": []}
+        contacts = not ACCOUNT.get("").startswith("files:")
+        return {"schools": [tag(SCHOOL_ONE, {"file": True, "addressbook": contacts, "mailinglist": contacts})]}
+
+    def _account_box(self, connection_id):
+        self.pick_school(connection_id)
+        raise_when_unreachable()
+        box = fixture_account()
+        if box is None:
+            raise DataError("not offered", message_key="api.account.notOffered")
+        return box
+
+    def file_listing(self, connection_id, path=""):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["files"].listing(path))
+
+    def file_search(self, connection_id, path, query):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["files"].search(path, query))
+
+    def school_file(self, connection_id, path):
+        return self._account_box(connection_id)["files"].download(path)
+
+    def file_upload(self, connection_id, path, files, confirmed=False):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["files"].upload(path, files, confirmed))
+
+    def address_search(self, connection_id, query):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["contacts"].search(query))
+
+    def mailing_lists(self, connection_id):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["contacts"].lists())
+
+    def mailing_list_detail(self, connection_id, list_id):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["contacts"].list_detail(list_id))
+
+    def mailing_list_import(self, connection_id, values, files, confirmed=False):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["contacts"].import_list(values, files, confirmed))
+
+    def mailing_list_delete(self, connection_id, list_id, confirmed=False):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["contacts"].delete_list(list_id, confirmed))
+
+    def mail_attachment(self, connection_id, folder, uid, part):
+        self.pick_school(connection_id)
+        box = fixture_mailbox()
+        if box is None:
+            raise DataError("no mail", message_key="api.mail.notOffered")
+        return MailFile(box["service"].attachment(folder, uid, part))
 
     def school_events(self, days=60):
         raise_when_unreachable()
@@ -1761,6 +2142,171 @@ class FixtureService:
             listed.append(tag(SCHOOL_TWO, {"uid": "ev-two", "title": "Sports day", "start": day(5), "end": day(6), "all_day": True, "location": "Stadium", "calendar": "Sports", "category": "", "description": ""}))
         listed.sort(key=lambda event: event["start"])
         return {"events": listed, "unavailable": []}
+
+    def tasks(self):
+        raise_when_unreachable()
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000})]
+        if module_emptied(modules.TASKS):
+            return {"tasks": [], "schools": schools, "unavailable": []}
+        today = fixture_today()
+
+        def day(offset):
+            return (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+        def task(number, title, due, **extra):
+            item = {
+                "id": str(number), "title": title, "start": day(-3), "start_text": "", "due": due, "due_text": "",
+                "tags": [], "done": None, "done_text": "", "past": False, "path": "/iserv/exercise/show/%d" % number, "extra": [],
+            }
+            item.update(extra)
+            return tag(SCHOOL_ONE, item)
+
+        listed = [
+            task(1, "Worksheet fractions", day(2) + "T08:00", tags=["Maths"]),
+            task(2, "Write a report about the planned excursion to the river including all measurements, a drawing of the bridge and a short summary", day(5), tags=["Science", "Group work"]),
+            task(3, "Reading log", day(-1)),
+            task(4, "Vocabulary test", day(1), done=True),
+            task(5, "Poem by heart", day(-30), past=True, done=True),
+        ]
+        return {"tasks": listed, "schools": schools, "unavailable": []}
+
+    def news(self):
+        raise_when_unreachable()
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000, "sections": ["archive"]})]
+        if module_emptied(modules.NEWS):
+            return {"news": [], "schools": schools, "unavailable": []}
+        today = fixture_today()
+
+        def item(category, number, title, date, summary="", detail=None):
+            listed = tag(SCHOOL_ONE, {
+                "id": "%s/%d" % (category, number), "title": title, "date": date, "date_text": "", "category": category.title(),
+                "category_slug": category, "summary": summary, "path": "/iserv/news/%s/%d" % (category, number),
+            })
+            if detail is not None:
+                listed["detail"] = detail
+            return listed
+
+        detail = {
+            "text": [
+                "The library opens at nine.",
+                "From the next school week onwards the staff meeting takes the first hour on Mondays, so the library opens later.",
+                "Books can still be returned through the box beside the entrance at any time.",
+            ],
+            "images": [],
+            "files": [{"path": "/iserv/file/download/opening-hours-for-the-whole-school-year.pdf", "label": "opening-hours-for-the-whole-school-year.pdf"}],
+            "links": [],
+        }
+
+        listed = [
+            item("general", 12, "Library opens later on Mondays from the next school week onwards because of the staff meeting", (today - timedelta(days=1)).isoformat() + "T09:30", "The library opens at nine.", detail),
+            item("sport", 7, "Sports day", ""),
+        ]
+        return {"news": listed, "schools": schools, "unavailable": []}
+
+    def news_section(self, section):
+        raise_when_unreachable()
+        if section != "archive":
+            return {"news": [], "section": section, "unavailable": []}
+        today = fixture_today()
+        entry = tag(SCHOOL_ONE, {
+            "id": "general/3", "title": "Book fair last spring", "date": (today - timedelta(days=200)).isoformat(), "date_text": "",
+            "category": "General", "category_slug": "general", "summary": "The book fair raised money for the library.",
+            "path": "/iserv/news/general/3", "section": "archive",
+        })
+        return {"news": [entry], "section": section, "unavailable": []}
+
+    def news_section_detail(self, connection_id, section, item_id):
+        self.known_connection(connection_id)
+        return {"text": ["The book fair raised money for the library.", "Thank you to every helper."], "images": [], "files": [], "links": []}
+
+    def forums(self):
+        raise_when_unreachable()
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000, "mark_read": True})]
+        if block_emptied("forums_unreadable"):
+            return {"forums": [], "schools": [], "unavailable": [SCHOOL_ONE], "unreadable": [SCHOOL_ONE]}
+        if module_emptied(modules.FORUMS):
+            return {"forums": [], "schools": schools, "unavailable": []}
+        marked = FORUM_RUN.get("") in FORUMS_MARKED
+
+        def forum(number, title, category, unread, last, description=""):
+            return tag(SCHOOL_ONE, {
+                "id": str(number), "title": title, "description": description, "category": category,
+                "unread": 0 if marked else unread, "last_post": last, "last_post_date": "", "path": "/iserv/forum/%d" % number,
+                "extra": [{"label": "Topics", "value": str(number % 7 + 2)}],
+            })
+
+        listed = [
+            forum(4101, "School yard", "General forums", 3, "Lunch break games · today 09:40", "Questions and answers for everyone"),
+            forum(4102, "Library and reading club with a very long forum title that wraps onto a second line", "General forums", 12, "New books · yesterday 16:05"),
+            forum(4103, "Class 7b", "Group forums", 0, "Homework help · 02.10.2026 18:12"),
+        ]
+        return {"forums": listed, "schools": schools, "unavailable": []}
+
+    def forum_mark_read(self, connection_id, confirmed=False):
+        self.known_connection(connection_id)
+        if confirmed is not True:
+            return messages.result(False, "api.forums.read.unconfirmed")
+        if FORUM_RUN.get(""):
+            FORUMS_MARKED.add(FORUM_RUN.get(""))
+        return messages.result(True, "api.forums.read.done", outcome="done")
+
+    def texts(self):
+        raise_when_unreachable()
+        filters = [
+            {"value": "visible", "label": "Visible", "default": True},
+            {"value": "hidden", "label": "Hidden", "default": False},
+            {"value": "own", "label": "My texts", "default": False},
+            {"value": "all", "label": "All", "default": False},
+        ]
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000, "filters": filters})]
+        if module_emptied(modules.TEXTS):
+            return {"texts": [], "schools": schools, "unavailable": []}
+        today = fixture_today()
+
+        def text_entry(key, title, owner, days, tags, memberships):
+            changed = (today - timedelta(days=days)).isoformat() + "T10:15"
+            return tag(SCHOOL_ONE, {
+                "id": key, "title": title, "owner": owner, "changed": changed, "changed_text": "", "created": "", "created_text": "",
+                "tags": tags, "path": "/iserv/etherpad/" + key, "filters": memberships,
+            })
+
+        listed = [
+            text_entry("p1", "Minutes of the class council", "Class teacher", 1, ["Class 7b"], ["visible", "all"]),
+            text_entry("p2", "Ideas for the school fair with a long title that needs two lines on a phone", "Parents' association", 4, ["Fair", "Ideas"], ["visible", "own", "all"]),
+            text_entry("p3", "Old reading list", "Library", 40, [], ["hidden", "all"]),
+        ]
+        return {"texts": listed, "schools": schools, "unavailable": []}
+
+    def infodisplay(self):
+        raise_when_unreachable()
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000})]
+        if module_emptied(modules.INFODISPLAY):
+            return {"infodisplay": [], "schools": schools, "unavailable": []}
+        listed = [
+            tag(SCHOOL_ONE, {"id": "1201", "title": "Entrance hall", "path": "/iserv/infodisplay/show/1201"}),
+            tag(SCHOOL_ONE, {"id": "1202", "title": "Canteen", "path": "/iserv/infodisplay/show/1202"}),
+        ]
+        return {"infodisplay": listed, "schools": schools, "unavailable": []}
+
+    def task_detail(self, connection_id, task_id):
+        self.known_connection(connection_id)
+        raise_when_unreachable()
+        detail = fixture_task_detail(str(task_id))
+        if detail is None:
+            raise DataError("the task is not listed", message_key="api.tasks.unknown")
+        return detail
+
+    def task_file(self, connection_id, task_id, kind, index):
+        self.known_connection(connection_id)
+        detail = fixture_task_detail(str(task_id)) or {}
+        holder = detail.get(kind) if kind in ("files", "images") else (detail.get(kind) or {}).get("files")
+        if not isinstance(holder, list) or not isinstance(index, int) or not 0 <= index < len(holder):
+            raise DataError("unknown task file")
+        return SimpleNamespace(content=FIXTURE_PDF, headers={"content-type": "application/pdf", "content-disposition": 'inline; filename="task.pdf"'})
+
+    def task_act(self, connection_id, task_id, action, form_id, target=None, text=None, files=None, confirmed=False):
+        self.known_connection(connection_id)
+        return fixture_task_act(str(task_id), action, form_id, target, text, files or [], confirmed)
 
     def absences_overview(self, connection_id=None):
         connection_id = self.pick_school(connection_id).id
@@ -2195,17 +2741,89 @@ LIVE_OUTCOMES = {
 }
 
 
+LIVE_SETUP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+LIVE_STALE_PASSWORD = "stale-2fa"
+LIVE_OWN_UUID = "a1a1a1a1-0000-4000-8000-000000000001"
+LIVE_NEW_UUID = "a2a2a2a2-0000-4000-8000-000000000002"
+LIVE_OTHER_TOKENS = [
+    {"uuid": "b2b6b8b0-1111-4a2a-9c3c-abcdef123456", "created": "2026-09-01"},
+    {"uuid": "c3c3c3c3-2222-4b2b-8d3d-abcdef654321", "created": ""},
+]
+LIVE_UNCONFIRMED_CODE = "222222"
+LIVE_SETUP_ANSWERS = {
+    "000000": {"status": "rejected", "key_changed": False},
+    "111111": {"status": "uncertain"},
+}
+
+
 class LiveWizardProber:
+    def __init__(self):
+        self.setup_open = False
+        self.setup_done = False
+        self.registered = 0
+
     def probe_url(self, base):
         return {"ok": True, "host": base}
 
     def verify_login(self, url, username, password):
         if password == LIVE_PASSWORD:
             return "no_2fa"
+        if (password == "forced-2fa" and self.setup_done) or password == LIVE_STALE_PASSWORD:
+            return "twofactor"
         return LIVE_OUTCOMES.get(password, "bad_credentials")
 
+    def verify_totp(self, url, username, password, secret):
+        return "bad_code" if password == LIVE_STALE_PASSWORD else "ok"
+
     def begin_2fa(self, url, username, password, code, name=""):
+        if password == LIVE_STALE_PASSWORD:
+            known = len(LIVE_OTHER_TOKENS) + min(self.registered, 1)
+            return {"status": "awaiting_confirm", "stale_tokens": known, "stale_removable": known}
+        if self.setup_done:
+            return {"status": "awaiting_confirm"}
         return {"status": "twofactor_required_setup"}
+
+    def confirm_2fa(self, url, username, password, code, name=""):
+        if code == LIVE_UNCONFIRMED_CODE:
+            return {"status": "unconfirmed"}
+        result = {"status": "ok", "secret": LIVE_SETUP_SECRET}
+        if password == LIVE_STALE_PASSWORD:
+            result.update(self._registered())
+        return result
+
+    def _registered(self):
+        self.registered += 1
+        if self.registered == 1:
+            return {"uuid": LIVE_OWN_UUID, "old_tokens": [dict(token) for token in LIVE_OTHER_TOKENS]}
+        old = [{"uuid": LIVE_OWN_UUID, "created": "2026-10-01"}] + [dict(token) for token in LIVE_OTHER_TOKENS]
+        return {"uuid": LIVE_NEW_UUID, "old_tokens": old}
+
+    def check_registration(self, url, username, name=""):
+        return dict({"status": "ok", "secret": LIVE_SETUP_SECRET}, **self._registered())
+
+    def remove_stale_tokens(self, url, username, password, secret, uuids):
+        return {"status": "ok", "left": [], "removed": len(uuids)}
+
+    def begin_setup(self, url, username, password):
+        self.setup_open = True
+        return {"status": "awaiting_setup_code"}
+
+    def setup_key(self, url, username):
+        if not self.setup_open:
+            return None
+        return {"secret": LIVE_SETUP_SECRET, "uri": "otpauth://totp/IServ:%s?secret=%s&issuer=IServ" % (username, LIVE_SETUP_SECRET)}
+
+    def confirm_setup(self, url, username, password, code):
+        if not self.setup_open:
+            return {"status": "expired"}
+        answer = LIVE_SETUP_ANSWERS.get(code, {"status": "ok"})
+        if answer["status"] != "rejected":
+            self.setup_open = False
+            self.setup_done = True
+        return dict(answer)
+
+    def drop_setup(self):
+        self.setup_open = False
 
 
 class LiveWizardClock:
@@ -2481,10 +3099,10 @@ class MatrixService(FixtureService):
         matrix_state()["archived"].discard(f"{connection_id}:{letter_id}:{recipient_id}")
         return True
 
-    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
+    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None, choices=None):
         if matrix_active():
             matrix_state()["confirmed"].add(f"{connection_id}:{letter_id}:{recipient_id}")
-        return super().confirm_letter(connection_id, letter_id, recipient_id, text)
+        return super().confirm_letter(connection_id, letter_id, recipient_id, text, choices)
 
     def absences_overview(self, connection_id=None):
         payload = super().absences_overview(connection_id)

@@ -212,24 +212,32 @@ def _join(path, key):
     return "%s.%s" % (path, key) if path else key
 
 
-def _collect(value, path, depth, stats):
-    label = path or ROOT_LABEL
-    entry = stats.setdefault(label, {"count": 0, "lengths": [], "empty": 0, "null": 0})
-    entry["count"] += 1
-    if isinstance(value, str):
-        entry["lengths"].append(len(value))
-        if not value.strip():
-            entry["empty"] += 1
-    elif value is None:
-        entry["null"] += 1
+def _nodes(value, path="", depth=0):
+    yield value, path
     if depth >= MAX_DEPTH:
         return
     if isinstance(value, dict):
         for key, child in value.items():
-            _collect(child, _join(path, safe_key(key)), depth + 1, stats)
+            yield from _nodes(child, _join(path, safe_key(key)), depth + 1)
     elif isinstance(value, (list, tuple)):
         for item in value[:MAX_ITEMS]:
-            _collect(item, (path or "") + "[]", depth + 1, stats)
+            yield from _nodes(item, (path or "") + "[]", depth + 1)
+
+
+def _collect(data):
+    stats = {}
+    for value, path in _nodes(data):
+        entry = stats.setdefault(path or ROOT_LABEL, {"count": 0, "lengths": [], "empty": 0, "null": 0, "signs": []})
+        entry["count"] += 1
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            entry["signs"].append(_sign(value))
+        elif isinstance(value, str):
+            entry["lengths"].append(len(value))
+            if not value.strip():
+                entry["empty"] += 1
+        elif value is None:
+            entry["null"] += 1
+    return stats
 
 
 def _parent_label(label):
@@ -252,37 +260,28 @@ def spread_note(label, stats):
             parts.append("empty %d" % entry["empty"])
         if entry["null"]:
             parts.append("null %d" % entry["null"])
+        signs = entry["signs"]
+        if len(set(signs)) > 1:
+            if signs.count("0"):
+                parts.append("zero %d" % signs.count("0"))
+            if signs.count("<0"):
+                parts.append("below zero %d" % signs.count("<0"))
     if missing:
         parts.append("missing %d" % missing)
     return " (%s)" % ", ".join(parts) if parts else ""
 
 
-def _walk(value, path, depth, lines, seen, limit, stats):
-    if len(lines) >= limit:
-        return
-    label = path or ROOT_LABEL
-    if label not in seen:
-        seen.add(label)
-        lines.append("%s: %s%s" % (label, value_shape(value), spread_note(label, stats)))
-    if depth >= MAX_DEPTH:
-        return
-    if isinstance(value, dict):
-        for key, child in value.items():
-            _walk(child, _join(path, safe_key(key)), depth + 1, lines, seen, limit, stats)
-            if len(lines) >= limit:
-                return
-    elif isinstance(value, (list, tuple)):
-        for item in value[:MAX_ITEMS]:
-            _walk(item, (path or "") + "[]", depth + 1, lines, seen, limit, stats)
-            if len(lines) >= limit:
-                return
-
-
 def shape_lines(data, limit=MAX_LINES):
-    stats = {}
-    _collect(data, "", 0, stats)
+    stats = _collect(data)
     lines = []
-    _walk(data, "", 0, lines, set(), limit, stats)
+    seen = set()
+    for value, path in _nodes(data):
+        if len(lines) >= limit:
+            break
+        label = path or ROOT_LABEL
+        if label not in seen:
+            seen.add(label)
+            lines.append("%s: %s%s" % (label, value_shape(value), spread_note(label, stats)))
     return lines
 
 

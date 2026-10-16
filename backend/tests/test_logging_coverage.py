@@ -13,7 +13,6 @@ LOGGING_DEBT = {
     "hanotify.py": "reaches Home Assistant, silent today - next wave",
     "haservices.py": "reaches Home Assistant, silent today - next wave",
     "holidays.py": "reaches the public holiday feeds, silent today - next wave",
-    "client.py": "the auth core needs its own review before log lines are added",
     "dsa.py": "part of the auth core, same review gate as client.py",
     "iserv_prober.py": "part of the auth core, same review gate as client.py",
     "schoolregion.py": "reaches the school domain, silent today - next wave",

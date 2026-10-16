@@ -2,14 +2,15 @@ import logging
 
 import requests
 from fastapi import Body
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import messages
 from .iserv.errors import LoginError, TwoFactorError
 from .failure import failure_cause
+from .iserv.letters import CHOICE_LIMIT
 from .letter_service import LETTER_UNKNOWN_KEY
 from .service import NotConfiguredError
-from .upstream import binary_upstream_response, read_endpoint, write_endpoint
+from .upstream import binary_upstream_response, read_endpoint, upstream_file, write_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +60,34 @@ def register_routes(app, service):
         return write_endpoint(_logged("restore", lambda: _restore_letter(body)), fallback="restore_failed")
 
     def _confirm_letter(body):
-        text = body.get("text")
-        text = text.strip() if isinstance(text, str) else ""
+        given = body.get("text")
+        text = given.strip() if isinstance(given, str) else ""
         if len(text) > LETTER_REPLY_MAX_LENGTH:
             return messages.result(False, "api.letters.confirm.tooLong", {"max": LETTER_REPLY_MAX_LENGTH})
+        choices = body.get("choices")
+        if choices is not None and not (
+            isinstance(choices, list) and len(choices) <= CHOICE_LIMIT and all(isinstance(item, str) for item in choices)
+        ):
+            return messages.result(False, "api.letters.reply.invalid")
+        if body.get("edit") is True:
+            return service.edit_answer(
+                body.get("connection_id", ""),
+                body.get("letter_id", ""),
+                body.get("recipient_id", ""),
+                text if isinstance(given, str) else None,
+                choices or None,
+            )
         return service.confirm_letter(
             body.get("connection_id", ""),
             body.get("letter_id", ""),
             body.get("recipient_id", ""),
             text or None,
+            choices or None,
         )
+
+    @app.get("/api/letters/answer")
+    def letter_answer(letter_id: str, recipient_id: str, connection: str = ""):
+        return read_endpoint(lambda: service.answer_form(connection, letter_id, recipient_id))
 
     @app.post("/api/letters/confirm")
     def letters_confirm(body: dict = Body(...)):
@@ -104,12 +123,4 @@ def register_routes(app, service):
                 return JSONResponse(status_code=404, content=messages.payload(LETTER_UNKNOWN_KEY))
             logger.warning("letter attachment was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid attachment", status_code=400)
-        headers = {}
-        disposition = upstream.headers.get("content-disposition")
-        if disposition:
-            headers["Content-Disposition"] = disposition
-        return Response(
-            content=upstream.content,
-            media_type=upstream.headers.get("content-type", "application/octet-stream"),
-            headers=headers,
-        )
+        return upstream_file(upstream)

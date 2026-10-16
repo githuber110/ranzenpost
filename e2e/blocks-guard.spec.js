@@ -21,7 +21,7 @@ const OTHER_LANGUAGES = [
 ];
 const THEMES = ["light", "dark"];
 const FONT_SIZES = [16, 20];
-const ALL_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events"];
+const ALL_BLOCKS = ["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events", "tasks", "news"];
 
 let layoutSlot = 0;
 

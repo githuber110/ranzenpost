@@ -1,8 +1,6 @@
 import re
-from pathlib import Path
 
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-APP_JS = FRONTEND / "app.js"
+from tests.frontend_sources import app_source_text
 
 SEND_ENDPOINT = "api/messenger/send"
 SEND_FUNCTION = "sendMessengerMessage"
@@ -23,7 +21,7 @@ BACKGROUND_FUNCTIONS = (
 
 
 def source():
-    return APP_JS.read_text(encoding="utf-8")
+    return app_source_text()
 
 
 def function_spans(text):

@@ -18,6 +18,30 @@ def register_routes(app, wizard):
     def wizard_connect(body: dict = Body(...)):
         return wizard.connect(body.get("code", ""))
 
+    @app.post("/api/wizard/registration/check")
+    def wizard_registration_check():
+        return wizard.check_registration()
+
+    @app.post("/api/wizard/stale-tokens/remove")
+    def wizard_stale_tokens_remove():
+        return wizard.remove_stale_tokens()
+
+    @app.post("/api/wizard/other-tokens/remove")
+    def wizard_other_tokens_remove(body: dict = Body(...)):
+        return wizard.remove_other_token(body.get("uuid", ""), body.get("confirmed"))
+
+    @app.post("/api/wizard/twofactor/start")
+    def wizard_twofactor_start():
+        return wizard.start_setup()
+
+    @app.post("/api/wizard/twofactor/confirm")
+    def wizard_twofactor_confirm(body: dict = Body(...)):
+        return wizard.confirm_setup(body.get("code", ""))
+
+    @app.post("/api/wizard/twofactor/check")
+    def wizard_twofactor_check():
+        return wizard.check_setup()
+
     @app.post("/api/wizard/child")
     def wizard_child(body: dict = Body(...)):
         return wizard.select_child(

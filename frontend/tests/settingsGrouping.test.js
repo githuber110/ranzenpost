@@ -43,7 +43,7 @@ describe("the top level of the settings is grouped by use, not longer", () => {
     );
     expect(groups).toEqual([
       [label(window, "settings.language"), label(window, "settings.theme"), label(window, "settings.layout.title")],
-      [label(window, "settings.notify.service"), label(window, "schools.calendar.access"), label(window, "settings.ha.integration")],
+      [label(window, "settings.notify.sheet"), label(window, "schools.calendar.access"), label(window, "settings.ha.integration")],
       [
         label(window, "holidays.settings.title"),
         label(window, "settings.periods.sheet"),
@@ -67,7 +67,7 @@ describe("the top level of the settings is grouped by use, not longer", () => {
       "settings.periods.sheet",
       "holidays.settings.title",
       "settings.phones",
-      "settings.notify.service",
+      "settings.notify.sheet",
       "common.techDetails",
       "settings.password",
       "settings.disconnect",

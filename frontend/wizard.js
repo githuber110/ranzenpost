@@ -28,7 +28,7 @@
   const requestUrl = (path) => new URL(path, REQUEST_BASE).toString();
 
   async function api(method, path, body) {
-    const opts = { method, headers: {} };
+    const opts = { method, headers: { "X-Ranzenpost-App": "1" } };
     if (body) {
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
@@ -46,6 +46,12 @@
 
   function countLabel(key, count) {
     return window.tCount ? window.tCount(key, count) : label(key, { count });
+  }
+
+  const CODE_WINDOW_SECONDS = 31;
+
+  function removalMinutes(count) {
+    return Math.max(1, Math.ceil(((count + 1) * CODE_WINDOW_SECONDS) / 60));
   }
 
   function need(fieldKey) {
@@ -293,6 +299,193 @@
       ];
     }
 
+    function setupPhase() {
+      if (!wzState.needs_2fa_setup) return "";
+      const phase = wzState.twofactor_setup;
+      return phase === "code" || phase === "uncertain" ? phase : "start";
+    }
+
+    function setupKeyText(secret) {
+      return String(secret || "").replace(/(.{4})(?=.)/g, "$1 ");
+    }
+
+    function setupQr(uri) {
+      if (!uri || typeof window.qrMatrix !== "function") return null;
+      const matrix = window.qrMatrix(uri);
+      if (!matrix) return null;
+      const span = window.qrCanvasSize(matrix);
+      const markup = `<svg viewBox="0 0 ${span} ${span}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect width="${span}" height="${span}" fill="#ffffff"/><path d="${window.qrPathData(matrix)}" fill="#101917"/></svg>`;
+      return el("div", { class: "wz-qr" }, [
+        el("div", { class: "cal-qr-frame", role: "img", "aria-label": label("wizard.setup.qr.alt"), html: markup }),
+      ]);
+    }
+
+    function setupBody() {
+      fields = {};
+      const phase = setupPhase();
+      if (phase === "uncertain") {
+        return [el("p", { class: "wz-sub" }, label("wizard.setup.uncertain.text")), errorBanner(), reportBlock()];
+      }
+      if (phase !== "code") {
+        return [el("p", { class: "wz-sub" }, label("wizard.setup.start.text")), errorBanner(), reportBlock()];
+      }
+      const key = wzState.setup_key || {};
+      fields.code = textInput({
+        class: "wz-input wz-code",
+        type: "text",
+        name: "code",
+        inputmode: "numeric",
+        pattern: "[0-9]*",
+        maxlength: "6",
+        autocomplete: "one-time-code",
+        placeholder: label("wizard.connect.code.placeholder"),
+        "aria-label": label("wizard.connect.code.aria"),
+      });
+      fields.code.addEventListener("input", () => flow.sync());
+      return [
+        el("p", { class: "wz-sub" }, label("wizard.setup.code.text")),
+        errorBanner(),
+        reportBlock(),
+        setupQr(key.uri),
+        el("div", { class: "wz-label" }, label("wizard.setup.key.label")),
+        el("p", { class: "wz-key", dir: "ltr" }, setupKeyText(key.secret)),
+        el("label", { class: "wz-label" }, label("wizard.connect.code.label")),
+        fields.code,
+        el("div", { class: "wz-hint-line" }, label("wizard.setup.code.hint")),
+      ];
+    }
+
+    function setupStep() {
+      const phase = setupPhase();
+      const steps = {
+        start: { next: "wizard.setup.start.button", send: () => post("api/wizard/twofactor/start") },
+        code: { next: "wizard.setup.code.submit", send: () => post("api/wizard/twofactor/confirm", { code: fields.code.value.trim() }) },
+        uncertain: { next: "wizard.setup.check.button", send: () => post("api/wizard/twofactor/check") },
+      };
+      const chosen = steps[phase];
+      return {
+        question: label("wizard.setup.title"),
+        body: setupBody,
+        hint: "",
+        block: () => {
+          if (pauseLeft()) return pauseBlock();
+          if (phase === "code" && !(fields.code && fields.code.value.trim())) return need("wizard.connect.code.label");
+          return "";
+        },
+        blockFocus: () => fields.code,
+        nextLabel: label(chosen.next),
+        busyLabel: label("common.pleaseWait"),
+        onNext: chosen.send,
+      };
+    }
+
+    function staleNotice() {
+      const count = Number(wzState.stale_tokens) || 0;
+      if ((Number(wzState.stale_removable) || 0) >= count) return countLabel("wizard.connect.staleTokens", count);
+      return countLabel("wizard.connect.staleKept", count);
+    }
+
+    function sideButton(key, path) {
+      const button = el("button", { class: "wz-skip", type: "button" }, label(key));
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        button.textContent = label("common.pleaseWait");
+        post(path).catch(() => mount(fatalCard(label("wizard.error.action.title"), label("wizard.error.service.text"))));
+      });
+      return button;
+    }
+
+    function removalPanel(text, send, button, status, count) {
+      if (!flow || flow.node.querySelector(".sw-confirm")) return;
+      let panel;
+      const close = () => panel.remove();
+      const confirm = () => {
+        close();
+        for (const other of flow.node.querySelectorAll(".wz-stale button")) other.disabled = true;
+        status.textContent = countLabel("wizard.stale.busy", removalMinutes(count));
+        send()
+          .then((next) => route(next))
+          .catch(() => {
+            for (const other of flow.node.querySelectorAll(".wz-stale button")) other.disabled = false;
+            status.textContent = label("wizard.error.service.text");
+          });
+      };
+      panel = el("div", { class: "card wz-card wz-confirm sw-confirm", role: "alertdialog", "aria-modal": "true", "aria-label": button.getAttribute("aria-label") || button.textContent }, [
+        el("p", { class: "dlg-text" }, text),
+        el("div", { class: "btn-stack" }, [
+          el("button", { class: "btn destructive", type: "button", onclick: confirm }, label("wizard.stale.removeConfirm")),
+          el("button", { class: "btn ghost", type: "button", onclick: close }, label("common.cancel")),
+        ]),
+      ]);
+      flow.node.append(panel);
+    }
+
+    function createdDate(created) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(created || ""))) return "";
+      const day = new Date(`${created}T12:00:00`);
+      if (Number.isNaN(day.getTime())) return "";
+      return new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: "medium" }).format(day);
+    }
+
+    function removalError() {
+      const err = wzState.error;
+      if (!err || err.code === "child_unknown") return null;
+      const paused = err.code === "paused";
+      if (paused && !pauseLeft()) return null;
+      const text = errorText(err);
+      return text ? el("div", { class: paused ? "wz-error wz-error-pause" : "wz-error", role: "alert" }, text) : null;
+    }
+
+    function ownEntry(status) {
+      const uuids = Array.isArray(wzState.stale_uuids) ? wzState.stale_uuids : [];
+      if (!uuids.length) return [];
+      const button = el("button", { class: "wz-skip", type: "button" }, label("wizard.stale.own.remove"));
+      const send = () => api("POST", "api/wizard/stale-tokens/remove");
+      button.addEventListener("click", () => removalPanel(label("wizard.stale.own.confirm"), send, button, status, uuids.length));
+      return [el("div", { class: "wz-warn" }, label("wizard.stale.own.text")), button];
+    }
+
+    function otherEntry(token, status) {
+      const name = String(token.name || "");
+      const date = createdDate(token.created);
+      const button = el("button", {
+        class: "wz-skip wz-token-remove",
+        type: "button",
+        "aria-label": label("wizard.stale.other.removeAria", { name }),
+      }, label("wizard.stale.removeConfirm"));
+      const text = date
+        ? label("wizard.stale.other.confirmDated", { name, date })
+        : label("wizard.stale.other.confirm", { name });
+      const send = () => api("POST", "api/wizard/other-tokens/remove", { uuid: token.uuid, confirmed: true });
+      button.addEventListener("click", () => removalPanel(text, send, button, status, 1));
+      return el("li", { class: "wz-token" }, [
+        el("span", { class: "wz-token-text" }, [
+          el("span", { class: "wz-token-name", dir: "ltr" }, name),
+          date ? el("span", { class: "wz-token-date" }, label("wizard.stale.other.created", { date })) : null,
+        ]),
+        button,
+      ]);
+    }
+
+    function otherEntries(status) {
+      const tokens = (Array.isArray(wzState.other_tokens) ? wzState.other_tokens : []).filter((token) => token && token.uuid);
+      if (!tokens.length) return [];
+      return [
+        el("p", { class: "wz-hint-line wz-token-intro" }, countLabel("wizard.stale.other.text", tokens.length)),
+        el("ul", { class: "wz-tokens" }, tokens.map((token) => otherEntry(token, status))),
+      ];
+    }
+
+    function staleBlock() {
+      const removed = Number(wzState.stale_removed) || 0;
+      const done = removed ? el("div", { class: "wz-good", role: "status" }, countLabel("wizard.stale.done", removed)) : null;
+      const status = el("p", { class: "wz-hint-line", role: "status" });
+      const own = ownEntry(status);
+      const others = otherEntries(status);
+      if (!own.length && !others.length) return done;
+      return el("div", { class: "wz-stale" }, [done, ...own, ...others, removalError(), status]);
+    }
+
     function connectBody() {
       fields = {};
       const second = !!wzState.awaiting_confirm;
@@ -308,18 +501,15 @@
         "aria-label": label("wizard.connect.code.aria"),
       });
       fields.code.addEventListener("input", () => flow.sync());
-      const introKey = second
-        ? "wizard.connect.second.text"
-        : wzState.needs_2fa_setup
-          ? "wizard.connect.setupRequired"
-          : "wizard.connect.text";
+      const introKey = second ? "wizard.connect.second.text" : "wizard.connect.text";
+      const setUp = !second && wzState.twofactor_setup === "done";
       return [
+        setUp ? el("div", { class: "wz-good", role: "status" }, label("wizard.setup.done")) : null,
         el("p", { class: "wz-sub" }, label(introKey)),
-        second && wzState.stale_tokens
-          ? el("div", { class: "wz-warn" }, countLabel("wizard.connect.staleTokens", wzState.stale_tokens))
-          : null,
+        second && wzState.stale_tokens ? el("div", { class: "wz-warn" }, staleNotice()) : null,
         errorBanner(),
         reportBlock(),
+        !second && wzState.registration_unconfirmed ? sideButton("wizard.registration.check", "api/wizard/registration/check") : null,
         el("label", { class: "wz-label" }, label(second ? "wizard.connect.code.labelNext" : "wizard.connect.code.label")),
         fields.code,
         el("div", { class: "wz-hint-line" }, label(second ? "wizard.connect.hintNext" : "wizard.connect.hint")),
@@ -347,6 +537,11 @@
     }
 
     function childBody() {
+      const stale = staleBlock();
+      return stale ? [stale].concat(childListBody()) : childListBody();
+    }
+
+    function childListBody() {
       if (children.status === "loading") return [el("p", { class: "wz-sub" }, label("common.loading"))];
       if (children.status === "error") {
         return [
@@ -506,12 +701,13 @@
             }),
         };
       }
+      if (id === "connect" && setupPhase()) return setupStep();
       if (id === "connect") {
         const second = !!wzState.awaiting_confirm;
         return {
           question: label(second ? "wizard.connect.second.title" : "wizard.connect.title"),
           body: connectBody,
-          hint: wzState.needs_2fa_setup ? "" : label("wizard.connect.privacy"),
+          hint: wzState.twofactor_setup === "done" ? "" : label("wizard.connect.privacy"),
           block: () => pauseBlock() || (fields.code && fields.code.value.trim() ? "" : need("wizard.connect.code.label")),
           blockFocus: () => fields.code,
           nextLabel: label(second ? "wizard.connect.finish" : "common.next"),

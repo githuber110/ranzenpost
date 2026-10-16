@@ -7,7 +7,7 @@
   </picture>
 </p>
 
-<p align="center"><b>Der Schultag deiner Kinder in Home Assistant.</b><br>Stundenplan, Vertretungen, Elternbriefe, Pinnwand, Chat, Schultermine und Krankmeldungen aus dem <a href="https://iserv.de">IServ</a> deiner Schule, als App in der Seitenleiste, als Dashboard-Karte und als Entitäten für deine Automationen.</p>
+<p align="center"><b>Der Schultag deiner Kinder in Home Assistant.</b><br>Stundenplan, Vertretungen, Elternbriefe, Pinnwand, Chat, Schultermine, Krankmeldungen, Aufgaben, News, E-Mail und Dateien aus dem <a href="https://iserv.de">IServ</a> deiner Schule, als App in der Seitenleiste, als Dashboard-Karte und als Entitäten für deine Automationen.</p>
 
 <p align="center">
   <a href="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml"><img src="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg" alt="Build"></a>
@@ -28,13 +28,13 @@
 
 <table>
   <tr>
+    <td width="33%" valign="top"><b>Die App in der Seitenleiste</b><br>Stundenplan mit Vertretungen, Elternbriefe, Pinnwand, Chat, Schultermine, Aufgaben, News, E-Mail, Dateien und Krankmeldungen. Eine Krankmeldung bekommt einen Prüfschritt, bevor etwas rausgeht.</td>
     <td width="33%" valign="top"><b>Eine Karte für jedes Dashboard</b><br>Heute, die nächste Stunde, die Woche, Briefe, Ferien und mehr. Bausteine, Größe und Kinder wählst du im visuellen Editor.</td>
-    <td width="33%" valign="top"><b>Jedes Kind ist ein Gerät</b><br>Kalender, Sensoren und ein Ereignis je Kind: die nächste Stunde, das Schulende, die nächste Arbeit, ungelesene Briefe, offene Abwesenheiten.</td>
-    <td width="33%" valign="top"><b>Automationen ohne YAML</b><br>Geräte-Auslöser wie „Stunde fällt aus“ oder „Neuer Elternbrief“ und Bedingungen wie „Ist ein Schultag“, direkt im Automationseditor.</td>
+    <td width="33%" valign="top"><b>Mehrere Schulen, eine App</b><br>Zwei Kinder an zwei Schulen oder zwei Konten. Ein Posteingang, eine Übersicht, jede Schule mit eigener Anmeldung.</td>
   </tr>
   <tr>
-    <td valign="top"><b>Krankmeldung in wenigen Schritten</b><br>Melde eine Abwesenheit so, wie deine Schule es will, mit einem Prüfschritt, bevor etwas rausgeht.</td>
-    <td valign="top"><b>Mehrere Schulen, eine App</b><br>Zwei Kinder an zwei Schulen oder zwei Konten. Ein Posteingang, eine Übersicht, jede Schule mit eigener Anmeldung.</td>
+    <td valign="top"><b>Die Stunden im Kalender deines Handys</b><br>Ein Feed je Kind für deine Kalender-App: Stunden, Ferien, Arbeiten und Abwesenheiten. Als Link oder QR-Code.</td>
+    <td valign="top"><b>Geräte, Sensoren und Automationen</b><br>Jedes Kind ist ein Gerät mit Kalendern, Sensoren und einem Ereignis. Auslöser wie „Stunde fällt aus“ und Bedingungen wie „Ist ein Schultag“ stehen im Automationseditor, ohne YAML.</td>
     <td valign="top"><b>Bleibt zu Hause</b><br>Läuft auf deinem Home Assistant. Keine Cloud, kein Konto, kein Server dazwischen. Zugangsdaten liegen verschlüsselt.</td>
   </tr>
 </table>
@@ -55,6 +55,8 @@ Home Assistant öffnet sich und fragt, ob du das Repository hinzufügen willst.
 ### 2. App installieren und Einrichtung durchlaufen
 
 **Ranzenpost (IServ)** erscheint jetzt im App-Store. Öffne es, klicke **Installieren**, dann **Starten**. Öffne **Ranzenpost** in der Seitenleiste. Die Einrichtung fragt nach der Adresse deiner Schule, deinem Elternlogin und, falls deine Schule das nutzt, nach einem Code aus der Authenticator-App, die du schon hast. Dein Authenticator funktioniert weiter. Dann wählst du deine Kinder. Fertig.
+
+Verlangt deine Schule die Zwei-Faktor-Anmeldung und hat das Konto noch keine, richtet die Einrichtung sie mit dir ein: QR-Code, Schlüssel und Code. Schaltet deine Schule sie später ein, sagt Ranzenpost das und führt dich hindurch.
 
 ### 3. Integration hinzufügen
 
@@ -85,11 +87,94 @@ Die Dokumentation in Home Assistant ist [`iserv_connector/DOCS.md`](iserv_connec
 
 </details>
 
+## Die App
+
+### Übersicht
+
+Die Übersicht sammelt, was heute wichtig ist, in Blöcken, die du auswählst und ordnest: die Stunden von heute, die nächste Stunde, die Woche, Änderungen, Briefe, Beiträge, Abwesenheiten, Chat, Sprechtage, Ferien, die Termine der Schule, Aufgaben, News, Foren, Texte und Infobildschirme.
+
+Schultermine haben außerdem eine eigene Ansicht: die geteilten Kalender, die das Konto in IServ sieht, für die nächsten Wochen.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-today-dark.png">
+    <img src="docs/screenshots/overview-today.png" width="250" alt="Die Übersicht auf einem Handy: die heutigen Stunden eines Kindes, die laufende Stunde markiert, eine Vertretung und ein Ausfall">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/two-schools-post-dark.png">
+    <img src="docs/screenshots/two-schools-post.png" width="250" alt="Der Post-Reiter mit Briefen aus zwei Schulen, einem Schul-Chip an jeder Zeile, einer Filterzeile und einem Suchfeld">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/absence-wizard-review-dark.png">
+    <img src="docs/screenshots/absence-wizard-review.png" width="250" alt="Der letzte Schritt der Krankmeldung: Kind, Art, Zeitraum und Kommentar stehen noch einmal über dem Senden-Knopf">
+  </picture>
+</p>
+
+<p align="center"><b>Heute</b> öffnet auf dem aktuellen Tag und markiert die laufende Stunde. <b>Post</b> führt die Briefe beider Schulen zusammen. <b>Eine Krankmeldung</b> braucht wenige Schritte, und der letzte Schritt zeigt alles noch einmal, bevor etwas rausgeht.</p>
+
+### Stundenplan
+
+Die Woche je Kind, Vertretungen und Ausfälle markiert, nie weggelassen. Tippe eine Stunde an, um eine Arbeit zu markieren. Jede Schule hat eine Seite für Stundenzeiten: Jede Stunde bekommt Beginn und Dauer, aus IServ oder von Hand. Eigene Pausen, AGs und Termine wiederholen sich täglich, wöchentlich oder alle paar Wochen bis zu den Sommerferien, für ein Kind oder alle. Stunden gehen vor: Ein Eintrag, den eine Stunde überdeckt, wird gekürzt, nie gelöscht. Fächer bekommen eine von 24 Farben oder eine eigene, hell wie dunkel. Ein Klassenstundenplan mit parallelen Kursen zeigt eine Zelle für die Gruppe; wähle einmal, welche Kurse jedes Kind besucht, und nur diese erscheinen.
+
+### Abwesenheiten
+
+Alle vier IServ-Arten: Krankmeldung, Beurlaubung, Abmeldung von Bus, Mittagessen oder Kindergarten und Abmeldung von der Ganztagsbetreuung. Die Regeln deiner Schule gelten: der Stichzeitpunkt für eine Krankmeldung am selben Tag, die Mindestfrist für eine Beurlaubung, die Pflichtfelder und ob einzelne Stunden meldbar sind. Beurlaubungen können Anlagen tragen. Eine Krankmeldung lässt sich als PDF speichern oder drucken, und die Telefonnummern der Schule sind einen Fingertipp entfernt.
+
+Schulen mit der älteren Abwesenheitsseite von IServ funktionieren auch. Abwesenheit mit Anlagen melden, das Änderungsprotokoll lesen, die Liste exportieren und einen Eintrag zurückziehen, alles in der App.
+
+### Elternbriefe, Pinnwand und Chat
+
+Elternbriefe, aktuell und archiviert, mit Anlagen. Verlangt ein Brief eine Lesebestätigung, schickt die App sie so, wie es die IServ-Webseite tun würde, mit einer optionalen Nachricht an die Schule, wenn der Brief ein Feld dafür hat. Fragt ein Brief nach einer Auswahl, antwortest du in der App, und eine gesendete Antwort lässt sich ändern. Die Pinnwände laufen in einem Posteingang mit Volltextsuche zusammen. Der Chat läuft über den IServ-Messenger, wo die Schule ihn für Eltern freigibt.
+
+### Sprechtage
+
+Aktuelle und archivierte Sprechtage, deine eigenen Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt. Termin buchen, ändern und absagen läuft in der App über die Formulare der Schule, jeweils nach einer Bestätigung. Danach liest Ranzenpost die Seite neu und zeigt das Ergebnis. Push-Nachrichten melden, wann die Buchung öffnet, wenn ein Termin abgesagt wird, drei Tage vor einem Sprechtag und kurz vor einem Termin.
+
+### Aufgaben und News
+
+Offene Aufgaben stehen nach Abgabedatum vorn. Erledigte und vergangene folgen. Eine Aufgabe öffnet sich mit dem, was ihre IServ-Seite zeigt: Text, Termine, Schlagwörter, Dateien, die eigene Abgabe, Rückmeldung und Musterlösungen. Ranzenpost liest diese Seite nur, wenn du die Aufgabe öffnest, nie im Hintergrund. Dateien und Text gibst du in der App ab, entfernst abgegebene Dateien und markierst eine Aufgabe als erledigt, jeweils nach einer Bestätigung. Danach liest Ranzenpost die Aufgabenseite neu und zeigt das Ergebnis.
+
+Jede News steht mit Kategorie und Datum in der Liste. News lassen sich nach Kategorie filtern und durchsuchen. Archiv und Paketnews erscheinen, wenn du sie im Filter wählst, und erst dann liest Ranzenpost sie. Eine News öffnet sich in der App mit vollem Text, Dateien und Links. Dateien öffnen und speichern sich über Ranzenpost.
+
+### Foren, Texte und Infobildschirme
+
+Foren listet jedes Forum, das das Konto sieht, mit Bereich und ungelesenen Beiträgen. Alles als gelesen markieren fragt vorher nach. Texte listet jeden Text, den das Konto sieht, auch ausgeblendete, mit Besitzer, Daten und Schlagwörtern. Es gibt einen Filter nach Auswahl und Schlagwort und eine Suche. Infobildschirme listet die Infobildschirme, die das Konto sieht, mit Namen. Diese drei Bereiche erscheinen nur, wenn das Konto das Modul hat.
+
+### E-Mail
+
+Das IServ-Postfach hat einen eigenen Bereich: Ordner, Suche mit Filtern, Lesen, Antworten, Weiterleiten, Entwürfe und Anlagen. Markierungen, Schlagwörter, Verschieben, Archivieren und Lesebestätigungen funktionieren wie in IServ. Empfänger und Gruppen kommen aus der Adresssuche der Schule, und du wählst die Absenderadresse. Aus einer E-Mail wird auf Wunsch ein Termin in deinem IServ-Kalender. Abwesenheitsnotiz, Weiterleitung, Filterregeln und Signaturen bearbeitest du in der App über die Einstellungsformulare von IServ. Senden, endgültiges Löschen und jede Änderung an den Einstellungen fragen vorher nach. Als Spam markieren verschiebt eine E-Mail nach einer Bestätigung in den Spam-Ordner des Mailservers, und Rückgängig holt sie zurück. Kein Spam holt eine E-Mail aus dem Spam-Ordner in den Posteingang. Empfänger kommen auch aus dem Adressbuch und aus einer Verteilerliste, die du wählst.
+
+### Dateien und Kontakte
+
+Konten mit Dateien sehen ihre eigenen Dateien und die Gruppenordner, öffnen Ordner, suchen und laden eine Datei über die App. Ein Hochladen in die eigenen Dateien oder einen Gruppenordner fragt vorher nach und zeigt danach die Liste neu. Der Bereich Kontakte sucht im Adressbuch der Schule und schreibt einer Person eine E-Mail. Verteilerlisten zeigen ihre Adressen. Eine Liste wird aus einer Text- oder CSV-Datei importiert oder gelöscht, jeweils nach einer Bestätigung.
+
+### Mehrere Schulen
+
+Jede Schule und jedes Konto behält Anmeldung, Kinder, Namen und Stundenzeiten für sich. Briefe und Beiträge laufen in einem Posteingang zusammen, mit einem Schul-Chip an jeder Zeile und einem Filter je Schule. Kinder stehen schulübergreifend nach Vornamen sortiert. Klappt die Anmeldung einer Schule nicht, wird nur sie markiert, die anderen laufen weiter. Eine Schule, die für dein Konto keine Kinder listet, bringt trotzdem Briefe, Beiträge und Chat. Wo kein Kind die Schule vorgibt, etwa bei der Lehrersuche, fragt die App nach der Schule.
+
+### Die Stunden im Kalender deines Handys
+
+Ein Feed je Kind, den deine Kalender-App abonniert: Stunden, Schulferien, Feiertage, markierte Arbeiten, genehmigte Abwesenheiten, eigene Einträge und die Termine der Schule, jeweils abschaltbar. Ein Konto ohne verknüpftes Profil bekommt je Schule einen Feed mit Ferien und Schulterminen. Als Link oder QR-Code. Der Link lässt sich jederzeit erneuern oder löschen.
+
+Der Feed läuft auf einem zweiten Port, 8100, der **standardmäßig aus** ist. Schalte ihn unter **Einstellungen, Apps, Ranzenpost (IServ), Konfiguration, Netzwerk** ein. Wer den Link hat, sieht den Stundenplan dieses Kindes, behandle den Link also wie ein Geheimnis. Der Fernzugriff von Nabu Casa leitet keine App-Ports weiter, unterwegs braucht der Feed also deinen eigenen Fernzugriff oder ein VPN.
+
+Beim Anlegen wählst du, wo du den Kalender nutzt. **Nur zuhause (WLAN)** geht im Heimnetz oder per VPN und verlässt es nie. **Überall** geht auch unterwegs und in Google Kalender und Outlook.com: Die Ranzenpost-Integration stellt den Feed als Home-Assistant-Webhook bereit, über Home Assistant Cloud (Nabu Casa) oder deine eigene externe Adresse. Ohne beides gibt es nur die Nutzung zuhause. Erneuern oder Löschen des Links beendet die alte Adresse sofort.
+
+### Sprachen und Designs
+
+Deutsch, Englisch, Arabisch, Türkisch, Russisch und Ukrainisch. Arabisch läuft von rechts nach links. Datum, Uhrzeit und Zahlen folgen der Sprache. Helles und dunkles Design, dem Gerät folgend oder festgelegt. Große Systemschriften werden berücksichtigt.
+
+### Tablet und Laptop
+
+Ab 900 Pixel Breite ersetzt eine Navigationsleiste die Tab-Leiste. Ab 1280 Pixel öffnen Briefe, Beiträge, Abwesenheiten, Chats und Einstellungen in einem Bereich neben ihrer Liste, und der Stundenplan zeigt alle Kinder nebeneinander.
+
+<p align="center"><img src="docs/screenshots/desktop-timetable.png" width="900" alt="Der Stundenplan in Laptop-Breite: links eine Navigationsleiste, daneben die Woche zweier Kinder"></p>
+
 ## Home Assistant
 
 ### Dashboard-Karte
 
-Die Integration registriert `custom:ranzenpost-card`. Füge sie über die Kartenauswahl hinzu und richte sie im visuellen Editor ein: Titel, Kinder, Bausteine und eine Größe je Baustein. Die Karte folgt Sprache und Design des Dashboards. Sie besteht aus denselben Bausteinen wie die Übersicht der App: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays` und `school_events`. Angeboten werden nur Bausteine der Module, die deine Schule hat. Ein Baustein ohne Inhalt wird nicht gezeichnet, und die meisten Bausteine öffnen mit „Alle ansehen“ die App; der Ferien-Baustein hat keinen solchen Link. Bei mehreren Kindern stehen die Tagesbausteine nebeneinander und die Familienbausteine einmal. Ein Konto ohne Kind bekommt trotzdem Elternbriefe, Pinnwand, Elternsprechtage, Ferien und Schultermine seiner Schule.
+Die Integration registriert `custom:ranzenpost-card`. Füge sie über die Kartenauswahl hinzu und richte sie im visuellen Editor ein: Titel, Kinder, Bausteine und eine Größe je Baustein. Die Karte folgt Sprache und Design des Dashboards. Sie besteht aus denselben Bausteinen wie die Übersicht der App: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` und `texts`. Angeboten werden nur Bausteine der Module, die deine Schule hat. Ein Baustein ohne Inhalt wird nicht gezeichnet, und die meisten Bausteine öffnen mit „Alle ansehen“ die App; der Ferien-Baustein hat keinen solchen Link. Bei mehreren Kindern stehen die Tagesbausteine nebeneinander und die Familienbausteine einmal. Ein Konto ohne verknüpftes Profil bekommt trotzdem Elternbriefe, Pinnwand, Elternsprechtage, Ferien, Schultermine, Aufgaben, News, Foren und Texte seiner Schule.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -134,196 +219,20 @@ blocks:
 
 </details>
 
-### Was jedes Kind mitbringt
+### Geräte, Entitäten und Automationen
 
-Die Integration legt ein Gerät pro Schule und eines pro Kind an. Entitäts-IDs tragen den Vornamen, zum Beispiel `sensor.ranzenpost_mia_next_lesson`. Teilen sich zwei Kinder an verschiedenen Schulen einen Vornamen, kommt die Schule dazu. Entitäten gibt es nur für die Module, die deine Schule hat.
+Die Integration legt ein Gerät pro Schule und eines pro Kind an. Entitäts-IDs tragen den Vornamen, zum Beispiel `sensor.ranzenpost_mia_next_lesson`. Entitäten gibt es nur für die Module, die deine Schule hat.
 
-| Entität | Was sie enthält | Attribute |
-| --- | --- | --- |
-| `calendar.ranzenpost_mia_lessons` | Stunden, mit Vertretungen und Ausfällen | Die nächste Stunde: `summary`, `start`, `end`, `subject`, `subject_code` |
-| `calendar.ranzenpost_mia_exams` | Markierte Arbeiten | Die nächste Arbeit: `summary`, `start`, `end`, `subject`, `subject_code`, `name` |
-| `calendar.ranzenpost_mia_absences` | Genehmigte Abwesenheiten | Die nächste Abwesenheit: `summary`, `start`, `end`, `kind` |
-| `calendar.ranzenpost_mia_own_entries` | Eigene AGs und Termine, solange der Schalter der Schule auf der Stundenzeiten-Seite an ist. Pausen nie | Der nächste Eintrag: `summary`, `start`, `end`, `kind` |
-| `sensor.ranzenpost_mia_current_lesson` | Das Fach der gerade laufenden Stunde, `none` außerhalb der Stunden | `date`, `weekday`, `period`, `subject`, `subject_code`, `teacher`, `room`, `start`, `end`, `substitution`, `cancelled`, `kind`, `before`, `after`, `note`, `minutes_until`, `minutes_left` |
-| `sensor.ranzenpost_mia_next_lesson` | Das Fach der nächsten Stunde, auch über Wochenende und Ferien hinweg | Dieselben Felder wie die aktuelle Stunde |
-| `sensor.ranzenpost_mia_school_end_today` | Wann die letzte Stunde heute endet, an einem freien Tag unknown | `school_day` |
-| `sensor.ranzenpost_mia_next_school_day` | Wann die erste Stunde des nächsten Schultags beginnt, heute noch bis zur ersten Stunde | `date`, `weekday`, `days_until`, `end`, `lessons`, `first_lesson` |
-| `sensor.ranzenpost_mia_changes_today` | Zahl der Stundenplanänderungen heute | `changes`, eine Liste von Stunden mit den Feldern oben |
-| `sensor.ranzenpost_mia_next_exam` | Das Fach der nächsten markierten Arbeit, `none` ohne eine | `date`, `weekday`, `days_until`, `period`, `subject`, `subject_code`, `name`, `start`, `end`, `teacher`, `room` |
-| `sensor.ranzenpost_mia_exams_upcoming` | Zahl der markierten Arbeiten in den nächsten 30 Tagen | `exams`, eine Liste mit den Feldern oben, und `days` |
-| `sensor.ranzenpost_mia_unread_letters` | Zahl der ungelesenen Elternbriefe | `letters`, bis zu zehn mit `title`, `sender`, `date`, `child` |
-| `sensor.ranzenpost_mia_unread_posts` | Zahl der ungelesenen Pinnwandbeiträge | `posts`, bis zu zehn mit `title`, `sender`, `date`, `child` |
-| `sensor.ranzenpost_mia_open_absences` | Zahl der Abwesenheiten, die auf eine Entscheidung warten | `absences`, je mit `kind`, `summary`, `start`, `end`, `status`, `days_until` |
-| `sensor.ranzenpost_mia_next_absence` | Das Datum der nächsten offenen oder anstehenden Abwesenheit, `none` ohne eine | `kind`, `summary`, `start`, `end`, `status`, `days_until` |
-| `sensor.ranzenpost_mia_timetable_last_updated` | Wann der Stundenplan zuletzt aktualisiert wurde | `source`: `iserv` für den Stempel, den IServ zeigt, `app` für den letzten erfolgreichen Abruf |
-| `binary_sensor.ranzenpost_mia_school_day_today` | Ob heute ein Schultag ist | |
-| `binary_sensor.ranzenpost_mia_timetable_changed_today` | Ob sich der heutige Stundenplan geändert hat | |
-| `event.ranzenpost_mia_timetable_changed` | Feuert bei Vertretung, Ausfall, Raumwechsel oder neuer Stunde | `child`, `summary`, `date`, `period` |
+- **Pro Kind:** Kalender für Stunden, Arbeiten, Abwesenheiten und eigene Einträge. Sensoren für die aktuelle und die nächste Stunde, das Schulende, den nächsten Schultag, die Änderungen heute, die nächste Arbeit, ungelesene Briefe und Beiträge und offene Abwesenheiten. Zwei Binärsensoren, `school_day_today` und `timetable_changed_today`. Ein Ereignis, das bei Vertretung, Ausfall oder Raumwechsel feuert.
+- **Pro Schule:** Kalender für Ferien und Schultermine. Sensoren für die nächsten Ferien, den nächsten freien Tag, den nächsten Elternsprechtag, ungelesene Briefe, Beiträge und E-Mails, offene Aufgaben, News, ungelesene Forenbeiträge, Texte und die Verbindung.
 
-Jede Schule bringt ein eigenes Gerät mit. Bei mehreren Schulen kommt der Name der Schule in die ID, zum Beispiel `sensor.ranzenpost_school_riverside_primary_next_holiday`.
+Wähle im Automationseditor das Gerät eines Kindes für Auslöser wie **Stundenplan geändert**, **Stunde fällt aus** oder **Neuer Elternbrief** und für Bedingungen wie **Ist ein Schultag**. Ganz ohne YAML. Die Integration fragt die App alle 60 Sekunden und spricht nie selbst mit IServ.
 
-| Entität | Was sie enthält | Attribute |
-| --- | --- | --- |
-| `calendar.ranzenpost_school_holidays` | Schulferien und Feiertage | Die nächsten Ferien: `summary`, `start`, `end` |
-| `calendar.ranzenpost_school_school_events` | Termine aus dem Schulkalender, nur wenn die Schule das Kalendermodul anbietet | Der nächste Termin: `summary`, `start`, `end` |
-| `sensor.ranzenpost_school_next_holiday` | Der Name der nächsten Schulferien | `start`, `end`, `days_until` |
-| `sensor.ranzenpost_school_next_free_day` | Der Name des nächsten freien Tags, Schulferien oder Feiertag | `start`, `end`, `days_until` |
-| `sensor.ranzenpost_school_next_conference` | Das Datum des nächsten Elternsprechtags | `date`, `title`, `details`, `days_until` |
-| `sensor.ranzenpost_school_unread_letters` | Zahl der ungelesenen Elternbriefe der Schule, auch für ein Konto ohne Kind | `letters`, bis zu zehn mit `title`, `sender`, `date`, `child` |
-| `sensor.ranzenpost_school_unread_posts` | Zahl der neuen Pinnwandbeiträge der Schule | `posts`, bis zu zehn mit `title`, `sender`, `date` |
-| `sensor.ranzenpost_school_unread_e_mails` | Ungelesene E-Mails im IServ-Postfach des Kontos, nur wenn die Schule IServ-E-Mail anbietet; `unknown`, wenn die Zahl nicht lesbar war | keine |
-| `sensor.ranzenpost_school_connection` | `ok`, `error`, `unconfigured`, `unreachable` oder `auth_failed` | `last_poll`, `last_success`, `version`, `modules`, `modules_disabled`, `feed_port_open`, `ingress_path`, `profiles` |
-
-Ein Zähler zeigt `0` und eine leere Liste, wenn nichts da ist, ein Textsensor zeigt `none`, und ein Zeitstempel-Sensor bleibt nur `unknown`, solange es diesen Moment nicht gibt. Zeiten sind ISO 8601 in der Zeitzone der Schule, Daten `YYYY-MM-DD`, Wochentage englische Namen wie `monday`. Die Integration fragt die App alle 60 Sekunden und spricht nie selbst mit IServ. Die Kalender erscheinen auch im Kalender von Home Assistant.
-
-### Automationen
-
-Wähle im Automationseditor das Gerät eines Kindes und dann einen Auslöser: **Stundenplan geändert**, **Stunde fällt aus**, **Vertretung**, **Neuer Elternbrief**, **Neuer Pinnwandbeitrag** oder **Status einer Abwesenheit geändert**. Das Gerät einer Schule bietet **Schule nicht erreichbar**, **Schule wieder erreichbar**, **Anmeldung erforderlich**, **Neuer Elternbrief** und **Neuer Pinnwandbeitrag**. Zwei Bedingungen prüfen ein Kind: **Ist ein Schultag** und **Eine Stunde läuft**. Ganz ohne YAML.
-
-Für alles Weitere tragen die Sensoren genug. Vier Ideen zum Übernehmen:
-
-<details>
-<summary>Eine Stunde vor Unterrichtsbeginn wecken</summary>
-
-```yaml
-triggers:
-  - trigger: time
-    at:
-      entity_id: sensor.ranzenpost_mia_next_school_day
-      offset: "-01:00:00"
-actions:
-  - action: light.turn_on
-    target:
-      area_id: kinderzimmer
-    data:
-      brightness_pct: 60
-```
-
-</details>
-
-<details>
-<summary>Morgenansage auf dem Küchenlautsprecher</summary>
-
-```yaml
-triggers:
-  - trigger: time
-    at: "07:00:00"
-conditions:
-  - condition: template
-    value_template: "{{ states('sensor.ranzenpost_mia_school_end_today') not in ['unknown', 'unavailable'] }}"
-actions:
-  - action: tts.speak
-    target:
-      entity_id: tts.home_assistant_cloud
-    data:
-      media_player_entity_id: media_player.kueche
-      message: >
-        Mia beginnt mit {{ states('sensor.ranzenpost_mia_next_lesson') }}
-        und die Schule endet um {{ as_timestamp(states('sensor.ranzenpost_mia_school_end_today')) | timestamp_custom('%H:%M') }} Uhr.
-```
-
-</details>
-
-<details>
-<summary>Die Änderung pushen, wenn sich der Stundenplan bewegt</summary>
-
-```yaml
-triggers:
-  - trigger: state
-    entity_id: event.ranzenpost_mia_timetable_changed
-    not_from:
-      - unavailable
-      - unknown
-actions:
-  - action: notify.mobile_app_mein_handy
-    data:
-      title: Stundenplanänderung
-      message: "{{ trigger.to_state.attributes.summary }}"
-```
-
-</details>
-
-<details>
-<summary>Am Vorabend an eine Arbeit erinnern</summary>
-
-```yaml
-triggers:
-  - trigger: time
-    at: "18:00:00"
-conditions:
-  - condition: template
-    value_template: "{{ state_attr('sensor.ranzenpost_mia_next_exam', 'days_until') == 1 }}"
-actions:
-  - action: notify.mobile_app_mein_handy
-    data:
-      title: Morgen ist eine Arbeit
-      message: "{{ states('sensor.ranzenpost_mia_next_exam') }}: {{ state_attr('sensor.ranzenpost_mia_next_exam', 'name') }}"
-```
-
-</details>
+Die [Home-Assistant-Referenz](docs/home-assistant.de.md) nennt jede Entität mit ihren Attributen, alle Auslöser und Bedingungen und vier Automationen zum Übernehmen.
 
 ### Push-Nachrichten und Reparaturen
 
-Die App schickt für jede Stundenplanänderung, jeden neuen Brief, jeden neuen Beitrag, jeden neuen Sprechtag und jede neue Chat-Nachricht eine Nachricht an die Notify-Dienste, die du auswählst, zum Beispiel die Home Assistant App auf deinem Handy. Jede Art außer dem Hinweis auf eine nötige Anmeldung lässt sich in den Einstellungen abschalten. Jedes Ziel hat einen Testknopf, und die Texte gibt es in allen sechs Sprachen. Braucht die Anmeldung bei einer Schule dich, zeigt Home Assistant einen Reparaturhinweis mit dem Namen der Schule und dem nächsten Schritt. Er verschwindet von selbst, sobald die Anmeldung wieder klappt.
-
-## Die App
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-today-dark.png">
-    <img src="docs/screenshots/overview-today.png" width="250" alt="Die Übersicht auf einem Handy: die heutigen Stunden eines Kindes, die laufende Stunde markiert, eine Vertretung und ein Ausfall">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/two-schools-post-dark.png">
-    <img src="docs/screenshots/two-schools-post.png" width="250" alt="Der Post-Reiter mit Briefen aus zwei Schulen, einem Schul-Chip an jeder Zeile, einer Filterzeile und einem Suchfeld">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/absence-wizard-review-dark.png">
-    <img src="docs/screenshots/absence-wizard-review.png" width="250" alt="Der letzte Schritt der Krankmeldung: Kind, Art, Zeitraum und Kommentar stehen noch einmal über dem Senden-Knopf">
-  </picture>
-</p>
-
-<p align="center"><b>Heute</b> öffnet auf dem aktuellen Tag und markiert die laufende Stunde. <b>Post</b> führt die Briefe beider Schulen zusammen. <b>Eine Krankmeldung</b> braucht wenige Schritte, und der letzte Schritt zeigt alles noch einmal, bevor etwas rausgeht.</p>
-
-### Übersicht
-
-Die Übersicht sammelt, was heute wichtig ist, in Blöcken, die du auswählst und ordnest: die Stunden von heute, die nächste Stunde, die Woche, Änderungen, Briefe, Beiträge, Abwesenheiten, Chat, Sprechtage, Ferien und die Termine der Schule. Hat das Konto ein IServ-Postfach, zeigt die Übersicht, wie viele E-Mails dort ungelesen sind, mit einem Link, der IServ öffnet. Ranzenpost liest nur die Zahl und öffnet keine Mail.
-
-Schultermine haben außerdem eine eigene Ansicht: die geteilten Kalender, die das Konto in IServ sieht, für die nächsten Wochen.
-
-### Stundenplan
-
-Die Woche je Kind, Vertretungen und Ausfälle markiert, nie weggelassen. Tippe eine Stunde an, um eine Arbeit zu markieren. Jede Schule hat eine Seite für Stundenzeiten: Jede Stunde bekommt Beginn und Dauer, aus IServ oder von Hand. Eigene Pausen, AGs und Termine wiederholen sich täglich, wöchentlich oder alle paar Wochen bis zu den Sommerferien, für ein Kind oder alle. Stunden gehen vor: Ein Eintrag, den eine Stunde überdeckt, wird gekürzt, nie gelöscht. Fächer bekommen eine von 24 Farben oder eine eigene, hell wie dunkel. Ein Klassenstundenplan mit parallelen Kursen zeigt eine Zelle für die Gruppe; wähle einmal, welche Kurse jedes Kind besucht, und nur diese erscheinen.
-
-### Abwesenheiten
-
-Alle vier IServ-Arten: Krankmeldung, Beurlaubung, Abmeldung von Bus, Mittagessen oder Kindergarten und Abmeldung von der Ganztagsbetreuung. Die Regeln deiner Schule gelten: der Stichzeitpunkt für eine Krankmeldung am selben Tag, die Mindestfrist für eine Beurlaubung, die Pflichtfelder und ob einzelne Stunden meldbar sind. Beurlaubungen können Anhänge tragen. Eine Krankmeldung lässt sich als PDF speichern oder drucken, und die Telefonnummern der Schule sind einen Fingertipp entfernt.
-
-### Elternbriefe, Pinnwand und Chat
-
-Elternbriefe, aktuell und archiviert, mit Anhängen. Verlangt ein Brief eine Lesebestätigung, schickt die App sie so, wie es die IServ-Webseite tun würde, mit einer optionalen Nachricht an die Schule, wenn der Brief ein Feld dafür hat. Die Pinnwände laufen in einem Posteingang mit Volltextsuche zusammen. Der Chat läuft über den IServ-Messenger, wo die Schule ihn für Eltern freigibt.
-
-### Mehrere Schulen
-
-Jede Schule und jedes Konto behält Anmeldung, Kinder, Namen und Stundenzeiten für sich. Briefe und Beiträge laufen in einem Posteingang zusammen, mit einem Schul-Chip an jeder Zeile und einem Filter je Schule. Kinder stehen schulübergreifend nach Vornamen sortiert. Klappt die Anmeldung einer Schule nicht, wird nur sie markiert, die anderen laufen weiter. Eine Schule, die für dein Konto keine Kinder listet, bringt trotzdem Briefe, Beiträge und Chat. Wo kein Kind die Schule vorgibt, etwa bei der Lehrersuche, fragt die App nach der Schule.
-
-### Die Stunden im Kalender deines Handys
-
-Ein Feed je Kind, den deine Kalender-App abonniert: Stunden, Schulferien, Feiertage, markierte Arbeiten, genehmigte Abwesenheiten, eigene Einträge und die Termine der Schule, jeweils abschaltbar. Ein Konto ohne Kind bekommt je Schule einen Feed mit Ferien und Schulterminen. Als Link oder QR-Code. Der Link lässt sich jederzeit erneuern oder löschen.
-
-Der Feed läuft auf einem zweiten Port, 8100, der **standardmäßig aus** ist. Schalte ihn unter **Einstellungen, Apps, Ranzenpost (IServ), Konfiguration, Netzwerk** ein. Wer den Link hat, sieht den Stundenplan dieses Kindes, behandle den Link also wie ein Geheimnis. Der Fernzugriff von Nabu Casa leitet keine App-Ports weiter, unterwegs braucht der Feed also deinen eigenen Fernzugriff oder ein VPN.
-
-Beim Anlegen wählst du, wo der Kalender lädt. **Lokal** geht im Heimnetz oder per VPN und verlässt es nie. **Internet** geht überall, auch in Google Kalender und Outlook.com: Die Ranzenpost-Integration stellt den Feed als Home-Assistant-Webhook bereit, über Home Assistant Cloud (Nabu Casa) oder deine eigene externe Adresse. Ohne beides gibt es nur Lokal. Erneuern oder Löschen des Links beendet die alte Adresse sofort.
-
-### Sprachen und Designs
-
-Deutsch, Englisch, Arabisch, Türkisch, Russisch und Ukrainisch. Arabisch läuft von rechts nach links. Datum, Uhrzeit und Zahlen folgen der Sprache. Helles und dunkles Design, dem Gerät folgend oder festgelegt. Große Systemschriften werden berücksichtigt. Schaltet deine Schule später eine Pflicht zur Zwei-Faktor-Anmeldung ein, sagt Ranzenpost das offen und führt dich hindurch.
-
-## Tablet und Laptop
-
-Ab 900 Pixel Breite ersetzt eine Navigationsleiste die Tab-Leiste. Ab 1280 Pixel öffnen Briefe, Beiträge, Abwesenheiten, Chats und Einstellungen in einem Bereich neben ihrer Liste, und der Stundenplan zeigt alle Kinder nebeneinander.
-
-<p align="center"><img src="docs/screenshots/desktop-timetable.png" width="900" alt="Der Stundenplan in Laptop-Breite: links eine Navigationsleiste, daneben die Woche zweier Kinder"></p>
+Die App schickt Nachrichten an die Notify-Dienste, die du auswählst, zum Beispiel die Home Assistant App auf deinem Handy. Sie melden Stundenplanänderungen, neue Briefe, neue Beiträge, neue Sprechtage, neue Chat-Nachrichten, neue Aufgaben, neue News, neue Forenbeiträge und neue Texte. Jede Art außer dem Hinweis auf eine nötige Anmeldung lässt sich in den Einstellungen abschalten. Jedes Ziel hat einen Testknopf, und die Texte gibt es in allen sechs Sprachen. Braucht die Anmeldung bei einer Schule dich, zeigt Home Assistant einen Reparaturhinweis mit dem Namen der Schule und dem nächsten Schritt. Er verschwindet von selbst, sobald die Anmeldung wieder klappt.
 
 ## Unterstützte IServ-Module
 
@@ -332,15 +241,23 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 | Modul | IServ-Ausgabe, die Ranzenpost liest | Liest | Schreibt |
 | --- | --- | --- | --- |
 | Stundenplan (`dsa-timetable`, `time-table`) | Der Stundenplan der Schul-App. Nennt er keine Stunden, das ältere Modul `time-table` | Stunden, Vertretungen, Ausfälle, Stundenzeiten | Nichts. Markierte Arbeiten bleiben in der App |
-| Elternbriefe (`parentletter`) | Elternbriefe | Aktuelle und archivierte Briefe, Anhänge | Archivieren, Lesebestätigung mit optionaler Nachricht, Nachricht an die Schule bei Briefen mit Antwortmöglichkeit |
-| Pinnwände (`dieschulapp`) | Pinnwände (Schul-App) | Alle Pinnwände, Beiträge, Anhänge | Nichts. Der Lesestatus bleibt in der App |
-| Abwesenheiten (`dieschulapp`) | Abwesenheiten (Schul-App). Das ältere Abwesenheitsmodul ist ungeprüft | Gemeldete Abwesenheiten und ihr Status, die Regeln der Schule | Krankmeldung, Beurlaubung mit Anhängen, Abmeldung, Abmeldung von der Ganztagsbetreuung |
-| Elternsprechtage (`parentconference`) | Elternsprechtage | Termine und Titel | Nichts |
+| Abwesenheiten (`dieschulapp`, `absence`) | Abwesenheiten (Schul-App) oder die ältere Abwesenheitsseite | Gemeldete Abwesenheiten und ihr Status, die Regeln der Schule; auf der älteren Seite auch das Änderungsprotokoll | Krankmeldung, Beurlaubung mit Anlagen, Abmeldung, Abmeldung von der Ganztagsbetreuung; auf der älteren Seite eine Meldung mit Anlagen und ihr Zurückziehen |
+| Elternbriefe (`parentletter`) | Elternbriefe | Aktuelle und archivierte Briefe, Anlagen | Archivieren, Lesebestätigung mit optionaler Nachricht, Nachricht an die Schule bei Briefen mit Antwortmöglichkeit, die Antwort auf einen Brief mit Auswahl |
+| Pinnwände (`dieschulapp`) | Pinnwände (Schul-App) | Alle Pinnwände, Beiträge, Anlagen | Nichts. Der Lesestatus bleibt in der App |
 | Chat (`messenger`) | Messenger, wo die Schule ihn für Eltern freigibt | Räume und Nachrichten | Nachricht senden, als gelesen markieren, Raum mit einer Lehrkraft öffnen |
-| Schultermine (`calendar`) | Kalender, wo das Konto ihn sieht | Termine der geteilten Kalender, die das Konto sieht, für die nächsten Wochen. Der persönliche Kalender des Kontos bleibt außen vor | Nichts |
-| E-Mail (`mail`) | IServ-Postfach | Nur die Zahl der ungelesenen Mails | Nichts |
+| Elternsprechtage (`parentconference`) | Elternsprechtage | Aktuelle und archivierte Sprechtage, eigene Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt | Termin buchen, ändern und absagen über die Formulare der Schule, jeweils nach einer Bestätigung |
+| Schultermine (`calendar`) | Kalender, wo das Konto ihn sieht | Termine aller Kalender, die das Konto sieht, auch seines persönlichen Kalenders, für die nächsten Wochen | Ein Termin aus einer E-Mail, nach einer Bestätigung |
+| Aufgaben (`exercise`) | Aufgaben | Aktuelle und vergangene Aufgaben, so wie IServ sie listet; beim Öffnen die Seite der Aufgabe: Text, Termine, Schlagwörter, Dateien, eigene Abgabe, Rückmeldung, Musterlösungen | Dateien und Text abgeben, abgegebene Dateien entfernen, als erledigt oder nicht erledigt markieren, jeweils nach einer Bestätigung |
+| News (`news`) | News | Jede News der Liste mit Titel, Datum und Kategorie, dazu Text, Dateien und Links jeder News; Archiv und Paketnews, wenn du sie im Filter wählst | Nichts. Filter und Suche arbeiten in der App |
+| Foren (`forums`, `forum`) | Foren | Jedes Forum der Übersicht mit Bereich, Beschreibung, ungelesenen Beiträgen und letztem Beitrag | Alles als gelesen markieren, nach einer Bestätigung |
+| Texte (`etherpad`) | Texte | Jeder Text, den das Konto in einer IServ-Auswahl sieht, auch ausgeblendete, mit Besitzer, Daten und Schlagwörtern | Nichts. Filter und Suche arbeiten in der App |
+| Infobildschirme (`infodisplay`) | Infobildschirm | Die Infobildschirme, die das Konto sieht, mit Namen | Nichts |
+| E-Mail (`mail`) | IServ-Postfach | Ordner, E-Mails mit Anlagen, Suche, Schlagwörter, Absenderadressen, Empfänger- und Gruppensuche, die Mail-Einstellungen | Senden, Antworten, Weiterleiten, Entwürfe, Markierungen, Schlagwörter, Verschieben, Archivieren, Löschen, Ordner, Lesebestätigungen, Abwesenheitsnotiz, Weiterleitung, Filterregeln, Signaturen, als Spam und als kein Spam markieren, mit Rückgängig |
+| Dateien (`file`) | Dateien | Eigene Dateien und Gruppenordner mit Name, Größe, Typ und Datum, die Suche, die Dateien selbst | Hochladen in die eigenen Dateien und Gruppenordner, nach einer Bestätigung |
+| Adressbuch (`addressbook`) | Adressbuch | Personen aus einer Suche mit Adresse und Klasse, auch als E-Mail-Empfänger | Nichts |
+| Verteilerlisten (`mailinglist`) | Verteilerlisten | Listen und ihre Adressen | Import aus einer Text- oder CSV-Datei, Löschen, jeweils nach einer Bestätigung |
 
-Klassengeld erkennt Ranzenpost, unterstützt es aber nicht. Die Einstellungen bieten einen Link, der es in IServ öffnet. Es läuft als eigener Dienst hinter einer Zustimmung in IServ, und die Unterstützung steht jemandem offen, dessen Schule Klassengeld nutzt und der sie selbst bauen möchte. Siehe [Issue #5](https://github.com/githuber110/ranzenpost/issues/5).
+Klassengeld erkennt Ranzenpost, unterstützt es aber noch nicht. Es läuft als eigener Dienst hinter einer Zustimmung in IServ, und die Unterstützung steht jemandem offen, dessen Schule Klassengeld nutzt und der sie selbst bauen möchte. Siehe [Issue #5](https://github.com/githuber110/ranzenpost/issues/5).
 
 Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` an, zeigt die Einstellungsseite es als vorhanden, aber noch nicht unterstützt, statt den Stundenplan als fehlend zu melden. Module, die Ranzenpost noch nicht kennt, erscheinen in den Einstellungen unter ihrem IServ-Namen, mit einem Knopf, der ein vorausgefülltes Issue öffnet.
 
@@ -350,8 +267,8 @@ Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` a
 - Drei Ziele nach außen: der IServ-Server deiner Schule, `openholidaysapi.org` für Feriendaten und einmalig `openplzapi.org`, um die Postleitzahl der Schule einem Bundesland zuzuordnen. Diese beiden Anfragen tragen ein Bundesland und ein Jahr oder eine Postleitzahl, sonst nichts.
 - Schuladresse, Login und der eigene Zwei-Faktor-Schlüssel der App bleiben im Ordner `/data` der App. Login und Zwei-Faktor-Schlüssel liegen verschlüsselt. Mit einer **Passphrase** in den App-Optionen wird der Schlüssel beim Start daraus abgeleitet und nie auf die Platte geschrieben.
 - Gelesen werden nur Kinder, die dein Konto aufführt. Andere IDs probiert die App nie.
-- Jeder Schreibzugriff auf IServ fragt vorher nach. Nichts wird in deinem Namen verschickt.
-- **Trennen** versucht, das Zwei-Faktor-Token der App aus IServ zu entfernen, und löscht dann die Daten der Schule lokal.
+- Ranzenpost schreibt nur in IServ, wenn du handelst. Senden, Buchen, Antworten, Abgeben, Hochladen, Importieren, Einstellungen ändern und endgültiges Löschen fragen vorher nach. Nichts wird in deinem Namen verschickt.
+- **Trennen** entfernt das Zwei-Faktor-Token der App aus IServ und löscht dann die Daten der Schule lokal. Ist IServ nicht erreichbar, bleibt die Schule, bis du es erneut versuchst oder trotzdem trennst.
 - Das Repository enthält keine personenbezogenen Daten. Alle Testdaten sind erfunden.
 
 ## Hilfe bekommen

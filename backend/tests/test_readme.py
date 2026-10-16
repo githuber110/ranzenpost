@@ -19,6 +19,7 @@ TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}")
 FENCE = "```"
 MODULES_HEADING = "Supported IServ modules"
 LANGUAGE_LINE = "[English](README.md) | [Deutsch](README.de.md)"
+GERMAN_PAGE = re.compile(r"\.de\.md(?=$|#)")
 
 
 def readme_text():
@@ -62,6 +63,10 @@ def image_targets(text):
 
 def link_targets(text):
     return targets(LINK_TARGET, MARKDOWN_IMAGE.sub("image", text))
+
+
+def language_neutral(found):
+    return [GERMAN_PAGE.sub(".md", target) for target in found]
 
 
 def module_table(text):
@@ -132,7 +137,16 @@ def test_both_readmes_link_the_same_targets_in_the_same_order():
     english = link_targets(readme_text())
     german = link_targets(text_of(README_DE))
     assert english, "no link found in README.md"
-    assert german == english
+    assert language_neutral(german) == language_neutral(english)
+
+
+def test_the_german_readme_links_the_german_page_where_one_exists():
+    for target in link_targets(text_of(README_DE)):
+        path = target.split("#")[0]
+        if "://" in path or not path.endswith(".md") or path.endswith(".de.md") or path.startswith("README"):
+            continue
+        german = ROOT / (path[: -len(".md")] + ".de.md")
+        assert not german.exists(), f"README.de.md links {target} although {german.name} exists"
 
 
 def test_both_readmes_reference_the_same_screenshots():

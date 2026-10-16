@@ -1,7 +1,6 @@
 BADGES_PATH = "/iserv/app/navigation/badges"
 MAIL_BADGE = "mail"
 MAIL_MODULE = "mail"
-MAIL_PAGE_PATH = "/iserv/mail"
 BADGE_LIMIT = 100000
 
 

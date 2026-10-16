@@ -1,8 +1,7 @@
 import { describe, expect, test } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
+import { appSourceText } from "./shippedSources.js";
 
-const APP = fs.readFileSync(path.resolve(__dirname, "..", "app.js"), "utf8");
+const APP = appSourceText();
 const FULL_PAGE_RENDERERS = ["renderWizard", "renderReconnect", "renderNotice"];
 
 function callsOf(name) {

@@ -33,7 +33,15 @@ PREFIX_EXPR = re.compile(r"[\w$.\]\)]+\s*\+\s*$")
 XHR_OPEN = re.compile(r"\.open\(\s*[\"']([A-Za-z]+)[\"']\s*,\s*$")
 VERB_CALL = re.compile(r"\.(get|post|put|patch|delete|head|options)\s*\(\s*$", re.IGNORECASE)
 FETCH_CALL = re.compile(r"(?<![\w$.])(?:fetch|axios(?:\.request)?)\s*\(\s*(?:\{[^{}]*?\burl\s*:\s*)?$")
-METHOD_OPTION = re.compile(r"\bmethod\s*:\s*[\"']([A-Za-z]+)[\"']")
+OPTION_KEYS = tuple(
+    re.compile(r"\b%s\s*:\s*[\"'](get|post|put|patch|delete)[\"']" % key, re.IGNORECASE) for key in ("method", "type")
+)
+OPEN_OPTIONS = re.compile(r"\(\s*\{[^{}()]*$")
+FIRST_ARGUMENT = re.compile(r"[\w$.]\(\s*$")
+PAYLOAD_KEY = re.compile(r"\b(?:body|data|headers)\s*:\s*")
+QUOTES = "\"'`"
+OPENERS = "({["
+CLOSERS = ")}]"
 CREDENTIAL_KEY = re.compile(
     r"(?<![\w$])(access_?token|refresh_?token|login_?token|user_?id|device_?id|home_?server|matrix[a-z_]{0,30}|[a-z_]{1,24}_?token|password)(?![\w$])",
     re.IGNORECASE,
@@ -118,18 +126,39 @@ def _chain(text, start_value, position):
     return "".join(parts), position
 
 
-def _call_span(text, position):
+def _code_marks(text):
+    marks = []
     depth = 0
-    end = min(len(text), position + OPTIONS_WINDOW)
-    for index in range(position, end):
-        char = text[index]
-        if char in "({[":
-            depth += 1
-        elif char in ")}]":
+    quote = ""
+    escaped = False
+    for char in text:
+        if quote:
+            marks.append((depth, True))
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in QUOTES:
+            quote = char
+            marks.append((depth, True))
+            continue
+        if char in CLOSERS:
             depth -= 1
-            if depth < 0:
-                return text[position:index]
-    return text[position:end]
+        marks.append((depth, False))
+        if char in OPENERS:
+            depth += 1
+    return marks
+
+
+def _call_span(text, position):
+    window = text[position:min(len(text), position + OPTIONS_WINDOW)]
+    for index, (depth, _quoted) in enumerate(_code_marks(window)):
+        if depth < 0:
+            return window[:index]
+    return window
 
 
 def _method_of(text, start, end):
@@ -144,10 +173,56 @@ def _method_of(text, start, end):
     if verb:
         return verb.group(1).upper()
     call = FETCH_CALL.search(head)
-    if not call:
+    if not call and not OPEN_OPTIONS.search(head) and not FIRST_ARGUMENT.search(head):
         return ""
-    options = METHOD_OPTION.search(head[call.start():]) or METHOD_OPTION.search(_call_span(text, end))
-    return options.group(1).upper() if options else "GET"
+    method, braced = _options_method(head, text, end)
+    if method:
+        return method
+    return "GET" if call and not braced else ""
+
+
+def _top_level(text, level):
+    return "".join(
+        char for char, (depth, quoted) in zip(text, _code_marks(text)) if depth == level and (quoted or char not in OPENERS + CLOSERS)
+    )
+
+
+def _without_payloads(text):
+    marks = _code_marks(text)
+    pieces = []
+    last = 0
+    for match in PAYLOAD_KEY.finditer(text):
+        if match.start() < last or marks[match.start()][1]:
+            continue
+        level = marks[match.start()][0]
+        stop = match.end()
+        while stop < len(text):
+            depth, quoted = marks[stop]
+            if not quoted and (depth < level or (depth == level and text[stop] == ",")):
+                break
+            stop += 1
+        pieces.append(text[last:match.start()])
+        last = stop
+    pieces.append(text[last:])
+    return "".join(pieces)
+
+
+def _first_method(parts):
+    for pattern in OPTION_KEYS:
+        for part in parts:
+            found = pattern.search(part)
+            if found:
+                return found.group(1).upper()
+    return ""
+
+
+def _options_method(head, text, end):
+    opened = OPEN_OPTIONS.search(head)
+    span = _call_span(text, end)
+    top = [opened.group(0), _top_level(span, 0)] if opened else [_top_level(span, 1)]
+    method = _first_method(top) or _first_method([_without_payloads((opened.group(0) if opened else "") + span)])
+    braced = any(char == "{" and not quoted for char, (_depth, quoted) in zip(span, _code_marks(span)))
+    return method, braced
 
 
 def _keys_near(text, start, end):

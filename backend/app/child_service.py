@@ -359,12 +359,12 @@ class ChildService:
     def _fallback_children(self):
         failures = []
         confirmed = False
-        school_app = self.connection.module_available(modules.ABSENCES)
+        school_app = self._school_app_absences()
         for module, read, confirms in (
             (modules.ABSENCES, self._school_app_children_or_raise, True),
             (modules.LETTERS, self._letter_children_or_raise, not school_app),
         ):
-            if not self.connection.module_available(module):
+            if not self.connection.module_available(module) or (module == modules.ABSENCES and not school_app):
                 continue
             try:
                 listed = read()
@@ -384,8 +384,11 @@ class ChildService:
             raise DataError("child list unreadable", message_key=CHILD_PAGE_MESSAGE_KEY) from failure
         return []
 
+    def _school_app_absences(self):
+        return self.connection.module_available(modules.ABSENCES) and not modules.older_absences(modules.registry_of(self.connection))
+
     def _school_app_lists_none(self):
-        if not self.connection.module_available(modules.ABSENCES):
+        if not self._school_app_absences():
             return False
         try:
             return self.connection._dsa().sick_note_children_listed() == []
@@ -399,6 +402,8 @@ class ChildService:
         return self._school_app_rows(self.connection._dsa().sick_note_children_or_raise())
 
     def _children_from_school_app(self):
+        if modules.older_absences(modules.registry_of(self.connection)):
+            return []
         try:
             students = self.connection._dsa().sick_note_children()
         except Exception:

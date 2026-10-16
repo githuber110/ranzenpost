@@ -15,6 +15,11 @@ SCHOOL_ONE = "https://school-one.example"
 SCHOOL_TWO = "https://school-two.example"
 
 
+TOKEN_LIST_WITHOUT_APP_TOKEN = (
+    '<form id="deleteTwoFactorForm"><input type="hidden" name="delete[_token]" value="csrf-x"></form>'
+)
+
+
 class FakeClient:
     def __init__(self, url, children=(), letters=(), fail=None):
         self.url = url
@@ -43,11 +48,14 @@ class FakeClient:
     def fetch_or_raise(self, path, params=None):
         raise DataError("no such page")
 
+    def get_twofactor_list_page(self):
+        return type("Page", (), {"text": TOKEN_LIST_WITHOUT_APP_TOKEN})()
+
 
 def two_schools(tmp_path, factories=None):
     store = Store(tmp_path / "data")
     one = add_school(store, SCHOOL_ONE, connection_id="a1b2c3d4", school_name="School One")
-    two = add_school(store, SCHOOL_TWO, connection_id="b2c3d4e5", school_name="School Two")
+    two = add_school(store, SCHOOL_TWO, dict(DEFAULT_SECRETS, totp_secret="GEZDGNBVGY3TQOJQ"), connection_id="b2c3d4e5", school_name="School Two")
     clients = {}
 
     def factory(url):
@@ -267,7 +275,8 @@ def test_disconnecting_one_school_leaves_the_other_untouched(tmp_path):
     store.connection_store(one).save_seen({"pinboard": [1]})
     store.connection_store(two).save_seen({"pinboard": [2]})
     result = service.disconnect(one)
-    assert result["attempted"] is False
+    assert result["disconnected"] is True
+    assert result["message_key"] == "api.disconnect.noToken"
     assert [entry["id"] for entry in store.connections()] == [two]
     assert store.load_secrets(one) == {}
     assert store.load_secrets(two)["username"] == DEFAULT_SECRETS["username"]

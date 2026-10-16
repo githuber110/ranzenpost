@@ -177,7 +177,24 @@ function schoolPrefix(school, many) {
 
 export const INGRESS_PATH = "/hassio/ingress/ranzenpost";
 
-function schoolStates(school, listed, many, schoolEvents) {
+export const OPEN_TASKS = [
+  { title: "Read chapter three and summarise it in a long sentence that has to wrap", sender: "", date: "2026-09-04", child: "" },
+  { title: "Poster", sender: "", date: "2026-09-10", child: "" },
+];
+export const NEWS_ITEMS = [{ title: "Library opens later", sender: "General", date: "2026-09-01", child: "" }];
+export const TEXT_ITEMS = [{ title: "Minutes of the class council", sender: "Class teacher", date: "2026-09-01", child: "" }];
+export const FORUM_ITEMS = [{ title: "School yard", sender: "General forums", date: "2026-09-01", child: "", text: "Lunch break games" }];
+
+function schoolListStates(prefix) {
+  return {
+    [`sensor.${prefix}_open_tasks`]: { state: String(OPEN_TASKS.length), attributes: { tasks: OPEN_TASKS } },
+    [`sensor.${prefix}_news`]: { state: String(NEWS_ITEMS.length), attributes: { news: NEWS_ITEMS } },
+    [`sensor.${prefix}_unread_forum_posts`]: { state: "4", attributes: { forums: FORUM_ITEMS } },
+    [`sensor.${prefix}_texts`]: { state: String(TEXT_ITEMS.length), attributes: { texts: TEXT_ITEMS } },
+  };
+}
+
+function schoolStates(school, listed, many, schoolEvents, schoolLists) {
   const holiday = school.next_holiday;
   const conference = school.next_conference;
   const prefix = schoolPrefix(listed, many);
@@ -201,17 +218,18 @@ function schoolStates(school, listed, many, schoolEvents) {
     [`sensor.${prefix}_connection`]: {
       state: "ok",
       attributes: {
-        modules: { timetable: true, letters: true, pinboard: true, absences: true, conferences: true, messenger: true, calendar: schoolEvents },
+        modules: { timetable: true, letters: true, pinboard: true, absences: true, conferences: true, messenger: true, calendar: schoolEvents, tasks: schoolLists, news: schoolLists, forums: schoolLists, texts: schoolLists },
         modules_disabled: [],
         ingress_path: INGRESS_PATH,
       },
     },
     [`calendar.${prefix}_holidays`]: { state: "off", attributes: {} },
     ...(schoolEvents ? { [`calendar.${prefix}_school_events`]: { state: "off", attributes: {} } } : {}),
+    ...(schoolLists ? schoolListStates(prefix) : {}),
   };
 }
 
-function registryEntries(children, schools, without = [], ownEntries = false, schoolEvents = false) {
+function registryEntries(children, schools, without = [], ownEntries = false, schoolEvents = false, schoolLists = false) {
   const entries = [];
   const many = schools.length > 1;
   const childKeys = ownEntries ? { ...CHILD_KEYS, calendar: [...CHILD_KEYS.calendar, "own_entries"] } : CHILD_KEYS;
@@ -229,7 +247,8 @@ function registryEntries(children, schools, without = [], ownEntries = false, sc
       }
     }
   }
-  const schoolKeys = schoolEvents ? { ...SCHOOL_KEYS, calendar: [...SCHOOL_KEYS.calendar, "school_events"] } : SCHOOL_KEYS;
+  const withEvents = schoolEvents ? { ...SCHOOL_KEYS, calendar: [...SCHOOL_KEYS.calendar, "school_events"] } : SCHOOL_KEYS;
+  const schoolKeys = schoolLists ? { ...withEvents, sensor: [...withEvents.sensor, "open_tasks", "news", "unread_forum_posts", "texts"] } : withEvents;
   for (const school of schools) {
     for (const [platform, keys] of Object.entries(schoolKeys)) {
       for (const key of keys) {
@@ -304,7 +323,7 @@ export function makeHass(overrides = {}) {
     ...childStates(CHILDREN[1], fixture("state_child_2")),
     ...(overrides.twoSchools ? childStates(OTHER_CHILDREN[0], fixture("state_child_2")) : {}),
     ...(overrides.twoSchools ? childStates(OTHER_CHILDREN[1], fixture("state_child_2")) : {}),
-    ...Object.assign({}, ...schools.map((school) => schoolStates(fixture("school"), school, many, !!overrides.schoolEvents))),
+    ...Object.assign({}, ...schools.map((school) => schoolStates(fixture("school"), school, many, !!overrides.schoolEvents, !!overrides.schoolLists))),
     ...(overrides.states || {}),
   };
   for (const [entityId, entry] of Object.entries(states)) {
@@ -322,7 +341,7 @@ export function makeHass(overrides = {}) {
     calls,
     async callWS(message) {
       calls.ws.push(message);
-      if (message.type === "config/entity_registry/list") return registryEntries(children, schools, overrides.withoutKeys || [], !!overrides.ownEntries, !!overrides.schoolEvents);
+      if (message.type === "config/entity_registry/list") return registryEntries(children, schools, overrides.withoutKeys || [], !!overrides.ownEntries, !!overrides.schoolEvents, !!overrides.schoolLists);
       if (message.type === "config/device_registry/list") return devices(children, schools);
       if (message.type === "ranzenpost/own_entries") return ownEntriesOf(overrides, children, message);
       throw new Error(`unexpected websocket call ${message.type}`);

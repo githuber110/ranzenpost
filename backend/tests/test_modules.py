@@ -6,7 +6,7 @@ import pytest
 from app.iserv.school_calendar import CALENDAR_EVENTS_PATH
 import requests
 
-from app import module_catalogue, modules
+from app import module_catalogue, modules, reportcrawl
 from app.modules import (
     ABSENCES,
     AVAILABLE,
@@ -43,7 +43,7 @@ START_PAGE = """
 DOCUMENTED_PAGE = """
 <html><body><nav>
   <a href="/iserv/dsa-classregister/">Klassenbuch</a>
-  <a href="/iserv/news/">News</a>
+  <a href="/iserv/todo/">To-do</a>
   <a href="/iserv/mystery/">Mystery</a>
 </nav></body></html>
 """
@@ -144,7 +144,7 @@ def test_the_two_editions_of_timetable_and_absences_are_told_apart():
 
 def test_every_supported_segment_is_documented_or_is_the_school_app_host():
     for segment in modules.SEGMENTS:
-        assert modules.slug_of(segment) or segment == "dieschulapp", segment
+        assert modules.slug_of(segment) or segment in ("dieschulapp", "forums"), segment
     assert set(module_catalogue.SEGMENT_SLUGS.values()) <= set(module_catalogue.CATALOGUE)
     for slug in ("timetable", "dsa-timetable", "absence", "absence_obsolete", "dsa-pinboard", "parentletter", "parentconference", "messenger"):
         assert slug in module_catalogue.CATALOGUE, slug
@@ -206,14 +206,13 @@ def test_documented_segments_are_listed_as_not_supported_and_the_rest_as_unknown
         {"segment": "mail", "slug": "mail", "label": "E-Mail", "name": "E-Mail"},
         {"segment": "file", "slug": "file", "label": "Dateien", "name": "Dateien"},
         {"segment": "videoconference", "slug": "videoconference", "label": "Videokonferenzen", "name": "Videokonferenzen"},
-        {"segment": "exercise", "slug": "exercise", "label": "exercise", "name": "Aufgaben"},
     ]
     assert registry["unknown"] == [{"segment": "mystery", "label": "Mystery"}]
 
 
 def test_present_but_not_supported_is_told_apart_from_unknown():
     unsupported, unknown = modules.split_links(modules.harvest_links(DOCUMENTED_PAGE))
-    assert [entry["slug"] for entry in unsupported] == ["dsa-classregister", "news"]
+    assert [entry["slug"] for entry in unsupported] == ["dsa-classregister", "todo"]
     assert unsupported[0] == {"segment": "dsa-classregister", "slug": "dsa-classregister", "label": "Klassenbuch", "name": "Klassenbuch"}
     assert unknown == [{"segment": "mystery", "label": "Mystery"}]
     assert modules.split_links([{"segment": "time-table", "label": "Stundenplan"}]) == ([], [])
@@ -376,6 +375,11 @@ def test_detect_marks_every_module_from_its_probe():
         CONFERENCES: True,
         MESSENGER: False,
         modules.CALENDAR: False,
+        modules.TASKS: True,
+        modules.NEWS: True,
+        modules.FORUMS: True,
+        modules.TEXTS: True,
+        modules.INFODISPLAY: True,
     }
     assert registry["iserv_version"] == "3.2.1"
     assert registry["checked_at"] > 0
@@ -420,7 +424,8 @@ def test_a_session_that_lost_its_login_does_not_wipe_the_registry():
     })
     registry = modules.detect("", logged_out, previous)
     assert registry["modules"] == previous["modules"]
-    assert registry["unsupported"] == previous["unsupported"]
+    assert modules.normalize(registry)["unsupported"] == modules.normalize(previous)["unsupported"]
+    assert modules.normalize(registry)["covered"] == modules.normalize(previous)["covered"]
     assert registry["unknown"] == previous["unknown"]
 
 
@@ -458,8 +463,8 @@ def test_summary_line_names_available_missing_unsupported_and_unknown_segments_w
     }), None)
     line = modules.summary(registry)
     assert line == (
-        "modules available: timetable, letters, pinboard, conferences, messenger; "
-        "missing: absences, calendar; not supported: 4 (mail, file, videoconference, exercise); unknown: 1 (mystery)"
+        "modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay; "
+        "missing: absences, calendar; not supported: 1 (videoconference); unknown: 1 (mystery); read by the app: 2 (mail, file)"
     )
     assert "E-Mail" not in line
     assert "Aufgaben" not in line
@@ -559,38 +564,25 @@ def test_a_covered_module_that_disappears_is_a_change():
 KLASSENGELD_PAGE = """
 <html><body>
 <a href="/iserv/klassengeld/redirect">Klassengeld</a>
-<a href="/iserv/news/">News</a>
+<a href="/iserv/todo/">To-do</a>
 </body></html>
 """
 
 
-def test_klassengeld_is_flagged_link_only_and_other_modules_are_not():
+def test_klassengeld_is_an_ordinary_unsupported_module_without_a_link():
     unsupported, unknown = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
-    flags = {entry["segment"]: entry.get("link_only", False) for entry in unsupported}
-    assert flags == {"klassengeld": True, "news": False}
+    assert [entry["segment"] for entry in unsupported] == ["klassengeld", "todo"]
+    assert all("link_only" not in entry and "open_url" not in entry for entry in unsupported)
     assert unknown == []
-
-
-def test_the_open_url_joins_the_school_host_with_the_catalogue_path():
-    assert modules.open_url("https://school.example", "klassengeld") == "https://school.example/iserv/klassengeld/redirect"
-    assert modules.open_url("school.example:8443/iserv/", "klassengeld") == "https://school.example:8443/iserv/klassengeld/redirect"
-
-
-@pytest.mark.parametrize("school_url", ["", "not a url", "https://localhost", "http://192.168.0.5"])
-def test_the_open_url_is_empty_for_an_unusable_school_url(school_url):
-    assert modules.open_url(school_url, "klassengeld") == ""
-
-
-def test_the_open_url_is_empty_for_modules_that_are_not_link_only():
-    assert modules.open_url("https://school.example", "calendar") == ""
-    assert modules.open_url("https://school.example", "") == ""
-
-
-def test_open_urls_are_added_only_to_link_only_entries():
-    unsupported, _ = modules.split_links(modules.harvest_links(KLASSENGELD_PAGE))
-    registry = modules.with_open_urls(modules.normalize({"unsupported": unsupported}), "https://school.example")
-    urls = {entry["segment"]: entry.get("open_url") for entry in registry["unsupported"]}
-    assert urls == {"klassengeld": "https://school.example/iserv/klassengeld/redirect", "news": None}
+    assert not hasattr(modules, "open_url")
+    assert not hasattr(modules, "with_open_urls")
+    stale = {"segment": "klassengeld", "link_only": True, "open_url": "https://school.example/iserv/klassengeld/redirect"}
+    assert modules.normalize({"unsupported": [stale]})["unsupported"][0] == {
+        "segment": "klassengeld",
+        "slug": "klassengeld",
+        "label": "klassengeld",
+        "name": modules.normalize({"unsupported": [stale]})["unsupported"][0]["name"],
+    }
 
 
 def test_the_calendar_needs_its_probe_and_not_just_a_menu_link():
@@ -630,3 +622,78 @@ def test_a_calendar_whose_events_are_refused_is_missing():
         CALENDAR_EVENTS_PATH: Response(403, "https://school.example" + CALENDAR_EVENTS_PATH, "denied"),
     })
     assert modules.detect("", refused, None)["modules"][modules.CALENDAR] is False
+
+
+def test_the_sick_note_selection_path_has_one_origin():
+    from app import modules, reportfacts
+    from app.iserv import dsa
+
+    absolute = modules.DSA_API + "/" + dsa.SICK_NOTE_SELECTION_PATH
+    assert absolute == "/iserv/dieschulapp/api/1.0/sickNotes/userSelection/"
+    assert modules.PROBES[modules.ABSENCES][0] == absolute
+    assert reportfacts.SICK_NOTE_SELECTION_PATH == absolute
+
+
+def test_a_busy_authenticate_call_keeps_the_earlier_messenger_verdict():
+    available = modules.detect(START_PAGE, all_available(), None)
+    for status in (429, 408, 400):
+        busy = _messenger_probe(MESSENGER_PAGE_WITHOUT_DATA, Response(status, "https://school.example" + AUTHENTICATE_PATH))
+        assert modules.detect(START_PAGE, busy, available)["modules"][MESSENGER] is True
+
+
+def test_a_failing_calendar_feed_keeps_the_earlier_calendar_verdict():
+    sources = modules.PROBES[modules.CALENDAR][0]
+    listed = Response(200, "https://school.example" + sources, "[]", json_data=[])
+    readable = probe_map({sources: listed, CALENDAR_EVENTS_PATH: Response(200, "https://school.example" + CALENDAR_EVENTS_PATH, "[]", json_data=[])})
+    earlier = modules.detect("", readable, None)
+    assert earlier["modules"][modules.CALENDAR] is True
+    for status in (500, 503, 429):
+        failing = probe_map({sources: listed, CALENDAR_EVENTS_PATH: Response(status, "https://school.example" + CALENDAR_EVENTS_PATH)})
+        assert modules.detect("", failing, earlier)["modules"][modules.CALENDAR] is True
+    refused = probe_map({sources: listed, CALENDAR_EVENTS_PATH: Response(401, "https://school.example" + CALENDAR_EVENTS_PATH)})
+    assert modules.detect("", refused, earlier)["modules"][modules.CALENDAR] is False
+
+
+def _ledger_after(answers):
+    from app.refusals import Refusals
+
+    ledger = Refusals(lambda: 0.0)
+    registry = modules.detect(START_PAGE, probe_map(answers), None, ledger=ledger)
+    return registry, ledger
+
+
+def test_only_a_refusing_answer_is_remembered_as_refused():
+    sources = modules.PROBES[modules.CALENDAR][0]
+    listed = Response(200, "https://school.example" + sources, "[]", json_data=[])
+    registry, ledger = _ledger_after({
+        modules.PROBES[LETTERS][0]: Response(404, "https://school.example" + modules.PROBES[LETTERS][0]),
+        modules.PROBES[CONFERENCES][0]: Response(503, "https://school.example" + modules.PROBES[CONFERENCES][0]),
+        modules.PROBES[PINBOARD][0]: Response(200, "https://school.example/iserv/"),
+        MESSENGER_PATH: messenger_page(MESSENGER_PAGE_WITHOUT_DATA),
+        AUTHENTICATE_PATH: Response(200, "https://school.example" + AUTHENTICATE_PATH, "<html></html>"),
+        "/messenger/authenticate": Response(404, "https://school.example/messenger/authenticate"),
+        sources: listed,
+        CALENDAR_EVENTS_PATH: Response(200, "https://school.example" + CALENDAR_EVENTS_PATH, "<html></html>"),
+    })
+    assert [registry["modules"][name] for name in (LETTERS, PINBOARD, MESSENGER, modules.CALENDAR)] == [False] * 4
+    assert ledger.status_of(("module", LETTERS)) == 404
+    for name in (CONFERENCES, PINBOARD, MESSENGER, modules.CALENDAR):
+        assert not ledger.refused(("module", name))
+    registry, ledger = _ledger_after({
+        MESSENGER_PATH: messenger_page(MESSENGER_PAGE_WITHOUT_DATA),
+        AUTHENTICATE_PATH: Response(403, "https://school.example" + AUTHENTICATE_PATH),
+        "/messenger/authenticate": Response(404, "https://school.example/messenger/authenticate"),
+        sources: listed,
+        CALENDAR_EVENTS_PATH: Response(401, "https://school.example" + CALENDAR_EVENTS_PATH),
+    })
+    assert registry["modules"][MESSENGER] is False and registry["modules"][modules.CALENDAR] is False
+    assert ledger.status_of(("module", MESSENGER)) == 404
+    assert ledger.status_of(("module", modules.CALENDAR)) == 401
+
+
+def test_the_forum_and_course_selection_menu_segments_are_known_modules():
+    assert module_catalogue.slug_of("forums") == "forum"
+    assert module_catalogue.slug_of("courseselection") == "course-selection"
+    assert modules.is_known_segment("forums") and modules.is_known_segment("courseselection")
+    assert reportcrawl.menu_shape("/iserv/forums") == "/iserv/forums"
+    assert reportcrawl.menu_shape("/iserv/courseselection") == "/iserv/courseselection"

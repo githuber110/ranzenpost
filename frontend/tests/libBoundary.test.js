@@ -7,7 +7,7 @@ import { SELECTION_KEYS as MODULE_SELECTION_KEYS, selectionGlobals } from "../li
 import { SHEET_KEYS, shellGlobals } from "../lib/shell.js";
 import { storeGlobals } from "../lib/store.js";
 import { evalWith, loadApp } from "./loadApp.js";
-import { readShipped, scriptNames } from "./shippedSources.js";
+import { appSourceText, appSources, readShipped, scriptNames } from "./shippedSources.js";
 
 const BROWSER_GLOBAL =
   /\b(window|document|navigator|globalThis|location|localStorage|sessionStorage|FormData|AbortSignal|AbortController|Headers|Request|Response|XMLHttpRequest|Blob|File|setTimeout|clearTimeout|setInterval|clearInterval|requestAnimationFrame|cancelAnimationFrame|requestIdleCallback|queueMicrotask)\b|\b(self)\.|\b(fetch)\b(?!\s*:)/;
@@ -270,12 +270,12 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js binds every format global and nothing that is not there", () => {
-    const bound = destructuredNames(readShipped("app.js"), "const", "window\\.RanzenpostFormat");
+    const bound = destructuredNames(appSourceText(), "const", "window\\.RanzenpostFormat");
     expect([...bound].sort()).toEqual(Object.keys(formatGlobals()).sort());
   });
 
   test("app.js builds the format helpers once and leaves none of them on window", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     expect(source.match(/\bcreateFormat\(/g)).toHaveLength(1);
     expect(destructuredNames(source, "var", "formats")).toEqual([]);
     const scriptNamesBound = destructuredNames(source, "const", "formats");
@@ -335,7 +335,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js builds the selection once over store slots, binds both areas and keeps them off window", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const bound = destructuredNames(source, "const", "window\\.RanzenpostSelection");
     expect([...bound].sort()).toEqual(Object.keys(selectionGlobals()).sort());
     expect(source.match(/\bcreateSelection\(/g)).toEqual(["createSelection("]);
@@ -360,16 +360,18 @@ describe("the lib folder stays free of the browser", () => {
     expect(namesKeyInStoreCall.test('stateStore.set("pinboardSelected", kept);')).toBe(true);
     expect(namesKeyInStoreCall.test("stateStore.patch(fresh);")).toBe(false);
     expect(namesKeyInStoreCall.test('stateStore.set("toast", value);')).toBe(false);
-    const offenders = readShipped("app.js")
-      .split("\n")
-      .map((line, index) => ({ line: index + 1, text: line.trim() }))
-      .filter((hit) => namesKeyInStoreCall.test(hit.text))
-      .map((hit) => `${hit.line}: ${hit.text}`);
+    const offenders = appSources().flatMap(({ name, source }) =>
+      source
+        .split("\n")
+        .map((line, index) => ({ line: index + 1, text: line.trim() }))
+        .filter((hit) => namesKeyInStoreCall.test(hit.text))
+        .map((hit) => `${name}:${hit.line}: ${hit.text}`)
+    );
     expect(offenders).toEqual([]);
   });
 
   test("app.js builds one store around the state object right after it and keeps it off window", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const bound = destructuredNames(source, "const", "window\\.RanzenpostStore");
     expect([...bound].sort()).toEqual(Object.keys(storeGlobals()).sort());
     expect(source.match(/\bcreateStore\(/g)).toEqual(["createStore("]);
@@ -413,7 +415,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js binds every shell global and builds the toast once over state.toast", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const bound = destructuredNames(source, "const", "window\\.RanzenpostShell");
     expect([...bound].sort()).toEqual(Object.keys(shellGlobals()).sort());
     expect(source.match(/\bcreateToast\(/g)).toEqual(["createToast("]);
@@ -457,7 +459,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js builds the sheets once over the six sheet keys in state", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     expect(source.match(/\bcreateSheets\(/g)).toEqual(["createSheets("]);
     expect(destructuredNames(source, "const", "sheets")).toEqual(SHEET_FUNCTIONS);
     expect(source).not.toMatch(/\bfunction\s+(openSheet|discardSheet|closeSheet|isSheetFormDirty|sheetState|sheet|sheetDiscardPanel|openNestedSheet|confirmAction)\b/);
@@ -552,7 +554,7 @@ describe("the lib folder stays free of the browser", () => {
       "state['view'] = 'post';",
     ];
     expect(writesIn(allowed.join("\n"))).toEqual([]);
-    expect(writesIn(readShipped("app.js"))).toEqual([]);
+    expect(appSources().flatMap(({ name, source }) => writesIn(source).map((hit) => `${name}:${hit}`))).toEqual([]);
   });
 
   test("entering a view writes every entry default through the store and hands out fresh lists", () => {
@@ -603,7 +605,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js hands the sheets and the toast slots that go through the store and never touch state", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const wiring = (factory) => {
       const start = source.indexOf(`${factory}({\n`);
       expect(start, factory).toBeGreaterThan(-1);
@@ -670,7 +672,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js binds every DOM kit global and builds the kit once on its own document", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const bound = destructuredNames(source, "const", "window\\.RanzenpostDom");
     expect([...bound].sort()).toEqual(Object.keys(domGlobals()).sort());
     expect(source.match(/\bcreateDom\(/g)).toEqual(["createDom("]);
@@ -685,12 +687,12 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js binds every request global and nothing that is not there", () => {
-    const bound = destructuredNames(readShipped("app.js"), "const", "window\\.RanzenpostApi");
+    const bound = destructuredNames(appSourceText(), "const", "window\\.RanzenpostApi");
     expect([...bound].sort()).toEqual(Object.keys(apiGlobals()).sort());
   });
 
   test("app.js builds the request helpers once and leaves on window only what the tests call", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     expect(source.match(/\bcreateApi\(/g)).toHaveLength(1);
     expect(destructuredNames(source, "var", "requests")).toEqual(WINDOW_API_FUNCTIONS);
     expect(destructuredNames(source, "const", "requests")).toEqual(SCRIPT_API_FUNCTIONS);
@@ -708,11 +710,13 @@ describe("the lib folder stays free of the browser", () => {
 
   test("app.js never calls fetch directly, only through the request helpers", () => {
     const RAW_FETCH = /(?<!\.)\bfetch\s*\(/;
-    const offenders = readShipped("app.js")
-      .split("\n")
-      .map((line, index) => ({ line: index + 1, text: line }))
-      .filter((hit) => RAW_FETCH.test(hit.text) && !hit.text.includes("window.fetch"))
-      .map((hit) => `${hit.line}: ${hit.text.trim()}`);
+    const offenders = appSources().flatMap(({ name, source }) =>
+      source
+        .split("\n")
+        .map((line, index) => ({ line: index + 1, text: line }))
+        .filter((hit) => RAW_FETCH.test(hit.text) && !hit.text.includes("window.fetch"))
+        .map((hit) => `${name}:${hit.line}: ${hit.text.trim()}`)
+    );
     expect(offenders).toEqual([]);
   });
 
@@ -738,14 +742,14 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js binds every translation global and nothing that is not there", () => {
-    const source = readShipped("app.js");
+    const source = appSourceText();
     const bound = [...destructuredNames(source, "const"), ...destructuredNames(source, "var")];
     expect(bound.length).toBeGreaterThan(0);
     expect([...bound].sort()).toEqual(Object.keys(i18nGlobals()).sort());
   });
 
   test("app.js keeps the translation functions as window properties for the other scripts", () => {
-    const functions = destructuredNames(readShipped("app.js"), "var");
+    const functions = destructuredNames(appSourceText(), "var");
     const exposed = Object.entries(i18nGlobals())
       .filter(([name, value]) => typeof value === "function" && !APP_ONLY_GLOBALS.includes(name))
       .map(([name]) => name);
@@ -755,7 +759,7 @@ describe("the lib folder stays free of the browser", () => {
   test("after boot the other scripts find the same translation functions on window", () => {
     const { window } = loadApp();
     const globals = window.RanzenpostI18n;
-    const functions = destructuredNames(readShipped("app.js"), "var");
+    const functions = destructuredNames(appSourceText(), "var");
     for (const name of functions) expect(window[name], name).toBe(globals[name]);
     expect(window.eval("LANGUAGES")).toBe(globals.LANGUAGES);
     expect(window.eval("typeof i18n")).toBe("undefined");
@@ -765,7 +769,7 @@ describe("the lib folder stays free of the browser", () => {
   });
 
   test("app.js reads and changes the translation state only through the core functions", () => {
-    expect(readShipped("app.js")).not.toMatch(/\bi18n\.(language|choice|base|messages)\b/);
+    expect(appSourceText()).not.toMatch(/\bi18n\.(language|choice|base|messages)\b/);
   });
 
   test("the language loader leaves on window only what the wizard and the tests call", () => {

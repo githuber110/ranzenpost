@@ -4,16 +4,16 @@ from pathlib import Path
 
 from app.scheduler import NOTIFY_EVENTS
 from app.store import NOTIFY_EVENT_DEFAULTS
+from tests.frontend_sources import app_source_text
 
 ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "frontend" / "app.js"
 I18N = ROOT / "frontend" / "i18n"
 ALWAYS_SENT = {"auth"}
 SWITCH = re.compile(r'\["([a-z_]+)", "(settings\.notify\.event\.[A-Za-z_]+)"\]')
 
 
 def _switches():
-    source = APP.read_text(encoding="utf-8")
+    source = app_source_text()
     block = source[source.index("const NOTIFY_EVENTS = ["):]
     block = block[: block.index("];")]
     return SWITCH.findall(block)

@@ -165,9 +165,16 @@ class FakeService:
     def archive_letter(self, connection_id, letter_id, recipient_id):
         return True
 
-    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
+    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None, choices=None):
         self.confirm_args = (connection_id, letter_id, recipient_id, text)
         return {"ok": True, "message_key": "api.letters.confirm.ok", "confirmed_at": "2026-09-03T14:05:00"}
+
+    def answer_form(self, connection_id, letter_id, recipient_id):
+        return {"ok": True, "choice": None, "can_reply": True, "text": ""}
+
+    def edit_answer(self, connection_id, letter_id, recipient_id, text=None, choices=None):
+        self.edit_args = (connection_id, letter_id, recipient_id, text, choices)
+        return {"ok": True, "message_key": "api.letters.edit.ok", "confirmed_at": "2026-09-04T10:00:00", "answer": []}
 
     def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
         self.reply_args = (connection_id, letter_id, recipient_id, text, request_id, confirmed)
@@ -180,8 +187,14 @@ class FakeService:
 
         return Upstream()
 
-    def conferences(self):
-        return {"empty": True, "items": []}
+    def conferences(self, tab="current"):
+        return {"empty": True, "items": [], "tab": tab}
+
+    def conference_page(self, connection_id, page):
+        return {"page": page, "title": "T", "blocks": [], "forms": [], "notices": [], "connection_id": connection_id}
+
+    def submit_conference_form(self, connection_id, page, form, check, submit, values, request_id="", confirmed=False):
+        return {"ok": confirmed, "page_seen": page, "form": form, "values": values, "request_id": request_id}
 
     def absences_overview(self, connection_id=None):
         return {
@@ -753,6 +766,19 @@ def test_notify_test_survives_exceptions(tmp_path, monkeypatch):
 def test_conferences_endpoint(tmp_path):
     api, _ = client(tmp_path)
     assert api.get("/api/conferences").json()["empty"] is True
+    assert api.get("/api/conferences?tab=archive").json()["tab"] == "archive"
+    assert api.get("/api/conferences?tab=other").json()["tab"] == "current"
+
+
+def test_conference_page_and_submit_endpoints_pass_the_request_through(tmp_path):
+    api, _ = client(tmp_path)
+    page = api.get("/api/conferences/page?page=abc&connection=s1").json()
+    assert page["page"] == "abc" and page["connection_id"] == "s1"
+    body = {"connection_id": "s1", "page": "abc", "form": 0, "values": {"x": "1"}, "request_id": "r", "confirmed": True}
+    sent = api.post("/api/conferences/submit", json=body).json()
+    assert sent == {"ok": True, "page_seen": "abc", "form": 0, "values": {"x": "1"}, "request_id": "r"}
+    unconfirmed = api.post("/api/conferences/submit", json=dict(body, confirmed="yes")).json()
+    assert unconfirmed["ok"] is False
 
 
 def test_absences_endpoints(tmp_path):
@@ -938,7 +964,7 @@ def test_csp_header_exact_value(tmp_path):
         "font-src 'self'; "
         "script-src 'self'; "
         "connect-src 'self'; "
-        "frame-src blob:; "
+        "frame-src 'self' blob:; "
         "object-src 'none'; "
         "base-uri 'none'; "
         "form-action 'none'"
@@ -961,6 +987,11 @@ def test_health_and_the_registry_route_carry_the_module_registry(tmp_path):
         "conferences": True,
         "messenger": True,
         "calendar": False,
+        "tasks": False,
+        "news": False,
+        "forums": False,
+        "texts": False,
+        "infodisplay": False,
     }
     assert health["modules"]["unknown"] == []
     assert api.get("/api/modules").json() == health["modules"]
@@ -1001,7 +1032,7 @@ def test_config_serves_layout_defaults_for_a_fresh_store(tmp_path):
     api, _ = client(tmp_path)
     body = api.get("/api/config").json()
     assert body["overview_blocks"] == blocks.default_overview_blocks()
-    assert body["navigation"] == list(blocks.DEFAULT_NAVIGATION) + ["calendar"]
+    assert body["navigation"] == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
     assert body["modules_disabled"] == []
 
 
@@ -1018,7 +1049,7 @@ def test_config_post_validates_the_layout_keys(tmp_path):
     assert response.status_code == 200
     body = api.get("/api/config").json()
     assert body["overview_blocks"] == [{"key": "today", "size": "normal"}]
-    assert body["navigation"] == ["messenger", "timetable", "absence", "post", "conferences", "calendar"]
+    assert body["navigation"] == ["messenger", "timetable", "absence", "post", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
     assert body["modules_disabled"] == ["messenger"]
 
 
@@ -1042,7 +1073,7 @@ def test_a_letter_message_is_trimmed_and_a_too_long_one_is_refused(tmp_path):
 
     service = FakeService(Store(tmp_path / "data"))
     sent = []
-    service.confirm_letter = lambda connection_id, letter_id, recipient_id, text=None: sent.append(text) or {"ok": True}
+    service.confirm_letter = lambda connection_id, letter_id, recipient_id, text=None, choices=None: sent.append(text) or {"ok": True}
     api = TestClient(create_app(service))
     identity = {"letter_id": "1", "recipient_id": "2"}
     api.post("/api/letters/confirm", json=dict(identity, text="  Danke  "))
@@ -1050,3 +1081,37 @@ def test_a_letter_message_is_trimmed_and_a_too_long_one_is_refused(tmp_path):
     refused = api.post("/api/letters/confirm", json=dict(identity, text="x" * (letter_routes.LETTER_REPLY_MAX_LENGTH + 1))).json()
     assert sent == ["Danke", None]
     assert refused["message_key"] == "api.letters.confirm.tooLong"
+
+
+def test_a_chosen_answer_and_an_answer_change_reach_the_service_and_bad_choices_are_refused(tmp_path):
+    service = FakeService(Store(tmp_path / "data"))
+    seen = []
+    service.confirm_letter = lambda connection_id, letter_id, recipient_id, text=None, choices=None: seen.append(("confirm", text, choices)) or {"ok": True}
+    service.edit_answer = lambda connection_id, letter_id, recipient_id, text=None, choices=None: seen.append(("edit", text, choices)) or {"ok": True}
+    api = TestClient(create_app(service))
+    identity = {"letter_id": "1", "recipient_id": "2"}
+    api.post("/api/letters/confirm", json=dict(identity, choices=["a1"]))
+    api.post("/api/letters/confirm", json=dict(identity, choices=["b2"], text=" Gern ", edit=True))
+    for bad in ("a1", [1], ["x"] * 31):
+        refused = api.post("/api/letters/confirm", json=dict(identity, choices=bad)).json()
+        assert refused["message_key"] == "api.letters.reply.invalid"
+    assert seen == [("confirm", None, ["a1"]), ("edit", "Gern", ["b2"])]
+    api.post("/api/letters/confirm", json=dict(identity, choices=["b2"], text="  ", edit=True))
+    api.post("/api/letters/confirm", json=dict(identity, choices=["b2"], edit=True))
+    assert seen[-2:] == [("edit", "", ["b2"]), ("edit", None, ["b2"])]
+    form = api.get("/api/letters/answer", params=identity).json()
+    assert form["ok"] is True
+
+
+@pytest.mark.parametrize("path", ["/api/account/disconnect", "/api/connections/a1b2c3d4/disconnect"])
+def test_disconnecting_anyway_is_only_asked_for_with_an_explicit_flag(tmp_path, path):
+    service = FakeService(Store(tmp_path / "data"))
+    calls = []
+    service.disconnect = lambda connection_id=None, force=False, token_id=None: calls.append((force, token_id)) or {"disconnected": False}
+    api = TestClient(create_app(service))
+    api.post(path, json={})
+    api.post(path, json={"force": "yes"})
+    api.post(path, json={"force": True})
+    api.post(path, json={"token_id": "11111111-2222-4333-8444-555555555555"})
+    api.post(path, json={"token_id": 7})
+    assert calls == [(False, None), (False, None), (True, None), (False, "11111111-2222-4333-8444-555555555555"), (False, None)]

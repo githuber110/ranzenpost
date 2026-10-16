@@ -335,7 +335,7 @@ describe("sending", () => {
     await window.eval("(function (node) { return sendMessengerMessage(node); })")(view.querySelector(".composer-input"));
     const sends = calls.filter((call) => call.url.includes("api/messenger/send"));
     expect(sends.length).toBe(1);
-    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag", connection_id: "" });
+    expect(bodyOf(sends[0])).toEqual({ room_id: "!a:example.test", text: "Guten Tag", connection_id: "", txn_id: expect.stringMatching(/^[0-9a-f]{32}$/) });
     expect(room.draft).toBe("");
     expect(room.sending).toBe(false);
     expect(calls.some((call) => call.url.includes("api/messenger/room?id="))).toBe(true);
@@ -355,6 +355,52 @@ describe("sending", () => {
     expect(toast.kind).toBe("bad");
     expect(toast.message).toBe(window.eval("t('api.messenger.send.failed')"));
     expect(renderRoom(window).querySelector(".composer-input").value).toBe("Bitte weiterleiten");
+  });
+
+  test("a retry of the same text reuses the transaction id so the message cannot arrive twice", async () => {
+    const { window } = loadApp();
+    const room = makeRoom(window, { messages: [] });
+    const calls = mockFetch(window, (url) => (url.includes("api/messenger/send") ? null : { messages: [], before: "", self_user_id: SELF }));
+    const input = renderRoom(window).querySelector(".composer-input");
+    typeInto(window, input, "Bitte weiterleiten");
+    await window.eval("(function (node) { return sendMessengerMessage(node); })")(input);
+    await window.eval("(function (node) { return sendMessengerMessage(node); })")(input);
+    const sends = calls.filter((call) => call.url.includes("api/messenger/send")).map(bodyOf);
+    expect(sends).toHaveLength(2);
+    expect(sends[1].txn_id).toBe(sends[0].txn_id);
+    typeInto(window, input, "Bitte weiterleiten, danke");
+    await window.eval("(function (node) { return sendMessengerMessage(node); })")(input);
+    const third = calls.filter((call) => call.url.includes("api/messenger/send")).map(bodyOf)[2];
+    expect(third.txn_id).not.toBe(sends[0].txn_id);
+    expect(room.sending).toBe(false);
+  });
+
+  test("a send that times out is unclear, keeps the text, never resends by itself and reloads the history", async () => {
+    const { window } = loadApp();
+    const room = makeRoom(window, { messages: [] });
+    const timeouts = [];
+    window.AbortSignal.timeout = (ms) => {
+      timeouts.push(ms);
+      return new window.AbortController().signal;
+    };
+    const calls = [];
+    window.fetch = (url) => {
+      calls.push(String(url));
+      if (String(url).includes("api/messenger/send")) {
+        const error = new window.Error("late");
+        error.name = "TimeoutError";
+        return Promise.reject(error);
+      }
+      return Promise.resolve({ ok: true, headers: { get: () => "" }, json: () => Promise.resolve({ messages: [], before: "", self_user_id: SELF }) });
+    };
+    const input = renderRoom(window).querySelector(".composer-input");
+    typeInto(window, input, "Bitte weiterleiten");
+    await window.eval("(function (node) { return sendMessengerMessage(node); })")(input);
+    expect(calls.filter((url) => url.includes("api/messenger/send"))).toHaveLength(1);
+    expect(Math.max(...timeouts)).toBeGreaterThanOrEqual(30000);
+    expect(window.eval("state.toast").message).toBe(window.eval("t('api.messenger.send.unclear')"));
+    expect(room.draft).toBe("Bitte weiterleiten");
+    expect(calls.some((url) => url.includes("api/messenger/room?id="))).toBe(true);
   });
 
   test("an empty box never reaches the network and says the message is empty", async () => {

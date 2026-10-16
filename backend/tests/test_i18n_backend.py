@@ -18,10 +18,19 @@ GERMAN_HAYSTACK_MODULES = {
     "twofactor.py": "matches IServ's own German pages, never shown to the user",
     "lockout.py": "matches IServ's own German pages, never shown to the user",
     "conferences.py": "matches IServ's own German pages, never shown to the user",
+    "exercises.py": "matches IServ's own German column labels and cell words, never shown to the user",
+    "exercise_detail.py": "matches IServ's own German headings and button words of a task page, never shown to the user",
+    "news.py": "matches IServ's own German names of the news archive and package news, never shown to the user",
+    "forums.py": "matches IServ's own German column labels of the forum overview, never shown to the user",
     "holidays.py": "region names and transliteration for the public holiday feeds",
     "sick_note_pdf.py": "the sick note is a German letter handed in at a German school",
     "module_catalogue.py": "official IServ module names from doku.iserv.de; the UI names them through i18n keys",
     "vocabulary.py": "IServ page labels the diagnostic report may keep; matched against page text, never shown as UI text",
+    "older_absences.py": "column and status labels of IServ's older absence page; matched against page text, never shown",
+    "mail.py": "folder names a mail server may use without special-use flags; matched against folder names, never shown",
+    "older_absence_form.py": "field and link labels of IServ's older absence form; matched against page text, never shown",
+    "files.py": "IServ's own German column labels of the file table; matched against header text, never shown",
+    "mailinglists.py": "IServ's own German cancel button words of a confirmation page; matched, never shown",
 }
 
 TRANSLITERATION_LITERALS = {'"ä"', '"ö"', '"ü"', '"ß"', "'ä'", "'ö'", "'ü'", "'ß'"}
@@ -31,6 +40,7 @@ GERMAN_HAYSTACK_LITERALS = {
     ("iserv_prober.py", '"Anmeldung fehlgeschlagen"'): "marker text on IServ's own login page",
     ("timetable.py", '"ausfall"'): "IServ change-kind token in the timetable JSON",
     ("diagnostics.py", '"schule"'): "host name suffix of German school domains, redacted from the report, never shown",
+    ("letters.py", '"ändern"'): "word of the edit link on IServ's own letter page, matched, never shown",
 }
 
 GERMAN_TEXT_DEBT = {}

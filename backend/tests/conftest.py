@@ -31,6 +31,15 @@ def pytest_unconfigure(config):
         os.environ["PYTHONPATH"] = before
 
 
+@pytest.fixture(autouse=True)
+def fresh_code_windows():
+    from app import code_windows
+
+    code_windows.forget()
+    yield
+    code_windows.forget()
+
+
 def load_fixture(name):
     return (FIXTURES / name).read_text(encoding="utf-8")
 

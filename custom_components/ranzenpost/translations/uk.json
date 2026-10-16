@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "Непрочитана пошта"
       },
+      "open_tasks": {
+        "name": "Відкриті завдання"
+      },
+      "news": {
+        "name": "Новини"
+      },
+      "unread_forum_posts": {
+        "name": "Непрочитані дописи на форумах"
+      },
+      "texts": {
+        "name": "Тексти"
+      },
       "open_absences": {
         "name": "Відкриті пропуски"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "Школа знову доступна",
       "login_needed": "Потрібен вхід",
       "school_new_letter": "Новий лист",
-      "school_new_noticeboard_post": "Новий допис на дошці"
+      "school_new_noticeboard_post": "Новий допис на дошці",
+      "school_new_task": "Нове завдання",
+      "school_new_news": "Нова новина",
+      "school_new_forum_post": "Новий допис на форумі",
+      "school_new_text": "Новий текст"
     },
     "condition_type": {
       "is_school_day": "Навчальний день",

@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -252,11 +253,12 @@ def test_parse_confirmation_reads_the_optional_message_field(fixture):
     assert found["sendable"] is True
 
 
-def test_parse_confirmation_keeps_accept_decline_unsendable(fixture):
+def test_parse_confirmation_offers_accept_decline_as_a_choice(fixture):
     found = parse_confirmation(fixture("letter_confirm_choice.html"), SHOW_URL)
     assert found["type"] == "confirmation"
-    assert found["sendable"] is False
+    assert found["sendable"] is True
     assert set(found["submits"]) == {"form[accept]", "form[decline]"}
+    assert [option["name"] for option in found["choice"]["options"]] == ["form[accept]", "form[decline]"]
 
 
 def test_build_confirmation_payload_carries_the_token_and_the_submit(fixture):
@@ -310,6 +312,24 @@ class LetterSchool(ConfirmClient):
         elif "/parent_hide/" in path:
             response.text = _fixture_text("letter_hide_confirm.html")
         return response
+
+    def post_absolute(self, url, data, timeout=30, headers=None):
+        response = super().post_absolute(url, data, timeout, headers)
+        if "/parent_hide/" in url:
+            self.lists[INDEX_PATH] = EMPTY_LIST
+            self.lists[ARCHIVE_PATH] = archive_page()
+        elif url.endswith("/archive/batch"):
+            self.lists[INDEX_PATH] = listed_page()
+            self.lists[ARCHIVE_PATH] = EMPTY_LIST
+        return response
+
+    def fetch_file(self, path, limit, timeout=60):
+        response = self.fetch(path)
+        headers = dict(getattr(response, "headers", None) or {"content-type": "application/pdf"})
+        content = getattr(response, "content", None)
+        if content is None:
+            content = (getattr(response, "text", "") or "").encode("utf-8")
+        return SimpleNamespace(status_code=response.status_code, url=self.url + path, headers=headers, content=content, truncated=False)
 
     def reads(self, path):
         return self.fetched.count(path)
@@ -401,7 +421,7 @@ def test_archiving_a_listed_letter_works_and_moves_it_to_the_archive(tmp_path):
     service.letters("current")
     assert service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
     assert len(client.posts) == 1
-    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(INDEX_PATH) == 2
     assert listed(service, ("archive",)) == {LISTED_KEY}
     assert listed(service, ("current",)) == set()
 
@@ -409,7 +429,7 @@ def test_archiving_a_listed_letter_works_and_moves_it_to_the_archive(tmp_path):
 def test_an_unknown_letter_reads_the_list_once_and_then_archives(tmp_path):
     service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
     assert service.archive_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT) is True
-    assert client.reads(INDEX_PATH) == 1
+    assert client.reads(INDEX_PATH) == 2
     assert len(client.posts) == 1
 
 
@@ -781,7 +801,7 @@ def test_an_older_list_read_that_finishes_last_does_not_replace_the_newer_list(t
 def test_a_list_read_that_started_before_an_archive_does_not_bring_the_letter_back(tmp_path):
     service, client = letter_school(tmp_path, pages=[_fixture_text("letter_detail.html")])
     service.letters("current")
-    held = HeldRead(client, listed_page(), listed_page())
+    held = HeldRead(client, listed_page(), EMPTY_LIST)
     slow = threading.Thread(target=lambda: service.letters("current"))
     slow.start()
     assert held.entered.wait(5)

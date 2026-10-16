@@ -34,8 +34,6 @@ const HERO_VIEWPORT = { width: 1200, height: 700 };
 const HERO_SCALE = 1.5;
 const TAB = { overview: 0, timetable: 1, absence: 2, post: 3 };
 const EXAM_CHILD_KEY = "a1b2c3d4:child-1";
-const EXAM_DAY_OFFSET = 3;
-const EXAM_PERIOD = 1;
 const EXAM_SUBJECT = "MAT";
 const EXAM_NAME = "Maths test";
 const SETTLE_MS = 400;
@@ -176,8 +174,14 @@ async function openTab(page, index) {
 }
 
 async function ensureExamMark(page) {
-  const wanted = { child_key: EXAM_CHILD_KEY, date: isoDate(dayOfWeek(EXAM_DAY_OFFSET)), period: EXAM_PERIOD, subject_code: EXAM_SUBJECT, name: EXAM_NAME };
+  const wanted = { child_key: EXAM_CHILD_KEY, subject_code: EXAM_SUBJECT, name: EXAM_NAME };
   const outcome = await page.evaluate(async (mark) => {
+    const week = await fetch(new URL(`api/timetable?child=${encodeURIComponent(mark.child_key)}&week=0`, document.baseURI)).then((response) => response.json());
+    const lesson = (week.lessons || []).find((entry) => entry.subject_code === mark.subject_code && !entry.change_kind);
+    if (!lesson) return { ok: false, status: `no ${mark.subject_code} lesson in this week` };
+    const [day, month, year] = lesson.date.split(".");
+    mark.date = `${year}-${month}-${day}`;
+    mark.period = Number(lesson.period);
     const base = new URL("api/marks", document.baseURI).toString();
     const listed = await fetch(base).then((response) => response.json());
     const present = (listed.marks || []).some(

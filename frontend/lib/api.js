@@ -18,6 +18,13 @@ export const LOGIN_REASON_KEYS = Object.freeze({
 });
 export const REQUEST_TIMEOUT_MS = 15000;
 export const UPLOAD_TIMEOUT_MS = 120000;
+export const APP_HEADER = "X-Ranzenpost-App";
+
+export function withAppHeader(options) {
+  const opts = Object.assign({}, options || {});
+  opts.headers = Object.assign({}, opts.headers || {}, { [APP_HEADER]: "1" });
+  return opts;
+}
 
 export function loginReasonRank(reason) {
   return LATE_LOGIN_REASONS.indexOf(reason) + 1;
@@ -66,7 +73,8 @@ export function raiseCarriedError(data) {
   return data;
 }
 
-export function createApi({ fetch: send, base, t, abortSignal, formData }) {
+export function createApi({ fetch: rawSend, base, t, abortSignal, formData }) {
+  const send = (url, options) => rawSend(url, withAppHeader(options));
   const apiBase = documentBase(base);
 
   function apiUrl(path) {
@@ -102,11 +110,11 @@ export function createApi({ fetch: send, base, t, abortSignal, formData }) {
       .then((response) => response.json());
   }
 
-  function postFormData(path, body, files) {
+  function postFormData(path, body, files, timeout) {
     const form = formData();
     form.append("data", JSON.stringify(body));
     for (const file of files) form.append("files", file);
-    return send(apiUrl(path), { method: "POST", body: form, signal: requestSignal(UPLOAD_TIMEOUT_MS) })
+    return send(apiUrl(path), { method: "POST", body: form, signal: requestSignal(timeout || UPLOAD_TIMEOUT_MS) })
       .then(checkResponse)
       .then((response) => response.json());
   }

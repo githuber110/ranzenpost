@@ -326,8 +326,8 @@ def test_a_messenger_page_without_data_and_without_authenticate_is_quietly_missi
     assert service.modules()["modules"][modules.MESSENGER] is False
     assert pulses == []
     assert _warnings(caplog) == []
-    assert _registry_lines(caplog) == [f"school#{service.id} modules available: none; missing: timetable, letters, pinboard, absences, conferences, messenger, calendar; not supported: 1 (mail); unknown: 0"]
-    assert len(_authenticate_calls(holder)) == 2 * 3
+    assert _registry_lines(caplog) == [f"school#{service.id} modules available: none; missing: timetable, letters, pinboard, absences, conferences, messenger, calendar, tasks, news, forums, texts, infodisplay; not supported: 0; unknown: 0; read by the app: 1 (mail)"]
+    assert len(_authenticate_calls(holder)) == 2
 
 
 def test_a_messenger_page_without_data_whose_authenticate_call_hands_out_credentials_is_polled(tmp_path, caplog):
@@ -552,3 +552,19 @@ def test_the_new_change_list_format_does_not_push_the_known_changes_again(tmp_pa
     assert poll_state_of(service, connection_id)["changes_format"] == "lessons"
     poller.poll_once()
     assert calls == before
+
+
+class ListOutageService(ModularService):
+    def tasks(self):
+        self.calls.append("tasks")
+        raise OutageError("rate_limited", retry_after=600)
+
+
+def test_a_429_on_the_task_list_comes_after_mail_absences_and_the_snapshot(tmp_path):
+    store = _store(tmp_path)
+    service = ListOutageService(store, {})
+    _poller(store, service).poll_once()
+    names = _names(service.calls)
+    assert names.index("absences") < names.index("tasks")
+    assert len(store.load_calendar_snapshot()["children"][CHILD_ID]["absences"]) == 1
+    assert _school_state(store)["last_error"] == integration.ERROR_OUTAGE

@@ -9,10 +9,17 @@ from app.iserv.twofactor import ROW_ID_PREFIX
 
 TOKEN_PAGE = (
     "<html><body><table><tbody>"
-    f'<tr id="{ROW_ID_PREFIX}uuid-1"><td>Ranzenpost</td></tr>'
+    f'<tr id="{ROW_ID_PREFIX}a1a1a1a1-0000-4000-8000-000000000001"><td>Ranzenpost</td></tr>'
     "</tbody></table></body></html>"
 )
-EMPTY_TOKEN_PAGE = "<html><body><table><tbody></tbody></table></body></html>"
+DELETE_FORM = '<form id="deleteTwoFactorForm"><input type="hidden" name="delete[_token]" value="csrf"></form>'
+TOKEN_PAGE = TOKEN_PAGE.replace("</body>", DELETE_FORM + "</body>")
+EMPTY_TOKEN_PAGE = "<html><body><table><tbody></tbody></table>" + DELETE_FORM + "</body></html>"
+REAUTH_PAGE = (
+    "<html><body><h1>Bitte Passwort erneut eingeben</h1>"
+    "<form method='post'><input type='password' name='p'></form></body></html>"
+)
+TOKEN_ID = "a1a1a1a1-0000-4000-8000-000000000001"
 RATE_LIMIT_PAGE = "<html><body><h1>Zu viele Versuche</h1></body></html>"
 TWO_FACTOR_PAGE = (
     '<html><body><form action="/iserv/auth/twofactor" method="post">'
@@ -36,9 +43,10 @@ class FakeAnswer:
 
 
 class RecordingSession:
-    def __init__(self, pages=None, delete_status=200):
+    def __init__(self, pages=None, delete_status=200, delete_error=None):
         self.pages = pages or {}
         self.delete_status = delete_status
+        self.delete_error = delete_error
         self.headers = {}
         self.deleted = []
 
@@ -50,6 +58,8 @@ class RecordingSession:
 
     def request(self, method, url, **kwargs):
         self.deleted.append(url)
+        if self.delete_error is not None:
+            raise self.delete_error
         return FakeAnswer(self.delete_status, "", url)
 
 
@@ -70,18 +80,59 @@ def test_a_delete_the_server_refused_is_never_reported_as_a_removal():
         pages={"twofactor": FakeAnswer(200, EMPTY_TOKEN_PAGE)}, delete_status=403
     )
     with pytest.raises(DataError):
-        _client(session).delete_totp_token("uuid-1", "000000", "csrf")
+        _client(session).delete_totp_token("a1a1a1a1-0000-4000-8000-000000000001", "000000", "csrf")
     assert session.deleted, "the delete was never attempted, so the guard proves nothing"
 
 
 def test_a_delete_that_worked_is_still_reported_as_a_removal():
     session = RecordingSession(pages={"twofactor": FakeAnswer(200, EMPTY_TOKEN_PAGE)})
-    assert _client(session).delete_totp_token("uuid-1", "000000", "csrf") is True
+    assert _client(session).delete_totp_token("a1a1a1a1-0000-4000-8000-000000000001", "000000", "csrf") is True
 
 
 def test_a_token_that_is_still_listed_is_not_reported_as_removed():
     session = RecordingSession(pages={"twofactor": FakeAnswer(200, TOKEN_PAGE)})
-    assert _client(session).delete_totp_token("uuid-1", "000000", "csrf") is False
+    assert _client(session).delete_totp_token("a1a1a1a1-0000-4000-8000-000000000001", "000000", "csrf") is False
+
+
+def test_an_unrecognised_page_after_the_delete_is_unclear_and_never_a_removal():
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, REAUTH_PAGE)})
+    with pytest.raises(DataError) as caught:
+        _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf")
+    assert caught.value.message_key == "api.disconnect.unclear"
+    assert session.deleted
+
+
+def test_a_token_list_without_readable_rows_is_unclear():
+    page = "<html><body><table><tbody><tr></tr></tbody></table>" + DELETE_FORM + "</body></html>"
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, page)})
+    with pytest.raises(DataError) as caught:
+        _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf")
+    assert caught.value.message_key == "api.disconnect.unclear"
+
+
+def test_a_timed_out_delete_that_worked_counts_as_removed():
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, EMPTY_TOKEN_PAGE)}, delete_error=requests.ReadTimeout("late"))
+    assert _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf") is True
+
+
+def test_a_timed_out_delete_with_the_token_still_listed_is_not_a_removal():
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, TOKEN_PAGE)}, delete_error=requests.ReadTimeout("late"))
+    assert _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf") is False
+
+
+def test_a_retry_that_finds_the_token_gone_counts_as_removed():
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, EMPTY_TOKEN_PAGE)}, delete_status=404)
+    assert _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf") is True
+
+
+def test_a_token_named_only_in_its_delete_link_still_counts_as_listed():
+    page = (
+        "<html><body><table><tbody><tr><td>Ranzenpost</td>"
+        f'<td><button hx-delete="/iserv/auth/settings/twofactor/delete/{TOKEN_ID}">x</button></td></tr>'
+        "</tbody></table>" + DELETE_FORM + "</body></html>"
+    )
+    session = RecordingSession(pages={"twofactor": FakeAnswer(200, page)})
+    assert _client(session).delete_totp_token(TOKEN_ID, "000000", "csrf") is False
 
 
 def test_a_password_is_only_called_accepted_on_a_positive_signal():

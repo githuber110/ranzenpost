@@ -91,6 +91,14 @@ describe("every selected state is loud enough to see", () => {
     expect(chosen).not.toMatch(/--accent-soft/);
   });
 
+  test("a chosen letter answer is ringed and ticked in the accent without competing with the send button", () => {
+    const chosen = rule(stylesCss, '.confirm-card .opt[aria-pressed="true"]');
+    expect(chosen).toMatch(/border-color:\s*var\(--accent\)/);
+    expect(chosen).toMatch(/inset 0 0 0 1px var\(--accent\)/);
+    expect(chosen).not.toMatch(/background:\s*var\(--accent\)/);
+    expect(rule(stylesCss, '.confirm-card .opt[aria-pressed="true"]::after')).toMatch(/background:\s*var\(--accent\)/);
+  });
+
   test("no selection state is left hanging off the near-invisible soft tint", () => {
     const offenders = [];
     const pattern = /([^{}]+)\{[^}]*--accent-soft[^}]*\}/g;

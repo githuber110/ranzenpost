@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "رسائل بريد غير مقروءة"
       },
+      "open_tasks": {
+        "name": "المهام المفتوحة"
+      },
+      "news": {
+        "name": "الأخبار"
+      },
+      "unread_forum_posts": {
+        "name": "مشاركات غير مقروءة في المنتديات"
+      },
+      "texts": {
+        "name": "النصوص"
+      },
       "open_absences": {
         "name": "غيابات مفتوحة"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "المدرسة قابلة للوصول مجددًا",
       "login_needed": "يلزم تسجيل الدخول",
       "school_new_letter": "رسالة جديدة",
-      "school_new_noticeboard_post": "منشور جديد على اللوحة"
+      "school_new_noticeboard_post": "منشور جديد على اللوحة",
+      "school_new_task": "مهمة جديدة",
+      "school_new_news": "خبر جديد",
+      "school_new_forum_post": "مشاركة جديدة في المنتدى",
+      "school_new_text": "نص جديد"
     },
     "condition_type": {
       "is_school_day": "يوم دراسي",

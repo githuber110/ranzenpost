@@ -199,6 +199,27 @@ describe("writing a message to the school", () => {
     expect(calls[1].body.request_id).toBe(calls[0].body.request_id);
   });
 
+  test("an unclear answer from the school offers sending again with a new request id, only on a tap", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, [{ ok: false, message_key: "api.letters.reply.uncertain" }, { ok: true }], calls);
+    window.eval("openLetterReply")(letter());
+    goToPreview(window, "Hallo").querySelector("button.letter-reply-send").click();
+    await settle();
+    await settle();
+    const after = openSheetNode(window);
+    const again = after.querySelector("button.letter-reply-send");
+    expect(again.textContent).toBe(window.eval('t("letters.reply.sendAgain")'));
+    expect(after.textContent).not.toContain("IServ");
+    expect(calls.length).toBe(1);
+    again.click();
+    await settle();
+    await settle();
+    expect(calls.length).toBe(2);
+    expect(calls[1].body.request_id).not.toBe(calls[0].body.request_id);
+    expect(calls[1].body.confirmed).toBe(true);
+  });
+
   test("the send waits longer than an ordinary request because the school needs two round trips", async () => {
     const { window } = loadApp();
     const waits = [];

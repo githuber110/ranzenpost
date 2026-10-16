@@ -333,6 +333,24 @@ def test_the_school_names_days_until_and_the_conference_details(tmp_path):
     }
 
 
+def test_a_conference_date_inside_a_longer_cell_is_found_and_left_out_of_the_title(tmp_path):
+    client, store, _ = _app(tmp_path, calendar=FakeHolidayCalendar(days={}))
+    integration.record_school_poll(
+        store,
+        SCHOOL,
+        NOW_EPOCH,
+        True,
+        conferences=[["Elternsprechtag Herbst", "Donnerstag, 17.09.2026, 14:00 - 18:00 Uhr", "Buchungszeitraum: 01.09.2026 - 10.09.2026"]],
+    )
+
+    body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
+
+    assert body["next_conference"]["date"] == "2026-09-17"
+    assert body["next_conference"]["title"] == "Elternsprechtag Herbst · Buchungszeitraum: 01.09.2026 - 10.09.2026"
+    assert "Donnerstag, 17.09.2026, 14:00 - 18:00 Uhr" in body["next_conference"]["details"]
+    assert "/iserv/" not in str(body["next_conference"])
+
+
 def test_a_running_holiday_counts_zero_days(tmp_path):
     calendar = FakeHolidayCalendar(
         days={"2026-09-02": _day(free=True, overrides=True, kind="school", name="Ferien", period_id="h1")}

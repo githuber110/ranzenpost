@@ -1,11 +1,12 @@
 from html import escape as escape_html
+import hashlib
 import json
 import re
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from .forms import affirmative_submit, parse_forms
+from .forms import affirmative_submit, find_login_form, parse_forms
 from .html import clean_html
 
 LIST_TABLE_ID = "crud-table"
@@ -314,22 +315,55 @@ def parse_confirmation(html, base_url):
     kind = (button.get(CONFIRMATION_ATTR) or "").strip().lower()
     if not kind or kind == CONFIRMATION_NONE:
         return None
+    if confirmation_closed(soup):
+        return None
     form = button.find_parent("form")
     if form is None:
         return None
+    action = urljoin(base_url, button.get("formaction") or form.get("action") or base_url)
+    return _confirmation_from_form(form, kind, action, base_url)
+
+
+def _open_marks(soup):
+    return [
+        node
+        for node in soup.find_all(attrs={CONFIRMATION_ATTR: True})
+        if (node.get(CONFIRMATION_ATTR) or "").strip().lower() not in ("", CONFIRMATION_NONE)
+    ]
+
+
+def confirmation_closed(page):
+    soup = page if isinstance(page, BeautifulSoup) else BeautifulSoup(page or "", "html.parser")
+    marks = _open_marks(soup)
+    if not marks or not all(node.has_attr("disabled") for node in marks):
+        return ""
+    return (marks[0].get(CONFIRMATION_ATTR) or "").strip().lower()
+
+
+def reply_problem(html, url=""):
+    text = html or ""
+    return find_login_form(parse_forms(text, url or SHAPE_BASE)) is not None or reply_form_errors(text) > 0
+
+
+def _confirmation_from_form(form, kind, action, base_url):
     fields = {}
     submits = {}
+    submit_controls = []
     text_field = ""
     for control in form.find_all(["input", "textarea", "select"]):
         name = control.get("name")
-        if not name:
+        if not name or control.name == "select":
             continue
         if control.name == "textarea":
             text_field = name
             fields[name] = control.get_text() or ""
             continue
-        if control.name == "input" and (control.get("type") or "text").lower() == "submit":
+        control_type = (control.get("type") or "text").lower()
+        if control_type == "submit":
             submits[name] = control.get("value") or ""
+            submit_controls.append(control)
+            continue
+        if control_type in CHOICE_INPUT_TYPES:
             continue
         fields[name] = control.get("value") or ""
     for control in form.find_all("button"):
@@ -337,21 +371,301 @@ def parse_confirmation(html, base_url):
         if not name or (control.get("type") or "submit").lower() != "submit":
             continue
         submits[name] = control.get("value") or ""
+        submit_controls.append(control)
     editor = ""
     for control, name in _form_custom_fields(form):
         if control.name == EDITOR_TAG:
             editor = editor or name
             fields.update(_editor_fields(control, name))
+    plain = kind in SENDABLE_CONFIRMATIONS and len(submits) == 1 and not _choice_groups(form)
+    choice = None if plain else _confirmation_choice(form, submit_controls, action, base_url)
+    if kind == ANSWER_EDIT and choice and choice["mode"] == CHOICE_SUBMIT and len(choice["options"]) == 1:
+        if editor or text_field:
+            plain = True
+            choice = None
+            submits = {choice_name: value for choice_name, value in submits.items() if choice_name in _enabled_names(submit_controls)}
     return {
         "editor": editor,
         "type": kind,
-        "action": urljoin(base_url, button.get("formaction") or form.get("action") or base_url),
+        "action": action,
         "fields": fields,
         "submits": submits,
         "text_field": text_field,
         "text": fields.get(text_field, "") if text_field else "",
-        "sendable": kind in SENDABLE_CONFIRMATIONS and len(submits) == 1,
+        "choice": choice,
+        "sendable": plain or choice is not None,
     }
+
+
+ANSWER_EDIT = "edit"
+ANSWER_EDIT_HINTS = ("edit", "bearbeiten", "ändern", "aendern", "change")
+ANSWER_EDIT_SKIP = re.compile(r"/parentletter/(?:attachment/|parent/(?:index|archive|show/|parent_hide/))")
+ANSWER_FORM_SKIP = re.compile(r"/parentletter/(?:attachment/|parent/parent_hide/)")
+CHOICE_SUBMIT = "submit"
+CHOICE_RADIO = "radio"
+CHOICE_SELECT = "select"
+CHOICE_CHECKBOX = "checkbox"
+CHOICE_INPUT_TYPES = (CHOICE_RADIO, CHOICE_CHECKBOX)
+CHOICE_PLAIN_INPUT_TYPES = ("hidden", "submit", "button", "reset", CHOICE_RADIO, CHOICE_CHECKBOX)
+CHOICE_LABEL_LENGTH = 200
+CHOICE_ID_LENGTH = 16
+CHOICE_LIMIT = 30
+SUBMIT_MARK_CLASSES = ("active", "selected", "checked")
+
+
+def _enabled(control):
+    return not control.has_attr("disabled")
+
+
+def _enabled_names(controls):
+    return {control.get("name") for control in controls if _enabled(control)}
+
+
+def _module_link(url, base_url):
+    path = urlparse(url).path
+    return _origin(url) == _origin(base_url) and "%" not in path and path.startswith(REPLY_MODULE_PATH)
+
+
+def _module_anchors(soup, base_url):
+    for anchor in soup.find_all("a", href=True):
+        if not _outside_letter_body(anchor) or anchor.find_parent(["nav", "header", "footer"]) is not None:
+            continue
+        url = urljoin(base_url, anchor["href"])
+        if _module_link(url, base_url):
+            yield anchor, url
+
+
+def _names_letter(url, letter_id, recipient_id):
+    segments = urlparse(str(url or "")).path.lower().split("/")
+    return str(letter_id or "").lower() in segments and str(recipient_id or "").lower() in segments
+
+
+def find_answer_edit(html, base_url, letter_id, recipient_id):
+    soup = BeautifulSoup(html or "", "html.parser")
+    found = []
+    for anchor, url in _module_anchors(soup, base_url):
+        path = urlparse(url).path.lower()
+        if ANSWER_EDIT_SKIP.search(path) or not _names_letter(url, letter_id, recipient_id):
+            continue
+        text = " ".join(anchor.get_text(" ").split()).lower()
+        if any(hint in path or hint in text for hint in ANSWER_EDIT_HINTS):
+            if url not in found:
+                found.append(url)
+    return found[0] if len(found) == 1 else None
+
+
+def parse_answer_form(html, base_url, letter_id, recipient_id):
+    found = parse_confirmation(html, base_url)
+    if found is not None:
+        return found if _names_letter(found["action"], letter_id, recipient_id) else None
+    soup = BeautifulSoup(html or "", "html.parser")
+    candidates = []
+    for form in soup.find_all("form"):
+        if not _outside_letter_body(form) or (form.get("method") or "get").strip().lower() != "post":
+            continue
+        action = urljoin(base_url, form.get("action") or base_url)
+        if not _module_link(action, base_url) or ANSWER_FORM_SKIP.search(urlparse(action).path.lower()):
+            continue
+        if not _names_letter(action, letter_id, recipient_id):
+            continue
+        names = [str(control.get("name") or "") for control in form.find_all("input")]
+        if any(name.endswith("[_token]") for name in names) and not any(MULTI_FIELD == name for name in names):
+            candidates.append((form, action))
+    if len(candidates) != 1:
+        return None
+    form, action = candidates[0]
+    return _confirmation_from_form(form, ANSWER_EDIT, action, base_url)
+
+
+def _choice_groups(form):
+    radios = {
+        control.get("name")
+        for control in form.find_all("input")
+        if (control.get("type") or "").strip().lower() == CHOICE_RADIO and control.get("name")
+    }
+    boxes = [
+        control
+        for control in form.find_all("input")
+        if (control.get("type") or "").strip().lower() == CHOICE_CHECKBOX and control.get("name")
+    ]
+    selects = [control for control in form.find_all("select") if control.get("name")]
+    return len(radios) + (1 if boxes else 0) + len(selects)
+
+
+def _choice_text(text):
+    return " ".join(str(text or "").split())[:CHOICE_LABEL_LENGTH]
+
+
+def _choice_id(mode, name, value, label):
+    digest = hashlib.sha256("\0".join((mode, name, value, label)).encode("utf-8")).hexdigest()
+    return digest[:CHOICE_ID_LENGTH]
+
+
+def _choice_option(mode, name, value, label, selected=False):
+    label = _choice_text(label) or _choice_text(value)
+    return {
+        "id": _choice_id(mode, name, value, label),
+        "name": name,
+        "value": value,
+        "label": label,
+        "selected": bool(selected),
+    }
+
+
+def _input_label(form, control):
+    control_id = control.get("id")
+    if control_id:
+        label = form.find("label", attrs={"for": control_id})
+        if label is not None and _choice_text(label.get_text(" ")):
+            return label.get_text(" ")
+    holder = control.find_parent("label")
+    if holder is not None and _choice_text(holder.get_text(" ")):
+        return holder.get_text(" ")
+    sibling = control.next_sibling
+    while sibling is not None and getattr(sibling, "name", None) is None:
+        if _choice_text(sibling):
+            return str(sibling)
+        sibling = sibling.next_sibling
+    return ""
+
+
+def _foreign_controls(form):
+    for control in form.find_all("input"):
+        if (control.get("type") or "text").strip().lower() not in CHOICE_PLAIN_INPUT_TYPES:
+            return True
+    for control, _ in _form_custom_fields(form):
+        if control.name != EDITOR_TAG:
+            return True
+    return len(form.find_all(EDITOR_TAG)) > 1 or len(form.find_all("textarea")) > 1
+
+
+def _group_options(form):
+    radios = [
+        control
+        for control in form.find_all("input")
+        if (control.get("type") or "").strip().lower() == CHOICE_RADIO and control.get("name") and _enabled(control)
+    ]
+    if radios:
+        return CHOICE_RADIO, False, [
+            _choice_option(CHOICE_RADIO, control["name"], control.get("value") or "on", _input_label(form, control), control.has_attr("checked"))
+            for control in radios
+        ]
+    boxes = [
+        control
+        for control in form.find_all("input")
+        if (control.get("type") or "").strip().lower() == CHOICE_CHECKBOX and control.get("name") and _enabled(control)
+    ]
+    if boxes:
+        return CHOICE_CHECKBOX, True, [
+            _choice_option(CHOICE_CHECKBOX, control["name"], control.get("value") or "on", _input_label(form, control), control.has_attr("checked"))
+            for control in boxes
+        ]
+    select = form.find("select", attrs={"name": True})
+    if select is None or not _enabled(select):
+        return None, False, []
+    options = []
+    for option in select.find_all("option"):
+        value = option.get("value")
+        value = option.get_text(" ") if value is None else value
+        if not str(value).strip() or not _enabled(option):
+            continue
+        options.append(_choice_option(CHOICE_SELECT, select["name"], str(value), option.get_text(" "), option.has_attr("selected")))
+    return CHOICE_SELECT, select.has_attr("multiple"), options
+
+
+def _confirmation_choice(form, submit_controls, action, base_url):
+    if _foreign_controls(form) or not _module_link(action, base_url):
+        return None
+    submits = [control for control in submit_controls if _enabled(control)]
+    groups = _choice_groups(form)
+    if groups == 0:
+        if not submits:
+            return None
+        mode, multiple, submit = CHOICE_SUBMIT, False, {}
+        options = [
+            _choice_option(
+                CHOICE_SUBMIT,
+                control["name"],
+                control.get("value") or "",
+                control.get_text(" ") if control.name == "button" else control.get("value"),
+                _submit_marked(control),
+            )
+            for control in submits
+        ]
+    else:
+        if groups != 1 or len(submits) != 1:
+            return None
+        mode, multiple, options = _group_options(form)
+        submit = {submits[0]["name"]: submits[0].get("value") or ""}
+    ids = [option["id"] for option in options]
+    if not options or len(options) > CHOICE_LIMIT or len(set(ids)) != len(ids):
+        return None
+    if any(not option["label"] for option in options):
+        return None
+    return {"mode": mode, "multiple": multiple, "options": options, "submit": submit}
+
+
+def answer_text(confirmation):
+    confirmation = confirmation or {}
+    field = confirmation.get("text_field") or ""
+    if field:
+        return str((confirmation.get("fields") or {}).get(field) or "")
+    editor = confirmation.get("editor") or ""
+    if editor:
+        return str((confirmation.get("fields") or {}).get(f"{editor}[plain]") or "")
+    return ""
+
+
+def public_choice(choice):
+    if not choice:
+        return None
+    return {
+        "mode": choice["mode"],
+        "multiple": bool(choice["multiple"]),
+        "options": [
+            {"id": option["id"], "label": option["label"], "selected": bool(option["selected"])}
+            for option in choice["options"]
+        ],
+    }
+
+
+def picked_options(choice, chosen):
+    chosen = [str(item) for item in chosen or [] if isinstance(item, str)]
+    if not choice or not chosen or len(set(chosen)) != len(chosen):
+        return None
+    if not choice["multiple"] and len(chosen) != 1:
+        return None
+    by_id = {option["id"]: option for option in choice["options"]}
+    if any(item not in by_id for item in chosen):
+        return None
+    return [by_id[item] for item in chosen]
+
+
+def build_choice_payload(confirmation, picked, text=None):
+    payload = build_confirmation_payload(dict(confirmation, submits={}), text)
+    values = {}
+    for option in picked:
+        values.setdefault(option["name"], []).append(option["value"])
+    for name, chosen in values.items():
+        payload[name] = chosen[0] if len(chosen) == 1 else chosen
+    payload.update(confirmation["choice"].get("submit") or {})
+    return payload
+
+
+def _submit_marked(control):
+    classes = control.get("class") or []
+    classes = classes.split() if isinstance(classes, str) else classes
+    pressed = (control.get("aria-pressed") or control.get("aria-checked") or "").strip().lower() == "true"
+    return pressed or any(name in SUBMIT_MARK_CLASSES for name in classes)
+
+
+def choice_recorded(confirmation, picked):
+    choice = (confirmation or {}).get("choice")
+    if not choice:
+        return False
+    selected = {(option["name"], option["value"]) for option in choice["options"] if option["selected"]}
+    wanted = {(option["name"], option["value"]) for option in picked}
+    return bool(wanted) and selected == wanted
 
 
 def build_confirmation_payload(confirmation, text=None):
@@ -506,6 +820,32 @@ def reply_form_errors(html):
     )
 
 
+REPLY_WARNING_SELECTORS = (".alert-warning",)
+REPLY_HIDDEN_TAGS = ("script", "style", "template", "noscript", "form", EDITOR_TAG, "textarea")
+
+
+def reply_warnings(html):
+    soup = BeautifulSoup(html or "", "html.parser")
+    return sum(
+        1
+        for selector in REPLY_WARNING_SELECTORS
+        for node in soup.select(selector)
+        if _outside_letter_body(node) and node.get_text(" ", strip=True)
+    )
+
+
+def reply_count(html, text):
+    wanted = " ".join(str(text or "").split()).casefold()
+    if not wanted:
+        return 0
+    soup = BeautifulSoup(html or "", "html.parser")
+    for node in soup.find_all(REPLY_HIDDEN_TAGS):
+        node.decompose()
+    for node in soup.find_all(class_=LETTER_BODY_CLASS):
+        node.decompose()
+    return " ".join(soup.get_text(" ").split()).casefold().count(wanted)
+
+
 NOTICE_SELECTORS = (".alert", ".form-error-message", ".invalid-feedback", ".help-block", ".error")
 NOTICE_LIMIT = 3
 NOTICE_LENGTH = 80
@@ -650,6 +990,106 @@ def confirmation_evidence(html):
         "confirmation_form": _form_outline(form) if form is not None else "",
         "script_sources": _script_sources(soup),
     }
+
+
+SHAPE_ID = re.compile(r"[0-9a-fA-F]{8,}(?:-[0-9a-fA-F]{4,})*")
+SHAPE_NUMBER = re.compile(r"\d+")
+SHAPE_NAME_LIMIT = 12
+SHAPE_LENGTH = 600
+SHAPE_BASE = "https://school.invalid/iserv/parentletter/"
+
+
+def _shape_name(name):
+    return SHAPE_NUMBER.sub("<n>", SHAPE_ID.sub("<id>", str(name or "")))[:OUTLINE_VALUE_LENGTH]
+
+
+def confirmation_shape(html, base_url=""):
+    soup = BeautifulSoup(html or "", "html.parser")
+    marked = soup.find_all(attrs={CONFIRMATION_ATTR: True})
+    if not marked:
+        return ""
+    marks = sorted({str(node.get(CONFIRMATION_ATTR) or "").strip().upper() or "-" for node in marked})
+    form = marked[0].find_parent("form")
+    if form is None:
+        return "marks=%s; form=none" % ",".join(marks)
+    parsed = parse_confirmation(html, base_url or SHAPE_BASE)
+    return _form_shape(form, "marks=%s" % ",".join(marks), parsed)
+
+
+def answer_form_shape(html, base_url, letter_id, recipient_id):
+    soup = BeautifulSoup(html or "", "html.parser")
+    forms = [
+        form
+        for form in soup.find_all("form")
+        if _outside_letter_body(form) and form.find_parent(["nav", "header"]) is None
+    ]
+    if not forms:
+        return "edit page; forms=0"
+    parsed = parse_answer_form(html, base_url, letter_id, recipient_id)
+    parts = [_form_shape(form, "edit page form %d/%d" % (index, len(forms)), parsed) for index, form in enumerate(forms[:3], 1)]
+    return " | ".join(parts)[:SHAPE_LENGTH]
+
+
+def _form_shape(form, head, parsed):
+    counts = {}
+    names = []
+    disabled = 0
+    for control in form.find_all(["input", "textarea", "select", "button", "option", EDITOR_TAG]):
+        if control.name == "input":
+            key = "input:" + (control.get("type") or "text").strip().lower()
+        elif control.name == "button":
+            key = "button:" + (control.get("type") or "submit").strip().lower()
+        else:
+            key = control.name
+        counts[key] = counts.get(key, 0) + 1
+        if control.has_attr("disabled"):
+            disabled += 1
+        name = _shape_name(control.get("name"))
+        if name and name not in names and len(names) < SHAPE_NAME_LIMIT:
+            names.append(name)
+    labels = len(form.find_all("label"))
+    choice = (parsed or {}).get("choice")
+    if parsed is None:
+        mode = "none"
+    elif choice:
+        mode = "%s options=%d%s" % (choice["mode"], len(choice["options"]), " multiple" if choice["multiple"] else "")
+    else:
+        mode = "plain" if parsed.get("sendable") else "unsupported"
+    controls = ", ".join("%s x%d" % (key, counts[key]) for key in sorted(counts))
+    text = "%s; method=%s; action=%s; controls=%s; disabled=%d; labels=%d; names=%s; mode=%s" % (
+        head,
+        (form.get("method") or "get").strip().lower(),
+        _shape_name(urlparse(str(form.get("action") or "")).path) or "-",
+        controls or "none",
+        disabled,
+        labels,
+        ", ".join(names) or "none",
+        mode,
+    )
+    return text[:SHAPE_LENGTH]
+
+
+def answered_page_shape(html, base_url):
+    soup = BeautifulSoup(html or "", "html.parser")
+    paths = []
+    for _, url in _module_anchors(soup, base_url):
+        path = _shape_name(urlparse(url).path)
+        if path not in paths and len(paths) < SHAPE_NAME_LIMIT:
+            paths.append(path)
+    buttons = []
+    for control in soup.find_all(["button", "input"]):
+        if not _outside_letter_body(control) or not _is_submit(control):
+            continue
+        name = _shape_name(control.get("name")) or "-"
+        if name not in buttons and len(buttons) < SHAPE_NAME_LIMIT:
+            buttons.append(name)
+    forms = [form for form in soup.find_all("form") if _outside_letter_body(form)]
+    text = "answered page; forms=%d; module links=%s; submits=%s" % (
+        len(forms),
+        ", ".join(paths) or "none",
+        ", ".join(buttons) or "none",
+    )
+    return text[:SHAPE_LENGTH]
 
 
 CONFIRM_FIELD = "iserv_crud_multi_select[confirm]"

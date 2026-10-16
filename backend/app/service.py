@@ -5,10 +5,11 @@ from datetime import date, timedelta
 from urllib.parse import quote
 
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-from . import courses, holidays, integration, lockout, messages, modules, period_grid, requestlog, signin_pause
+from . import courses, holidays, integration, lockout, messages, modules, period_grid, requestlog, school_lists, signin_pause
 from .signin_pause import PAUSES
 from .store import (
     CHILDREN_LISTED,
@@ -28,6 +29,17 @@ from .store import (
 from .absence_service import AbsenceService
 from .child_service import LETTERS_CHILD_PREFIX, SCHOOL_CACHE_SECONDS, ChildService, unknown_child
 from .letter_service import LetterService
+from .mail_service import MailFile, MailNotOffered, MailService
+from .file_service import AccountModuleNotOffered, FileService
+from .contacts_service import ContactsService
+from .mail_settings import MailWebService
+from .conference_service import TAB_CURRENT as CONFERENCE_TAB_CURRENT, ConferenceService
+from . import news_sections
+from .news_sections import NewsSections
+from .task_service import TaskService, with_details
+from . import account_lists
+from .forum_service import READ_UNAVAILABLE_KEY, ForumService
+from .refusals import Refusals
 from .not_configured import ConnectionChangedError, NotConfiguredError
 from .attachments import attachment_dict, clean_filename
 from .failure import failure_cause
@@ -35,16 +47,17 @@ from .identifiers import as_int
 from .sorting import folder_sort_key, published_sort_key, child_sort_key
 from .iserv.client import IServClient
 from .iserv.children import CHILD_PAGE_FORBIDDEN_KEY
-from .iserv.badges import BADGES_PATH, MAIL_MODULE, MAIL_PAGE_PATH, BadgeShapeError, parse_badges
-from .iserv.conferences import parse_conferences
-from .iserv.school_calendar import (
-    CALENDAR_EVENTS_PATH,
-    CALENDAR_REFUSED_STATUSES,
-    CalendarShapeError,
-    events_params,
-    parse_events,
+from .iserv.badges import BADGES_PATH, MAIL_BADGE, MAIL_MODULE, BadgeShapeError, parse_badges
+from .iserv.school_calendar import problem_text, read_calendar, source_kind
+from .pathpattern import path_pattern
+from .iserv.dsa import (
+    REGULAR_PLAN_SECONDS,
+    SUBSTITUTIONS_SETTING,
+    TIMETABLE_SETTING,
+    DieSchulAppClient,
+    SharedReads,
+    note_refusal,
 )
-from .iserv.dsa import REGULAR_PLAN_SECONDS, SUBSTITUTIONS_SETTING, TIMETABLE_SETTING, DieSchulAppClient, SharedReads
 from .iserv import dsa_substitutions
 from .iserv.client import (
     LOGIN_TWOFACTOR_SETUP_KEY,
@@ -62,6 +75,8 @@ from .iserv.errors import (
     LoginError,
     OutageError,
     PasswordError,
+    PasswordUnclearError,
+    ModulePageRefusedError,
     SchoolCalendarRefusedError,
     TwoFactorError,
     status_reason,
@@ -69,7 +84,7 @@ from .iserv.errors import (
 )
 from .iserv.dsa_timetable import parse_current_timetable
 from .iserv.timetable import changes_format, display_rows, shown_changes
-from .iserv.twofactor import parse_delete_token
+from .iserv.twofactor import parse_delete_token, parse_token_rows, recognised_token_list, token_listed
 from .mapping import (
     merge_discovered_codes,
     to_display,
@@ -77,8 +92,9 @@ from .mapping import (
 from .messenger import MessengerService
 from .sign_in import SignInService, next_totp_code, sign_in_failure_reason
 from .timetable_source import TimetableSources, has_lessons
+from .wizard import TOKEN_NAME
 
-CONFERENCES_PATH = "/iserv/parentconference/attendee/"
+MAIL_RECOUNT_ACTIONS = frozenset({"mark_seen", "set_flag", "move", "archive", "trash", "spam"})
 SCHOOL_EVENTS_DAYS = 60
 START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
@@ -100,6 +116,8 @@ REPAIR_REFUSAL_KEYS = dict(
     REFUSAL_KEYS,
     **{REASON_TWOFACTOR_SETUP: LOGIN_TWOFACTOR_SETUP_KEY, lockout.LOCKED: lockout.human_message_key(lockout.LOCKED)},
 )
+PASSWORD_UNCLEAR = "unclear"
+PASSWORD_NOT_ARRIVED = "not_arrived"
 REPAIR_COUNTED_REFUSALS = (REASON_BAD_CREDENTIALS, REASON_UNKNOWN_ACCOUNT, lockout.LOCKED)
 UPSTREAM_ERRORS = (LoginError, TwoFactorError, DataError, requests.RequestException)
 TIMETABLE_UNREADABLE_KEY = "api.timetable.unreadable"
@@ -107,15 +125,33 @@ COURSES_SAVED_KEY = "api.courses.saved"
 COURSES_RESET_KEY = "api.courses.reset"
 
 
-DISCONNECT_NO_UUID_KEY = "api.disconnect.noUuid"
 DISCONNECT_REMOVED_KEY = "api.disconnect.removed"
 DISCONNECT_FAILED_KEY = "api.disconnect.failed"
+DISCONNECT_FORCED_KEY = "api.disconnect.forced"
+DISCONNECT_NO_TOKEN_KEY = "api.disconnect.noToken"
+DISCONNECT_CHOOSE_KEY = "api.disconnect.choose"
+DISCONNECT_UNREADABLE_KEY = "api.disconnect.unreadable"
+DISCONNECT_UNCLEAR_KEY = "api.disconnect.unclear"
 
 
-def _disconnect_result(attempted, removed, key):
-    body = {"attempted": attempted, "removed": removed}
+def _disconnect_result(attempted, removed, key, retryable=False, **extra):
+    body = {"attempted": attempted, "removed": removed, "retryable": retryable}
     body.update(messages.payload(key))
+    body.update(extra)
     return body
+
+
+def _app_tokens(rows):
+    return [
+        {"id": row["uuid"], "name": row.get("name") or "", "created": str(row.get("created") or "")}
+        for row in rows
+        if row.get("name") == TOKEN_NAME and row.get("uuid")
+    ]
+
+
+def _token_rows_readable(html, rows):
+    listed = BeautifulSoup(html or "", "html.parser").select("tbody tr")
+    return len(listed) == len(rows)
 
 
 def _sign_in_state(name):
@@ -141,12 +177,25 @@ class ConnectionService:
         self.client_factory = client_factory or (lambda url: IServClient(url))
         self._sign_in = SignInService(self)
         self._messenger_service = None
+        self._mail_service = None
+        self._mail_web = None
+        self._mail_lock = threading.Lock()
+        self._file_service = None
+        self._contacts_service = None
         self._absence_service = None
+        self._absence_lock = threading.Lock()
         self._timetable_page_denied = False
         self._child_list_state = ""
         self._settings_cache = (0.0, None)
         self._modules_recheck_at = 0.0
+        self._refusals = Refusals(lambda: self.clock())
+        self._calendar_source_notes = {}
         self._letter_service = LetterService(self)
+        self._conference_service = ConferenceService(self)
+        self._task_service = TaskService(self)
+        self._news_sections = NewsSections(self)
+        self._forum_service = ForumService(self)
+        self._text_reader = account_lists.TextReader()
         self._child_service = ChildService(self)
         self._timetable_sources = TimetableSources(self)
         self.clock = time.time
@@ -221,11 +270,28 @@ class ConnectionService:
         login_html = str(getattr(client, "login_page", "") or "")
         return modules.detect(
             html,
-            client.fetch,
+            self._probing_fetch(client),
             self.store.load_modules(),
+            clock=self.clock,
             login_html=login_html,
             school_app_timetable=not self.school_app_timetable_withheld(),
+            ledger=self._refusals,
         )
+
+    def _probing_fetch(self, client):
+        live = getattr(client, "fetch_live", None)
+        keep = getattr(client, "fetch_and_keep", None)
+        if not callable(live) or not callable(keep):
+            return client.fetch
+
+        def fetch(path, params=None):
+            if path.startswith(modules.DSA_API):
+                response = live(path, params)
+                note_refusal(self._refusals, path, response, params)
+                return response
+            return keep(path, params)
+
+        return fetch
 
     def school_app_timetable_withheld(self):
         try:
@@ -250,7 +316,7 @@ class ConnectionService:
         registry = modules.normalize(stored if stored else None)
         if self._timetable_page_denied and not self._school_app_timetable_usable(registry):
             registry["modules"][modules.TIMETABLE] = False
-        return modules.with_open_urls(registry, self.store.load_config().get("school_url", ""))
+        return registry
 
     def _school_app_timetable_usable(self, registry):
         return modules.school_app_timetable_served(registry) and self._child_service.course_ids_known()
@@ -275,6 +341,7 @@ class ConnectionService:
         if now - self._modules_recheck_at < MODULES_RECHECK_SECONDS:
             return messages.result(False, MODULES_TOO_SOON_KEY, error="rate_limited", modules=self.modules())
         self._modules_recheck_at = now
+        self._refusals.clear()
         registry = self.refresh_modules()
         return messages.result(True, MODULES_RECHECKED_KEY, modules=registry)
 
@@ -308,8 +375,8 @@ class ConnectionService:
     def messenger_room_messages(self, room_id, before=None):
         return self._messenger().room_messages(room_id, before)
 
-    def messenger_send(self, room_id, text):
-        return self._messenger().send_message(room_id, text)
+    def messenger_send(self, room_id, text, txn_id=""):
+        return self._messenger().send_message(room_id, text, txn_id)
 
     def messenger_media(self, server_name, media_id):
         return self._messenger().media(server_name, media_id)
@@ -409,8 +476,11 @@ class ConnectionService:
         return {"status": STATUS_OK, "stale": False}
 
     def change_password(self, current, new):
+        client = self._session()
         try:
-            self._session().change_password(current, new)
+            client.change_password(current, new)
+        except PasswordUnclearError:
+            return self._password_after_lost_answer(client, new)
         except PasswordError as error:
             if str(error) == PASSWORD_UNVERIFIED:
                 self._store_password(new)
@@ -418,6 +488,26 @@ class ConnectionService:
             raise
         self._store_password(new)
         return True
+
+    def _password_after_lost_answer(self, client, new):
+        url = self.store.load_config().get("school_url", "")
+        pause = self._repair_pause(url)
+        if signin_pause.is_paused(pause, self.clock()):
+            logger.warning("the password change answer was lost; the sign-in pause holds the check back")
+            return PASSWORD_UNCLEAR
+        accepted = client.accepts_password(new)
+        refusal = getattr(client, "refusal", "") or (REASON_BAD_CREDENTIALS if accepted is False else "")
+        if refusal in REPAIR_COUNTED_REFUSALS:
+            self._save_repair_pause(url, signin_pause.register_failure(pause, refusal, self.clock()))
+        if accepted is True:
+            logger.info("the password change answer was lost, the new password signs in")
+            self._store_password(new)
+            return True
+        if accepted is False:
+            logger.warning("the password change answer was lost, the new password does not sign in")
+            return PASSWORD_NOT_ARRIVED
+        logger.warning("the password change answer was lost and the check got no answer")
+        return PASSWORD_UNCLEAR
 
     def repair_password(self, password):
         config = self.store.load_config()
@@ -490,41 +580,81 @@ class ConnectionService:
             edit_secrets(self.store, store)
             self._sign_in.drop_session()
 
-    def disconnect(self):
+    def disconnect(self, force=False, token_id=None):
         secrets = self.store.load_secrets()
-        uuid = secrets.get("twofactor_uuid")
-        if not uuid:
-            iserv_result = _disconnect_result(False, False, DISCONNECT_NO_UUID_KEY)
+        if not secrets.get("totp_secret"):
+            iserv_result = _disconnect_result(False, True, DISCONNECT_NO_TOKEN_KEY)
         else:
-            iserv_result = self._remove_iserv_token(secrets, uuid)
+            iserv_result = self._remove_iserv_token(secrets, token_id)
+        if not iserv_result["removed"] and force is not True:
+            logger.warning("the school stays connected: its two-factor token is still in IServ")
+            iserv_result["disconnected"] = False
+            return iserv_result
+        if not iserv_result["removed"]:
+            logger.warning("the school was disconnected although its two-factor token is still in IServ")
+            iserv_result.update(messages.payload(DISCONNECT_FORCED_KEY))
         self._clear_local_data()
+        iserv_result["disconnected"] = True
         return iserv_result
 
-    def _remove_iserv_token(self, secrets, uuid):
-        secret = secrets.get("totp_secret")
-        if not secret:
-            return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
+    def _remove_iserv_token(self, secrets, token_id=None):
+        uuid = secrets.get("twofactor_uuid")
         try:
             client = self._session()
             list_page = client.get_twofactor_list_page()
             csrf_token = parse_delete_token(list_page.text)
             if not csrf_token:
-                return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
-            code = next_totp_code(secret, self._last_code)
+                logger.warning("removing the two-factor token failed: the token list was not readable")
+                return _disconnect_result(True, False, DISCONNECT_FAILED_KEY, True)
+            if not uuid:
+                rows = parse_token_rows(list_page.text)
+                if not _token_rows_readable(list_page.text, rows):
+                    logger.warning("removing the two-factor token refused: the token list rows were not readable")
+                    return _disconnect_result(True, False, DISCONNECT_UNREADABLE_KEY, True)
+                tokens = _app_tokens(rows)
+                if not tokens:
+                    logger.info("no two-factor token of the app is listed in IServ")
+                    return _disconnect_result(True, True, DISCONNECT_NO_TOKEN_KEY)
+                if token_id not in [token["id"] for token in tokens]:
+                    logger.warning("removing the two-factor token waits for a choice: %d tokens carry the name of the app", len(tokens))
+                    return _disconnect_result(False, False, DISCONNECT_CHOOSE_KEY, tokens=tokens)
+                uuid = token_id
+            else:
+                rows = recognised_token_list(list_page.text)
+                if rows is None:
+                    logger.warning("removing the two-factor token refused: the token list was not recognised")
+                    return _disconnect_result(True, False, DISCONNECT_UNREADABLE_KEY, True)
+                if not token_listed(list_page.text, rows, uuid):
+                    logger.info("the two-factor token of the app is no longer listed in IServ")
+                    return _disconnect_result(True, True, DISCONNECT_REMOVED_KEY)
+            code = next_totp_code(secrets["totp_secret"], self._last_code)
             removed = client.delete_totp_token(uuid, code, csrf_token)
-        except (NotConfiguredError, LoginError, TwoFactorError, DataError, requests.RequestException) as error:
+        except DataError as error:
+            if error.message_key == DISCONNECT_UNCLEAR_KEY:
+                logger.warning("removing the two-factor token is unclear: the token list was not recognised afterwards")
+                return _disconnect_result(True, False, DISCONNECT_UNCLEAR_KEY, True)
             logger.warning("removing the two-factor token could not be confirmed: %s", failure_cause(error))
-            return _disconnect_result(True, False, DISCONNECT_FAILED_KEY)
-        return _disconnect_result(True, removed, DISCONNECT_REMOVED_KEY if removed else DISCONNECT_FAILED_KEY)
+            return _disconnect_result(True, False, DISCONNECT_FAILED_KEY, True)
+        except (NotConfiguredError, LoginError, TwoFactorError, requests.RequestException) as error:
+            logger.warning("removing the two-factor token could not be confirmed: %s", failure_cause(error))
+            return _disconnect_result(True, False, DISCONNECT_FAILED_KEY, True)
+        if not removed:
+            logger.warning("removing the two-factor token failed: IServ still lists it")
+        return _disconnect_result(True, removed, DISCONNECT_REMOVED_KEY if removed else DISCONNECT_FAILED_KEY, not removed)
 
     def _clear_local_data(self):
         with self._session_lock:
             self._child_service.retire()
             self._letter_service.forget_listed()
+            self._conference_service.forget()
             self.store.reset_config()
             self.store.delete_secrets()
             self._sign_in.drop_session()
             self._messenger_service = None
+            self._mail_service = None
+            self._mail_web = None
+            self._file_service = None
+            self._contacts_service = None
             self._absence_service = None
             self._child_service = ChildService(self)
             self._timetable_sources.reset()
@@ -610,6 +740,7 @@ class ConnectionService:
             on_answered=self._trust_school_app,
             shared=self._shared_reads,
             regular_plans=self._regular_plans,
+            refusals=self._refusals,
         )
 
     def school_profile(self):
@@ -677,7 +808,7 @@ class ConnectionService:
 
     def pinboard_attachment(self, filename):
         filename = clean_filename(filename)
-        return self._session().fetch(DSA_FILE_PATH.format(filename=quote(filename, safe="")))
+        return school_lists.read_school_file(self._session(), DSA_FILE_PATH.format(filename=quote(filename, safe="")), self._school_url())
 
     def absence_attachment(self, filename):
         return self._absences().absence_attachment(filename)
@@ -713,8 +844,14 @@ class ConnectionService:
     def letter_detail(self, letter_id, recipient_id):
         return self._letters().letter_detail(letter_id, recipient_id)
 
-    def confirm_letter(self, letter_id, recipient_id, text=None):
-        return self._letters().confirm_letter(letter_id, recipient_id, text)
+    def confirm_letter(self, letter_id, recipient_id, text=None, choices=None):
+        return self._letters().confirm_letter(letter_id, recipient_id, text, choices)
+
+    def answer_form(self, letter_id, recipient_id):
+        return self._letters().answer_form(letter_id, recipient_id)
+
+    def edit_answer(self, letter_id, recipient_id, text=None, choices=None):
+        return self._letters().edit_answer(letter_id, recipient_id, text, choices)
 
     def reply_to_letter(self, letter_id, recipient_id, text, request_id, confirmed=False):
         return self._letters().reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
@@ -767,21 +904,71 @@ class ConnectionService:
             "school_address": address,
         }
 
+    def read_school_calendar(self, first, last):
+        read = read_calendar(self._session(), first, last, server_failure)
+        self._note_calendar_sources(read.problems)
+        return read
+
     def school_events(self, first, last):
-        client = self._session()
-        response = client.fetch(CALENDAR_EVENTS_PATH, params=events_params(first, last))
-        status = int(getattr(response, "status_code", 0) or 0)
-        if status in CALENDAR_REFUSED_STATUSES:
-            raise SchoolCalendarRefusedError("school calendar refused: %d" % status)
-        failure = server_failure(response)
-        if failure is not None:
-            raise failure
-        if status != 200:
-            raise DataError("school calendar answered %d" % status, detail={"path": CALENDAR_EVENTS_PATH})
-        try:
-            return parse_events(response.json())
-        except (ValueError, TypeError, CalendarShapeError) as error:
-            raise DataError("school calendar answered no readable events", detail={"path": CALENDAR_EVENTS_PATH}) from error
+        return self.read_school_calendar(first, last).events
+
+    def _note_calendar_sources(self, problems):
+        notes = {}
+        for problem in problems:
+            text = "%s %s not read: %s" % (source_kind(problem.kind), path_pattern(problem.path) or "-", problem_text(problem.reason))
+            notes[problem.source] = text
+            if self._calendar_source_notes.get(problem.source) != text:
+                logger.info("school#%s calendar source %s", self.id, text)
+        self._calendar_source_notes = notes
+
+    def _school_url(self):
+        return self.store.load_config().get("school_url", "")
+
+    def tasks(self):
+        return school_lists.read_tasks(self._session())
+
+    def news(self):
+        return school_lists.read_news(self._session())
+
+    def forums(self):
+        return account_lists.read_forums(self._session())
+
+    def texts(self):
+        return self._text_reader.read(self._session())
+
+    def infodisplay(self):
+        return account_lists.read_screens(self._session())
+
+    def forum_mark_read(self, confirmed=False):
+        return self._forum_service.mark_all_read(confirmed)
+
+    def task_detail(self, task_id):
+        return self._task_service.detail(task_id)
+
+    def task_file(self, task_id, kind, index):
+        return self._task_service.file(task_id, kind, index)
+
+    def task_act(self, task_id, action, form_id, target=None, text=None, files=None, confirmed=False):
+        return self._task_service.act(task_id, action, form_id, target, text, files, confirmed)
+
+    def news_detail(self, path, title=""):
+        return school_lists.read_news_detail(self._session(), self._school_url(), path, title)
+
+    def news_section(self, section):
+        return self._news_sections.items(section)
+
+    def news_section_detail(self, section, item_id):
+        return self._news_sections.detail(section, item_id)
+
+    def news_file(self, item_id, kind, index, section=""):
+        if section:
+            path = self._news_sections.file_path(section, item_id, kind, index)
+        else:
+            stored = school_lists.stored_list(self.store, self.id, school_lists.NEWS_FIELD)
+            path = school_lists.news_file_path((stored or {}).get(school_lists.NEWS_FIELD), item_id, kind, index)
+        if not path:
+            raise DataError("unknown news file")
+        return school_lists.read_school_file(self._session(), path, self._school_url())
 
     def badges(self):
         response = self._session().fetch_or_raise(BADGES_PATH)
@@ -793,27 +980,87 @@ class ConnectionService:
     def mail_available(self):
         return modules.lists_module(self.stored_modules(), MAIL_MODULE)
 
-    def school_calendar_available(self):
-        return self.module_available(modules.CALENDAR)
+    def mail(self):
+        if not self.mail_available():
+            raise MailNotOffered()
+        with self._mail_lock:
+            if self._mail_service is None:
+                self._mail_service = MailService(self)
+            return self._mail_service
 
-    def conferences(self):
-        client = self._session()
+    def mail_web(self):
+        if not self.mail_available():
+            raise MailNotOffered()
+        with self._mail_lock:
+            if self._mail_web is None:
+                self._mail_web = MailWebService(self)
+            return self._mail_web
+
+    def account_modules(self):
+        registry = self.stored_modules()
+        return {slug: modules.lists_module(registry, slug) for slug in modules.LISTED_MODULES}
+
+    def files(self):
+        if not self.account_modules()[modules.FILES]:
+            raise AccountModuleNotOffered()
+        with self._mail_lock:
+            if self._file_service is None:
+                self._file_service = FileService(self)
+            return self._file_service
+
+    def contacts(self, slug):
+        if not self.account_modules().get(slug):
+            raise AccountModuleNotOffered()
+        with self._mail_lock:
+            if self._contacts_service is None:
+                self._contacts_service = ContactsService(self)
+            return self._contacts_service
+
+    def mail_badge(self):
         try:
-            response = client.fetch_or_raise(CONFERENCES_PATH)
-        except DataError:
-            return {"error": "unavailable", "items": []}
-        return parse_conferences(response.text, response.url)
+            return self.badges().get(MAIL_BADGE, 0)
+        except UPSTREAM_ERRORS as error:
+            logger.info("school#%s mail count not read again after a read mark: %s", self.id, failure_cause(error))
+            return None
+
+    def conferences(self, tab=CONFERENCE_TAB_CURRENT):
+        return self._conference_service.conferences(tab)
+
+    def conference_page(self, page):
+        return self._conference_service.page(page)
+
+    def submit_conference_form(self, page, form, check, submit, values, request_id="", confirmed=False):
+        return self._conference_service.submit(page, form, check, submit, values, request_id, confirmed)
 
     def timetable_available(self):
         return self.module_available(modules.TIMETABLE)
 
     def _absences(self):
-        if self._absence_service is None:
-            self._absence_service = AbsenceService(self)
-        return self._absence_service
+        with self._absence_lock:
+            if self._absence_service is None:
+                self._absence_service = AbsenceService(self)
+            return self._absence_service
 
     def absences_overview(self):
         return self._absences().absences_overview()
+
+    def older_absence_form(self):
+        return self._absences().older_absence_form()
+
+    def older_absence_detail(self, entry_id):
+        return self._absences().older_absence_detail(entry_id)
+
+    def older_absence_attachment(self, entry_id, key):
+        return self._absences().older_absence_attachment(entry_id, key)
+
+    def attach_older_absence(self, entry_id, upload):
+        return self._absences().attach_older_absence(entry_id, upload)
+
+    def delete_older_attachment(self, entry_id, key):
+        return self._absences().delete_older_attachment(entry_id, key)
+
+    def older_absence_export(self):
+        return self._absences().older_absence_export()
 
     def report_absence(self, payload, attachments=None):
         return self._absences().report_absence(payload, attachments)
@@ -946,17 +1193,17 @@ def _tag_media_urls(payload, connection_id):
     return payload
 
 
-def without_open_url(entry):
+def _without_open_url(entry):
     return {key: value for key, value in entry.items() if key != "open_url"}
 
 
-def _school_calendar(connection, first, last):
-    if not connection.module_available(modules.CALENDAR):
-        return []
-    try:
-        return connection.school_events(first, last)
-    except SchoolCalendarRefusedError:
-        return []
+def _event_in_window(event, first, last):
+    start = str(event.get("start") or "")[:10]
+    end = str(event.get("end") or "")[:10] or start
+    if not start:
+        return False
+    ends_after = end > first.isoformat() if event.get("all_day") and end != start else end >= first.isoformat()
+    return ends_after and start <= last.isoformat()
 
 
 def _school_letters(connection, tab):
@@ -1153,7 +1400,7 @@ class IServService:
                 for entry in registry[field]:
                     if entry["segment"] not in seen:
                         seen.add(entry["segment"])
-                        merged[field].append(entry if len(registries) == 1 else without_open_url(entry))
+                        merged[field].append(entry)
         merged["checked_at"] = max(registry["checked_at"] for registry in registries)
         merged["iserv_version"] = next(
             (registry["iserv_version"] for registry in registries if registry["iserv_version"]), ""
@@ -1184,11 +1431,12 @@ class IServService:
     def repair_password(self, connection_id, password):
         return self.pick_school(connection_id).repair_password(password)
 
-    def disconnect(self, connection_id=None):
+    def disconnect(self, connection_id=None, force=False, token_id=None):
         connection = self.pick_school(connection_id)
-        result = connection.disconnect()
-        with self._lock:
-            self._connections.pop(connection.id, None)
+        result = connection.disconnect(force, token_id)
+        if result.get("disconnected"):
+            with self._lock:
+                self._connections.pop(connection.id, None)
         return result
 
     def _merge(self, collect):
@@ -1212,20 +1460,168 @@ class IServService:
         for connection in self.connections():
             if not connection.mail_available():
                 continue
-            url = connection.store.load_config().get("school_url", "")
-            schools.append(self.annotate(connection, {
-                "unread": integration.school_mail(self.store, connection.id),
-                "open_url": modules.open_page_url(url, MAIL_PAGE_PATH),
-            }))
+            schools.append(self.annotate(connection, {"unread": integration.school_mail(self.store, connection.id)}))
         return {"schools": schools}
+
+    def mail_call(self, connection_id, action, *args, **kwargs):
+        connection = self.pick_school(connection_id)
+        result = getattr(connection.mail(), action)(*args, **kwargs)
+        if action in MAIL_RECOUNT_ACTIONS:
+            unread = connection.mail_badge()
+            if unread is not None:
+                integration.record_school_mail(self.store, connection.id, unread)
+            result["unread_mail"] = integration.school_mail(self.store, connection.id)
+        return self.annotate(connection, result)
+
+    def mail_attachment(self, connection_id, folder, uid, part):
+        return MailFile(self.pick_school(connection_id).mail().attachment(folder, uid, part))
+
+    def mail_web_call(self, connection_id, action, *args, **kwargs):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, getattr(connection.mail_web(), action)(*args, **kwargs))
+
+    def account_modules(self):
+        schools = []
+        for connection in self.connections():
+            offered = connection.account_modules()
+            if any(offered.values()):
+                schools.append(self.annotate(connection, offered))
+        return {"schools": schools}
+
+    def file_listing(self, connection_id, path=""):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.files().listing(path))
+
+    def file_search(self, connection_id, path, query):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.files().search(path, query))
+
+    def school_file(self, connection_id, path):
+        return self.pick_school(connection_id).files().download(path)
+
+    def file_upload(self, connection_id, path, files, confirmed=False):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.files().upload(path, files, confirmed))
+
+    def address_search(self, connection_id, query):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.contacts(modules.ADDRESSBOOK).search(query))
+
+    def mailing_lists(self, connection_id):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.contacts(modules.MAILING_LISTS).lists())
+
+    def mailing_list_detail(self, connection_id, list_id):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.contacts(modules.MAILING_LISTS).list_detail(list_id))
+
+    def mailing_list_import(self, connection_id, values, files, confirmed=False):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.contacts(modules.MAILING_LISTS).import_list(values, files, confirmed))
+
+    def mailing_list_delete(self, connection_id, list_id, confirmed=False):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.contacts(modules.MAILING_LISTS).delete_list(list_id, confirmed))
 
     def school_events(self, days=SCHOOL_EVENTS_DAYS):
         today = holidays.berlin_today()
         last = today + timedelta(days=days)
-        results, unavailable = self._merge(lambda connection: _school_calendar(connection, today, last))
-        entries = [self.annotate(connection, dict(event)) for connection, events in results for event in events]
+        connections = self.connections()
+        if not connections:
+            raise NotConfiguredError("no school connected")
+        stored = self.store.load_calendar_snapshot().get("schools")
+        stored = stored if isinstance(stored, dict) else {}
+        entries = []
+        unavailable = []
+        for connection in connections:
+            if not connection.module_available(modules.CALENDAR):
+                continue
+            entry = stored.get(connection.id)
+            if isinstance(entry, dict) and isinstance(entry.get("events"), list):
+                kept = entry["events"]
+            else:
+                try:
+                    kept = connection.school_events(today, last)
+                except SchoolCalendarRefusedError:
+                    continue
+                except (DataError, LoginError, OutageError) as error:
+                    logger.info("school#%s calendar not read before its first poll: %s", connection.id, failure_cause(error))
+                    unavailable.append(connection.id)
+                    continue
+            for event in kept:
+                if isinstance(event, dict) and _event_in_window(event, today, last):
+                    entries.append(self.annotate(connection, dict(event)))
         entries.sort(key=lambda event: (event.get("start") or "", event.get("title") or ""))
         return {"events": entries, "unavailable": unavailable}
+
+    def tasks(self):
+        found = self._school_lists(modules.TASKS, school_lists.TASKS_FIELD, lambda connection: connection.tasks())
+        found[school_lists.TASKS_FIELD] = with_details(found[school_lists.TASKS_FIELD], self.store)
+        found[school_lists.TASKS_FIELD].sort(key=school_lists.task_order)
+        return found
+
+    def news(self):
+        found = self._school_lists(modules.NEWS, school_lists.NEWS_FIELD, lambda connection: connection.news())
+        found[school_lists.NEWS_FIELD] = school_lists.news_order(found[school_lists.NEWS_FIELD])
+        return found
+
+    def forums(self):
+        return self._school_lists(modules.FORUMS, account_lists.FORUMS_FIELD, lambda connection: connection.forums(), True)
+
+    def texts(self):
+        return self._school_lists(modules.TEXTS, account_lists.TEXTS_FIELD, lambda connection: connection.texts(), True)
+
+    def infodisplay(self):
+        return self._school_lists(modules.INFODISPLAY, account_lists.SCREENS_FIELD, lambda connection: connection.infodisplay(), True)
+
+    def forum_mark_read(self, connection_id, confirmed=False):
+        connection = self.known_connection(connection_id)
+        if not connection.module_available(modules.FORUMS):
+            return messages.result(False, READ_UNAVAILABLE_KEY, outcome="unavailable")
+        return connection.forum_mark_read(confirmed)
+
+    def _school_lists(self, module, field, read, name_unreadable=False):
+        connections = self.connections()
+        if not connections:
+            raise NotConfiguredError("no school connected")
+        entries = []
+        schools = []
+        unavailable = []
+        unreadable = []
+        for connection in connections:
+            if not connection.module_available(module):
+                continue
+            listed = school_lists.stored_list(self.store, connection.id, field)
+            if listed is None:
+                try:
+                    read_now = read(connection)
+                except ModulePageRefusedError:
+                    continue
+                except (DataError, LoginError, OutageError) as error:
+                    logger.info("school#%s %s not read before its first poll: %s", connection.id, field, failure_cause(error))
+                    unavailable.append(connection.id)
+                    if isinstance(error, DataError):
+                        unreadable.append(connection.id)
+                    continue
+                listed = school_lists.store_list(
+                    self.store,
+                    connection.id,
+                    field,
+                    school_lists.carried(read_now, field, None),
+                    getattr(connection, "clock", time.time)(),
+                    account_lists.combined_extra(read_now),
+                )
+            school = {"last_success": int(listed.get("last_success") or 0)}
+            school.update(account_lists.school_extras(listed))
+            sections = listed.get(school_lists.SECTIONS_FIELD)
+            if isinstance(sections, dict):
+                school[school_lists.SECTIONS_FIELD] = sorted(name for name in sections if name in school_lists.NEWS_SECTIONS)
+            schools.append(self.annotate(connection, school))
+            entries.extend(self.annotate(connection, _without_open_url(item)) for item in listed[field] if isinstance(item, dict))
+        found = {field: entries, "schools": schools, "unavailable": unavailable}
+        if name_unreadable:
+            found["unreadable"] = unreadable
+        return found
 
     def letters(self, tab="current"):
         results, unavailable = self._merge(lambda connection: _school_letters(connection, tab))
@@ -1260,8 +1656,14 @@ class IServService:
     def letter_detail(self, connection_id, letter_id, recipient_id):
         return self.known_connection(connection_id).letter_detail(letter_id, recipient_id)
 
-    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None):
-        return self.known_connection(connection_id).confirm_letter(letter_id, recipient_id, text)
+    def confirm_letter(self, connection_id, letter_id, recipient_id, text=None, choices=None):
+        return self.known_connection(connection_id).confirm_letter(letter_id, recipient_id, text, choices)
+
+    def answer_form(self, connection_id, letter_id, recipient_id):
+        return self.known_connection(connection_id).answer_form(letter_id, recipient_id)
+
+    def edit_answer(self, connection_id, letter_id, recipient_id, text=None, choices=None):
+        return self.known_connection(connection_id).edit_answer(letter_id, recipient_id, text, choices)
 
     def reply_to_letter(self, connection_id, letter_id, recipient_id, text, request_id, confirmed=False):
         return self.known_connection(connection_id).reply_to_letter(letter_id, recipient_id, text, request_id, confirmed)
@@ -1308,11 +1710,50 @@ class IServService:
     def pinboard_attachment(self, connection_id, filename):
         return self.known_connection(connection_id).pinboard_attachment(filename)
 
+    def news_file(self, connection_id, item_id, kind, index, section=""):
+        return self.known_connection(connection_id).news_file(item_id, kind, index, section)
+
+    def news_section(self, section):
+        connections = self.connections()
+        if not connections:
+            raise NotConfiguredError("no school connected")
+        entries = []
+        unavailable = []
+        for connection in connections:
+            if not connection.module_available(modules.NEWS):
+                continue
+            try:
+                items = connection.news_section(section)
+            except DataError as error:
+                if getattr(error, "message_key", "") == news_sections.SECTION_UNKNOWN_KEY:
+                    continue
+                logger.info("school#%s news section unreadable: %s", connection.id, failure_cause(error))
+                unavailable.append(connection.id)
+                continue
+            except (LoginError, OutageError) as error:
+                logger.info("school#%s news section unreadable: %s", connection.id, failure_cause(error))
+                unavailable.append(connection.id)
+                continue
+            entries.extend(self.annotate(connection, item) for item in items)
+        return {school_lists.NEWS_FIELD: school_lists.news_order(entries), "section": section, "unavailable": unavailable}
+
+    def news_section_detail(self, connection_id, section, item_id):
+        return self.known_connection(connection_id).news_section_detail(section, item_id)
+
+    def task_detail(self, connection_id, task_id):
+        return self.known_connection(connection_id).task_detail(task_id)
+
+    def task_file(self, connection_id, task_id, kind, index):
+        return self.known_connection(connection_id).task_file(task_id, kind, index)
+
+    def task_act(self, connection_id, task_id, action, form_id, target=None, text=None, files=None, confirmed=False):
+        return self.known_connection(connection_id).task_act(task_id, action, form_id, target, text, files, confirmed)
+
     def absence_attachment(self, connection_id, filename):
         return self.known_connection(connection_id).absence_attachment(filename)
 
-    def conferences(self):
-        results, unavailable = self._merge(lambda connection: connection.conferences())
+    def conferences(self, tab=CONFERENCE_TAB_CURRENT):
+        results, unavailable = self._merge(lambda connection: connection.conferences(tab))
         items = []
         errors = []
         empty = True
@@ -1328,12 +1769,41 @@ class IServService:
             payload["error"] = "unavailable"
         return payload
 
+    def conference_page(self, connection_id, page):
+        connection = self.known_connection(connection_id)
+        return dict(connection.conference_page(page), connection_id=connection.id)
+
+    def submit_conference_form(self, connection_id, page, form, check, submit, values, request_id="", confirmed=False):
+        connection = self.known_connection(connection_id)
+        result = connection.submit_conference_form(page, form, check, submit, values, request_id, confirmed)
+        if isinstance(result.get("page"), dict):
+            result["page"] = dict(result["page"], connection_id=connection.id)
+        return result
+
     def absences_overview(self, connection_id=None):
         connection = self.pick_school(connection_id)
         overview = connection.absences_overview()
         overview["connection_id"] = connection.id
         overview["school"] = connection.display_name()
         return overview
+
+    def older_absence_form(self, connection_id=None):
+        return self.pick_school(connection_id).older_absence_form()
+
+    def older_absence_detail(self, connection_id, entry_id):
+        return self.pick_school(connection_id).older_absence_detail(entry_id)
+
+    def older_absence_attachment(self, connection_id, entry_id, key):
+        return self.pick_school(connection_id).older_absence_attachment(entry_id, key)
+
+    def attach_older_absence(self, connection_id, entry_id, upload):
+        return self.pick_school(connection_id).attach_older_absence(entry_id, upload)
+
+    def delete_older_attachment(self, connection_id, entry_id, key):
+        return self.pick_school(connection_id).delete_older_attachment(entry_id, key)
+
+    def older_absence_export(self, connection_id=None):
+        return self.pick_school(connection_id).older_absence_export()
 
     def report_absence(self, connection_id, payload, attachments=None):
         return self.pick_school(connection_id).report_absence(payload, attachments)
@@ -1370,8 +1840,8 @@ class IServService:
         connection = self.pick_school(connection_id)
         return _tag_media_urls(connection.messenger_room_messages(room_id, before), connection.id)
 
-    def messenger_send(self, connection_id, room_id, text):
-        return self.pick_school(connection_id).messenger_send(room_id, text)
+    def messenger_send(self, connection_id, room_id, text, txn_id=""):
+        return self.pick_school(connection_id).messenger_send(room_id, text, txn_id)
 
     def messenger_media(self, connection_id, server_name, media_id):
         return self.pick_school(connection_id).messenger_media(server_name, media_id)

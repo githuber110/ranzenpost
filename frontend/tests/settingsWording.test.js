@@ -19,7 +19,7 @@ describe("settings wording: one word per concept, no jargon", () => {
     for (const key of NOTIFY_KEYS) {
       expect(de[key], key).not.toMatch(/\bZiel|\bDienst/);
     }
-    expect(de["settings.notify.service"]).toBe("Push aufs Handy");
+    expect(de["settings.notify.sheet"]).toBe("Mitteilungen");
     expect(de["settings.notify.summary.none"]).toBe("Kein Gerät");
   });
 
@@ -33,9 +33,17 @@ describe("settings wording: one word per concept, no jargon", () => {
     for (const key of SETTINGS_KEYS) {
       expect(de[key], key).not.toMatch(/Endgerät|Post-Chips|Profil-Pills|2FA-Token|Lehrer-Kürzel/);
     }
-    for (const language of LANGUAGES) {
-      expect(bundles[language]["schools.calendar.portOpen"], language).not.toContain("{port}");
-      expect(bundles[language]["schools.calendar.portClosed"], language).not.toContain("{port}");
-    }
+  });
+});
+
+describe("the English area with letters and noticeboard is called Letters", () => {
+  test("tab, page title and block targets use Letters and no English text calls the area Mail", () => {
+    const en = bundles.en;
+    expect(en["nav.post"]).toBe("Letters");
+    expect(en["post.title"]).toBe("Letters");
+    expect(en["blocks.letters.target"]).toBe(en["nav.post"]);
+    expect(Object.values(en).filter((value) => value.includes("Letters › Letters"))).toEqual([]);
+    expect(en["blocks.noticeboard.target"].startsWith(`${en["nav.post"]} › `)).toBe(true);
+    expect(Object.entries(en).filter(([, value]) => /\bMail\b(?! merge)/.test(value))).toEqual([]);
   });
 });

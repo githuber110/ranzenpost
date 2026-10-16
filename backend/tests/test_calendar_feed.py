@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from app import feed, feed_ics, holidays, marks, messages, subscriptions
-from app.iserv.absences import berlin_offset
+from app.berlin import offset as berlin_offset
 from app.cancellations import CancellationRegistry
 from app.marks import MarkRegistry
 from app.store import Store
@@ -1026,3 +1026,20 @@ def test_mark_and_absence_events_follow_the_own_lesson_length():
 
     assert (marked[0].start, marked[0].end) == (datetime(2026, 9, 3, 9, 10), datetime(2026, 9, 3, 10, 20))
     assert (absent[0].start, absent[0].end) == (datetime(2026, 9, 3, 8, 0), datetime(2026, 9, 3, 10, 20))
+
+
+def test_an_absence_from_period_zero_starts_at_the_period_zero_time():
+    config = {"language": "de", "period_times": {"0": "07:55", "1": "08:50"}}
+    absence = {
+        "id": 8,
+        "kind": "leave",
+        "status": "accepted",
+        "from_date": "2026-09-03",
+        "till_date": "2026-09-03",
+        "from_period": 0,
+        "till_period": 1,
+    }
+    snapshot = {"children": {CHILD_ID: {"absences": [absence]}}}
+    events = feed.absence_events("de", "tag", config, snapshot, CHILD_ID, date(2026, 9, 2))
+    assert events[0].start == datetime(2026, 9, 3, 7, 55)
+    assert not events[0].all_day

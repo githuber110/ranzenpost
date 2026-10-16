@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2610.2.0";
+  const CARD_VERSION = "2610.3.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -35,27 +35,36 @@
   const KEY_ABSENCES = "open_absences";
   const KEY_CONFERENCE = "next_conference";
   const KEY_CONNECTION = "connection";
+  const KEY_TASKS = "open_tasks";
+  const KEY_NEWS = "news";
+  const KEY_FORUMS = "unread_forum_posts";
+  const KEY_TEXTS = "texts";
   const CHILD_CALENDARS = [KEY_LESSONS, KEY_EXAMS, "absences"];
   const SIZE_COMPACT = "compact";
   const SIZE_NORMAL = "normal";
   const SIZES = [SIZE_COMPACT, SIZE_NORMAL];
   const ABSENCE_DAYS_AHEAD = 14;
   const BLOCK_CATALOGUE = [
-    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
-    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child", childBound: true },
-    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
+    { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child" },
+    { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "family" },
     { key: "noticeboard", module: "pinboard", area: "post", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "family" },
-    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "child", childBound: true },
+    { key: "absences", module: "absences", area: "absence", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "conferences", module: "conferences", area: "conferences", compact: 1, normal: 3, size: "normal", surfaces: ["overview", "card"], scope: "school" },
     { key: "holidays", module: "timetable", area: "timetable", compact: 1, normal: 3, size: "compact", surfaces: ["overview", "card"], scope: "school", schoolLevel: true },
-    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "child", childBound: true },
+    { key: "changes", module: "timetable", area: "timetable", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "child" },
     { key: "chat", module: "messenger", area: "messenger", compact: 3, normal: 5, size: "compact", surfaces: ["overview"], scope: "family" },
     { key: "school_events", module: "calendar", area: "calendar", compact: 2, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "school" },
+    { key: "tasks", module: "tasks", area: "tasks", compact: 3, normal: 6, size: "normal", surfaces: ["overview", "card"], scope: "school" },
+    { key: "news", module: "news", area: "news", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const CARD_BLOCKS = BLOCK_CATALOGUE.filter((block) => block.surfaces.includes("card"));
-  const CONFIRMED_ONLY_MODULES = ["calendar"];
+  const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay"];
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
   const DAY_BLOCKS = ["today", "next_lesson", "week"];
   const HOLIDAY_AHEAD_DAYS = 365;
@@ -71,6 +80,10 @@
     absences: "view=absence",
     conferences: "view=conferences",
     school_events: "view=calendar",
+    tasks: "view=tasks",
+    news: "view=news",
+    forums: "view=forums",
+    texts: "view=texts",
   };
   const MISSING_STATES = new Set(["unknown", "unavailable", "none", ""]);
   const BIDI_MARKS = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x061c)}]`, "g");
@@ -260,8 +273,8 @@
       "school.over": "Der Unterricht ist für heute vorbei.",
       "own.until": "Eigener Eintrag · bis {time}",
       "stamp": "Stand {time}",
-      "child.missing": "Keine Person gewählt. Trage in der Karte „child“ ein.",
-      "child.unknown": "Person „{child}“ nicht gefunden.",
+      "child.missing": "Kein Profil gewählt. Trage in der Karte „child“ ein.",
+      "child.unknown": "Profil „{child}“ nicht gefunden.",
       "children.none": "Die Ranzenpost-Integration hat noch keine Profile.",
       "error.title": "Nicht erreichbar",
       "state.unavailable": "Ranzenpost ist gerade nicht erreichbar.",
@@ -287,6 +300,16 @@
       "block.holidays.explain": "Die nächsten Ferien und freien Tage.",
       "block.school_events": "Schultermine",
       "block.school_events.explain": "Die nächsten Termine aus dem Schulkalender.",
+      "block.tasks": "Aufgaben",
+      "block.tasks.explain": "Offene Aufgaben mit Abgabedatum.",
+      "block.news": "News",
+      "block.news.explain": "Die neuesten News aus IServ.",
+      "block.forums": "Foren",
+      "block.forums.explain": "Foren mit ungelesenen Beiträgen.",
+      "block.texts": "Texte",
+      "block.texts.explain": "Die zuletzt geänderten Texte.",
+      "block.infodisplay": "Infobildschirme",
+      "block.infodisplay.explain": "Die Infobildschirme aus IServ.",
       "block.changes": "Änderungen",
       "block.changes.explain": "Vertretungen und Ausfälle von heute.",
       "block.chat": "Chat",
@@ -301,8 +324,6 @@
       "editor.size": "Größe von {name}",
       "editor.size.compact": "Kompakt",
       "editor.size.normal": "Normal",
-      "editor.sizes": "Größe je Baustein",
-      "editor.order": "Reihenfolge",
       "editor.order.up": "{name} nach oben",
       "editor.order.down": "{name} nach unten",
       "status.open": "Offen",
@@ -336,8 +357,8 @@
       "school.over": "Lessons are over for today.",
       "own.until": "Own entry · until {time}",
       "stamp": "Updated {time}",
-      "child.missing": "No person chosen. Set “child” in the card.",
-      "child.unknown": "Person “{child}” not found.",
+      "child.missing": "No profile chosen. Set “child” in the card.",
+      "child.unknown": "Profile “{child}” not found.",
       "children.none": "The Ranzenpost integration has no profiles yet.",
       "error.title": "Can't connect",
       "state.unavailable": "Ranzenpost cannot be reached right now.",
@@ -363,6 +384,16 @@
       "block.holidays.explain": "The next holidays and free days.",
       "block.school_events": "School events",
       "block.school_events.explain": "The next events from the school calendar.",
+      "block.tasks": "Tasks",
+      "block.tasks.explain": "Open tasks with due date.",
+      "block.news": "News",
+      "block.news.explain": "The latest news from IServ.",
+      "block.forums": "Forums",
+      "block.forums.explain": "Forums with unread posts.",
+      "block.texts": "Texts",
+      "block.texts.explain": "The texts changed last.",
+      "block.infodisplay": "Info screens",
+      "block.infodisplay.explain": "The info screens from IServ.",
       "block.changes": "Changes",
       "block.changes.explain": "Substitutions and cancellations of today.",
       "block.chat": "Chat",
@@ -377,8 +408,6 @@
       "editor.size": "Size of {name}",
       "editor.size.compact": "Compact",
       "editor.size.normal": "Normal",
-      "editor.sizes": "Size per block",
-      "editor.order": "Order",
       "editor.order.up": "Move {name} up",
       "editor.order.down": "Move {name} down",
       "status.open": "Open",
@@ -412,8 +441,8 @@
       "school.over": "انتهت الدروس لهذا اليوم.",
       "own.until": "إدخال خاص بك · حتى {time}",
       "stamp": "آخر تحديث {time}",
-      "child.missing": "لم يُختر شخص. أدخل «child» في البطاقة.",
-      "child.unknown": "الشخص «{child}» غير موجود.",
+      "child.missing": "لم يُختر ملف شخصي. أدخل «child» في البطاقة.",
+      "child.unknown": "الملف الشخصي «{child}» غير موجود.",
       "children.none": "لا توجد ملفات شخصية في تكامل Ranzenpost بعد.",
       "error.title": "تعذّر الوصول",
       "state.unavailable": "تعذر الوصول إلى Ranzenpost حاليًا.",
@@ -439,6 +468,16 @@
       "block.holidays.explain": "العطل والأيام الحرة القادمة.",
       "block.school_events": "فعاليات المدرسة",
       "block.school_events.explain": "الفعاليات القادمة من تقويم المدرسة.",
+      "block.tasks": "المهام",
+      "block.tasks.explain": "المهام المفتوحة مع موعد التسليم.",
+      "block.news": "الأخبار",
+      "block.news.explain": "أحدث الأخبار من IServ.",
+      "block.forums": "المنتديات",
+      "block.forums.explain": "منتديات فيها مشاركات غير مقروءة.",
+      "block.texts": "النصوص",
+      "block.texts.explain": "آخر النصوص التي تغيّرت.",
+      "block.infodisplay": "شاشات المعلومات",
+      "block.infodisplay.explain": "شاشات المعلومات من IServ.",
       "block.changes": "التغييرات",
       "block.changes.explain": "الحصص البديلة والملغاة اليوم.",
       "block.chat": "الدردشة",
@@ -453,8 +492,6 @@
       "editor.size": "حجم {name}",
       "editor.size.compact": "مضغوط",
       "editor.size.normal": "عادي",
-      "editor.sizes": "الحجم لكل كتلة",
-      "editor.order": "الترتيب",
       "editor.order.up": "نقل {name} إلى الأعلى",
       "editor.order.down": "نقل {name} إلى الأسفل",
       "status.open": "مفتوح",
@@ -488,8 +525,8 @@
       "school.over": "Bugünkü dersler bitti.",
       "own.until": "Kendi kayıt · {time} saatine kadar",
       "stamp": "Son güncelleme {time}",
-      "child.missing": "Kişi seçilmedi. Karta “child” girin.",
-      "child.unknown": "“{child}” adlı kişi bulunamadı.",
+      "child.missing": "Profil seçilmedi. Karta “child” girin.",
+      "child.unknown": "“{child}” adlı profil bulunamadı.",
       "children.none": "Ranzenpost entegrasyonunda henüz profil yok.",
       "error.title": "Ulaşılamıyor",
       "state.unavailable": "Ranzenpost şu anda ulaşılamıyor.",
@@ -515,6 +552,16 @@
       "block.holidays.explain": "Sıradaki tatiller ve boş günler.",
       "block.school_events": "Okul etkinlikleri",
       "block.school_events.explain": "Okul takviminden sıradaki etkinlikler.",
+      "block.tasks": "Görevler",
+      "block.tasks.explain": "Teslim tarihiyle açık görevler.",
+      "block.news": "Haberler",
+      "block.news.explain": "IServ'den en yeni haberler.",
+      "block.forums": "Forumlar",
+      "block.forums.explain": "Okunmamış gönderisi olan forumlar.",
+      "block.texts": "Metinler",
+      "block.texts.explain": "Son değişen metinler.",
+      "block.infodisplay": "Bilgi ekranları",
+      "block.infodisplay.explain": "IServ'deki bilgi ekranları.",
       "block.changes": "Değişiklikler",
       "block.changes.explain": "Bugünün vekil dersleri ve iptalleri.",
       "block.chat": "Sohbet",
@@ -529,8 +576,6 @@
       "editor.size": "{name} boyutu",
       "editor.size.compact": "Sıkışık",
       "editor.size.normal": "Normal",
-      "editor.sizes": "Blok başına boyut",
-      "editor.order": "Sıralama",
       "editor.order.up": "{name} yukarı taşı",
       "editor.order.down": "{name} aşağı taşı",
       "status.open": "Açık",
@@ -564,8 +609,8 @@
       "school.over": "Уроки на сегодня закончились.",
       "own.until": "Своя запись · до {time}",
       "stamp": "Обновлено {time}",
-      "child.missing": "Человек не выбран. Укажите «child» в карточке.",
-      "child.unknown": "Человек «{child}» не найден.",
+      "child.missing": "Профиль не выбран. Укажите «child» в карточке.",
+      "child.unknown": "Профиль «{child}» не найден.",
       "children.none": "В интеграции Ranzenpost пока нет профилей.",
       "error.title": "Нет связи",
       "state.unavailable": "Ranzenpost сейчас недоступен.",
@@ -591,6 +636,16 @@
       "block.holidays.explain": "Ближайшие каникулы и свободные дни.",
       "block.school_events": "События школы",
       "block.school_events.explain": "Ближайшие события из школьного календаря.",
+      "block.tasks": "Задания",
+      "block.tasks.explain": "Открытые задания со сроком сдачи.",
+      "block.news": "Новости",
+      "block.news.explain": "Последние новости из IServ.",
+      "block.forums": "Форумы",
+      "block.forums.explain": "Форумы с непрочитанными сообщениями.",
+      "block.texts": "Тексты",
+      "block.texts.explain": "Недавно изменённые тексты.",
+      "block.infodisplay": "Инфоэкраны",
+      "block.infodisplay.explain": "Инфоэкраны из IServ.",
       "block.changes": "Изменения",
       "block.changes.explain": "Замены и отмены на сегодня.",
       "block.chat": "Чат",
@@ -605,8 +660,6 @@
       "editor.size": "Размер блока {name}",
       "editor.size.compact": "Компактно",
       "editor.size.normal": "Обычно",
-      "editor.sizes": "Размер каждого блока",
-      "editor.order": "Порядок",
       "editor.order.up": "Переместить «{name}» вверх",
       "editor.order.down": "Переместить «{name}» вниз",
       "status.open": "Открыто",
@@ -640,8 +693,8 @@
       "school.over": "Уроки на сьогодні закінчилися.",
       "own.until": "Власний запис · до {time}",
       "stamp": "Станом на {time}",
-      "child.missing": "Особу не вибрано. Вкажіть «child» у картці.",
-      "child.unknown": "Особу «{child}» не знайдено.",
+      "child.missing": "Профіль не вибрано. Вкажіть «child» у картці.",
+      "child.unknown": "Профіль «{child}» не знайдено.",
       "children.none": "В інтеграції Ranzenpost ще немає профілів.",
       "error.title": "Немає зв’язку",
       "state.unavailable": "Ranzenpost зараз недоступний.",
@@ -667,6 +720,16 @@
       "block.holidays.explain": "Найближчі канікули та вільні дні.",
       "block.school_events": "Події школи",
       "block.school_events.explain": "Найближчі події зі шкільного календаря.",
+      "block.tasks": "Завдання",
+      "block.tasks.explain": "Відкриті завдання з терміном здачі.",
+      "block.news": "Новини",
+      "block.news.explain": "Найновіші новини з IServ.",
+      "block.forums": "Форуми",
+      "block.forums.explain": "Форуми з непрочитаними дописами.",
+      "block.texts": "Тексти",
+      "block.texts.explain": "Нещодавно змінені тексти.",
+      "block.infodisplay": "Інфоекрани",
+      "block.infodisplay.explain": "Інфоекрани з IServ.",
       "block.changes": "Зміни",
       "block.changes.explain": "Заміни та скасування на сьогодні.",
       "block.chat": "Чат",
@@ -681,8 +744,6 @@
       "editor.size": "Розмір блоку {name}",
       "editor.size.compact": "Компактно",
       "editor.size.normal": "Звичайно",
-      "editor.sizes": "Розмір кожного блоку",
-      "editor.order": "Порядок",
       "editor.order.up": "Перемістити «{name}» вгору",
       "editor.order.down": "Перемістити «{name}» вниз",
       "status.open": "Відкрито",
@@ -931,18 +992,20 @@
     .field { display: flex; flex-direction: column; gap: 4px; }
     label { font-size: 0.8rem; color: var(--secondary-text-color); }
     select, input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
-    .children, .blocks { display: flex; flex-wrap: wrap; gap: 10px; }
-    .children label, .blocks label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--primary-text-color); }
-    .blocks label { flex-direction: column; align-items: flex-start; inline-size: 100%; }
-    .blocks label .hint { padding-inline-start: 22px; }
+    .lbl { font-size: 0.8rem; color: var(--secondary-text-color); }
+    .children { display: flex; flex-wrap: wrap; gap: 10px; }
+    .children label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--primary-text-color); }
     .hint { font-size: 0.75rem; color: var(--secondary-text-color); }
-    .size-list { display: flex; flex-direction: column; gap: 8px; }
-    .size-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .order-host { padding-block: 12px 4px; color: var(--primary-text-color); }
-    .order-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-    .order-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-block-size: 44px; padding-inline: 8px; border: 1px solid var(--divider-color); border-radius: 6px; }
-    .order-name { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
-    .order-actions { flex: none; display: flex; gap: 4px; }
+    .blocks-host { padding-block: 12px 4px; color: var(--primary-text-color); }
+    .blocks { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .block-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-block-size: 44px; padding: 6px 8px; border: 1px solid var(--divider-color); border-radius: 6px; }
+    .block-row:not(.on) { border-style: dashed; }
+    .block-pick { flex: 1 1 12rem; min-inline-size: 0; display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; color: var(--primary-text-color); cursor: pointer; }
+    .block-pick input { flex: none; inline-size: 20px; block-size: 20px; margin: 2px 0 0; padding: 0; }
+    .block-text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+    .block-name { overflow-wrap: anywhere; }
+    .block-tools { flex: none; display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
+    .block-tools select { block-size: 40px; padding-block: 0; }
     .order-move { inline-size: 40px; block-size: 40px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 1.1rem; cursor: pointer; }
     .order-move:disabled { opacity: 0.35; cursor: default; }
   `;
@@ -1831,7 +1894,7 @@
         } else if (holidayCalendar && wantedSchool && needsDays) {
           plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: plan.end });
         }
-        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION, KEY_LETTERS, KEY_POSTS]) {
+        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION, KEY_LETTERS, KEY_POSTS, KEY_TASKS, KEY_NEWS, KEY_FORUMS, KEY_TEXTS]) {
           plan.stateKeys.push(stateKeyOf(stateOf(hass, school.entities[key])));
         }
       }
@@ -2225,6 +2288,10 @@
         case "holidays": return this._holidaysBlock(plan, entry, byEntity);
         case "changes": return this._changesBlock(plan, entry, child);
         case KEY_SCHOOL_EVENTS: return this._schoolEventsBlock(plan, entry, byEntity);
+        case "tasks": return this._schoolListBlock(plan, entry, KEY_TASKS, "tasks");
+        case "news": return this._schoolListBlock(plan, entry, KEY_NEWS, "news");
+        case "forums": return this._schoolListBlock(plan, entry, KEY_FORUMS, "forums");
+        case "texts": return this._schoolListBlock(plan, entry, KEY_TEXTS, "texts");
         default: return "";
       }
     }
@@ -2328,6 +2395,30 @@
 
     _schoolsOf(plan) {
       return plan.registry.schools.filter((school) => plan.children.some((child) => child.schoolId === school.id) || plan.childless.includes(school));
+    }
+
+    _schoolListBlock(plan, entry, key, attribute) {
+      const { locale, zone } = plan;
+      const schools = this._schoolsOf(plan);
+      const items = [];
+      for (const school of schools) {
+        const state = stateOf(this._hass, school.entities[key]);
+        const listed = state && state.attributes && Array.isArray(state.attributes[attribute]) ? state.attributes[attribute] : [];
+        for (const item of listed) {
+          const title = String((item && item.title) || "");
+          if (!title) continue;
+          items.push({ title, sender: String((item && item.sender) || ""), date: String((item && item.date) || ""), school: schools.length > 1 ? school.name : "" });
+        }
+      }
+      if (!items.length) return "";
+      return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
+        item.title,
+        item.sender,
+        item.date ? formatShortDate(item.date, locale, zone) : "",
+        false,
+        compact,
+        [item.school]
+      ), "", false);
     }
 
     _conferencesBlock(plan, entry) {
@@ -2457,6 +2548,7 @@
       this._settled = Promise.resolve();
       this._form = null;
       this._built = false;
+      this._blocksHtml = "";
       this.shadowRoot.addEventListener("change", (event) => this._onChange(event));
       this.shadowRoot.addEventListener("value-changed", (event) => this._onFormValue(event));
       this.shadowRoot.addEventListener("click", (event) => this._onMove(event));
@@ -2532,12 +2624,7 @@
       event.stopPropagation();
       const value = event.detail && event.detail.value ? event.detail.value : {};
       this._config.title = String(value.title || "").trim();
-      this._config.children = Array.isArray(value.children) ? value.children.filter(Boolean) : [];
-      this._setBlocks(Array.isArray(value.blocks) ? value.blocks : []);
-      for (const entry of this._config.blocks) {
-        const size = value[`size_${entry.key}`];
-        if (SIZES.includes(size)) entry.size = size;
-      }
+      if (Array.isArray(value.children)) this._config.children = value.children.filter(Boolean);
       this._emit();
       this._update();
     }
@@ -2561,61 +2648,51 @@
       this._update();
     }
 
-    _schema(t) {
-      const children = this._children.map((child) => ({ value: childReference(this._children, child), label: this._label(child) }));
-      const blocks = this._offered().map((block) => ({ value: block.key, label: t(`block.${block.key}`), description: t(`block.${block.key}.explain`) }));
-      const schema = [
-        { name: "title", selector: { text: {} } },
-        { name: "children", selector: { select: { multiple: true, mode: "list", options: children } } },
-        { name: "blocks", selector: { select: { multiple: true, mode: "list", options: blocks } } },
-      ];
-      for (const entry of this._config.blocks) {
-        schema.push({
-          name: `size_${entry.key}`,
-          selector: { select: { mode: "dropdown", options: SIZES.map((size) => ({ value: size, label: t(`editor.size.${size}`) })) } },
-        });
+    _schema() {
+      const schema = [{ name: "title", selector: { text: {} } }];
+      if (this._children.length) {
+        const children = this._children.map((child) => ({ value: childReference(this._children, child), label: this._label(child) }));
+        schema.push({ name: "children", selector: { select: { multiple: true, mode: "list", options: children } } });
       }
       return schema;
     }
 
     _formData() {
-      const data = { title: this._config.title, children: this._config.children.slice(), blocks: this._config.blocks.map((entry) => entry.key) };
-      for (const entry of this._config.blocks) data[`size_${entry.key}`] = entry.size;
-      return data;
+      return { title: this._config.title, children: this._config.children.slice() };
     }
 
     _labelOf(t, schema) {
       if (schema.name === "title") return t("editor.title");
       if (schema.name === "children") return t("editor.children");
-      if (schema.name === "blocks") return t("editor.blocks");
-      return t("editor.size", { name: t(`block.${schema.name.slice(5)}`) });
+      return "";
     }
 
     _helperOf(t, schema) {
       if (schema.name === "children") return t("editor.allChildren");
-      if (schema.name === "blocks") {
-        const missing = this._missingNames(t);
-        return missing.length ? `${t("editor.blocks.helper")} ${t("editor.blocks.missing", { names: missing.join(", ") })}` : t("editor.blocks.helper");
-      }
-      if (schema.name.startsWith("size_")) return t(`block.${schema.name.slice(5)}.explain`);
       return "";
+    }
+
+    _blocksHelper(t) {
+      const missing = this._missingNames(t);
+      return missing.length ? `${t("editor.blocks.helper")} ${t("editor.blocks.missing", { names: missing.join(", ") })}` : t("editor.blocks.helper");
     }
 
     _render() {
       const t = translator(this._hass);
-      const order = `<div class="order-host" dir="${directionOf()}">${this._orderSection(t)}</div>`;
+      this._blocksHtml = this._blockList(t);
+      const blocks = `<div class="blocks-host" dir="${directionOf()}">${this._blocksHtml}</div>`;
       if (customElements.get("ha-form")) {
         try {
           const form = document.createElement("ha-form");
           form.hass = this._hass;
-          form.schema = this._schema(t);
+          form.schema = this._schema();
           form.data = this._formData();
           form.computeLabel = (schema) => this._labelOf(t, schema);
           form.computeHelper = (schema) => this._helperOf(t, schema);
           this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>`;
           this.shadowRoot.appendChild(form);
           const holder = document.createElement("div");
-          holder.innerHTML = order;
+          holder.innerHTML = blocks;
           this.shadowRoot.appendChild(holder.firstElementChild);
           this._form = form;
           this._built = !!this._hass;
@@ -2626,33 +2703,51 @@
         }
       }
       this._form = null;
-      this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style><div class="form" dir="${directionOf()}">${this._fallbackFields(t)}</div>${order}`;
+      this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style><div class="form" dir="${directionOf()}">${this._fallbackFields(t)}</div>${blocks}`;
       this._built = !!this._hass;
     }
 
-    _orderSection(t) {
-      const blocks = this._config.blocks;
-      if (blocks.length < 2) return "";
-      const rows = blocks
-        .map((entry, index) => {
-          const name = t(`block.${entry.key}`);
-          const button = (direction, arrow, disabled) =>
-            `<button type="button" class="order-move" data-move="${direction}" data-block="${esc(entry.key)}" aria-label="${esc(t(`editor.order.${direction}`, { name }))}"${disabled ? " disabled" : ""}><span aria-hidden="true">${arrow}</span></button>`;
-          return `<li class="order-row" data-block="${esc(entry.key)}"><span class="order-name" dir="auto">${esc(name)}</span><span class="order-actions">${button("up", "↑", index === 0)}${button("down", "↓", index === blocks.length - 1)}</span></li>`;
-        })
-        .join("");
-      return `<span class="hint" id="order-label">${esc(t("editor.order"))}</span><ol class="order-list" aria-labelledby="order-label">${rows}</ol>`;
+    _blockRow(t, block, entry, index, total) {
+      const key = block.key;
+      const name = t(`block.${key}`);
+      const pick = `<label class="block-pick"><input type="checkbox" name="blocks" value="${esc(key)}"${entry ? " checked" : ""}><span class="block-text"><span class="block-name" dir="auto">${esc(name)}</span><span class="hint">${esc(t(`block.${key}.explain`))}</span></span></label>`;
+      if (!entry) return `<li class="block-row" data-block="${esc(key)}">${pick}</li>`;
+      const options = SIZES.map((size) => `<option value="${esc(size)}"${size === entry.size ? " selected" : ""}>${esc(t(`editor.size.${size}`))}</option>`).join("");
+      const select = `<select name="size_${esc(key)}" aria-label="${esc(t("editor.size", { name }))}">${options}</select>`;
+      const button = (direction, arrow, disabled) =>
+        `<button type="button" class="order-move" data-move="${direction}" data-block="${esc(key)}" aria-label="${esc(t(`editor.order.${direction}`, { name }))}"${disabled ? " disabled" : ""}><span aria-hidden="true">${arrow}</span></button>`;
+      const moves = total > 1 ? `${button("up", "↑", index === 0)}${button("down", "↓", index === total - 1)}` : "";
+      return `<li class="block-row on" data-block="${esc(key)}">${pick}<span class="block-tools">${select}${moves}</span></li>`;
     }
 
-    _refreshOrder(t) {
-      const host = this.shadowRoot.querySelector(".order-host");
+    _blockList(t) {
+      const chosen = this._config.blocks.filter((entry) => blockOf(entry.key));
+      const keys = new Set(chosen.map((entry) => entry.key));
+      const rows = chosen
+        .map((entry, index) => this._blockRow(t, blockOf(entry.key), entry, index, chosen.length))
+        .concat(this._offered().filter((block) => !keys.has(block.key)).map((block) => this._blockRow(t, block, null, 0, 0)))
+        .join("");
+      return `<div class="field"><span class="lbl" id="blocks-label">${esc(t("editor.blocks"))}</span><span class="hint">${esc(this._blocksHelper(t))}</span><ul class="blocks" aria-labelledby="blocks-label">${rows}</ul></div>`;
+    }
+
+    _focusKey(node) {
+      if (!node || !node.closest || !node.closest(".blocks-host")) return null;
+      if (node.dataset && node.dataset.move) return { selector: `button[data-block="${node.dataset.block}"][data-move="${node.dataset.move}"]`, block: node.dataset.block };
+      if (node.name) return { selector: `[name="${node.name}"][value="${node.value}"]`, fallback: `[name="${node.name}"]`, block: "" };
+      return null;
+    }
+
+    _refreshBlocks(t) {
+      const host = this.shadowRoot.querySelector(".blocks-host");
       if (!host) return;
-      const active = this.shadowRoot.activeElement;
-      const focused = active && active.dataset && active.dataset.move ? { block: active.dataset.block, move: active.dataset.move } : null;
-      host.innerHTML = this._orderSection(t);
+      const html = this._blockList(t);
+      if (this._blocksHtml === html) return;
+      const focused = this._focusKey(this.shadowRoot.activeElement);
+      this._blocksHtml = html;
+      host.innerHTML = html;
       if (!focused) return;
-      const same = host.querySelector(`button[data-block="${focused.block}"][data-move="${focused.move}"]`);
-      const other = host.querySelector(`button[data-block="${focused.block}"]:not([data-move="${focused.move}"])`);
+      const same = host.querySelector(focused.selector) || (focused.fallback ? host.querySelector(focused.fallback) : null);
+      const other = focused.block ? host.querySelector(`button[data-block="${focused.block}"]:not([disabled])`) : null;
       const target = same && !same.disabled ? same : other;
       if (target) target.focus();
     }
@@ -2670,6 +2765,8 @@
     }
 
     _fallbackFields(t) {
+      let fields = `<div class="field"><label for="title">${esc(t("editor.title"))}</label><input id="title" name="title" type="text" value="${esc(this._config.title || "")}"></div>`;
+      if (!this._children.length) return fields;
       const chosenChildren = new Set(this._config.children.map((item) => String(item).toLowerCase()));
       const childBoxes = this._children
         .map((child) => {
@@ -2678,34 +2775,15 @@
           return `<label><input type="checkbox" name="children" value="${esc(reference)}"${checked ? " checked" : ""}>${esc(this._label(child))}</label>`;
         })
         .join("");
-      const chosenBlocks = new Set(this._config.blocks.map((entry) => entry.key));
-      const blockBoxes = this._offered()
-        .map((block) => `<label><input type="checkbox" name="blocks" value="${esc(block.key)}"${chosenBlocks.has(block.key) ? " checked" : ""}>${esc(t(`block.${block.key}`))}<span class="hint">${esc(t(`block.${block.key}.explain`))}</span></label>`)
-        .join("");
-      const missing = this._missingNames(t);
-      const helper = missing.length ? `${t("editor.blocks.helper")} ${t("editor.blocks.missing", { names: missing.join(", ") })}` : t("editor.blocks.helper");
-      let fields = `<div class="field"><label for="title">${esc(t("editor.title"))}</label><input id="title" name="title" type="text" value="${esc(this._config.title || "")}"></div>`;
-      fields += `<div class="field"><span class="hint">${esc(t("editor.children"))}: ${esc(t("editor.allChildren"))}</span><div class="children">${childBoxes}</div></div>`;
-      fields += `<div class="field"><span class="hint">${esc(t("editor.blocks"))}: ${esc(helper)}</span><div class="blocks">${blockBoxes}</div></div>`;
-      fields += `<div class="field sizes"><span class="hint">${esc(t("editor.sizes"))}</span><div class="size-list">${this._fallbackSizes(t)}</div></div>`;
+      fields += `<div class="field"><span class="lbl">${esc(t("editor.children"))}</span><span class="hint">${esc(t("editor.allChildren"))}</span><div class="children">${childBoxes}</div></div>`;
       return fields;
-    }
-
-    _fallbackSizes(t) {
-      const option = (value, label, selected) => `<option value="${esc(value)}"${selected ? " selected" : ""}>${esc(label)}</option>`;
-      return this._config.blocks
-        .map((entry) => {
-          const options = SIZES.map((size) => option(size, t(`editor.size.${size}`), size === entry.size)).join("");
-          return `<div class="size-row" data-block="${esc(entry.key)}"><label for="size_${esc(entry.key)}">${esc(t("editor.size", { name: t(`block.${entry.key}`) }))}</label><select id="size_${esc(entry.key)}" name="size_${esc(entry.key)}">${options}</select></div>`;
-        })
-        .join("");
     }
 
     _update() {
       const t = translator(this._hass);
       if (this._form) {
         try {
-          this._form.schema = this._schema(t);
+          this._form.schema = this._schema();
           this._form.data = this._formData();
         } catch (error) {
           if (typeof console !== "undefined" && console.warn) console.warn(`${EDITOR_TAG}:`, error);
@@ -2714,14 +2792,18 @@
           this._render();
           return;
         }
-        this._refreshOrder(t);
+        this._refreshBlocks(t);
         return;
       }
       const root = this.shadowRoot;
+      const childrenContainer = root.querySelector(".children");
+      if (!childrenContainer !== !this._children.length) {
+        this._render();
+        return;
+      }
       const active = root.activeElement;
       const title = root.querySelector("input[name=title]");
       if (title && title !== active && title.value !== (this._config.title || "")) title.value = this._config.title || "";
-      const childrenContainer = root.querySelector(".children");
       if (childrenContainer) {
         const chosen = new Set(this._config.children.map((item) => String(item).toLowerCase()));
         const existing = new Set([...childrenContainer.querySelectorAll("input[name=children]")].map((input) => input.value));
@@ -2734,40 +2816,7 @@
           childrenContainer.appendChild(label);
         }
       }
-      const blocksContainer = root.querySelector(".blocks");
-      if (blocksContainer) {
-        const offered = new Set(this._offered().map((block) => block.key));
-        for (const input of blocksContainer.querySelectorAll("input[name=blocks]")) {
-          input.closest("label").hidden = !offered.has(input.value);
-        }
-      }
-      const sizes = root.querySelector(".size-list");
-      if (sizes) {
-        const wanted = this._config.blocks.map((entry) => entry.key);
-        const rows = new Map([...sizes.querySelectorAll(".size-row")].map((row) => [row.dataset.block, row]));
-        for (const [key, row] of rows) {
-          if (!wanted.includes(key)) row.remove();
-        }
-        for (const entry of this._config.blocks) {
-          if (rows.has(entry.key)) {
-            const select = rows.get(entry.key).querySelector("select");
-            if (select !== active && select.value !== entry.size) select.value = entry.size;
-            continue;
-          }
-          const holder = document.createElement("div");
-          holder.innerHTML = this._fallbackSizes(t);
-          const fresh = holder.querySelector(`.size-row[data-block="${entry.key}"]`);
-          if (fresh) sizes.appendChild(fresh);
-        }
-        const shown = [...sizes.querySelectorAll(".size-row")];
-        if (shown.map((row) => row.dataset.block).join() !== wanted.join()) {
-          for (const key of wanted) {
-            const row = shown.find((item) => item.dataset.block === key);
-            if (row) sizes.appendChild(row);
-          }
-        }
-      }
-      this._refreshOrder(t);
+      this._refreshBlocks(t);
     }
   }
 

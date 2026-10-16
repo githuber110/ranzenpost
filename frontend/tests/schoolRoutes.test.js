@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { appSourceNames } from "./shippedSources.js";
 
 const FRONTEND = path.resolve(__dirname, "..");
-const SOURCES = ["app.js", "wizard.js"].map((name) => ({ name, text: fs.readFileSync(path.join(FRONTEND, name), "utf8") }));
+const SOURCES = [...appSourceNames(), "wizard.js"].map((name) => ({ name, text: fs.readFileSync(path.join(FRONTEND, name), "utf8") }));
 
 export const SCHOOL_ROUTE_PATHS = [
   "api/me",
@@ -21,16 +22,63 @@ export const SCHOOL_ROUTE_PATHS = [
   "api/messenger/send",
   "api/messenger/read",
   "api/letters/detail",
+  "api/letters/answer",
   "api/letters/attachment",
   "api/letters/confirm",
   "api/letters/reply",
   "api/letters/archive",
   "api/letters/restore",
   "api/pinboard/attachment",
+  "api/conferences/page",
+  "api/absences/older-form",
+  "api/absences/older-detail",
+  "api/absences/older-attachment",
+  "api/absences/older-export",
+  "api/absences/older-attachment/delete",
+  "api/news/file",
+  "api/news/section/detail",
+  "api/tasks/detail",
+  "api/tasks/file",
+  "api/forums/read",
+  "api/conferences/submit",
   "api/modules/recheck",
   "api/password",
   "api/password/repair",
   "api/account/disconnect",
+  "api/mail/folders",
+  "api/mail/messages",
+  "api/mail/message",
+  "api/mail/source",
+  "api/mail/compose",
+  "api/mail/account",
+  "api/mail/recipients",
+  "api/mail/settings",
+  "api/mail/settings/page",
+  "api/mail/event",
+  "api/mail/attachment",
+  "api/mail/body",
+  "api/mail/seen",
+  "api/mail/flag",
+  "api/mail/move",
+  "api/mail/archive",
+  "api/mail/trash",
+  "api/mail/spam",
+  "api/mail/folder/create",
+  "api/mail/folder/rename",
+  "api/mail/folder/delete",
+  "api/mail/draft/delete",
+  "api/mail/receipt",
+  "api/mail/draft",
+  "api/mail/send",
+  "api/files",
+  "api/files/search",
+  "api/files/file",
+  "api/files/upload",
+  "api/addressbook/search",
+  "api/mailinglists",
+  "api/mailinglists/detail",
+  "api/mailinglists/import",
+  "api/mailinglists/delete",
 ];
 
 function escape(text) {
@@ -53,7 +101,7 @@ function helperNames(body) {
 }
 
 function helperCarriesSchool(text, name) {
-  const at = text.search(new RegExp(`\\nfunction ${escape(name)}\\(`));
+  const at = text.search(new RegExp(`\\n(?:async )?function ${escape(name)}\\(`));
   if (at < 0) return false;
   const end = text.indexOf("\n}\n", at);
   return /connection_id|connection=/.test(text.slice(at, end));
@@ -77,7 +125,7 @@ describe("every school route the app calls names its school", () => {
     for (const { source, index } of callsOf(route)) {
       const body = enclosingFunction(source.text, index);
       const direct = namesSchool(body);
-      const helped = helperNames(body).some((name) => helperCarriesSchool(source.text, name));
+      const helped = helperNames(body).some((name) => SOURCES.some((owner) => helperCarriesSchool(owner.text, name)));
       const line = source.text.slice(0, index).split("\n").length;
       expect(direct || helped, `${source.name}:${line} calls ${route} without a school`).toBe(true);
     }

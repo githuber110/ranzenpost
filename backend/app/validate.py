@@ -23,5 +23,7 @@ def normalize_school_url(raw):
 
 
 def is_valid_code(raw):
-    value = (raw or "").strip()
+    if not isinstance(raw, str):
+        return False
+    value = raw.strip()
     return len(value) == 6 and value.isdigit()

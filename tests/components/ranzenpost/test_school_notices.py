@@ -220,3 +220,141 @@ def test_school_notice_signals_need_both_payloads_to_know_the_notices():
     assert school_notice_signals(SCHOOL, known, grown) == [
         Signal("school_new_noticeboard_post", SCHOOL, "", {"title": "Bake sale", "sender": "Club", "date": None})
     ]
+
+
+TASKS = "sensor.ranzenpost_school_open_tasks"
+NEWS = "sensor.ranzenpost_school_news"
+
+
+async def test_tasks_and_news_get_school_sensors_only_when_the_school_confirmed_them(hass, aioclient_mock, frozen_now):
+    await setup_entry(hass, aioclient_mock, info=childless_info())
+    entities = ranzenpost_entities(hass)
+    assert TASKS not in entities
+    assert NEWS not in entities
+
+
+async def test_open_tasks_and_news_show_their_count_and_items(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock, info=childless_info(tasks=True, news=True))
+    entities = ranzenpost_entities(hass)
+    school = fixture("school")
+
+    assert hass.states.get(TASKS).state == "2"
+    assert hass.states.get(TASKS).attributes["tasks"] == school["open_tasks"]["items"]
+    assert hass.states.get(NEWS).state == "1"
+    assert hass.states.get(NEWS).attributes["news"][0]["sender"] == "General"
+    assert entities[TASKS].unique_id == f"ranzenpost_{entry.entry_id}_school_{SCHOOL}_open_tasks"
+    assert entities[NEWS].device_id == school_device(hass, entry).id
+
+
+async def test_a_school_device_offers_the_task_and_news_triggers_of_its_modules(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock, info=childless_info(pinboard=False, tasks=True, news=True))
+
+    listed = await async_get_device_automations(hass, DeviceAutomationType.TRIGGER, school_device(hass, entry).id)
+
+    assert [item["type"] for item in listed if item["domain"] == DOMAIN] == [
+        "school_unreachable",
+        "school_reachable",
+        "login_needed",
+        "school_new_letter",
+        "school_new_task",
+        "school_new_news",
+    ]
+
+
+async def test_a_new_task_and_a_new_news_item_fire_once_on_the_school_device(hass, aioclient_mock, frozen_now):
+    info = childless_info(tasks=True, news=True)
+    entry = await setup_entry(hass, aioclient_mock, info=info)
+    school = school_device(hass, entry)
+    events = async_capture_events(hass, "ranzenpost_event")
+    grown = fixture("school")
+    grown["open_tasks"]["items"].append({"title": "Lab report", "sender": "", "date": "2026-09-12", "child": ""})
+    grown["open_tasks"]["count"] += 1
+    grown["news"]["items"].insert(0, {"title": "Concert", "sender": "Music", "date": "2026-09-02", "child": ""})
+    grown["news"]["count"] += 1
+
+    await poll(hass, aioclient_mock, frozen_now, info, grown)
+    await poll(hass, aioclient_mock, frozen_now, info, grown)
+
+    assert [(event.data["type"], event.data["device_id"], event.data.get("title")) for event in events] == [
+        ("school_new_task", school.id, "Lab report"),
+        ("school_new_news", school.id, "Concert"),
+    ]
+    assert hass.states.get(TASKS).state == "3"
+
+
+async def test_an_add_on_without_tasks_and_news_fires_nothing_after_the_upgrade(hass, aioclient_mock, frozen_now):
+    info = childless_info(tasks=True, news=True)
+    old = fixture("school")
+    del old["open_tasks"]
+    del old["news"]
+    aioclient_mock.get(route("school", id=SCHOOL), json=old)
+    await setup_entry(hass, aioclient_mock, info=info)
+    events = async_capture_events(hass, "ranzenpost_event")
+
+    assert hass.states.get(TASKS).state == "unknown"
+    await poll(hass, aioclient_mock, frozen_now, info, fixture("school"))
+
+    assert events == []
+    assert hass.states.get(TASKS).state == "2"
+
+
+def task(task_id, title, due):
+    return {"title": title, "sender": "", "date": due, "child": "", "id": task_id}
+
+
+def listed_tasks(items, fresh):
+    return {"count": len(items), "items": items, "fresh": fresh}
+
+
+async def test_new_tasks_fire_from_the_fresh_record_of_the_add_on_only(hass, aioclient_mock, frozen_now):
+    info = childless_info(tasks=True, news=True)
+    first = [task(str(number), "Task %d" % number, "2026-09-%02d" % (number + 10)) for number in range(1, 11)]
+    start = fixture("school")
+    start["open_tasks"] = listed_tasks(first, [])
+    aioclient_mock.get(route("school", id=SCHOOL), json=start)
+    entry = await setup_entry(hass, aioclient_mock, info=info)
+    school = school_device(hass, entry)
+    events = async_capture_events(hass, "ranzenpost_event")
+
+    moved = [dict(first[0], date="2026-09-30"), *first[1:]]
+    await poll(hass, aioclient_mock, frozen_now, info, dict(start, open_tasks=listed_tasks(moved, [])))
+    slid = [task("0", "Early", "2026-09-05"), *moved[:9]]
+    await poll(hass, aioclient_mock, frozen_now, info, dict(start, open_tasks=listed_tasks(slid, [])))
+    assert events == []
+
+    fresh = [dict(task("0", "Early", "2026-09-05"), seen=1_791_000_000)]
+    await poll(hass, aioclient_mock, frozen_now, info, dict(start, open_tasks=listed_tasks(slid, fresh)))
+    await poll(hass, aioclient_mock, frozen_now, info, dict(start, open_tasks=listed_tasks(slid, fresh)))
+
+    assert [(event.data["type"], event.data["device_id"], event.data["id"], "url" in event.data) for event in events] == [
+        ("school_new_task", school.id, "0", False)
+    ]
+    assert hass.states.get(TASKS).attributes["tasks"][0]["id"] == "0"
+
+
+def test_notices_with_ids_but_without_a_fresh_record_match_on_the_id():
+    before = fixture("school")
+    before["open_tasks"] = {"count": 1, "items": [task("7", "Essay", "2026-09-10")]}
+    after = fixture("school")
+    after["open_tasks"] = {"count": 1, "items": [task("7", "Essay", "2026-09-17")]}
+
+    assert school_notice_signals(SCHOOL, School.from_json(before), School.from_json(after)) == []
+
+
+def test_fresh_entries_fire_in_the_order_they_were_seen_and_only_after_the_known_ones():
+    before = fixture("school")
+    before["news"] = {"count": 1, "items": [], "fresh": [{"title": "Old", "sender": "", "date": "", "child": "", "id": "a/1", "seen": 100}]}
+    after = fixture("school")
+    after["news"] = {
+        "count": 3,
+        "items": [],
+        "fresh": [
+            {"title": "Newest", "sender": "", "date": "", "child": "", "id": "a/3", "seen": 300},
+            {"title": "Newer", "sender": "", "date": "", "child": "", "id": "a/2", "seen": 200},
+            {"title": "Old", "sender": "", "date": "", "child": "", "id": "a/1", "seen": 100},
+        ],
+    }
+
+    signals = school_notice_signals(SCHOOL, School.from_json(before), School.from_json(after))
+
+    assert [(signal.type, signal.data["id"]) for signal in signals] == [("school_new_news", "a/2"), ("school_new_news", "a/3")]

@@ -12,6 +12,7 @@ from .const import (
     ATTR_DATE,
     ATTR_END,
     ATTR_ENTRY_ID,
+    ATTR_ID,
     ATTR_LAST_UPDATED,
     ATTR_PERIOD,
     ATTR_PREVIOUS_STATUS,
@@ -21,6 +22,7 @@ from .const import (
     ATTR_START,
     ATTR_STATUS,
     ATTR_SUMMARY,
+    ATTR_TEXT,
     ATTR_TITLE,
     ATTR_TYPE,
     CHANGE_CANCELLATION,
@@ -34,7 +36,11 @@ from .const import (
     TRIGGER_NEW_LETTER,
     TRIGGER_NEW_POST,
     TRIGGER_SCHOOL_NEW_LETTER,
+    TRIGGER_SCHOOL_NEW_NEWS,
+    TRIGGER_SCHOOL_NEW_FORUM_POST,
+    TRIGGER_SCHOOL_NEW_TEXT,
     TRIGGER_SCHOOL_NEW_POST,
+    TRIGGER_SCHOOL_NEW_TASK,
     TRIGGER_SCHOOL_REACHABLE,
     TRIGGER_SCHOOL_UNREACHABLE,
     TRIGGER_SUBSTITUTION,
@@ -58,15 +64,28 @@ def _iso(value) -> str | None:
     return value.isoformat() if value else None
 
 
-def _notice_key(notice: Notice) -> tuple[str, str, str | None]:
+def _notice_key(notice: Notice) -> tuple[str, ...]:
+    if notice.id:
+        return (notice.id,)
     return (notice.title, notice.sender, _iso(notice.date))
 
 
+def _notice_data(item: Notice) -> dict[str, Any]:
+    data = {ATTR_TITLE: item.title, ATTR_SENDER: item.sender, ATTR_DATE: _iso(item.date)}
+    for name in (ATTR_ID, ATTR_TEXT):
+        if getattr(item, name):
+            data[name] = getattr(item, name)
+    return data
+
+
 def _new_notices(previous: Notices, current: Notices) -> list[dict[str, Any]]:
+    if current.fresh is not None:
+        floor = max((item.seen for item in previous.fresh or ()), default=0)
+        return [_notice_data(item) for item in sorted(current.fresh, key=lambda item: item.seen) if item.seen > floor]
     known = {_notice_key(item) for item in previous.items}
     fresh = [item for item in current.items if _notice_key(item) not in known]
     if fresh:
-        return [{ATTR_TITLE: item.title, ATTR_SENDER: item.sender, ATTR_DATE: _iso(item.date)} for item in fresh]
+        return [_notice_data(item) for item in fresh]
     if current.count > previous.count:
         return [{ATTR_COUNT: current.count}]
     return []
@@ -127,6 +146,10 @@ def school_notice_signals(school_id: str, previous: School, current: School) -> 
     for trigger, before, now in (
         (TRIGGER_SCHOOL_NEW_LETTER, previous.unread_letters, current.unread_letters),
         (TRIGGER_SCHOOL_NEW_POST, previous.unread_posts, current.unread_posts),
+        (TRIGGER_SCHOOL_NEW_TASK, previous.open_tasks, current.open_tasks),
+        (TRIGGER_SCHOOL_NEW_NEWS, previous.news, current.news),
+        (TRIGGER_SCHOOL_NEW_FORUM_POST, previous.unread_forum_posts, current.unread_forum_posts),
+        (TRIGGER_SCHOOL_NEW_TEXT, previous.texts, current.texts),
     ):
         if before is not None and now is not None:
             signals.extend(Signal(trigger, school_id, "", data) for data in _new_notices(before, now))

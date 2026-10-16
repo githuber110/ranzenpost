@@ -89,7 +89,8 @@ async def test_child_devices_list_the_child_triggers_and_school_devices_the_scho
     every_child_trigger = await async_get_device_automations(hass, DeviceAutomationType.TRIGGER, child.id)
 
     assert [item["type"] for item in child_triggers] == list(CHILD_TRIGGERS)
-    assert [item["type"] for item in school_triggers] == list(SCHOOL_TRIGGERS + SCHOOL_NOTICE_TRIGGERS)
+    assert [item["type"] for item in school_triggers] == list(SCHOOL_TRIGGERS) + ["school_new_letter", "school_new_noticeboard_post"]
+    assert set(SCHOOL_NOTICE_TRIGGERS) == {"school_new_letter", "school_new_noticeboard_post", "school_new_task", "school_new_news", "school_new_forum_post", "school_new_text"}
     assert all(item["device_id"] == child.id and item["platform"] == "device" for item in child_triggers)
     assert {item["domain"] for item in every_child_trigger} == {DOMAIN, "binary_sensor"}
 

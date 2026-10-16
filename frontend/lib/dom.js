@@ -11,6 +11,8 @@ export const ICON_SHAPES = Object.freeze({
   chevron: '<path d="m7.4 10.3 4.6 4.6 4.6-4.6"/>',
   today: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.3v5.1l3.3 1.9"/>',
   upcoming: '<rect x="3.4" y="5.4" width="17.2" height="15.2" rx="3.4"/><path d="M8 3v4.4M16 3v4.4M3.4 10.4h17.2"/><path d="m8.7 15 2.3 2.3 4.3-4.3"/>',
+  tasks: '<rect x="5" y="4.4" width="14" height="16.2" rx="2.4"/><path d="M9 4.4V3h6v1.4"/><path d="m8.6 12.6 2.2 2.2 4.6-4.6"/>',
+  news: '<path d="M4.4 5.4h11.8v13.2a2 2 0 0 0 2 2H6.4a2 2 0 0 1-2-2z"/><path d="M16.2 9h3.4v9.6a2 2 0 0 1-2 2"/><path d="M7.6 9h5.4M7.6 12.4h5.4M7.6 15.8h3.4"/>',
   conferences: '<circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.7 19.6a5.5 5.5 0 0 1 11 0"/><path d="M16.4 5.6a3.3 3.3 0 0 1 0 6.4"/><path d="M17.6 14.5a5.5 5.5 0 0 1 2.7 4.5"/>',
   clip: '<path d="M19.7 10.5 11 19.2a4.6 4.6 0 0 1-6.5-6.5l8.7-8.7a3.1 3.1 0 0 1 4.4 4.4l-8.7 8.7a1.5 1.5 0 0 1-2.2-2.2l8-8"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
@@ -30,7 +32,16 @@ export const ICON_SHAPES = Object.freeze({
   search: '<circle cx="10.6" cy="10.6" r="6.6"/><path d="m20 20-4.8-4.8"/>',
   calendarAdd: '<rect x="3.4" y="5.4" width="17.2" height="15.2" rx="3.4"/><path d="M8 3v4.4M16 3v4.4M3.4 10.4h17.2"/><path d="M12 13.6v4.8M9.6 16h4.8"/>',
   exam: '<path d="M12 3.4 14.7 9l6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.9 9.3 9z" fill="currentColor" stroke-linejoin="round"/>',
+  forums: '<path d="M3.6 5a1.4 1.4 0 0 1 1.4-1.4h8.6A1.4 1.4 0 0 1 15 5v5.6a1.4 1.4 0 0 1-1.4 1.4H8l-4.4 3.4z"/><path d="M18 8.4h1a1.4 1.4 0 0 1 1.4 1.4v9.4L17 16.6h-6.6a1.4 1.4 0 0 1-1.4-1.4V15"/>',
+  texts: '<path d="M6.4 3.4h7.4l4.8 4.8v11a1.4 1.4 0 0 1-1.4 1.4H6.4A1.4 1.4 0 0 1 5 19.2V4.8a1.4 1.4 0 0 1 1.4-1.4z"/><path d="M13.6 3.6v4.8h4.8"/><path d="M8.4 12.4h7.2M8.4 15.8h5"/>',
+  screen: '<rect x="3.2" y="4.4" width="17.6" height="11.6" rx="1.6"/><path d="M12 16v3.6M8 19.6h8"/>',
   messages: '<path d="M20.6 11.6a8.4 8.4 0 0 1-8.4 8.4H4.4l1.9-3.5a8.4 8.4 0 1 1 14.3-4.9z"/><path d="M8.6 11.6h.01M12 11.6h.01M15.4 11.6h.01"/>',
+  star: '<path d="M12 3.4 14.7 9l6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.9 9.3 9z" stroke-linejoin="round"/>',
+  reply: '<path d="M9.6 6.4 4.4 11.6l5.2 5.2"/><path d="M4.8 11.6h8.6a6.2 6.2 0 0 1 6.2 6.2v.8"/>',
+  forward: '<path d="m14.4 6.4 5.2 5.2-5.2 5.2"/><path d="M19.2 11.6h-8.6a6.2 6.2 0 0 0-6.2 6.2v.8"/>',
+  edit: '<path d="M4.6 19.4l1-4.2 9.8-9.8a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8l-9.8 9.8z" stroke-linejoin="round"/><path d="m13.6 7.2 3.2 3.2"/>',
+  code: '<path d="m8.4 7.4-4.6 4.6 4.6 4.6"/><path d="m15.6 7.4 4.6 4.6-4.6 4.6"/>',
+  copy: '<rect x="8.4" y="8.4" width="11.2" height="11.2" rx="2"/><path d="M15.6 8.4V6.4a2 2 0 0 0-2-2H6.4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 2 2h2"/>',
   send: '<path d="M20.4 3.6 3.9 10.1a.5.5 0 0 0 .05.95l6.15 1.75 1.75 6.15a.5.5 0 0 0 .95.05z" stroke-linejoin="round"/><path d="m10.1 12.8 4.7-4.7"/>',
   qr: '<rect x="3.6" y="3.6" width="6.6" height="6.6" rx="1.6"/><rect x="13.8" y="3.6" width="6.6" height="6.6" rx="1.6"/><rect x="3.6" y="13.8" width="6.6" height="6.6" rx="1.6"/><path d="M13.8 13.8h3v3h-3z"/><path d="M20.4 13.8v3M20.4 20.4h-3.6M13.8 20.4h.01"/>',
   more: '<circle cx="5.6" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18.4" cy="12" r="1.4" fill="currentColor"/>',
@@ -45,6 +56,88 @@ export function iconSvg(name, size) {
   return `<svg class="ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" aria-hidden="true"${sized}>${shape}</svg>`;
 }
 
+const RICH_TAGS = new Set([
+  "a", "abbr", "b", "blockquote", "br", "caption", "code", "col", "colgroup",
+  "dd", "div", "dl", "dt", "em", "figcaption", "figure", "h1", "h2", "h3",
+  "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p", "pre", "s", "small",
+  "span", "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th",
+  "thead", "tr", "u", "ul",
+]);
+const RICH_DROPPED = new Set([
+  "applet", "base", "embed", "form", "frame", "frameset", "head", "iframe", "link", "math",
+  "meta", "noembed", "noframes", "noscript", "object", "script", "style", "svg", "template", "title",
+]);
+const RICH_ATTRS = Object.freeze({
+  a: ["href", "title"],
+  img: ["src", "alt", "title", "width", "height"],
+  td: ["colspan", "rowspan"],
+  th: ["colspan", "rowspan", "scope"],
+  col: ["span"],
+  colgroup: ["span"],
+  abbr: ["title"],
+});
+const RICH_NUMBER_ATTRS = new Set(["width", "height", "colspan", "rowspan", "span"]);
+const RICH_NUMBER = /^\d{1,4}(%|px)?$/;
+const RICH_SCOPES = new Set(["row", "col", "rowgroup", "colgroup"]);
+const RICH_SCHEME = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/;
+const RICH_IMAGE_DATA = /^data:image\/(png|jpeg|gif|webp|bmp|avif|svg\+xml)[;,]/i;
+const RICH_LINK_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
+const RICH_IMAGE_SCHEMES = new Set(["http", "https"]);
+const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+export function richUrl(value, image) {
+  const candidate = String(value ?? "").replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
+  if (!candidate) return null;
+  if (image && RICH_IMAGE_DATA.test(candidate)) return candidate;
+  const scheme = RICH_SCHEME.exec(candidate);
+  if (scheme) return (image ? RICH_IMAGE_SCHEMES : RICH_LINK_SCHEMES).has(scheme[1].toLowerCase()) ? candidate : null;
+  return candidate.startsWith("/") || candidate.startsWith("#") ? candidate : null;
+}
+
+function richAttribute(tag, name, value) {
+  if (name === "href" || name === "src") return richUrl(value, tag === "img");
+  if (RICH_NUMBER_ATTRS.has(name)) return RICH_NUMBER.test(value.trim()) ? value.trim() : null;
+  if (name === "scope") return RICH_SCOPES.has(value.trim().toLowerCase()) ? value.trim().toLowerCase() : null;
+  return value;
+}
+
+function richCopy(page, source) {
+  const tag = source.localName;
+  const copy = page.createElement(tag);
+  for (const name of RICH_ATTRS[tag] || []) {
+    if (!source.hasAttribute(name)) continue;
+    const value = richAttribute(tag, name, source.getAttribute(name));
+    if (value !== null) copy.setAttribute(name, value);
+  }
+  if (tag === "a") {
+    copy.setAttribute("rel", "noopener noreferrer");
+    copy.setAttribute("target", "_blank");
+  }
+  return copy;
+}
+
+export function richFragment(page, html) {
+  const inert = page.createElement("template");
+  inert.innerHTML = String(html ?? "");
+  const result = page.createDocumentFragment();
+  const pending = Array.from(inert.content.childNodes).reverse().map((node) => [node, result]);
+  while (pending.length) {
+    const [node, parent] = pending.pop();
+    if (node.nodeType === 3) {
+      parent.append(page.createTextNode(node.data));
+      continue;
+    }
+    if (node.nodeType !== 1 || node.namespaceURI !== XHTML_NAMESPACE || RICH_DROPPED.has(node.localName)) continue;
+    let target = parent;
+    if (RICH_TAGS.has(node.localName)) {
+      target = richCopy(page, node);
+      parent.append(target);
+    }
+    for (const child of Array.from(node.childNodes).reverse()) pending.push([child, target]);
+  }
+  return result;
+}
+
 export function createDom({ page }) {
   const el = (tag, attrs = {}, children = []) => {
     const node = page.createElement(tag);
@@ -52,6 +145,7 @@ export function createDom({ page }) {
       if (value === null || value === undefined) continue;
       if (key === "class") node.className = value;
       else if (key === "html") node.innerHTML = value;
+      else if (key === "richHtml") node.append(richFragment(page, value));
       else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
       else node.setAttribute(key, value);
     }

@@ -3,8 +3,7 @@ import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from . import cancellations, feed_ics, holidays, marks, messages, own_entries, period_grid
-from .iserv.absences import berlin_offset
+from . import berlin, cancellations, feed_ics, holidays, marks, messages, own_entries, period_grid
 from .mapping import configured_time, subject_base
 from .store import config_for_connection, connection_display_name, owning_connection, split_child_key
 from .subscriptions import (
@@ -135,12 +134,6 @@ def lesson_window(today):
     start = monday - timedelta(days=7 * WEEKS_BACK)
     end = monday + timedelta(days=7 * (WEEKS_AHEAD + 1) - 1)
     return start, end
-
-
-def berlin_moment(epoch):
-    naive = datetime.fromtimestamp(epoch, timezone.utc).replace(tzinfo=None)
-    offset = 2 if berlin_offset(naive + timedelta(hours=2)) == 2 else 1
-    return naive + timedelta(hours=offset)
 
 
 def _text(language, key, variables=None):
@@ -731,11 +724,11 @@ def absence_summary(language, entry):
 def _absence_period(entry, name):
     value = entry.get(name)
     if isinstance(value, bool) or value in (None, ""):
-        return 0
+        return None
     try:
         return int(str(value).strip())
     except (TypeError, ValueError):
-        return 0
+        return None
 
 
 def absence_description(language, config, entry, first, last):
@@ -754,7 +747,7 @@ def absence_description(language, config, entry, first, last):
     ]
     opening = _absence_period(entry, "from_period")
     closing = _absence_period(entry, "till_period")
-    if opening and closing:
+    if opening is not None and closing is not None:
         rows.append(
             _detail_line(
                 language,
@@ -791,8 +784,8 @@ def absence_events(language, tag, config, snapshot, child_id, today):
             continue
         opening = _absence_period(entry, "from_period")
         closing = _absence_period(entry, "till_period")
-        begin_time = str(times.get(str(opening)) or "") if opening else ""
-        end_time = str(times.get(str(closing)) or "") if closing else ""
+        begin_time = str(times.get(str(opening)) or "") if opening is not None else ""
+        end_time = str(times.get(str(closing)) or "") if closing is not None else ""
         uid = f"{tag}-absence-{entry.get('kind', '')}-{entry.get('id', '')}@{UID_DOMAIN}"
         summary = absence_summary(language, entry)
         description = absence_description(language, config, entry, first, last)
@@ -928,7 +921,7 @@ def _school_moment(text, all_day):
         return None
     if moment.tzinfo is None:
         return moment
-    return berlin_moment(int(moment.timestamp()))
+    return berlin.local_from_epoch(int(moment.timestamp()))
 
 
 def _school_feed_event(language, school_id, item):
@@ -1018,7 +1011,7 @@ def notice_events(language, tag, today, blocked, window, last_success, now_epoch
                 "stale",
                 "calendar.notice.stale.summary",
                 "calendar.notice.stale.description",
-                {"time": berlin_moment(last_success).strftime("%d.%m.%Y %H:%M")},
+                {"time": berlin.local_from_epoch(last_success).strftime("%d.%m.%Y %H:%M")},
             )
         )
     return events

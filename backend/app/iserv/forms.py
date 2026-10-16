@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -17,6 +17,15 @@ class Form:
     fields: dict
     control_types: dict
     submits: dict = field(default_factory=dict)
+
+
+def browser_headers(page_url):
+    page = str(page_url or "")
+    parts = urlparse(page)
+    headers = {"Referer": page} if page else {}
+    if parts.scheme and parts.netloc:
+        headers["Origin"] = f"{parts.scheme}://{parts.netloc}"
+    return headers
 
 
 def parse_forms(html, base_url):

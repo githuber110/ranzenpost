@@ -141,6 +141,10 @@ def _filled(tmp_path, calendar=None):
         conferences=[["15.09.2026", "Frau Muster", "Raum 101", "Termin buchen"]],
         school_name="Testschule",
     )
+    task = {"id": "41", "title": "Referat", "sender": "", "date": "2026-09-20"}
+    news = {"id": "general/3", "title": "Sportfest", "sender": "Allgemein", "date": "2026-09-01", "text": "Am Freitag."}
+    integration.record_school_list(store, SCHOOL, integration.SCHOOL_TASKS, [task], [task], NOW_EPOCH - 60)
+    integration.record_school_list(store, SCHOOL, integration.SCHOOL_NEWS, [news], [], NOW_EPOCH - 60)
     return client, store
 
 
@@ -234,6 +238,8 @@ def test_school_matches_the_contract_filled_and_empty(tmp_path):
     body = client.get(PREFIX + f"/school?id={SCHOOL}", headers=_auth(store)).json()
     assert body["next_holiday"] and body["next_conference"]
     assert body["unread_letters"]["count"] == 1 and body["unread_posts"]["count"] == 1
+    assert [item["id"] for item in body["open_tasks"]["fresh"]] == ["41"]
+    assert body["news"]["items"][0]["text"] == "Am Freitag."
     assert_matches("#/$defs/school", body)
 
     client, store, _ = _app(tmp_path / "empty")

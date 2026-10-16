@@ -47,9 +47,10 @@ describe("the card carries exact copies of the app's shared lists", () => {
   });
 
   it("offers the same blocks with the same limits as the app", () => {
-    const card = cardCatalogue().map(({ scope, ...block }) => block);
+    const card = cardCatalogue();
     const app = appBlocks().BLOCK_CATALOGUE;
     expect(JSON.parse(JSON.stringify(card))).toEqual(JSON.parse(JSON.stringify(app)));
-    expect(cardCatalogue().every((block) => ["child", "family", "school"].includes(block.scope))).toBe(true);
+    expect(card.every((block) => ["child", "family", "school"].includes(block.scope))).toBe(true);
+    expect(card.concat(app).some((block) => "childBound" in block)).toBe(false);
   });
 });

@@ -241,15 +241,16 @@ describe("notification sheet: chip list + nested picker replace the old free-for
     expect(hint).not.toBeUndefined();
   });
 
-  test("the event section keeps all six events switched on by default", () => {
+  test("the event section keeps all ten events switched on by default", () => {
     const { window, document } = openNotifySheet(ENRICHED);
     const groups = [...document.querySelectorAll(".field-group")];
     const eventGroup = groups[groups.length - 1];
     const checks = [...eventGroup.querySelectorAll("input[type=checkbox]")];
 
-    expect(checks.length).toBe(6);
+    expect(checks.length).toBe(10);
     expect(checks.every((check) => check.checked)).toBe(true);
     expect(eventGroup.textContent).toContain("Stundenplan-Änderungen");
+    expect(eventGroup.textContent).toContain("Erinnerung drei Tage vor dem Sprechtag");
     expect(eventGroup.textContent).toContain("Neue Chat-Nachrichten");
     expect(window.eval("state.sheetForm.events")).toEqual({});
   });
@@ -308,6 +309,23 @@ describe("the settings row names the device instead of counting services", () =>
 });
 
 describe("the notification sheet is named like its settings section", () => {
+  test("the settings row carries the same name as the sheet it opens", () => {
+    const { window, document } = openNotifySheet(ENRICHED);
+    const name = window.eval("settingsView()").querySelector(".notify-setting .lbl").textContent;
+    expect(document.querySelector(".sheet-title").textContent).toBe(name);
+    expect(name).toBe("Mitteilungen");
+  });
+
+  test("no second key names the notifications differently", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    for (const lang of ["de", "en", "ar", "tr", "ru", "uk"]) {
+      const bundle = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "i18n", `${lang}.json`), "utf8"));
+      expect(bundle["settings.notify.service"], lang).toBeUndefined();
+      expect(bundle["settings.notify.push"], lang).toBeUndefined();
+    }
+  });
+
   test("its title is the first word of the section in every language", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");

@@ -28,7 +28,7 @@ START_PAGE = """
 <html><body>
 <a href="/iserv/time-table/">Stundenplan</a>
 <a href="/iserv/parentletter/parent/index">Elternbriefe</a>
-<a href="/iserv/news/">News</a>
+<a href="/iserv/todo/">To-do</a>
 <a href="/iserv/mystery/">Mystery</a>
 <footer>IServ 3.9.1</footer>
 </body></html>
@@ -340,16 +340,16 @@ def test_the_report_lists_every_module_row_with_probe_facts(tmp_path):
     slugs = {line.split("|")[2].strip() for line in rows}
     for slug in ("timetable", "dsa-timetable", "parentletter", "dsa-pinboard", "absence", "parentconference", "messenger"):
         assert slug in slugs
-    assert "news" in slugs
+    assert "todo" in slugs
     assert "mystery" in slugs
     letters = next(line for line in rows if "| parentletter |" in line)
     assert "| supported |" in letters
     assert "| 200 |" in letters
     assert "| text/html |" in letters
     assert "| /iserv/parentletter/parent/index |" in letters
-    news = next(line for line in rows if "| news |" in line)
-    assert "| News |" in news
-    assert "| present, not supported |" in news
+    texts = next(line for line in rows if "| todo |" in line)
+    assert "| To-do |" in texts
+    assert "| present, not supported |" in texts
     mystery = next(line for line in rows if "| mystery |" in line)
     assert "| unknown |" in mystery
     native = next(line for line in rows if "| timetable |" in line)
@@ -751,15 +751,15 @@ def test_the_registry_keeps_the_last_probe_answer_per_module():
     assert modules.default_registry()["probes"] == {}
 
 
-def test_the_report_segments_leave_out_modules_the_app_only_links_to():
+def test_the_report_segments_list_every_module_the_app_does_not_show_yet():
     stored = {
         "unsupported": [{"segment": "klassengeld", "label": "Klassengeld"}, {"segment": "news", "label": "News"}],
         "unknown": [{"segment": "mystery", "label": "Mystery"}],
     }
-    assert modules.normalize(stored)["unsupported"][0].get("link_only") is True
+    assert "link_only" not in modules.normalize(stored)["unsupported"][0]
     connection = SimpleNamespace(stored_modules=lambda: stored)
     service = SimpleNamespace(connections=lambda: [connection])
-    assert diagnostics.report_segments(service) == ["news", "mystery"]
+    assert diagnostics.report_segments(service) == ["klassengeld", "news", "mystery"]
 
 
 def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path):
@@ -771,7 +771,7 @@ def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path
     body = answer.json()
     assert body["report"].startswith("# Ranzenpost report")
     assert "### Page structure" in body["report"]
-    assert body["segments"] == ["news", "mystery"]
+    assert body["segments"] == ["todo", "mystery"]
     plain = client.get("/api/diagnostics?structure=0").json()["report"]
     assert "### Page structure" not in plain
 
@@ -2114,6 +2114,7 @@ def test_school_app_query_lines_mirror_the_query_of_the_app_per_child():
     assert "- Child 3: no course ids in the school account, the app reads the time-table module instead" in lines
     assert "- Child 4: not in the school account, the app reads the time-table module instead" in lines
     assert "- Timetable slots: 2" in lines
+    assert "- Timetable slot numbers: 1, 2" in lines
     assert any(line.startswith("- Week: ") for line in lines)
     assert [(query.get("filterBy"), query["substitutions"]) for query in queries] == [
         ("courseSubject.course:in(5|7)", "true"),
@@ -2437,7 +2438,7 @@ def test_the_timetable_source_is_none_when_the_school_offers_no_timetable():
     assert diagnostics.timetable_source_fact({"timetable_source": "time-table"}, registry) == "time-table"
 
 
-OLDER_ABSENCE_HTML = """<table id="crud-table"><tbody>
+OLDER_ABSENCE_HTML = """<table id="crud-table"><thead><tr><th></th><th>Name</th><th>Klasse</th><th>Status</th><th>Zeitraum</th></tr></thead><tbody>
 <tr><td><input type="checkbox"></td><td>Mia Muster</td><td>2b</td><td>offen</td><td>14.09.2026 - 15.09.2026</td></tr>
 <tr><td><input type="checkbox"></td><td>Mia Muster</td><td>2b</td><td>offen</td><td>02.09.2026</td></tr>
 <tr><td colspan="5">Keine weiteren Einträge</td></tr>
@@ -2460,12 +2461,24 @@ def test_the_absence_lists_are_compared_without_counts_dates_or_names():
     lines = reportfacts.absence_evidence_lines(absence_client(), datetime(2026, 9, 28).date())
     assert lines == [
         "### Absence lists",
-        "- Older absence page: entries some, with a date some",
+        "- Older absence page: entries some, unreadable none",
+        "- Older absence columns: name, class, status, period",
+        "- Older absence row actions: delete links none, edit links none, detail links none, export no",
+        "- Older absence create page: not linked",
         "- School app sick notes in the last 120 days: some",
         "- Older page entries sharing a date with a school app sick note: some",
     ]
     assert not any(any(char.isdigit() for char in line.replace("120", "")) for line in lines)
     assert not any("Mia" in line for line in lines)
+
+
+def test_the_report_reads_the_older_absence_page_like_the_app():
+    headless = OLDER_ABSENCE_HTML.split("<tbody>", 1)[1]
+    client = absence_client()
+    client.pages[reportfacts.OLDER_ABSENCE_PAGE] = Response(200, SCHOOL_ONE_URL, '<table id="crud-table"><tbody>' + headless, "text/html")
+    lines = reportfacts.absence_evidence_lines(client, datetime(2026, 9, 28).date())
+    assert "- Older absence page: not readable, the older absence list has no name or date column" in lines
+    assert not any("sharing a date" in line for line in lines)
 
 
 def test_a_refused_older_absence_page_is_named_with_its_answer():
@@ -2577,3 +2590,9 @@ def test_a_provider_crawl_skips_request_pages_and_apis():
 )
 def test_the_report_names_the_account_roles_but_never_a_name(me, fact):
     assert diagnostics.account_roles_fact(me) == fact
+
+
+def test_slot_numbers_show_period_zero_and_slots_without_a_number():
+    slots = [{"number": 2}, {"number": 0}, {"number": 1}, {"name": "Break"}, {"number": None}, "odd"]
+    assert reportfacts.slot_numbers_fact(slots) == "0, 1, 2; without a number 3"
+    assert reportfacts.slot_numbers_fact([]) == "none"

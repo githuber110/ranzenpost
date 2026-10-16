@@ -3,9 +3,9 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from . import blocks, cancellations, feed, holidays, marks, messages, modules, supervisor
-from .iserv.absences import berlin_offset
+from . import berlin, blocks, cancellations, feed, holidays, marks, messages, modules, supervisor
 from .iserv.badges import MAIL_MODULE
+from .iserv.conferences import dates_in
 from .iserv.errors import QUIET_SIGN_IN_REASONS, REASON_CODE_STEP_FAILED, REASON_RATE_LIMITED
 from .mapping import configured_time
 from .store import (
@@ -104,6 +104,14 @@ WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 LESSON_DAYS_AHEAD = 14
 EXAM_DAYS_AHEAD = 30
 MAX_NOTICES = 10
+LIST_COUNT_SUFFIX = "_count"
+FRESH_SUFFIX = "_fresh"
+FRESH_STAMP = "seen"
+LIST_NOTICE_EXTRAS = (("id", 120), ("text", 280))
+SCHOOL_TASKS = "tasks"
+SCHOOL_NEWS = "news"
+SCHOOL_FORUMS = "forum_posts"
+SCHOOL_TEXTS = "texts"
 STAMP_SOURCE_ISERV = "iserv"
 STAMP_SOURCE_APP = "app"
 CHANGE_FIELDS = ("subject", "teacher", "room")
@@ -233,16 +241,16 @@ def is_connected(last_seen, now_epoch):
 
 
 def iso_local(local):
-    offset = berlin_offset(local)
+    offset = berlin.offset(local)
     return local.strftime("%Y-%m-%dT%H:%M:%S") + f"+{offset:02d}:00"
 
 
 def berlin_iso(epoch):
-    return iso_local(feed.berlin_moment(epoch))
+    return berlin.iso_from_epoch(epoch)
 
 
 def berlin_stamp(epoch):
-    return feed.berlin_moment(epoch).strftime("%d.%m. %H:%M")
+    return berlin.local_from_epoch(epoch).strftime("%d.%m. %H:%M")
 
 
 def change_key(lesson):
@@ -407,6 +415,58 @@ def record_school_mail_failure(store, school_id):
             slot.pop(MAIL_UNREAD, None)
 
     _edit_school_slot(store, school_id, change)
+
+
+def list_notice_of(entry):
+    notice = notice_of(entry)
+    if not isinstance(entry, dict):
+        return notice
+    for name, limit in LIST_NOTICE_EXTRAS:
+        value = _squeezed(entry.get(name))[:limit]
+        if value:
+            notice[name] = value
+    return notice
+
+
+def _stamp_of(entry):
+    value = entry.get(FRESH_STAMP) if isinstance(entry, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def record_school_list(store, school_id, field, notices, fresh=(), stamp=0, count=None):
+    def change(slot):
+        if notices is None:
+            slot.pop(field, None)
+            slot.pop(field + LIST_COUNT_SUFFIX, None)
+            slot.pop(field + FRESH_SUFFIX, None)
+            return
+        listed = [notice for notice in notices if isinstance(notice, dict)]
+        slot[field] = listed[:MAX_NOTICES]
+        counted = isinstance(count, int) and not isinstance(count, bool) and count >= len(listed)
+        slot[field + LIST_COUNT_SUFFIX] = count if counted else len(listed)
+        earlier = [entry for entry in slot.get(field + FRESH_SUFFIX) or [] if _stamp_of(entry)]
+        added = [dict(notice, **{FRESH_STAMP: int(stamp)}) for notice in fresh or () if isinstance(notice, dict)]
+        slot[field + FRESH_SUFFIX] = (added[:MAX_NOTICES] + earlier)[:MAX_NOTICES] if stamp else earlier
+
+    _edit_school_slot(store, school_id, change)
+
+
+def school_list(state, field):
+    entries = state.get(field)
+    if not isinstance(entries, list):
+        return None
+    count = state.get(field + LIST_COUNT_SUFFIX)
+    total = count if isinstance(count, int) and not isinstance(count, bool) and count >= len(entries) else len(entries)
+    fresh = [
+        dict(list_notice_of(entry), **{FRESH_STAMP: _stamp_of(entry)})
+        for entry in state.get(field + FRESH_SUFFIX) or []
+        if _stamp_of(entry)
+    ]
+    return {
+        "count": total,
+        "items": [list_notice_of(entry) for entry in entries[:MAX_NOTICES]],
+        "fresh": fresh[:MAX_NOTICES],
+    }
 
 
 def school_mail(store, school_id):
@@ -780,7 +840,7 @@ def build_state(store, holiday_calendar, child_key, now_epoch):
     language = messages.normalize_language(config.get("language"))
     state = school_state(store, connection_of_key(child_key))
     snapshot = store.load_calendar_snapshot()
-    local_now = feed.berlin_moment(now_epoch)
+    local_now = berlin.local_from_epoch(now_epoch)
     today = local_now.date()
     horizon = today + timedelta(days=LESSON_DAYS_AHEAD)
     payload = holiday_calendar.range_info(today, horizon, config)
@@ -880,12 +940,21 @@ def _conference_date(cells):
         day = holidays.parse_day(cell)
         if day is not None:
             return day
+    for cell in cells:
+        found = dates_in(cell)
+        if found:
+            return found[0]
     return None
 
 
 def _conference_title(cells, day):
-    rest = [cell for cell in cells if holidays.parse_day(cell) != day]
+    rest = [cell for cell in cells if holidays.parse_day(cell) != day and not _names_day(cell, day)]
     return CONFERENCE_TITLE_SEPARATOR.join(cell for cell in rest[:CONFERENCE_TITLE_CELLS] if cell)
+
+
+def _names_day(cell, day):
+    found = dates_in(cell)
+    return bool(found) and found[0] == day
 
 
 def next_conference(state, today):
@@ -924,7 +993,7 @@ def _holiday_payload(span, today):
 def build_school(store, holiday_calendar, now_epoch, school_id=""):
     config = config_for_connection(store, school_id)
     language = messages.normalize_language(config.get("language"))
-    today = feed.berlin_moment(now_epoch).date()
+    today = berlin.local_from_epoch(now_epoch).date()
     horizon = today + timedelta(days=feed.HOLIDAY_DAYS_AHEAD)
     payload = holiday_calendar.range_info(today, horizon, config)
     day_map = payload.get("days") or {}
@@ -940,6 +1009,10 @@ def build_school(store, holiday_calendar, now_epoch, school_id=""):
         "unread_letters": _counted(state.get("letters")),
         "unread_posts": _counted(state.get("posts")),
         "unread_mail": school_mail(store, school_id),
+        "open_tasks": school_list(state, SCHOOL_TASKS),
+        "news": school_list(state, SCHOOL_NEWS),
+        "unread_forum_posts": school_list(state, SCHOOL_FORUMS),
+        "texts": school_list(state, SCHOOL_TEXTS),
     }
 
 

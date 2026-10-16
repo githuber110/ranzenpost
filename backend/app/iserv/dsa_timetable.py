@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from .models import Lesson, TimetableWeek
-from .timetable import DATE_FORMAT, week_bounds
+from .timetable import DATE_FORMAT, period_number, week_bounds
 
 QUERY_DATE_FORMAT = "%Y-%m-%d"
 WEEKDAY_OFFSET = 1
@@ -63,7 +63,7 @@ def entry_to_lesson(entry, monday):
     return Lesson(
         date=_lesson_date(monday, weekday),
         day_of_week=weekday + WEEKDAY_OFFSET,
-        period=int(slot.get("number", 0) or 0),
+        period=period_number(slot.get("number")),
         subject=_text(subject.get("acronym")) or _text(subject.get("name")),
         teacher=_teacher_codes(course_subject.get("teachers")),
         room=_text(room.get("name")),
@@ -98,7 +98,7 @@ def entry_lessons(payload, monday):
             if not isinstance(entry, dict):
                 continue
             pairs.append((entry_to_lesson(entry, monday), entry))
-    pairs.sort(key=lambda pair: (pair[0].day_of_week, pair[0].period, pair[0].subject))
+    pairs.sort(key=lambda pair: (pair[0].day_of_week, -1 if pair[0].period is None else pair[0].period, pair[0].subject))
     return pairs
 
 

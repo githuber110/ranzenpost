@@ -165,14 +165,15 @@ def test_a_login_detects_the_modules_and_stores_them(tmp_path, caplog):
     registry = service.modules()
     assert registry["modules"][modules.ABSENCES] is False
     assert registry["modules"][modules.LETTERS] is True
-    assert registry["unsupported"] == [{"segment": "mail", "slug": "mail", "label": "E-Mail", "name": "E-Mail"}]
+    assert registry["unsupported"] == []
+    assert registry["covered"] == [{"segment": "mail", "slug": "mail", "label": "E-Mail", "name": "E-Mail"}]
     assert registry["unknown"] == []
     assert registry["iserv_version"] == "3.9.1"
     assert store.load_modules()["modules"] == registry["modules"]
     lines = [record.getMessage() for record in caplog.records if record.levelno == logging.INFO]
     assert lines == [
-        f"school#{service.id} modules available: timetable, letters, pinboard, conferences, messenger; "
-        "missing: absences, calendar; not supported: 1 (mail); unknown: 0"
+        f"school#{service.id} modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay; "
+        "missing: absences, calendar; not supported: 0; unknown: 0; read by the app: 1 (mail)"
     ]
     assert holder["client"].calls.count("/iserv/") == 1
 
@@ -202,7 +203,8 @@ def test_every_refresh_reads_the_start_page_and_probes_every_module(tmp_path):
     probes = len(holder["client"].calls)
     assert probes == 1 + len(modules.MODULES)
     service.refresh_modules()
-    assert len(holder["client"].calls) == 2 * probes
+    refused = sum(1 for name in modules.MODULES if service._refusals.refused(("module", name)))
+    assert len(holder["client"].calls) == 2 * probes - refused
 
 
 def test_a_refresh_without_a_session_logs_in_and_detects_only_once(tmp_path):
@@ -218,16 +220,16 @@ def test_a_module_that_appears_later_is_picked_up_by_the_next_refresh_with_one_l
         assert service.modules()["modules"][modules.LETTERS] is False
         service.refresh_modules()
         holder["client"].missing.clear()
-        service.refresh_modules()
+        service.recheck_modules()
         assert service.modules()["modules"][modules.LETTERS] is True
         service.refresh_modules()
     prefix = f"school#{service.id} "
     lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert lines == [
-        "modules available: timetable, pinboard, absences, conferences, messenger; missing: letters, calendar; "
-        "not supported: 1 (mail); unknown: 0",
-        "modules available: timetable, letters, pinboard, absences, conferences, messenger; missing: calendar; "
-        "not supported: 1 (mail); unknown: 0",
+        "modules available: timetable, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay; missing: letters, calendar; "
+        "not supported: 0; unknown: 0; read by the app: 1 (mail)",
+        "modules available: timetable, letters, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay; missing: calendar; "
+        "not supported: 0; unknown: 0; read by the app: 1 (mail)",
     ]
 
 
@@ -434,6 +436,11 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
         modules.CONFERENCES: False,
         modules.MESSENGER: False,
         modules.CALENDAR: False,
+        modules.TASKS: False,
+        modules.NEWS: False,
+        modules.FORUMS: False,
+        modules.TEXTS: False,
+        modules.INFODISPLAY: False,
     }
     assert [child["name"] for child in children] == ["Alex Example", "Robin Example"]
     assert children[0]["child_id"] == "letters:alex-example"
@@ -443,8 +450,8 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
     prefix = f"school#{service.id} "
     module_lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert module_lines == [
-        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger, calendar; "
-        "not supported: 1 (mail); unknown: 0"
+        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger, calendar, tasks, news, forums, texts, infodisplay; "
+        "not supported: 0; unknown: 0; read by the app: 1 (mail)"
     ]
     assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
 
@@ -488,29 +495,13 @@ def _stored_klassengeld(store, url):
     return connection_service(store, connection_id)
 
 
-def test_each_school_offers_its_own_klassengeld_link(tmp_path):
-    store = Store(tmp_path)
-    first = _stored_klassengeld(store, "https://one.example")
-    second = _stored_klassengeld(store, "https://two.example")
-    first_entries = {entry["segment"]: entry for entry in first.modules()["unsupported"]}
-    second_entries = {entry["segment"]: entry for entry in second.modules()["unsupported"]}
-    assert first_entries["klassengeld"]["open_url"] == "https://one.example/iserv/klassengeld/redirect"
-    assert second_entries["klassengeld"]["open_url"] == "https://two.example/iserv/klassengeld/redirect"
-    assert "open_url" not in first_entries["news"]
-
-
-def test_the_combined_registry_keeps_the_link_for_one_school_and_drops_it_for_several(tmp_path):
+def test_no_school_hands_out_a_link_to_a_module_the_app_does_not_show(tmp_path):
     from app.service import IServService
 
-    single = Store(tmp_path / "single")
-    _stored_klassengeld(single, "https://one.example")
-    only = {entry["segment"]: entry for entry in IServService(single).modules()["unsupported"]}
-    assert only["klassengeld"]["open_url"] == "https://one.example/iserv/klassengeld/redirect"
-    assert only["klassengeld"]["link_only"] is True
-
-    several = Store(tmp_path / "several")
-    _stored_klassengeld(several, "https://one.example")
-    _stored_klassengeld(several, "https://two.example")
-    both = {entry["segment"]: entry for entry in IServService(several).modules()["unsupported"]}
-    assert "open_url" not in both["klassengeld"]
-    assert both["klassengeld"]["link_only"] is True
+    store = Store(tmp_path)
+    first = _stored_klassengeld(store, "https://one.example")
+    _stored_klassengeld(store, "https://two.example")
+    for registry in (first.modules(), IServService(store).modules()):
+        entries = {entry["segment"]: entry for entry in registry["unsupported"]}
+        assert set(entries) == {"klassengeld", "news"}
+        assert all("open_url" not in entry and "link_only" not in entry for entry in entries.values())

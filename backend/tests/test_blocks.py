@@ -2,7 +2,7 @@ from app import blocks, modules
 
 
 def test_the_catalogue_names_every_block_once_with_a_known_module():
-    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 11
+    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 16
     for block in blocks.BLOCKS:
         assert block["module"] in modules.MODULES
         assert block["area"] in blocks.AREA_MODULES
@@ -16,9 +16,9 @@ def test_every_module_has_at_least_one_block():
         assert any(block["module"] == module for block in blocks.BLOCKS), module
 
 
-def test_the_default_overview_holds_the_six_agreed_blocks_in_catalogue_order():
+def test_the_default_overview_holds_the_agreed_blocks_with_tasks_news_and_forums_in_catalogue_order():
     listed = blocks.default_overview_blocks()
-    assert [entry["key"] for entry in listed] == ["today", "letters", "noticeboard", "conferences", "changes", "chat"]
+    assert [entry["key"] for entry in listed] == ["today", "letters", "noticeboard", "conferences", "changes", "chat", "tasks", "news", "forums"]
     assert listed[0] == {"key": "today", "size": "normal"}
     for key in blocks.DEFAULT_OVERVIEW_KEYS:
         assert key in blocks.BLOCK_BY_KEY
@@ -49,8 +49,16 @@ def test_navigation_keeps_known_areas_in_order_and_appends_the_missing_ones():
         "post",
         "conferences",
         "calendar",
+        "tasks",
+        "news",
+        "mail",
+        "files",
+        "contacts",
+        "forums",
+        "texts",
+        "infodisplay",
     ]
-    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar"]
+    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
 
 
 def test_modules_disabled_keeps_only_known_module_names():

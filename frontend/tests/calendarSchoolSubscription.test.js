@@ -223,3 +223,10 @@ describe("the holiday region hint with public holidays only", () => {
     expect(form.textContent).not.toContain(label(window, "calendar.subscribe.school.region"));
   });
 });
+
+describe("the school subscription hint", () => {
+  test("names what the feed holds and no longer promises it carries no names", () => {
+    const { window } = setup();
+    expect(label(window, "calendar.subscribe.school.hint")).toBe("Ferien, Feiertage und Schultermine. Ohne Stundenplan.");
+  });
+});

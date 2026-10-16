@@ -7,12 +7,16 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from . import courses, feed, holidays, integration, marks, messages, modules
+from . import account_lists, berlin, conference_notices, courses, feed, holidays, integration, marks, messages, modules, school_lists, task_service
+from .account_poll import poll_account_lists
+from .conference_service import OWN_CANCELLATIONS_KEY as CONFERENCE_OWN_CANCELLATIONS_KEY
+from .conference_service import OWN_CHANGE_KEY as CONFERENCE_OWN_CHANGE_KEY
 from .failure import error_kind
 from .iserv.dsa import student_for_name
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
 from .iserv.timetable import time_table_refusal
 from .iserv.badges import MAIL_BADGE
+from .iserv.school_calendar import answered_at, carried_events, merge_events, poll_window
 from .iserv.errors import (
     LOGIN_SESSION_KEY,
     LOGIN_TWOFACTOR_KEY,
@@ -25,6 +29,7 @@ from .iserv.errors import (
     REASON_UNKNOWN_ACCOUNT,
     DataError,
     LoginError,
+    ModulePageRefusedError,
     OutageError,
     SchoolCalendarRefusedError,
     TwoFactorError,
@@ -86,6 +91,9 @@ PUSH_VIEW_KEY = "push_view"
 COURSE_HINT_KEY = "course_hint_sent"
 PARALLEL_PENDING = "parallel_pending"
 MESSENGER_KEY = "notify.messenger.unread"
+TASKS_KEY = "notify.tasks.new"
+NEWS_KEY = "notify.news.new"
+TEXTS_KEY = "notify.texts.new"
 SCHOOL_TAG_KEY = "notify.school.tag"
 PLAN_ORIGIN_FIELDS = ("date", "period", "subject_code", "teacher_code", "room")
 PLAN_FIELDS_KEY = "plan_fields"
@@ -101,10 +109,18 @@ OWNED_CONFIG_KEYS = ("poll_state", AUTH_NOTIFIED_FLAG, AUTH_NOTIFIED_REASON, LEG
 OUTAGE_SINCE_KEY = "notify.outage.since"
 OUTAGE_BACK_KEY = "notify.outage.back"
 OUTAGE_PUSH_AFTER_SECONDS = 12 * 60 * 60
+REMEMBER_SECONDS = 180 * 24 * 60 * 60
+DETAIL_FIELD = "detail"
+DETAIL_KEY = "detail_key"
+DETAIL_LIMIT = 10
+DETAIL_SOURCE_FIELDS = ("title", "date", "date_text", "category", "category_slug", "summary", "path")
 SNAPSHOT_FIELD_DEPTH = 4
-SCHOOL_EVENTS_DAYS_BACK = 7
-SCHOOL_EVENTS_DAYS_AHEAD = 120
 SCHOOL_CALENDAR_EVENT = "school_calendar"
+SCHOOL_LISTS = (
+    (modules.TASKS, school_lists.TASKS_FIELD, "task_ids", TASKS_KEY, integration.SCHOOL_TASKS),
+    (modules.NEWS, school_lists.NEWS_FIELD, "news_ids", NEWS_KEY, integration.SCHOOL_NEWS),
+    (modules.TEXTS, account_lists.TEXTS_FIELD, "text_ids", TEXTS_KEY, integration.SCHOOL_TEXTS),
+)
 _SCHOOL_LOCKS = {}
 _SCHOOL_LOCKS_GUARD = threading.Lock()
 DEFAULT_POLL_INTERVAL = 1800
@@ -113,6 +129,45 @@ SESSION_HELD_KIND = "held after a session that never opened"
 CODE_FAILURE_KIND = f"TwoFactorError/{LOGIN_TWOFACTOR_KEY}"
 CODE_HELD_KIND = "code refused since the last sign-in"
 SUMMARY_KEYS = {"letters": "letters", "pinboard": "posts", "conferences": "conferences"}
+
+
+def pushable(field, item):
+    return field != school_lists.TASKS_FIELD or not item.get("past")
+
+
+def list_notice(field, item):
+    notice = {"id": item.get("id"), "title": item.get("title")}
+    if field == school_lists.TASKS_FIELD:
+        return dict(notice, sender="", date=item.get("due"))
+    if field == account_lists.TEXTS_FIELD:
+        return dict(notice, sender=item.get("owner"), date=item.get("changed") or item.get("created"))
+    detail = item.get(DETAIL_FIELD)
+    lines = detail.get("text") if isinstance(detail, dict) else None
+    text = " ".join(str(line) for line in lines) if isinstance(lines, list) and lines else item.get("summary")
+    return dict(notice, sender=item.get("category") or item.get("category_slug"), date=item.get("date"), text=text)
+
+
+def list_signature(item):
+    values = [item.get(name) for name in DETAIL_SOURCE_FIELDS]
+    return hashlib.sha256(json.dumps(values, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def school_list_notices(field, entries):
+    if field == school_lists.TASKS_FIELD:
+        entries = [item for item in entries if not item.get("past") and item.get("done") is not True]
+    return [list_notice(field, item) for item in entries]
+
+
+def remembered_ids(value, now):
+    if isinstance(value, list):
+        return {str(item): now for item in value}
+    if not isinstance(value, dict):
+        return None
+    return {
+        str(key): stamp
+        for key, stamp in value.items()
+        if isinstance(stamp, int) and not isinstance(stamp, bool) and now - stamp < REMEMBER_SECONDS
+    }
 
 
 def plan_fields(lessons):
@@ -819,6 +874,10 @@ class Poller:
                     "has_changes": has_changes,
                 })
             events.extend(self._poll_modules(connection, poll_state, language, flags, summary, school, connection_id))
+            if flags.get("conferences", True) and "conference_items" in summary:
+                events.append(
+                    self._poll_conference_notices(connection, poll_state, store, language, school, connection_id, summary["conference_items"])
+                )
             messenger_event = (
                 self._poll_messenger(connection, poll_state, language, school, connection_id)
                 if flags[modules.MESSENGER]
@@ -826,7 +885,7 @@ class Poller:
             )
             if messenger_event is not None:
                 events.append(messenger_event)
-            calendar_event = self._poll_school_calendar(connection, connection_id)
+            calendar_event = self._poll_school_calendar(connection, connection_id, flags[modules.CALENDAR])
             if calendar_event is not None:
                 events.append(calendar_event)
             self._poll_mail(connection, connection_id)
@@ -835,6 +894,11 @@ class Poller:
             if snapshot_dirty and self.store is not None:
                 self._commit_snapshot(baseline, snapshot, connection_id)
                 self._warm_holidays(store)
+            for spec in SCHOOL_LISTS:
+                list_event = self._poll_school_list(connection, connection_id, flags[spec[0]], spec, poll_state, language, school)
+                if list_event is not None:
+                    events.append(list_event)
+            events.extend(poll_account_lists(self, connection, connection_id, flags, poll_state, language, school))
         finally:
             if store is not None:
                 config["poll_state"] = poll_state
@@ -923,17 +987,65 @@ class Poller:
             events.append({"module": event, "new": len(fresh)})
         return events
 
-    def _poll_school_calendar(self, connection, connection_id):
-        available = getattr(connection, "school_calendar_available", None)
-        reader = getattr(connection, "school_events", None)
-        if self.store is None or not callable(available) or not callable(reader):
+    def _poll_conference_notices(self, connection, poll_state, store, language, school, connection_id, items):
+        started = int(self.clock())
+        now = berlin.local_from_epoch(started)
+        today = now.date()
+        conferences = [facts for facts in (conference_notices.conference_facts(item, today) for item in items) if facts]
+        reader = getattr(connection, "conference_page", None)
+        pages = {}
+        wanted = [facts for facts in conferences if facts["page"] and (facts["day"] is None or facts["day"] >= today)]
+        for facts in wanted[: conference_notices.MAX_PAGES] if callable(reader) else []:
+            try:
+                page = reader(facts["page"])
+            except OutageError:
+                raise
+            except Exception as error:
+                logger.info("poll school#%s conference page not read: %s", connection_id, error_kind(error))
+                continue
+            pages[facts["id"]] = conference_notices.bookings_of(page, facts)
+        previous = poll_state.get(conference_notices.STATE_KEY)
+        checked = int(previous.get("checked_at") or 0) if isinstance(previous, dict) else 0
+        fresh_config = store.load_config() if store is not None else {}
+        own_change = int(fresh_config.get(CONFERENCE_OWN_CHANGE_KEY) or 0)
+        own_keys = [
+            str(entry.get("key") or "")
+            for entry in fresh_config.get(CONFERENCE_OWN_CANCELLATIONS_KEY) or []
+            if isinstance(entry, dict) and int(entry.get("at") or 0) >= checked
+        ]
+        gap = started - checked if checked else self.poll_interval
+        pushes, fresh = conference_notices.plan(
+            previous, conferences, pages, now, own_keys=own_keys,
+            own_change_since=bool(own_change) and own_change >= checked, gap_seconds=gap,
+        )
+        fresh["checked_at"] = started
+        delivered = 0
+        for push in pushes:
+            variables = dict(push["variables"])
+            if hasattr(variables.get("date"), "year"):
+                day = variables["date"]
+                variables["date"] = messages.text_in(
+                    language, conference_notices.DATE_KEY, {"day": "%02d" % day.day, "month": "%02d" % day.month, "year": day.year}
+                )
+            text = self._tagged(language, school, messages.text_in(language, push["key"], variables))
+            if self._notify(push["event"], "", text, f"school#{connection_id}: {push['event']}"):
+                delivered += 1
+                continue
+            logger.info("poll school#%s %s not delivered, tried again next poll", connection_id, push["event"])
+            conference_notices.not_delivered(fresh, push)
+        poll_state[conference_notices.STATE_KEY] = fresh
+        return {"module": "conference_notices", "pages": len(pages), "pushes": len(pushes), "delivered": delivered}
+
+    def _poll_school_calendar(self, connection, connection_id, offered):
+        reader = getattr(connection, "read_school_calendar", None)
+        if self.store is None or not callable(reader):
             return None
-        if not available():
+        if not offered:
             self._drop_school_events(connection_id)
             return None
         today = self._today()
         try:
-            listed = reader(today - timedelta(days=SCHOOL_EVENTS_DAYS_BACK), today + timedelta(days=SCHOOL_EVENTS_DAYS_AHEAD))
+            read = reader(*poll_window(today))
         except OutageError:
             raise
         except SchoolCalendarRefusedError:
@@ -944,6 +1056,7 @@ class Poller:
             logger.warning("poll school#%s school calendar failed: %s", connection_id, error_kind(error))
             return {"module": SCHOOL_CALENDAR_EVENT, "error": str(error), "kind": error_kind(error)}
         now = int(self.clock())
+        kept = list(read.events)
 
         def change(snapshot):
             if not connection_known(self.store, connection_id):
@@ -952,10 +1065,116 @@ class Poller:
             if not isinstance(schools, dict):
                 schools = {}
                 snapshot["schools"] = schools
-            schools[connection_id] = {"events": listed, "last_success": now}
+            stored = schools.get(connection_id)
+            listed = merge_events([read.events, carried_events(stored, read.failed, now)])
+            schools[connection_id] = {"events": listed, "last_success": now, "sources": answered_at(stored, read, now)}
+            kept[:] = listed
 
         edit(self.store, self.store.load_calendar_snapshot, self.store.save_calendar_snapshot, change)
-        return {"module": SCHOOL_CALENDAR_EVENT, "events": len(listed)}
+        return {"module": SCHOOL_CALENDAR_EVENT, "events": len(kept)}
+
+    def _poll_school_list(self, connection, connection_id, offered, spec, poll_state, language=None, school=""):
+        _module, field, state_key, key, slot = spec
+        reader = getattr(connection, field, None)
+        if self.store is None or not callable(reader):
+            return None
+        if not offered:
+            self._drop_school_list(connection_id, field, slot)
+            poll_state.pop(state_key, None)
+            return None
+        try:
+            listed = reader()
+        except OutageError:
+            raise
+        except ModulePageRefusedError:
+            logger.info("poll school#%s %s refused for this account", connection_id, field)
+            self._drop_school_list(connection_id, field, slot)
+            poll_state.pop(state_key, None)
+            return {"module": field, "state": "refused"}
+        except DataError as error:
+            logger.info("poll school#%s %s unreadable, last list kept: %s", connection_id, field, error_kind(error))
+            return {"module": field, "state": "unreadable"}
+        except Exception as error:
+            logger.warning("poll school#%s %s unreadable, last list kept: %s", connection_id, field, error_kind(error), exc_info=True)
+            return {"module": field, "state": "unreadable", "kind": error_kind(error)}
+        stored = school_lists.stored_list(self.store, connection_id, field)
+        entries = school_lists.carried(listed, field, stored.get(field) if stored else None)
+        if field == school_lists.NEWS_FIELD:
+            entries = self._with_news_details(connection, connection_id, entries, stored.get(field) if stored else None)
+        now = int(self.clock())
+        school_lists.store_list(self.store, connection_id, field, entries, now, account_lists.combined_extra(listed))
+        known = remembered_ids(poll_state.get(state_key), now)
+        listed_ids = [str(item.get("id")) for item in entries]
+        fresh_entries = [
+            item for item in entries if known is not None and pushable(field, item) and str(item.get("id")) not in known
+        ]
+        poll_state[state_key] = dict(known or {}, **{item_id: now for item_id in listed_ids})
+        integration.record_school_list(
+            self.store,
+            connection_id,
+            slot,
+            school_list_notices(field, entries),
+            [list_notice(field, item) for item in fresh_entries],
+            now,
+        )
+        if known is None:
+            return {"module": field, "items": len(entries), "initialized": sum(1 for item in entries if pushable(field, item))}
+        fresh = {str(item.get("id")) for item in fresh_entries}
+        if fresh:
+            self._notify(
+                field,
+                "",
+                self._tagged(language, school, messages.text_count(language, key, len(fresh))),
+                f"school#{connection_id}: {len(fresh)} new",
+            )
+        return {"module": field, "items": len(entries), "new": len(fresh)}
+
+    def _with_news_details(self, connection, connection_id, entries, stored):
+        reader = getattr(connection, "news_detail", None)
+        if not callable(reader):
+            return entries
+        earlier = {str(item.get("id")): item for item in stored or [] if isinstance(item, dict)}
+        budget = DETAIL_LIMIT
+        halted = False
+        result = []
+        for item in entries:
+            signature = list_signature(item)
+            before = earlier.get(str(item.get("id"))) or {}
+            kept = {name: before[name] for name in (DETAIL_FIELD, DETAIL_KEY) if isinstance(before.get(DETAIL_FIELD), dict) and name in before}
+            if kept.get(DETAIL_KEY) == signature or halted or budget <= 0 or not item.get("path"):
+                result.append(dict(item, **kept))
+                continue
+            budget -= 1
+            try:
+                detail = reader(item["path"], item.get("title") or "")
+            except OutageError as error:
+                logger.info("poll school#%s news details paused: %s", connection_id, error_kind(error))
+                halted = True
+                result.append(dict(item, **kept))
+                continue
+            except DataError as error:
+                logger.info("poll school#%s news detail unreadable: %s", connection_id, error_kind(error))
+                detail = {"unreadable": True}
+            except Exception as error:
+                logger.warning("poll school#%s news detail unreadable: %s", connection_id, error_kind(error), exc_info=True)
+                detail = {"unreadable": True}
+            result.append(dict(item, **{DETAIL_FIELD: detail, DETAIL_KEY: signature}))
+        return result
+
+    def _drop_school_list(self, connection_id, field, slot):
+        integration.record_school_list(self.store, connection_id, slot, None)
+        fields = (field, task_service.DETAILS_FIELD, task_service.SHAPES_FIELD) if field == school_lists.TASKS_FIELD else (field,)
+        snapshot = self.store.load_calendar_snapshot()
+        if not any(isinstance(snapshot.get(name), dict) and connection_id in snapshot[name] for name in fields):
+            return
+
+        def change(snapshot):
+            for name in fields:
+                stored = snapshot.get(name)
+                if isinstance(stored, dict):
+                    stored.pop(connection_id, None)
+
+        edit(self.store, self.store.load_calendar_snapshot, self.store.save_calendar_snapshot, change)
 
     def _poll_mail(self, connection, connection_id):
         available = getattr(connection, "mail_available", None)
@@ -1045,15 +1264,19 @@ class Poller:
         if not collected:
             return False
         for entry in overview.get("entries") or []:
-            if not isinstance(entry, dict):
+            if not isinstance(entry, dict) or entry.get("unconfirmed"):
                 continue
             key = owners.get(entry.get("student_id"))
             if key not in collected:
                 continue
             collected[key].append({name: entry.get(name) for name in ABSENCE_FIELDS})
         stamp = int(self.clock())
+        withheld = overview.get("withheld")
+        partial = isinstance(withheld, int) and not isinstance(withheld, bool) and withheld > 0
         holders = snapshot.setdefault("children", {})
         for key, entries in collected.items():
+            if partial and not entries:
+                continue
             holder = holders.setdefault(key, {})
             holder["absences"] = entries
             holder["absences_fetched_at"] = stamp
@@ -1100,6 +1323,8 @@ class Poller:
     def _conference_keys(self, connection, summary):
         data = connection.conferences() or {}
         summary["conferences"] = integration.conference_rows(data)
+        if not data.get("error"):
+            summary["conference_items"] = [item for item in data.get("items") or [] if isinstance(item, dict)]
         if data.get("empty"):
             return set()
         return {

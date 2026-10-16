@@ -67,6 +67,9 @@ run at all. For a single card file use `npm run test:card:focused -- tests/card/
 - `frontend/`: the Ingress web UI (vanilla JS, no build step).
   - `i18n/`: the string database, one flat `key -> text` file per language.
   - `lib/`: small modules the app loads, such as the store and the sheets.
+  - `app/`: one plain script per area, such as the overview, the timetable or the messenger. They
+    only declare functions and constants. `app.js` loads after them, holds the shared shell and
+    starts the app.
   - `fonts/` and `vendor/`: bundled fonts and pdf.js, with their licences.
 - `e2e/`: Playwright specs; the fixture IServ server they run against is
   `backend/tests/e2e_fixture_app.py`.

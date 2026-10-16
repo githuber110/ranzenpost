@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,10 @@ SCRIPT_SUFFIXES = (".js", ".mjs")
 STYLE_SUFFIXES = (".css",)
 MARKUP_SUFFIXES = (".html",)
 GUARDED_SUFFIXES = SCRIPT_SUFFIXES + STYLE_SUFFIXES + MARKUP_SUFFIXES
+
+APP_PARTS_DIR = "app"
+BODY = re.compile(r"<body>(.*?)</body>", re.S)
+CLASSIC_SCRIPT = re.compile(r'<script src="\./([\w./-]+)\?v=\d+" defer></script>')
 
 
 def _relative(path):
@@ -63,3 +68,19 @@ def stylesheet_names():
 
 def markup_names():
     return shipped_names(MARKUP_SUFFIXES)
+
+
+def app_script_names(frontend=None):
+    frontend = FRONTEND if frontend is None else frontend
+    body = BODY.search((frontend / "index.html").read_text(encoding="utf-8"))
+    names = CLASSIC_SCRIPT.findall(body.group(1) if body else "")
+    return tuple(name for name in names if name == "app.js" or name.startswith(APP_PARTS_DIR + "/"))
+
+
+def app_sources(frontend=None):
+    frontend = FRONTEND if frontend is None else frontend
+    return tuple((name, (frontend / name).read_text(encoding="utf-8")) for name in app_script_names(frontend))
+
+
+def app_source_text(frontend=None):
+    return "\n".join(text for _name, text in app_sources(frontend))

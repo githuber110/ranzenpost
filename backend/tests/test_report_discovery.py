@@ -254,3 +254,95 @@ def test_known_api_reads_stop_when_the_page_budget_is_used_up():
     lines = reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
     assert len([line for line in lines if line.startswith("##### Known API GET")]) == 1
     assert "- Known API reads stopped: the report page limit is reached" in lines
+
+
+FEED_EVENT = dict(EVENT, calendarId="/eltern.5a/calendar")
+EXAM_EVENTS = [dict(EVENT, uid="x1", title="Mathe Musterkind", calendarName=None), dict(EVENT, uid="x2", start="2026-02-03T08:00:00+01:00", end="2026-02-03T09:00:00+01:00")]
+SOURCE_LIST = [
+    {"label": "Musterkind privat", "id": "/f.max.muster/home", "subscription": False, "color": "#123456", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Ff.max.muster%2Fhome", "type": "cal", "droppable": True},
+    {"label": "Eltern 5a", "id": "/eltern.5a/calendar", "subscription": True, "color": "#123456", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Feltern.5a%2Fcalendar", "type": "cal", "droppable": False},
+    {"label": "Klausuren Turnhalle", "id": "exam", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=exam", "type": "plugin", "droppable": False},
+    {"label": "Zeugnisse", "id": "zeugnisse", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=zeugnisse", "type": "plugin", "droppable": False},
+    {"label": "Posteingang", "id": "/eltern/x", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/delete?id=5a", "type": "Eltern 5a", "droppable": False},
+]
+
+
+def source_answers():
+    answers = calendar_answers()
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/api/eventsources"] = json_answer(SOURCE_LIST)
+
+    def plugin(request):
+        if "plugin=exam" in request.url:
+            return json_answer(EXAM_EVENTS)
+        return (500, {"Content-Type": "text/html"}, b"<html>Fehler Musterkind</html>")
+
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin"] = plugin
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar"] = json_answer([FEED_EVENT])
+    return answers
+
+
+def source_lines(lines):
+    head = lines.index("##### Calendar sources (app window 2026-01-08 to 2026-05-15)")
+    return [line for line in lines[head + 1:] if line.startswith("- Source")]
+
+
+def test_every_calendar_source_gets_one_line_with_type_rule_url_shape_status_and_count():
+    client, adapter = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = source_lines(reportcrawl.known_api_lines(fetcher, "calendar", TODAY))
+    assert lines[0].startswith("- Source 1: type cal, url /iserv/calendar/feed/calendar?cal=/<seg>/home -> 200 application/json ")
+    assert lines[0].endswith("B, 1 events")
+    assert lines[1].startswith("- Source 2: type cal, url /iserv/calendar/feed/calendar?cal=/<seg>/calendar -> 200 application/json ")
+    assert lines[1].endswith("B, 1 events")
+    assert lines[2].startswith("- Source 3: type plugin, url /iserv/calendar/feed/plugin?plugin=exam -> 200 application/json ")
+    assert lines[2].endswith("B, 2 events")
+    assert lines[3].startswith("- Source 4: type plugin, url /iserv/calendar/feed/plugin?plugin=<seg> -> 500 text/html ")
+    assert lines[4] == "- Source 5: type <other>, url /iserv/calendar/delete?id=<seg>, not read: url outside the calendar feeds"
+    assert len(lines) == 5
+
+
+def test_the_calendar_source_lines_keep_labels_ids_and_the_account_out():
+    client, adapter = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    text = "\n".join(reportcrawl.known_api_lines(fetcher, "calendar", TODAY))
+    for word in SECRET_WORDS + ("Klausuren", "privat", "zeugnisse"):
+        assert word not in text
+
+
+def test_the_report_reads_only_the_listed_school_feeds_with_the_app_window():
+    client, adapter = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
+    feeds = [url for url in adapter.sent if "/iserv/calendar/feed/" in url and "calendar-multi" not in url]
+    assert feeds == [
+        SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar?cal=%2Ff.max.muster%2Fhome&start=2026-01-08&end=2026-05-15",
+        SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar?cal=%2Feltern.5a%2Fcalendar&start=2026-01-08&end=2026-05-15",
+        SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin?plugin=exam&start=2026-01-08&end=2026-05-15",
+        SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin?plugin=zeugnisse&start=2026-01-08&end=2026-05-15",
+    ]
+    assert not [url for url in adapter.sent if "/delete" in url]
+
+
+def test_the_page_structure_reuses_the_source_list_it_already_read():
+    client, adapter = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    row = {"slug": "calendar", "segment": "calendar", "name": "Kalender", "page": "/iserv/calendar/", "json": "calendar"}
+    lines = diagnostics.page_structure(fetcher, row, TODAY, {})
+    assert len(source_lines(lines)) == 5
+    assert adapter.sent.count(SCHOOL_ONE_URL + "/iserv/calendar/api/eventsources") == 1
+
+
+def test_an_unreadable_source_list_says_so():
+    answers = source_answers()
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/api/eventsources"] = json_answer({"error": "denied"})
+    client, _ = recording_client(answers)
+    lines = reportcrawl.known_api_lines(diagnostics.ReportFetcher(client), "calendar", TODAY)
+    assert "- Sources: unreadable, the app falls back to the combined feed" in lines
+
+
+def test_calendar_source_reads_stop_with_the_page_budget():
+    client, _ = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client, reportcrawl.CrawlBudget(pages=5))
+    lines = reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
+    assert "- Calendar source reads stopped: the report page limit is reached" in lines
+    assert len(source_lines(lines)) == 2

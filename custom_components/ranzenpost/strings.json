@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "Unread e-mails"
       },
+      "open_tasks": {
+        "name": "Open tasks"
+      },
+      "news": {
+        "name": "News"
+      },
+      "unread_forum_posts": {
+        "name": "Unread forum posts"
+      },
+      "texts": {
+        "name": "Texts"
+      },
       "open_absences": {
         "name": "Open absences"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "School reachable again",
       "login_needed": "Login needed",
       "school_new_letter": "New letter",
-      "school_new_noticeboard_post": "New noticeboard post"
+      "school_new_noticeboard_post": "New noticeboard post",
+      "school_new_task": "New task",
+      "school_new_news": "New news item",
+      "school_new_forum_post": "New forum post",
+      "school_new_text": "New text"
     },
     "condition_type": {
       "is_school_day": "Is a school day",

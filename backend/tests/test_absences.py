@@ -5,7 +5,6 @@ import pytest
 
 from app.iserv.absences import (
     BODY_FORM,
-    berlin_offset,
     BODY_JSON,
     DAY_TODAY,
     DAY_TOMORROW,
@@ -515,14 +514,6 @@ def test_a_march_date_is_not_shifted_to_the_day_before():
     assert _iso("2026-03-10").startswith("2026-03-09T23")
 
 
-def test_the_offset_follows_the_wall_clock_on_the_switch_day():
-    from datetime import datetime
-
-    assert berlin_offset(datetime(2026, 3, 29, 0, 0)) == 1
-    assert berlin_offset(datetime(2026, 3, 29, 8, 0)) == 2
-    assert berlin_offset(datetime(2026, 10, 25, 0, 0)) == 2
-    assert berlin_offset(datetime(2026, 10, 26, 0, 0)) == 1
-
 
 def test_date_part_reads_the_captured_incident_epoch_as_the_correct_berlin_day():
     assert _date_part(1788300000) == "2026-09-02"
@@ -617,6 +608,14 @@ def test_merge_absence_history_adds_vanished_entry_marked_from_history():
     assert "seen_at" not in merged[0]
 
 
+def test_stored_absence_text_from_an_older_version_is_cleaned_again():
+    stored = "<p>Bitte</p><!--><img src=x onerror=alert(1)>-->"
+    history = {"7": {"id": 7, "kind": KIND_SICK, "till_date": "2026-08-20", "body": stored, "answer": stored}}
+    merged = merge_absence_history([], history, today=date(2026, 9, 2))
+    assert merged[0]["body"] == "<p>Bitte</p>"
+    assert merged[0]["answer"] == "<p>Bitte</p>"
+
+
 def test_merge_absence_history_prefers_live_entry_over_history_duplicate():
     live = [{"id": 7, "kind": KIND_SICK, "status": "open"}]
     history = {"7": {"id": 7, "kind": KIND_SICK, "status": "stale", "till_date": "2026-08-20"}}
@@ -638,3 +637,20 @@ def _iso(day):
         KIND_DEREGISTER, STUDENT, {"deregister_from": "bus", "date": day}
     )
     return request.payload["absentDate"]
+
+
+def test_sick_note_keeps_period_zero_in_a_chosen_range():
+    request = build_request(
+        KIND_SICK, STUDENT, {"day_from": DAY_TODAY, "from_period": 0, "till_period": 3}, today=TUESDAY
+    )
+    assert request.payload["sickFromLessonNumber"] == 0
+    assert request.payload["sickTillLessonNumber"] == 3
+
+
+def test_sick_note_without_periods_covers_the_whole_day_from_the_first_slot():
+    slots = [{"number": 0}, {"number": 1}, {"number": 2}]
+    request = build_request(KIND_SICK, STUDENT, {"day_from": DAY_TODAY}, today=TUESDAY, periods=slots)
+    assert request.payload["sickFromLessonNumber"] == 0
+    assert request.payload["sickTillLessonNumber"] == 2
+    plain = build_request(KIND_SICK, STUDENT, {"day_from": DAY_TODAY}, today=TUESDAY, periods=slots[1:])
+    assert plain.payload["sickFromLessonNumber"] == 1

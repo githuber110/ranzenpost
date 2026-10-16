@@ -46,28 +46,29 @@ async function openWizard(states) {
 }
 
 describe("a school that forces two-factor later", () => {
-  test("the connect step explains the setup in the browser instead of showing an error", async () => {
+  test("the connect step starts the setup in the app instead of showing an error", async () => {
     const { app, window } = await openWizard([SETUP_STEP]);
     const text = app.textContent;
-    expect(text).toContain(label(window, "wizard.connect.setupRequired"));
+    expect(text).toContain(label(window, "wizard.setup.start.text"));
     expect(text).not.toContain(label(window, "wizard.connect.text"));
     expect(text).not.toContain(label(window, "wizard.connect.privacy"));
     expect(app.querySelector(".wz-error")).toBeNull();
-    expect(app.querySelector('input[name="code"]')).toBeTruthy();
+    expect(app.querySelector('input[name="code"]')).toBeNull();
+    expect(app.querySelector(".sw-next").textContent).toContain(label(window, "wizard.setup.start.button"));
   });
 
   test("a normal two-factor login keeps the usual connect text", async () => {
     const { app, window } = await openWizard([{ ...SETUP_STEP, needs_2fa_setup: false }]);
     expect(app.textContent).toContain(label(window, "wizard.connect.text"));
-    expect(app.textContent).not.toContain(label(window, "wizard.connect.setupRequired"));
+    expect(app.textContent).not.toContain(label(window, "wizard.setup.start.text"));
   });
 
-  test("a code while IServ still waits for the setup names that and keeps the explanation", async () => {
+  test("a code while IServ still waits for the setup names that and keeps the start", async () => {
     const { app, window } = await openWizard([
       { ...SETUP_STEP, error: { code: "twofactor_required_setup", message_key: "api.wizard.twofactorSetupPending" } },
     ]);
     expect(app.querySelector(".wz-error").textContent).toContain(label(window, "api.wizard.twofactorSetupPending"));
-    expect(app.textContent).toContain(label(window, "wizard.connect.setupRequired"));
+    expect(app.textContent).toContain(label(window, "wizard.setup.start.text"));
   });
 
   test("the wizard names an unknown account and a blocked default password", async () => {

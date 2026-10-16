@@ -50,3 +50,29 @@ export function shippedScripts(root = FRONTEND) {
 export function shippedScriptText(root = FRONTEND) {
   return shippedScripts(root).map((script) => script.source).join("\n");
 }
+
+export const APP_PARTS_DIR = "app";
+
+export function pageBodyScripts(root = FRONTEND) {
+  const html = readShipped("index.html", root);
+  const body = /<body>([\s\S]*?)<\/body>/.exec(html);
+  return [...(body ? body[1] : "").matchAll(/<script\b([^>]*)><\/script>/g)].map((match) => {
+    const src = /\bsrc="\.\/([\w./-]+)\?v=\d+"/.exec(match[1]);
+    return { name: src ? src[1] : "", module: /\stype="module"/.test(match[1]) };
+  });
+}
+
+export function appSourceNames(root = FRONTEND) {
+  return pageBodyScripts(root)
+    .filter((script) => !script.module)
+    .map((script) => script.name)
+    .filter((name) => name === "app.js" || name.startsWith(`${APP_PARTS_DIR}/`));
+}
+
+export function appSources(root = FRONTEND) {
+  return appSourceNames(root).map((name) => ({ name, source: readShipped(name, root) }));
+}
+
+export function appSourceText(root = FRONTEND) {
+  return appSources(root).map((script) => script.source).join("\n");
+}

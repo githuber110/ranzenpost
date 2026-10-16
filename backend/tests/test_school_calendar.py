@@ -4,10 +4,16 @@ import pytest
 
 from app.iserv.school_calendar import (
     CalendarShapeError,
+    carried_events,
     events_params,
+    feed_request,
+    feed_sources,
+    merge_events,
     parse_event,
     parse_events,
     parse_sources,
+    source_events,
+    source_kind,
 )
 
 TIMED = {
@@ -163,8 +169,111 @@ def test_an_all_day_event_given_in_utc_keeps_its_berlin_date():
     assert (winter["start"], winter["end"]) == ("2026-12-15", "2026-12-16")
 
 
-def test_the_personal_calendar_of_the_account_is_not_a_school_event():
+def test_the_personal_calendar_of_the_account_is_read_like_every_other():
     payload = {"/f.parent/home": [dict(TIMED, uid="private", title="Dentist")], "/group.parents-5a/calendar": [TIMED]}
-    assert [event["title"] for event in parse_events(payload)] == ["Parents evening 5a"]
+    assert [event["title"] for event in parse_events(payload)] == ["Dentist", "Parents evening 5a"]
     listed = {"events": [dict(TIMED, uid="private", title="Dentist", calendarId="/f.parent/home/"), TIMED], "errors": []}
-    assert [event["title"] for event in parse_events(listed)] == ["Parents evening 5a"]
+    assert [event["title"] for event in parse_events(listed)] == ["Dentist", "Parents evening 5a"]
+
+
+def test_every_listed_source_is_kept_with_its_feed_url():
+    sources = feed_sources(
+        [
+            {"id": "/f.parent/home", "label": "Mine", "type": "cal", "subscription": False, "url": " /iserv/calendar/feed/calendar?cal=x "},
+            {"id": "/class.7b/home", "label": "Class", "type": "cal", "subscription": True, "url": "/iserv/calendar/feed/calendar?cal=z"},
+            {"id": "exam", "label": "Exams", "type": "plugin", "subscription": False, "url": "/iserv/calendar/feed/plugin?plugin=exam"},
+            {"id": "nourl", "label": "No url", "type": "plugin", "url": 3},
+        ]
+    )
+    assert [(source["id"], source["url"]) for source in sources] == [
+        ("/f.parent/home", "/iserv/calendar/feed/calendar?cal=x"),
+        ("/class.7b/home", "/iserv/calendar/feed/calendar?cal=z"),
+        ("exam", "/iserv/calendar/feed/plugin?plugin=exam"),
+        ("nourl", ""),
+    ]
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("/iserv/calendar/feed/calendar?cal=%2Fa%2Fhome", ("/iserv/calendar/feed/calendar", [("cal", "/a/home"), ("start", "2026-10-01"), ("end", "2026-10-31")])),
+        ("/iserv/calendar/feed/plugin?plugin=exam&start=1&end=2", ("/iserv/calendar/feed/plugin", [("plugin", "exam"), ("start", "2026-10-01"), ("end", "2026-10-31")])),
+        ("/iserv/calendar/feed/plugin", ("/iserv/calendar/feed/plugin", [("start", "2026-10-01"), ("end", "2026-10-31")])),
+        ("/iserv/calendar/delete?id=1", None),
+        ("/iserv/calendar/api/actions/x", None),
+        ("/iserv/calendar/feed/../edit", None),
+        ("/iserv/calendar/feed/calendar/upload", None),
+        ("/iserv/calendar/feed/Actions/x", None),
+        ("/iserv/calendar/feed/plugin/exam?x=1", ("/iserv/calendar/feed/plugin/exam", [("x", "1"), ("start", "2026-10-01"), ("end", "2026-10-31")])),
+        ("/iserv/calendar/feed/a/b/c/d", None),
+        ("/iserv/calendar/feed", None),
+        ("/iserv/calendar/feed/x.ics", None),
+        ("https://school.example/iserv/calendar/feed/calendar", None),
+        ("//other.example/iserv/calendar/feed/calendar", None),
+        ("/iserv/calendar/feed/calendar#x", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_only_calendar_feeds_are_requested_with_their_own_query_and_the_window(url, expected):
+    assert feed_request(url, date(2026, 10, 1), date(2026, 10, 31)) == expected
+
+
+def test_events_of_a_source_name_their_calendar_and_source():
+    source = {"id": "exam", "label": "Exam plan"}
+    events = source_events([dict(TIMED, calendarName=None), dict(ALL_DAY)], source)
+    assert [(event["calendar"], event["source"]) for event in events] == [("Exam plan", "exam"), ("School", "exam")]
+
+
+def test_merged_events_are_deduplicated_by_uid_and_start_and_sorted():
+    first = {"uid": "a", "start": "2026-10-02", "title": "A"}
+    second = {"uid": "b", "start": "2026-10-01", "title": "B"}
+    assert merge_events([[first], [dict(first, title="copy"), second, "junk"]]) == [second, first]
+
+
+def test_only_events_of_failed_sources_are_carried_over():
+    stored = {"events": [{"uid": "a", "source": "exam"}, {"uid": "b", "source": "other"}, {"uid": "c"}, "junk"]}
+    assert carried_events(stored, ("exam",), 100) == [{"uid": "a", "source": "exam"}]
+    assert carried_events(stored, (), 100) == []
+    assert carried_events(None, ("exam",), 100) == []
+
+
+def test_the_source_type_is_shown_only_as_a_short_word():
+    assert [source_kind(value) for value in ("cal", "plugin", "Cal", "x y", "", None, "a" * 13)] == [
+        "cal",
+        "plugin",
+        "<other>",
+        "<other>",
+        "<other>",
+        "<other>",
+        "<other>",
+    ]
+
+
+def test_plugin_events_with_the_same_short_id_from_two_sources_both_stay():
+    exam = {"uid": "12", "start": "2026-10-05", "title": "Exam", "source": "exam"}
+    holiday = {"uid": "12", "start": "2026-10-05", "title": "Holiday", "source": "holiday"}
+    shared = {"uid": "trip@school.example", "start": "2026-10-06", "title": "Trip", "source": "/class/home"}
+    merged = merge_events([[exam, shared], [holiday, dict(shared, source="/school/calendar"), dict(exam)]])
+    assert [event["title"] for event in merged] == ["Exam", "Holiday", "Trip"]
+
+
+def test_short_ids_in_two_calendars_of_one_answer_both_stay():
+    payload = {
+        "/a/calendar": [dict(TIMED, uid="7", title="First")],
+        "/b/calendar": [dict(TIMED, uid="7", title="Second"), dict(TIMED)],
+        "/c/calendar": [dict(TIMED)],
+    }
+    assert sorted(event["title"] for event in parse_events(payload)) == ["First", "Parents evening 5a", "Second"]
+
+
+def test_the_status_and_source_helpers_have_one_origin():
+    from app import diagnostics, modules, pageshape, reportcrawl, reportfacts
+    from app.iserv import pages, school_calendar
+
+    for module in (school_calendar, diagnostics, reportcrawl, reportfacts):
+        assert module.status_of is pages.status_of
+    assert not hasattr(pageshape, "status_of")
+    assert not hasattr(school_calendar, "_status")
+    assert not hasattr(school_calendar, "_source_entries")
+    assert modules.feed_sources is reportcrawl.feed_sources is school_calendar.feed_sources

@@ -266,7 +266,7 @@ def test_password_repair_failure_is_logged_without_the_password(tmp_path, monkey
 def test_account_disconnect_failure_is_logged_without_the_username(tmp_path, monkeypatch, caplog):
     api, _ = client(tmp_path)
 
-    def broken(self, connection_id):
+    def broken(self, connection_id, force=False, token_id=None):
         raise NotConfiguredError("school url or credentials missing")
 
     monkeypatch.setattr(FakeService, "disconnect", broken, raising=False)

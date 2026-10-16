@@ -163,3 +163,12 @@ def test_a_teacher_with_only_a_display_name_is_not_lost():
     lesson = entry_to_lesson(entry, date(2026, 9, 7))
     assert lesson.teacher_name == "Frau Beispiel"
     assert lesson.teacher_surname == "Frau Beispiel"
+
+
+def test_a_slot_number_zero_is_period_zero_and_a_missing_number_stays_unknown():
+    zero = entry_to_lesson({"weekday": 4, "timeTableSlot": {"number": 0}}, MONDAY)
+    missing = entry_to_lesson({"weekday": 4, "timeTableSlot": {}}, MONDAY)
+    no_slot = entry_to_lesson({"weekday": 4}, MONDAY)
+    assert zero.period == 0
+    assert missing.period is None
+    assert no_slot.period is None

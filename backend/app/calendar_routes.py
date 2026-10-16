@@ -12,7 +12,7 @@ def school_calendar_ready(store, connection_id):
     if not callable(scoped):
         return False
     stored = scoped(connection_id).load_modules()
-    return bool(stored) and modules.available(stored, modules.CALENDAR)
+    return modules.available(stored, modules.CALENDAR)
 
 
 def register_routes(app, service, subscription_registry, warm, integration_seen):

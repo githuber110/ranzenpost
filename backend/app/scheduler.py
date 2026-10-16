@@ -31,7 +31,23 @@ def _make_notifier(store, event="timetable"):
     return send
 
 
-NOTIFY_EVENTS = ("timetable", "letters", "pinboard", "conferences", "auth", "messenger", "outage")
+NOTIFY_EVENTS = (
+    "timetable",
+    "letters",
+    "pinboard",
+    "conferences",
+    "conference_booking_open",
+    "conference_cancelled",
+    "conference_reminder",
+    "conference_booking_reminder",
+    "auth",
+    "messenger",
+    "outage",
+    "tasks",
+    "news",
+    "forums",
+    "texts",
+)
 DEFAULT_INTERVAL_SECONDS = 1800
 INTERVAL_ENV = "ISERV_POLL_INTERVAL"
 

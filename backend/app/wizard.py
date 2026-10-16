@@ -31,6 +31,20 @@ REUSE_STOP_OUTCOMES = (
     lockout.DEFAULT_PASSWORD_BLOCKED,
 )
 BLOCKING_ERRORS = ("paused", "locked")
+REMOVAL_REFUSALS = REUSE_STOP_OUTCOMES + UNCOUNTED_LOGIN_OUTCOMES
+SETUP_PHASE = "twofactor_setup"
+SETUP_START = "start"
+SETUP_CODE = "code"
+SETUP_UNCERTAIN = "uncertain"
+SETUP_DONE = "done"
+SETUP_KEY = "setup_key"
+UNCONFIRMED = "registration_unconfirmed"
+STALE_UUIDS = "stale_uuids"
+OTHER_TOKENS = "other_tokens"
+STALE_REMOVED = "stale_removed"
+STALE_STEPS = ("child", STEP_DONE)
+LOGIN_SCOPED_KEYS = (UNCONFIRMED, STALE_UUIDS, OTHER_TOKENS, STALE_REMOVED, "stale_removable")
+PREVIOUS_UUID = "previous_twofactor_uuid"
 
 REFUSED_LOGIN_KEY = "refused_login"
 REFUSED_LOGIN_SECONDS = 24 * 60 * 60
@@ -38,11 +52,30 @@ REFUSED_LOGIN_ROUNDS = 100_000
 
 
 def _store_token(secrets, result):
+    secrets.pop(PREVIOUS_UUID, None)
     secrets["totp_secret"] = result["secret"]
     if result.get("uuid"):
         secrets["twofactor_uuid"] = result["uuid"]
     else:
         secrets.pop("twofactor_uuid", None)
+
+
+def _keep_previous_uuid(secrets):
+    if secrets.get("twofactor_uuid"):
+        secrets[PREVIOUS_UUID] = secrets["twofactor_uuid"]
+
+
+def _split_old_tokens(old_tokens, own, new):
+    mine, others = [], []
+    for token in old_tokens or []:
+        uuid = str(token.get("uuid") or "")
+        if not uuid or uuid == new:
+            continue
+        if uuid == own:
+            mine.append(uuid)
+        else:
+            others.append({"uuid": uuid, "name": TOKEN_NAME, "created": str(token.get("created") or "")})
+    return mine, others
 
 
 def account_fingerprint(username):
@@ -97,6 +130,12 @@ class Wizard:
         shown["additional"] = self._other_complete(state)
         entry = self._pause_entry(state)
         shown["attempts"] = entry.get("attempts", 0)
+        if shown.get(SETUP_PHASE) == SETUP_CODE:
+            key = self.prober.setup_key(state.get("school_url"), self._secrets(state).get("username"))
+            if key:
+                shown[SETUP_KEY] = key
+            else:
+                shown[SETUP_PHASE] = SETUP_START
         if self._is_paused(state):
             shown["retry_in"] = signin_pause.seconds_left(entry, self.now())
         return shown
@@ -115,6 +154,7 @@ class Wizard:
         return self._save(self._fresh(state))
 
     def cancel(self):
+        self.prober.drop_setup()
         state = self.store.load_wizard()
         entry = self._entry(state)
         if entry is not None and not entry.get("setup_complete"):
@@ -146,6 +186,7 @@ class Wizard:
                 secrets[ACCOUNT_KEY] = account_fingerprint(secrets["username"])
             if entry.get("school_url") and not secrets.get(SCHOOL_KEY):
                 secrets[SCHOOL_KEY] = school_identity(entry["school_url"])
+            _keep_previous_uuid(secrets)
             for key in TENTATIVE_SECRET_KEYS:
                 secrets.pop(key, None)
 
@@ -160,7 +201,7 @@ class Wizard:
         except ValueError:
             return self._error(state, "url_invalid", "api.wizard.urlInvalid")
         if base != state.get("school_url"):
-            for key in ("verified_2fa", "needs_2fa_setup", "has_2fa", "awaiting_confirm", "last_code"):
+            for key in ("verified_2fa", "needs_2fa_setup", "has_2fa", "awaiting_confirm", "last_code", SETUP_PHASE) + LOGIN_SCOPED_KEYS:
                 state.pop(key, None)
         result = self.prober.probe_url(base)
         if not result.get("ok"):
@@ -194,6 +235,12 @@ class Wizard:
             state.pop("error", None)
             state.pop("awaiting_confirm", None)
             state.pop("last_code", None)
+            state.pop(SETUP_PHASE, None)
+            for key in LOGIN_SCOPED_KEYS:
+                state.pop(key, None)
+            self.prober.drop_setup()
+            if outcome == SETUP_PENDING:
+                state[SETUP_PHASE] = SETUP_START
             if outcome == "no_2fa":
                 state["has_2fa"] = False
                 state["needs_2fa_setup"] = False
@@ -241,11 +288,13 @@ class Wizard:
         username = secrets.get("username")
         password = secrets.get("password")
         if not state.get("awaiting_confirm"):
+            state.pop(UNCONFIRMED, None)
             started = self.prober.begin_2fa(url, username, password, code, TOKEN_NAME)
             if started.get("status") == "awaiting_confirm":
                 state["awaiting_confirm"] = True
                 state["last_code"] = code
                 state["stale_tokens"] = started.get("stale_tokens", 0)
+                state["stale_removable"] = started.get("stale_removable", 0)
                 state.pop("error", None)
                 return self._save(state)
             result = started
@@ -257,10 +306,187 @@ class Wizard:
                 state.pop("awaiting_confirm", None)
                 state.pop("last_code", None)
                 return self._error(state, "expired", "api.wizard.expired")
+            if result.get("status") == "unconfirmed":
+                state.pop("awaiting_confirm", None)
+                state.pop("last_code", None)
+                state[UNCONFIRMED] = True
+                return self._error(state, "unconfirmed", "api.twofactor.unconfirmed")
         return self._connect_outcome(state, result)
+
+    def _setup_pending(self, state):
+        return state.get("step") == "connect" and state.get("needs_2fa_setup") is True
+
+    def _setup_credentials(self, state):
+        secrets = self._secrets(state)
+        return state.get("school_url"), secrets.get("username"), secrets.get("password")
+
+    def _setup_finished(self, state):
+        state["needs_2fa_setup"] = False
+        state[SETUP_PHASE] = SETUP_DONE
+        state.pop("awaiting_confirm", None)
+        state.pop("last_code", None)
+        state.pop("error", None)
+        self._clear_pause(state)
+        return self._save(state)
+
+    def _setup_without_two_factor(self, state):
+        state.pop(SETUP_PHASE, None)
+        state["has_2fa"] = False
+        state["needs_2fa_setup"] = False
+        state["verified_2fa"] = True
+        state["step"] = "child"
+        state.pop("error", None)
+        self._clear_pause(state)
+        return self._save(state)
+
+    def start_setup(self):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        if not self._setup_pending(state):
+            return self._error(state, "setup_not_pending", "api.wizard.setup.notPending")
+        result = self.prober.begin_setup(*self._setup_credentials(state))
+        status = result.get("status")
+        if status == "awaiting_setup_code":
+            state[SETUP_PHASE] = SETUP_CODE
+            state.pop("error", None)
+            return self._save(state)
+        if status == "twofactor":
+            return self._setup_finished(state)
+        if status == "no_2fa":
+            return self._setup_without_two_factor(state)
+        state[SETUP_PHASE] = SETUP_START
+        if status == "no_form":
+            return self._error(state, "setup_no_form", "api.wizard.setup.noForm")
+        return self._connect_outcome(state, result)
+
+    def confirm_setup(self, code):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        if not self._setup_pending(state) or state.get(SETUP_PHASE) != SETUP_CODE:
+            return self._error(state, "setup_not_pending", "api.wizard.setup.notPending")
+        if not is_valid_code(code):
+            return self._error(state, "code_invalid", "api.wizard.codeInvalid")
+        url, username, password = self._setup_credentials(state)
+        result = self.prober.confirm_setup(url, username, password, code.strip())
+        status = result.get("status")
+        if status == "ok":
+            return self._setup_finished(state)
+        if status == "rejected":
+            key = "api.wizard.setup.rejectedNewKey" if result.get("key_changed") else "api.wizard.setup.rejected"
+            return self._error(state, "setup_rejected", key)
+        if status == "expired":
+            state[SETUP_PHASE] = SETUP_START
+            return self._error(state, "setup_expired", "api.wizard.setup.expired")
+        state[SETUP_PHASE] = SETUP_UNCERTAIN
+        return self._error(state, "setup_uncertain", "api.wizard.setup.uncertain")
+
+    def check_setup(self):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        if not self._setup_pending(state) or state.get(SETUP_PHASE) != SETUP_UNCERTAIN:
+            return self._error(state, "setup_not_pending", "api.wizard.setup.notPending")
+        url, username, password = self._setup_credentials(state)
+        outcome = self.prober.verify_login(url, username, password)
+        if outcome == "twofactor":
+            return self._setup_finished(state)
+        if outcome == SETUP_PENDING:
+            state[SETUP_PHASE] = SETUP_START
+            return self._error(state, "setup_not_active", "api.wizard.setup.notActive")
+        if outcome == "no_2fa":
+            return self._setup_without_two_factor(state)
+        if outcome in WAIT_OUT_OUTCOMES:
+            return self._wait_out(state, outcome, getattr(self.prober, "retry_after", None))
+        if outcome in REUSE_STOP_OUTCOMES:
+            return self._connect_outcome(state, {"status": outcome})
+        return self._error(state, "setup_uncertain", "api.wizard.setup.uncertain")
+
+    def check_registration(self):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        if state.get("step") != "connect" or not state.get(UNCONFIRMED):
+            return self._error(state, "registration_not_pending", "api.wizard.setup.notPending")
+        result = self.prober.check_registration(state.get("school_url"), self._secrets(state).get("username"), TOKEN_NAME)
+        status = result.get("status")
+        if status == "ok":
+            return self._connect_outcome(state, result)
+        if status == "unconfirmed":
+            return self._error(state, "unconfirmed", "api.twofactor.unconfirmed")
+        state.pop(UNCONFIRMED, None)
+        return self._error(state, "registration_missing", "api.wizard.registration.missing")
+
+    def remove_stale_tokens(self):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        secrets = self._secrets(state)
+        uuids = [uuid for uuid in state.get(STALE_UUIDS) or [] if uuid != secrets.get("twofactor_uuid")]
+        if not self._removal_open(state, secrets, uuids):
+            return self._error(state, "stale_not_pending", "api.wizard.setup.notPending")
+        result = self._remove(state, secrets, uuids)
+        refused = self._removal_refused(state, result)
+        if refused is not None:
+            return refused
+        left = [uuid for uuid in result.get("left", uuids) if uuid in uuids]
+        if result.get("status") == "ok" and not left:
+            state.pop(STALE_UUIDS, None)
+            return self._removed(state, len(uuids))
+        state[STALE_UUIDS] = left or uuids
+        if result.get("status") == "partial":
+            return self._error(state, "stale_partial", "api.wizard.stale.partial", {"count": len(state[STALE_UUIDS])})
+        return self._error(state, "stale_failed", "api.wizard.stale.failed")
+
+    def remove_other_token(self, uuid, confirmed):
+        state = self._release_if_expired(self.store.load_wizard())
+        if self._is_paused(state):
+            return self._paused(state)
+        secrets = self._secrets(state)
+        others = [dict(token) for token in state.get(OTHER_TOKENS) or []]
+        chosen = uuid if isinstance(uuid, str) else ""
+        offered = any(token.get("uuid") == chosen for token in others) and chosen != secrets.get("twofactor_uuid")
+        if confirmed is not True or not offered or not self._removal_open(state, secrets, [chosen]):
+            return self._error(state, "stale_not_pending", "api.wizard.setup.notPending")
+        result = self._remove(state, secrets, [chosen])
+        refused = self._removal_refused(state, result)
+        if refused is not None:
+            return refused
+        if result.get("status") == "ok" and chosen not in (result.get("left") or []):
+            kept = [token for token in others if token.get("uuid") != chosen]
+            if kept:
+                state[OTHER_TOKENS] = kept
+            else:
+                state.pop(OTHER_TOKENS, None)
+            return self._removed(state, 1)
+        return self._error(state, "stale_failed", "api.wizard.stale.failed")
+
+    def _removal_open(self, state, secrets, uuids):
+        return state.get("step") in STALE_STEPS and bool(uuids) and bool(secrets.get("totp_secret"))
+
+    def _remove(self, state, secrets, uuids):
+        return self.prober.remove_stale_tokens(
+            state.get("school_url"), secrets.get("username"), secrets.get("password"), secrets["totp_secret"], uuids
+        )
+
+    def _removed(self, state, count):
+        state[STALE_REMOVED] = int(state.get(STALE_REMOVED) or 0) + count
+        state.pop("error", None)
+        return self._save(state)
+
+    def _removal_refused(self, state, result):
+        status = result.get("status")
+        if status in WAIT_OUT_OUTCOMES:
+            return self._wait_out(state, status, result.get("retry_after"))
+        if status in REMOVAL_REFUSALS:
+            return self._connect_outcome(state, {"status": status})
+        return None
 
     def _connect_outcome(self, state, result):
         status = result.get("status")
+        if status == SETUP_PENDING:
+            state[SETUP_PHASE] = SETUP_START
         if status in UNCOUNTED_FAILURES:
             return self._error(state, status, UNCOUNTED_FAILURE_KEYS[status])
         if status in WAIT_OUT_OUTCOMES:
@@ -268,11 +494,22 @@ class Wizard:
         if status in UNCOUNTED_LOGIN_OUTCOMES:
             return self._error(state, status, lockout.human_message_key(status))
         if status == "ok":
+            before = self._secrets(state)
+            own = before.get("twofactor_uuid") or before.get(PREVIOUS_UUID)
+            mine, others = _split_old_tokens(result.get("old_tokens"), own, result.get("uuid"))
             self._edit_secrets(state, lambda secrets: _store_token(secrets, result))
             self._clear_pause(state)
             state.pop("awaiting_confirm", None)
             state.pop("last_code", None)
             state.pop("stale_tokens", None)
+            state.pop("stale_removable", None)
+            state.pop(UNCONFIRMED, None)
+            state.pop(STALE_REMOVED, None)
+            for key, value in ((STALE_UUIDS, mine), (OTHER_TOKENS, others)):
+                if value:
+                    state[key] = value
+                else:
+                    state.pop(key, None)
             state["verified_2fa"] = True
             state["step"] = "child"
             state.pop("error", None)
@@ -330,6 +567,7 @@ class Wizard:
         return self._save(state)
 
     def reset(self, connection_id=None):
+        self.prober.drop_setup()
         state = self.store.load_wizard()
         if connection_id:
             if connection_id != state.get("connection_id"):
@@ -398,6 +636,10 @@ class Wizard:
             secrets[ACCOUNT_KEY] = account
             if school:
                 secrets[SCHOOL_KEY] = school
+            if switched:
+                secrets.pop(PREVIOUS_UUID, None)
+            elif seen["new"]:
+                _keep_previous_uuid(secrets)
             if seen["new"]:
                 secrets.pop("totp_secret", None)
                 secrets.pop("twofactor_uuid", None)

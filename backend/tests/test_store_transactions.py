@@ -361,7 +361,7 @@ def test_a_school_removed_during_its_poll_leaves_no_traces(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "kind", ["seen", "modules", "letters_search_cache", "letters_confirmations", "letters_replies", "absence_history"]
+    "kind", ["seen", "modules", "letters_search_cache", "letters_confirmations", "letters_replies", "absence_history", "older_absence_pending"]
 )
 def test_a_school_slot_is_not_written_back_after_the_school_was_removed(tmp_path, kind):
     store, first, _ = two_schools(tmp_path)

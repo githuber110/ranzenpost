@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de"><head><title>Bruchrechnung - Aufgaben - IServ</title><script>var x = 1;</script></head>
+<body>
+<nav class="navbar"><a href="/iserv/">IServ</a><a href="/iserv/exercise">Aufgaben</a></nav>
+<div id="content">
+<ol class="breadcrumb"><li><a href="/iserv/exercise">Aufgaben</a></li><li>Bruchrechnung</li></ol>
+<h1>Bruchrechnung</h1>
+<div class="panel panel-default">
+<div class="panel-heading"><h2 class="panel-title">Details</h2></div>
+<div class="panel-body">
+<table class="table table-condensed">
+<tr><th>Erstellt von:</th><td>Lehrkraft A</td></tr>
+<tr><th>Starttermin:</th><td>01.10.2026</td></tr>
+<tr><th>Abgabetermin:</th><td>20.10.2026 18:00</td></tr>
+<tr><th>Tags:</th><td><span class="label label-info">Mathe</span> <span class="label label-info">Hausaufgabe</span></td></tr>
+<tr><th>Status:</th><td>Begonnen</td></tr>
+</table>
+<h3>Beschreibung</h3>
+<div class="text-break-word"><p>Bitte rechnet die Aufgaben 1 bis 4 auf Seite 12.</p><p>Ladet ein Foto <b>oder</b> eine PDF hoch.<br>Viel Erfolg!</p></div>
+<h3>Anhänge</h3>
+<ul class="list-unstyled">
+<li><a href="/iserv/fs/file/exercise-dl/31/arbeitsblatt.pdf">arbeitsblatt.pdf</a> <span class="text-muted">120 KB</span>
+<div class="dropdown"><ul class="dropdown-menu"><li><a href="/iserv/file/copy/31">In meine Dateien kopieren</a></li></ul></div></li>
+<li><a href="https://video.example.org/brueche">Erklärvideo</a></li>
+</ul>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading"><h2 class="panel-title">Abgabe</h2></div>
+<div class="panel-body">
+<form name="upload" method="post" action="/iserv/exercise/show/31/upload" enctype="multipart/form-data">
+<label for="upload_file">Dateien</label>
+<input type="file" id="upload_file" name="upload[file][]" multiple>
+<input type="hidden" name="upload[_token]" value="tok-upload-1">
+<button type="submit" name="upload[submit]" class="btn btn-primary">Speichern</button>
+</form>
+<form name="files" method="post" action="/iserv/exercise/show/31/files">
+<table class="table">
+<thead><tr><th></th><th>Name</th><th>Größe</th><th>Hochgeladen</th></tr></thead>
+<tbody>
+<tr><td><input type="checkbox" name="files[]" value="701"></td><td><a href="/iserv/fs/file/exercise-submission/701/foto-seite-12.jpg">foto-seite-12.jpg</a></td><td>2 MB</td><td>12.10.2026 17:01</td></tr>
+<tr><td><input type="checkbox" name="files[]" value="702"></td><td><a href="/iserv/fs/file/exercise-submission/702/rechnung.pdf">rechnung.pdf</a></td><td>80 KB</td><td>12.10.2026 17:03</td></tr>
+</tbody>
+</table>
+<input type="hidden" name="files[_token]" value="tok-files-1">
+<button type="submit" name="files[delete]" class="btn btn-danger">Löschen</button>
+</form>
+<h3>Textabgabe</h3>
+<form name="text" method="post" action="/iserv/exercise/show/31/text">
+<textarea name="text[text]" class="tinymce-editor">&lt;p&gt;Meine Lösung zu Aufgabe 1&lt;/p&gt;</textarea>
+<input type="hidden" name="text[_token]" value="tok-text-1">
+<button type="submit" name="text[save]" class="btn btn-primary">Speichern</button>
+<button type="reset" class="btn btn-default">Änderungen verwerfen</button>
+</form>
+<form name="confirm" method="post" action="/iserv/exercise/show/31/confirm">
+<input type="hidden" name="confirm[_token]" value="tok-confirm-1">
+<button type="submit" class="btn btn-success">Als erledigt markieren</button>
+</form>
+</div>
+</div>
+</div>
+<form method="get" action="/iserv/search"><input name="q"></form>
+</body></html>

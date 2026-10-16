@@ -60,8 +60,18 @@ def data_params(child_id, reference):
     return params
 
 
+def period_number(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
 def slot_key(date_value, period):
-    return f"{date_value}|{period}"
+    return f"{date_value}|{'' if period is None else period}"
 
 
 def lesson_key(date_value, period, subject, teacher=None):
@@ -101,7 +111,7 @@ def _to_lesson(raw):
     return Lesson(
         date=raw.get("date", ""),
         day_of_week=int(raw.get("dow", 0)),
-        period=int(raw.get("period", 0)),
+        period=period_number(raw.get("period")),
         subject=_field(raw, "subject"),
         teacher=_field(raw, "teacher"),
         room=_field(raw, "room"),
@@ -116,11 +126,7 @@ def _lesson_slot(lesson):
 
 
 def _raw_slot(raw):
-    try:
-        period = int(raw.get("period", 0))
-    except (TypeError, ValueError):
-        period = 0
-    return slot_key(raw.get("date", ""), period)
+    return slot_key(raw.get("date", ""), period_number(raw.get("period")))
 
 
 def _kind_from_type(value):
@@ -447,10 +453,14 @@ def _number(value):
 
 
 def _change_periods(record):
-    first = _number(record.get("periodStart")) or _number(record.get("period"))
+    first = _number(record.get("periodStart"))
+    if first is None:
+        first = _number(record.get("period"))
     if first is None:
         return range(0)
-    last = _number(record.get("periodEnd")) or first
+    last = _number(record.get("periodEnd"))
+    if last is None:
+        last = first
     return range(first, max(first, last) + 1)
 
 
@@ -704,6 +714,8 @@ def _move_side(item, rows):
     subject = _value(record, "substitutionSubject")
     if item["shown"] and subject and subject != _text(record.get("origSubject")):
         places = [(rows[spot][0].date, rows[spot][0].period) for spot, _ in item["shown"]]
+        if any(period is None for _, period in places):
+            return None
         return MoveSide("here", subject, _classes(record.get("substitutionClass")), _value(record, "substitutionTeacher"), places, _codes(record))
     return None
 

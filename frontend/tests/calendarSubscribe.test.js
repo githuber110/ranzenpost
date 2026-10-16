@@ -155,6 +155,38 @@ describe("the at-least-one rule is explained before anything is sent", () => {
     expect(swatches.filter((node) => node.getAttribute("aria-pressed") === "true")).toHaveLength(1);
   });
 
+  test("name and colour wait behind a closed fold that stays as the person left it", () => {
+    const { window } = setup();
+    window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");
+    const form = window.eval("calendarForm(state.calendarDraft)");
+    const fold = form.querySelector("details.cal-more");
+
+    expect(fold.open).toBe(false);
+    expect(fold.querySelector("summary").textContent).toBe(base["calendar.subscribe.more"]);
+    expect(fold.querySelector("input.inp")).not.toBeNull();
+    expect(fold.querySelector(".cal-swatches")).not.toBeNull();
+    expect(form.querySelector(":scope > .field input.inp")).toBeNull();
+    const order = [...form.children].map((node) => node.className);
+    expect(order.indexOf("help-details cal-more")).toBeGreaterThan(order.indexOf("field"));
+
+    fold.open = true;
+    fold.dispatchEvent(new window.Event("toggle"));
+    expect(window.eval("state.calendarDraft.moreOpen")).toBe(true);
+    expect(window.eval("calendarForm(state.calendarDraft)").querySelector("details.cal-more").open).toBe(true);
+  });
+
+  test("the place question offers home only or everywhere and keeps its hints", () => {
+    const { window } = setup();
+    window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");
+    const form = window.eval("calendarForm(state.calendarDraft)");
+    const names = [...form.querySelectorAll(".cal-variant-name")].map((node) => node.textContent);
+
+    expect(names).toEqual([base["calendar.subscribe.variant.local"], base["calendar.subscribe.variant.internet"]]);
+    expect(names).toEqual(["Nur zuhause (WLAN)", "Überall"]);
+    expect(form.querySelector(".field-group[role=radiogroup]").getAttribute("aria-label")).toBe(base["calendar.subscribe.variant"]);
+    expect(form.querySelectorAll(".cal-variant-hint")).toHaveLength(2);
+  });
+
   test("timetable stays locked while no holiday region is set", () => {
     const { window } = setup({ region: "" });
     window.eval("state.calendarDraft = calendarNewDraft(state.children[0]);");

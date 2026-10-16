@@ -329,7 +329,12 @@
         "absences",
         "conferences",
         "messenger",
-        "calendar"
+        "calendar",
+        "tasks",
+        "news",
+        "forums",
+        "texts",
+        "infodisplay"
       ],
       "properties": {
         "timetable": {
@@ -351,6 +356,21 @@
           "type": "boolean"
         },
         "calendar": {
+          "type": "boolean"
+        },
+        "tasks": {
+          "type": "boolean"
+        },
+        "news": {
+          "type": "boolean"
+        },
+        "forums": {
+          "type": "boolean"
+        },
+        "texts": {
+          "type": "boolean"
+        },
+        "infodisplay": {
           "type": "boolean"
         }
       },
@@ -366,7 +386,12 @@
         "absences",
         "conferences",
         "messenger",
-        "calendar"
+        "calendar",
+        "tasks",
+        "news",
+        "forums",
+        "texts",
+        "infodisplay"
       ],
       "properties": {
         "timetable": {
@@ -388,6 +413,21 @@
           "type": "boolean"
         },
         "calendar": {
+          "type": "boolean"
+        },
+        "tasks": {
+          "type": "boolean"
+        },
+        "news": {
+          "type": "boolean"
+        },
+        "forums": {
+          "type": "boolean"
+        },
+        "texts": {
+          "type": "boolean"
+        },
+        "infodisplay": {
           "type": "boolean"
         }
       },
@@ -824,7 +864,11 @@
         "region",
         "unread_letters",
         "unread_posts",
-        "unread_mail"
+        "unread_mail",
+        "open_tasks",
+        "news",
+        "unread_forum_posts",
+        "texts"
       ],
       "properties": {
         "next_holiday": {
@@ -946,6 +990,50 @@
           ],
           "minimum": 0,
           "description": "Unread e-mails in the IServ mailbox of this account from a recent poll; null when unknown, unreadable, failing for several polls in a row, or when the school has no e-mail."
+        },
+        "open_tasks": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Open tasks of the IServ task list (not past, not marked done), soonest due date first; date is the due date, sender is empty. Null until the first poll read the list or when the school has no task module."
+        },
+        "news": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Every news item of the IServ news list in IServ order; date is the publication date when IServ shows one, sender is the category. Null until the first poll read the list or when the school has no news module."
+        },
+        "unread_forum_posts": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Forums of the IServ forum overview that show unread posts, in IServ order; count is the sum of unread posts, title is the forum, sender its section, date and text the last post as IServ shows it. Fresh lists the forums whose unread posts grew since the poll before; a forum seen for the first time only sets its starting count. Null until the first poll read the overview, when IServ shows no readable unread count for every forum, or when the school has no forum module."
+        },
+        "texts": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Every text of the IServ text module the account sees, in every IServ selection; title is the text, sender its owner, date the last change. Fresh lists the texts the add-on saw for the first time. Null until the first poll read the list or when the school has no text module."
         }
       },
       "additionalProperties": false
@@ -1078,6 +1166,60 @@
         "child": {
           "type": "string",
           "description": "The first name of the child the letter is addressed to, empty for a post."
+        },
+        "id": {
+          "type": "string",
+          "description": "The stable IServ id of a task or news item. Older add-ons send none."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 280,
+          "description": "The start of the news text when the add-on read it."
+        }
+      },
+      "additionalProperties": false
+    },
+    "freshNotice": {
+      "type": "object",
+      "required": [
+        "title",
+        "sender",
+        "date",
+        "child",
+        "seen"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "sender": {
+          "type": "string"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "child": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 280
+        },
+        "seen": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Epoch seconds of the poll that first saw the entry."
         }
       },
       "additionalProperties": false
@@ -1098,6 +1240,14 @@
           "maxItems": 10,
           "items": {
             "$ref": "#/$defs/notice"
+          }
+        },
+        "fresh": {
+          "type": "array",
+          "maxItems": 10,
+          "description": "Entries the add-on saw for the first time, newest poll first. The add-on pushes for exactly these. Home Assistant fires one trigger for every entry seen after the newest one it knew. Only task, news, forum and text lists carry it.",
+          "items": {
+            "$ref": "#/$defs/freshNotice"
           }
         }
       },

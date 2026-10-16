@@ -43,6 +43,17 @@ def reply_page():
     return _fixture_text("letter_reply_form.html")
 
 
+def replied_page():
+    return _fixture_text("letter_reply_sent.html")
+
+
+def replied_twice_page():
+    html = replied_page()
+    reply = '<div class="editor-content"><p>Wir kommen gern &lt;3</p></div>'
+    assert html.count(reply) == 1
+    return html.replace(reply, reply + reply, 1)
+
+
 def changed(old, new):
     html = reply_page()
     assert html.count(old) == 1
@@ -152,7 +163,7 @@ def test_a_reply_link_inside_the_letter_text_is_not_a_hint(fixture):
 
 
 def _reply_service(tmp_path, pages=None, **kwargs):
-    return _confirm_service(tmp_path, pages or [reply_page()], **kwargs)
+    return _confirm_service(tmp_path, pages or [reply_page(), replied_page()], **kwargs)
 
 
 def _reply(service, text=REPLY_TEXT, request_id=REQUEST_ID, confirmed=True):
@@ -230,7 +241,7 @@ def test_a_retry_with_the_same_request_is_answered_without_a_second_send(tmp_pat
 
 
 def test_a_new_message_is_a_new_request_and_is_sent(tmp_path):
-    service, _, client = _reply_service(tmp_path)
+    service, _, client = _reply_service(tmp_path, [reply_page(), replied_page(), replied_twice_page()])
     assert _reply(service)["ok"] is True
     assert _reply(service, request_id=OTHER_REQUEST_ID)["ok"] is True
     assert len(client.posts) == 2
@@ -291,7 +302,7 @@ def test_a_letter_whose_form_is_missing_or_unknown_sends_nothing(tmp_path, html)
 
 
 def test_a_client_error_on_the_post_is_a_refusal_that_names_the_status_and_allows_a_retry(tmp_path):
-    service, _, client = _reply_service(tmp_path, post_status=400)
+    service, _, client = _reply_service(tmp_path, [reply_page(), reply_page(), replied_page()], post_status=400)
     result = _reply(service)
     assert result["ok"] is False
     assert result["message_key"] == "api.letters.reply.upstream"
@@ -375,6 +386,7 @@ def _answering(client, status=200, text="", history=0):
     def post(url, data, timeout=30, headers=None):
         client.posts.append((url, dict(data)))
         client.post_headers.append(dict(headers or {}))
+        client.stage += 1
         return type("Answer", (), {"status_code": status, "url": url, "text": text, "history": [object()] * history})()
 
     client.post_absolute = post
@@ -384,7 +396,7 @@ ALERT_ANSWER = '<div class="alert alert-danger">Die Nachricht konnte nicht gespe
 
 
 def test_an_alert_danger_answer_is_a_refusal_and_never_counted_as_sent(tmp_path):
-    service, _, client = _reply_service(tmp_path)
+    service, _, client = _reply_service(tmp_path, [reply_page(), reply_page(), replied_page()])
     _answering(client, text=ALERT_ANSWER)
     result = _reply(service)
     assert result["ok"] is False
@@ -409,6 +421,59 @@ def test_the_form_shown_again_without_a_redirect_is_uncertain_never_sent(tmp_pat
     assert result["message_key"] == "api.letters.reply.uncertain"
     assert _reply(service)["message_key"] == "api.letters.reply.uncertain"
     assert len(client.posts) == 1
+
+
+WARNING_ANSWER = '<div class="alert alert-warning">Ihre Antwort konnte nicht gespeichert werden.</div>'
+
+
+@pytest.mark.parametrize("text", [WARNING_ANSWER, ""])
+def test_a_warning_or_an_empty_answer_without_the_reply_on_the_letter_is_uncertain(tmp_path, text):
+    service, _, client = _reply_service(tmp_path, [reply_page()])
+    _answering(client, text=text)
+    result = _reply(service)
+    assert result["ok"] is False
+    assert result["message_key"] == "api.letters.reply.uncertain"
+    assert _reply(service)["message_key"] == "api.letters.reply.uncertain"
+    assert len(client.posts) == 1
+
+
+def test_a_warning_is_uncertain_even_when_the_letter_shows_the_text(tmp_path):
+    service, _, client = _reply_service(tmp_path)
+    _answering(client, text=WARNING_ANSWER, history=1)
+    assert _reply(service)["message_key"] == "api.letters.reply.uncertain"
+
+
+def test_an_earlier_reply_with_the_same_words_does_not_count_as_the_new_one(tmp_path):
+    service, _, client = _reply_service(tmp_path, [replied_page()])
+    _answering(client)
+    assert _reply(service)["message_key"] == "api.letters.reply.uncertain"
+
+
+def test_a_sign_in_page_or_an_unreadable_letter_after_sending_is_uncertain(tmp_path):
+    login = (
+        '<form method="post" action="/iserv/auth/login"><input name="_username">'
+        '<input type="password" name="_password"></form><p>Wir kommen gern &lt;3</p>'
+    )
+    service, _, client = _reply_service(tmp_path, [reply_page(), login])
+    _answering(client)
+    assert _reply(service)["message_key"] == "api.letters.reply.uncertain"
+    service2, _, client2 = _reply_service(tmp_path / "second")
+    _answering(client2)
+    original = client2.fetch
+
+    def broken(path, params=None):
+        if client2.stage:
+            raise requests.ConnectionError("reset")
+        return original(path, params)
+
+    client2.fetch = broken
+    assert _reply(service2)["message_key"] == "api.letters.reply.uncertain"
+
+
+def test_the_reply_counts_as_sent_only_when_the_letter_shows_it(tmp_path):
+    service, _, client = _reply_service(tmp_path)
+    _answering(client)
+    assert _reply(service)["message_key"] == "api.letters.reply.ok"
 
 
 @pytest.mark.parametrize(
@@ -557,7 +622,7 @@ def test_the_diagnostic_memory_stays_bounded(tmp_path):
 
 
 def _listed_reply_school(tmp_path, **kwargs):
-    return letter_school(tmp_path, pages=[reply_page()], **kwargs)
+    return letter_school(tmp_path, pages=[reply_page(), replied_page()], **kwargs)
 
 
 def test_a_reply_to_a_letter_of_no_list_is_refused_without_contacting_the_letter(tmp_path):

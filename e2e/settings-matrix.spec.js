@@ -592,7 +592,7 @@ const SETTINGS = [
       expect((await json(page, "/api/config")).notify_services).toEqual([]);
     },
     change: async (page) => {
-      await openSettingSheet(page, "settings.notify.service");
+      await openSettingSheet(page, "settings.notify.sheet");
       await page.locator(".sheet .notify-pick-open").click();
       await waitForSheetSettled(page);
       const box = page.locator(".sheet .notify-services-group input[type=checkbox]").first();
@@ -617,7 +617,7 @@ const SETTINGS = [
       expect((await json(page, "/api/config")).notify_events.letters).toBe(true);
     },
     change: async (page) => {
-      await openSettingSheet(page, "settings.notify.service");
+      await openSettingSheet(page, "settings.notify.sheet");
       await expect(await labelled(page, "settings.notify.event.letters")).toBeDisabled();
       await page.locator(".sheet .notify-pick-open").click();
       await waitForSheetSettled(page);

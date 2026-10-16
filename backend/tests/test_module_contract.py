@@ -121,6 +121,11 @@ BLOCK_EMPTY_MARKER = {
     "school_events": 'module_emptied(modules.CALENDAR)',
     "holidays": 'block_emptied("holidays")',
     "changes": 'block_emptied("changes")',
+    "tasks": 'module_emptied(modules.TASKS)',
+    "news": 'module_emptied(modules.NEWS)',
+    "forums": 'module_emptied(modules.FORUMS)',
+    "texts": 'module_emptied(modules.TEXTS)',
+    "infodisplay": 'module_emptied(modules.INFODISPLAY)',
 }
 
 
@@ -157,7 +162,7 @@ def test_every_navigation_area_maps_to_known_modules():
     for area, names in blocks.AREA_MODULES.items():
         assert names, area
         for name in names:
-            assert name in modules.MODULES, f"{area}: {name}"
+            assert name in modules.MODULES + (modules.MAIL,) + modules.LISTED_MODULES, f"{area}: {name}"
     for area in blocks.DEFAULT_NAVIGATION:
         assert area in blocks.AREA_MODULES
 

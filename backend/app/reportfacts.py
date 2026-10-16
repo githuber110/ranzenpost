@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from . import modules
 from .iserv.children import child_select_present, parse_children
+from .iserv.dsa import SICK_NOTE_SELECTION_PATH as dsa_selection_path
 from .iserv.dsa import (
     CHILDREN_FIELDS,
     CURRENT_TIMETABLE_PATH,
@@ -18,13 +19,33 @@ from .iserv.dsa import (
 from .iserv.dsa_substitutions import comparison_of, describe as describe_substitutions, describe_marker_fields, marker_fields
 from .iserv.dsa_timetable import course_filter, query_date
 from .iserv.letters import parse_letter_list
+from .iserv.older_absence_form import (
+    attachment_entries,
+    change_log,
+    create_path,
+    export_path,
+    parse_create_form,
+    structure_text,
+    upload_form,
+    upload_link,
+)
+from .iserv.older_absences import (
+    DELETE_SEGMENTS,
+    EDIT_SEGMENTS,
+    OlderAbsenceShapeError,
+    action_paths,
+    column_roles,
+    list_table,
+    parse_older_absences,
+)
 from .iserv.timetable import DATE_FORMAT, week_bounds
-from .pageshape import code_text, json_of, status_of, unique
+from .iserv.pages import status_of
+from .pageshape import code_text, json_of, unique
 from .pathpattern import path_pattern, placeholders
 from .reportcrawl import MENU_LINK_PREFIX, SCHOOL_ACCOUNT_PATH
 from .valueshape import table_cell
 
-SICK_NOTE_SELECTION_PATH = modules.DSA_API + "/sickNotes/userSelection/"
+SICK_NOTE_SELECTION_PATH = modules.DSA_API + "/" + dsa_selection_path
 TIME_TABLE_PAGE_PATH = "/iserv/time-table/"
 CHILDREN_TABLE_HEAD = "| Source | Count | Duplicate ids | Duplicate names |"
 CHILDREN_TABLE_RULE = "|---|---|---|---|"
@@ -40,7 +61,6 @@ OLDER_ABSENCE_PAGE = "/iserv/absence/"
 SICK_NOTES_PATH = modules.DSA_API + "/sickNotes/"
 EVIDENCE_DAYS = 120
 SMALL_SETTING_MAX = 100
-LIST_DATE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b")
 RELEASE_OFF_LINE = "- Timetable release: off, the app reads the time-table module instead of the school app"
 TIME_TABLE_PRESENT = "supported"
 FALLBACK_NOTES = {
@@ -51,6 +71,7 @@ UNCHECKED_FALLBACK = "the time-table module was not checked"
 LETTER_ACTION = re.compile(r"\[actions\]\[([^\]]+)\]")
 SUBMIT_TYPES = ("submit", "image")
 MAX_LETTER_ACTIONS = 20
+MAX_REPLY_FORM_SHAPES = 6
 CONFIRMATION_NOT_COUNTED = "- Confirmation needed: not counted, the list does not show it and each letter would need its own request"
 VERSION_SOURCES = (
     ("start page", MENU_LINK_PREFIX),
@@ -281,9 +302,26 @@ def school_app_query_lines(client, config, today, time_table=TIME_TABLE_PRESENT)
             lines.append("- Child %d school markers: %s" % (number, describe_marker_fields(marker_fields(answered[1]))))
     slots = fetch_json(client, TIMETABLE_SLOTS_PATH, {"filterBy": LESSON_FILTER})
     lines.append("- Timetable slots: %s" % (len(slots) if isinstance(slots, list) else "not read"))
+    if isinstance(slots, list):
+        lines.append("- Timetable slot numbers: %s" % slot_numbers_fact(slots))
     start, end = week_bounds(today)
     lines.append("- Week: %s to %s" % (start.strftime(DATE_FORMAT), end.strftime(DATE_FORMAT)))
     return lines
+
+
+def _slot_number(slot):
+    number = slot.get("number") if isinstance(slot, dict) else None
+    return number if isinstance(number, int) and not isinstance(number, bool) else None
+
+
+def slot_numbers_fact(slots):
+    numbers = [_slot_number(slot) for slot in slots]
+    known = sorted({number for number in numbers if number is not None})
+    without = numbers.count(None)
+    if not numbers:
+        return "none"
+    text = ", ".join(str(number) for number in known) or "-"
+    return text + ("; without a number %d" % without if without else "")
 
 
 def _action_name(field):
@@ -324,6 +362,34 @@ def letters_summary_lines(client):
     ]
 
 
+def letter_reply_form_lines(store):
+    try:
+        cache = store.load_letters_search_cache()
+    except Exception:
+        return ["- Reply forms in opened letters: not read"]
+    shapes = {}
+    for entry in (cache or {}).values() if isinstance(cache, dict) else []:
+        if not isinstance(entry, dict):
+            continue
+        confirmation = entry.get("confirmation")
+        if isinstance(confirmation, dict):
+            key = (
+                str(confirmation.get("type") or "-"),
+                bool(confirmation.get("sendable")),
+                str(confirmation.get("shape") or "shape not recorded"),
+            )
+            shapes[key] = shapes.get(key, 0) + 1
+        if entry.get("answer_shape"):
+            key = ("answer edit", False, str(entry["answer_shape"]))
+            shapes[key] = shapes.get(key, 0) + 1
+    if not shapes:
+        return ["- Reply forms in opened letters: none"]
+    lines = ["- Reply forms in opened letters: %d" % sum(shapes.values())]
+    for (kind, sendable, shape), count in sorted(shapes.items())[:MAX_REPLY_FORM_SHAPES]:
+        lines.append("- Reply form %s, %s, x%d: %s" % (kind, "sendable" if sendable else "not sendable", count, shape))
+    return lines
+
+
 def iserv_version_lines(client):
     lines = ["### IServ version"]
     if client is None:
@@ -359,17 +425,94 @@ def iserv_version_lines(client):
     return lines
 
 
-def _older_list_dates(html):
-    soup = BeautifulSoup(html or "", "html.parser")
-    table = soup.find("table", id="crud-table")
-    rows = []
-    for row in table.find_all("tr") if table is not None else []:
-        cells = row.find_all("td")
-        if len(cells) < 2:
-            continue
-        found = {"%s-%s-%s" % (year, month, day) for day, month, year in LIST_DATE.findall(row.get_text(" "))}
-        rows.append(found)
-    return rows
+def older_page_lines(html):
+    try:
+        listed = parse_older_absences(html)
+    except OlderAbsenceShapeError as error:
+        return ["- Older absence page: not readable, %s" % error, older_columns_line(html)], None
+    line = "- Older absence page: entries %s, unreadable %s" % (_amount(len(listed.rows)), _amount(listed.unreadable))
+    return [line, older_columns_line(html)], [{row.from_date, row.till_date} for row in listed.rows]
+
+
+def older_columns_line(html):
+    table = list_table(html)
+    if table is None:
+        return "- Older absence columns: no list table"
+    roles = column_roles(table)
+    named = [role for role, _index in sorted(roles.items(), key=lambda item: item[1])]
+    return "- Older absence columns: " + (", ".join(named) or "none recognised")
+
+
+def older_actions_line(html):
+    table = list_table(html)
+    rows = table.find_all("tr") if table is not None else []
+    deletes = sum(1 for row in rows if action_paths(row, DELETE_SEGMENTS))
+    edits = sum(1 for row in rows if action_paths(row, EDIT_SEGMENTS))
+    return "- Older absence row actions: delete links %s, edit links %s, detail links %s, export %s" % (
+        _amount(deletes), _amount(edits), _amount(len(_detail_rows(html))), "yes" if export_path(html, "") else "no",
+    )
+
+
+def _name_shape(name):
+    return code_text(placeholders(name))
+
+
+def _detail_rows(html):
+    try:
+        return [row for row in parse_older_absences(html).rows if row.detail_path]
+    except OlderAbsenceShapeError:
+        return []
+
+
+def older_detail_lines(client, html):
+    rows = _detail_rows(html)
+    if not rows:
+        return []
+    paths = [rows[0].detail_path]
+    try:
+        answer = client.fetch(paths[0])
+    except Exception:
+        answer = None
+    status = status_of(answer) if answer is not None else 0
+    lines = ["- Older absence detail page: %s answer %d" % (path_pattern(paths[0]), status)]
+    if status != 200:
+        return lines
+    text = getattr(answer, "text", "") or ""
+    url = str(getattr(answer, "url", "") or "")
+    form, field = upload_form(text, url, rows[0].entry_id)
+    if form is not None:
+        upload = "form %s, file field %s" % (structure_text(form, _name_shape), _name_shape(field))
+    else:
+        upload = "link %s" % ("yes" if upload_link(text, url, rows[0].entry_id) else "no")
+    entries = attachment_entries(text, url)
+    removable = sum(1 for item in entries if item.delete_link or item.delete_form)
+    lines.append("- Older absence attachments: links %s, removable %s, upload %s" % (_amount(len(entries)), _amount(removable), upload))
+    lines.append("- Older absence change log: rows %s" % _amount(len(change_log(text))))
+    return lines
+
+
+def older_form_lines(client, page, children):
+    html = getattr(page, "text", "") or ""
+    lines = [older_actions_line(html)]
+    lines.extend(older_detail_lines(client, html))
+    path = create_path(html, str(getattr(page, "url", "") or ""))
+    if not path:
+        lines.append("- Older absence create page: not linked")
+        return lines
+    try:
+        answer = client.fetch(path)
+    except Exception:
+        answer = None
+    status = status_of(answer) if answer is not None else 0
+    lines.append("- Older absence create page: %s answer %d" % (path_pattern(path), status))
+    if status != 200:
+        return lines
+    form = parse_create_form(getattr(answer, "text", "") or "", str(getattr(answer, "url", "") or ""), children)
+    if form is None:
+        lines.append("- Older absence form: no write form")
+        return lines
+    lines.append("- Older absence form: " + structure_text(form, _name_shape))
+    return lines
 
 
 def _sick_note_dates(notes):
@@ -382,7 +525,7 @@ def _sick_note_dates(notes):
     return dates
 
 
-def absence_evidence_lines(client, today):
+def absence_evidence_lines(client, today, children=()):
     lines = ["### Absence lists"]
     if client is None:
         lines.append("- Not read, no session")
@@ -392,11 +535,13 @@ def absence_evidence_lines(client, today):
     except Exception:
         response = None
     status = status_of(response) if response is not None else 0
-    older = _older_list_dates(getattr(response, "text", "")) if status == 200 else None
-    if older is None:
-        lines.append("- Older absence page: not read, answer %d" % status)
+    older = None
+    if status == 200:
+        page_lines, older = older_page_lines(getattr(response, "text", "") or "")
+        lines.extend(page_lines)
+        lines.extend(older_form_lines(client, response, children))
     else:
-        lines.append("- Older absence page: entries %s, with a date %s" % (_amount(len(older)), _amount(sum(1 for dates in older if dates))))
+        lines.append("- Older absence page: not read, answer %d" % status)
     since = (today - timedelta(days=EVIDENCE_DAYS)).isoformat()
     notes = fetch_json(client, SICK_NOTES_PATH, {"filterBy": "sickTillDateAsString:greaterOrEqualThan(%s)" % since})
     if not isinstance(notes, list):

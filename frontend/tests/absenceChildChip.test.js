@@ -67,7 +67,7 @@ describe(">1 child: the child question is a real wizard step, never a sheet", ()
     lead.click();
     expect(wz.step).toBe("child");
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Person");
+    expect(facts[0].label).toBe("Profil");
     expect(facts[0].value).toBe("Bella");
     expect(facts[0].step).toBe("child");
   });
@@ -81,7 +81,7 @@ describe("exactly 1 child: the child step is skipped entirely", () => {
     expect(wz.form.student_id).toBe("1");
     expect(wz.node.querySelector(".sw-lead-btn")).toBeNull();
     const facts = window.eval("absenceReviewFacts(state.absenceForm, state.absence.data)");
-    expect(facts[0].label).toBe("Person");
+    expect(facts[0].label).toBe("Profil");
     expect(facts[0].value).toBe("Alice");
     expect(facts[0].step).toBe("");
   });

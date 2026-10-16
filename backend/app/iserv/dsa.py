@@ -10,6 +10,7 @@ from .dsa_timetable import course_filter, query_date
 from .absences import ATTACHMENT_FIELD_NAME, BODY_JSON, form_fields
 from .errors import DataError, RATE_LIMIT_STATUS, rate_limit_outage
 from .html import clean_html
+from .query import query_key
 
 API_ROOT = "/iserv/dieschulapp/api/1.0"
 CURRENT_TIMETABLE_PATH = "current-timetable/"
@@ -31,6 +32,8 @@ PINBOARD_FIELDS = (
 )
 PINBOARD_PARAMS = {"fields": PINBOARD_FIELDS}
 REFUSED_STATUSES = (403,)
+GONE_STATUSES = (403, 404)
+PROJECTION_PARAMS = ("fields",)
 SICK_NOTE_SELECTION_PATH = "sickNotes/userSelection/"
 TIMETABLE_SETTING = "timetable_availableForGuardiansAndStudents"
 SUBSTITUTIONS_SETTING = "substitutions_availableForGuardiansAndStudents"
@@ -40,6 +43,10 @@ SHARED_READ_PATHS = ("timetable-slots/", "school-settings/")
 SHARED_READ_SECONDS = 120
 REGULAR_PLAN_SECONDS = 2 * 3600
 REGULAR_PLAN_TIMEOUT = 10
+
+
+def _sick_note_filter(since=None):
+    return {"filterBy": f"sickTillDateAsString:greaterOrEqualThan({since})"} if since else None
 
 
 def _request_filter(student_id=None):
@@ -360,8 +367,34 @@ def timetable_params(reference, course_ids, substitutions):
     return params
 
 
+def refusal_key(path, params=None):
+    return ("school-app", path.removeprefix(API_ROOT + "/"), query_key(params, PROJECTION_PARAMS))
+
+
+def note_refusal(refusals, path, response, params=None):
+    status = getattr(response, "status_code", 0)
+    key = refusal_key(path, params)
+    if status in GONE_STATUSES:
+        refusals.note(key, status)
+    else:
+        refusals.forget(key)
+
+
+class RefusedAnswer:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+    def json(self):
+        raise ValueError("refused earlier")
+
+
 class DieSchulAppClient:
-    def __init__(self, base_url, session, timeout=30, on_expired=None, on_answered=None, shared=None, regular_plans=None):
+    refusals = None
+
+    def __init__(
+        self, base_url, session, timeout=30, on_expired=None, on_answered=None, shared=None, regular_plans=None,
+        refusals=None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.session = session
         self.timeout = timeout
@@ -369,7 +402,20 @@ class DieSchulAppClient:
         self.on_answered = on_answered
         self.shared = shared
         self.regular_plans = regular_plans
+        self.refusals = refusals
         self.last_status = 0
+
+    def _refused_earlier(self, path, params=None):
+        if self.refusals is None:
+            return 0
+        status = self.refusals.status_of(refusal_key(path, params))
+        if status:
+            self.last_status = status
+        return status
+
+    def _note_answer(self, path, response, params=None):
+        if self.refusals is not None:
+            note_refusal(self.refusals, path, response, params)
 
     def _checked(self, response):
         self.last_status = getattr(response, "status_code", 0)
@@ -407,9 +453,12 @@ class DieSchulAppClient:
         return data
 
     def _fetch(self, path, params=None, timeout=None):
+        if self._refused_earlier(path, params):
+            return None
         response = self._checked(
             self.session.get(f"{self.base_url}{API_ROOT}/{path}", params=params, timeout=timeout or self.timeout)
         )
+        self._note_answer(path, response, params)
         if response.status_code == RATE_LIMIT_STATUS:
             raise rate_limit_outage(response)
         if response.status_code != 200:
@@ -517,9 +566,13 @@ class DieSchulAppClient:
         return parse_pinboards(self._require("pinboards/", PINBOARD_PARAMS))
 
     def _sick_note_selection(self):
+        refused = self._refused_earlier(SICK_NOTE_SELECTION_PATH)
+        if refused:
+            return RefusedAnswer(refused)
         response = self._checked(
             self.session.get(f"{self.base_url}{API_ROOT}/{SICK_NOTE_SELECTION_PATH}", timeout=self.timeout)
         )
+        self._note_answer(SICK_NOTE_SELECTION_PATH, response)
         if response.status_code == RATE_LIMIT_STATUS:
             raise rate_limit_outage(response)
         if response.status_code == EXPIRED_STATUS:
@@ -558,8 +611,10 @@ class DieSchulAppClient:
         return parse_students(self._get(SICK_NOTE_SELECTION_PATH))
 
     def sick_notes(self, since=None):
-        params = {"filterBy": f"sickTillDateAsString:greaterOrEqualThan({since})"} if since else None
-        return self._get("sickNotes/", params) or []
+        return self._get("sickNotes/", _sick_note_filter(since)) or []
+
+    def sick_notes_or_raise(self, since=None):
+        return self._require("sickNotes/", _sick_note_filter(since))
 
     def user_requests(self, path, student_id=None):
         return self._get(path, _request_filter(student_id)) or []

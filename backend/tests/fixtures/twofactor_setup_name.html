@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de-DE">
+<head><meta charset="UTF-8"><title>Zwei-Faktor-Authentifizierung einrichten</title></head>
+<body>
+<h1>Zwei-Faktor-Authentifizierung einrichten</h1>
+<p>Bitte geben Sie eine Bezeichnung für Ihre 2FA-App ein.</p>
+<form name="twofactor_add" method="post" action="/iserv/auth/settings/twofactor/add">
+  <label>Bezeichnung <input type="text" name="twofactor_add[name]" value=""></label>
+  <button type="submit" name="twofactor_add[actions][save]">Speichern</button>
+  <button type="submit" name="twofactor_add[actions][cancel]">Abbrechen</button>
+  <input type="hidden" name="twofactor_add[_token]" value="csrf-name-step">
+</form>
+</body>
+</html>

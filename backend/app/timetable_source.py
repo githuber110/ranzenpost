@@ -7,6 +7,7 @@ from .child_service import connection_marker
 from .iserv.dsa import REFUSED_STATUSES, SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
 from .iserv.dsa_substitutions import NOT_ASKED, describe
 from .iserv.errors import DataError, OutageError
+from .refusals import REFUSAL_SECONDS
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows, time_table_refusal
 from .store import edit_config
 
@@ -163,8 +164,9 @@ class TimetableSources:
             self._announced = True
         if announce:
             logger.info(
-                "school#%s timetable source time-table remembered, the school app is asked again every %d s",
-                self.connection.id, RECHECK_SECONDS,
+                "school#%s timetable source time-table remembered, the school app is asked again once a day "
+                "(%d s refusal window), at sign-in or when the modules are checked again",
+                self.connection.id, REFUSAL_SECONDS,
             )
         return due
 

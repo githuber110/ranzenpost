@@ -2,11 +2,12 @@ import logging
 
 import requests
 from fastapi import Body
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse
 
 from .failure import failure_cause
 from .iserv.errors import LoginError, TwoFactorError
 from .service import NotConfiguredError
+from .upstream import upstream_file
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
             _logged(
                 "send",
                 lambda: service.messenger_send(
-                    body.get("connection_id") or None, body.get("room_id", ""), body.get("text", "")
+                    body.get("connection_id") or None, body.get("room_id", ""), body.get("text", ""), body.get("txn_id") or ""
                 ),
             )
         )
@@ -93,12 +94,4 @@ def register_routes(app, service, read_endpoint, write_endpoint, binary_upstream
         except Exception as error:
             logger.warning("messenger media was refused before the request: %s", failure_cause(error))
             return PlainTextResponse("invalid media", status_code=400)
-        headers = {}
-        disposition = upstream.headers.get("content-disposition")
-        if disposition:
-            headers["Content-Disposition"] = disposition
-        return Response(
-            content=upstream.content,
-            media_type=upstream.headers.get("content-type", "application/octet-stream"),
-            headers=headers,
-        )
+        return upstream_file(upstream)

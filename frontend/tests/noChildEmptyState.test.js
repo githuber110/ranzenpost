@@ -14,7 +14,7 @@ describe("overview and tab bar with no child assigned", () => {
       })()
     `);
     expect(section.querySelector(".child-today")).toBeNull();
-    expect(section.textContent).toContain("Es ist keine Person ausgewählt.");
+    expect(section.textContent).toContain("Es ist kein Profil ausgewählt.");
   });
 
   test("the today chapter is simply absent when the school has no timetable module", () => {
@@ -78,7 +78,7 @@ describe("overview and tab bar with no child assigned", () => {
         return timetableView();
       })()
     `);
-    expect(view.textContent).toContain("Es ist keine Person ausgewählt.");
+    expect(view.textContent).toContain("Es ist kein Profil ausgewählt.");
     expect(view.querySelector(".weekbar")).toBeNull();
     expect(view.querySelector(".loading")).toBeNull();
   });

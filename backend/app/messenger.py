@@ -10,7 +10,7 @@ import requests
 
 from . import messages, requestlog
 from .failure import failure_cause
-from .iserv.errors import DataError, LoginError
+from .iserv.errors import REASON_DNS, REASON_REFUSED, DataError, LoginError, transport_reason
 from .store import edit_secrets, transaction
 from .iserv.messenger import (
     AUTH_FIELDS,
@@ -62,6 +62,10 @@ from .iserv.messenger import (
 )
 
 logger = logging.getLogger(__name__)
+TXN_ID_RE = re.compile(r"[A-Za-z0-9._-]{8,64}")
+SEND_UNCLEAR_KEY = "api.messenger.send.unclear"
+UNCLEAR_SEND_STATUSES = (500, 502, 503, 504)
+NOT_SENT_REASONS = (REASON_DNS, REASON_REFUSED)
 
 MESSENGER_PAGE_PATH = "/iserv/messenger/"
 MEDIA_PROXY_URL = "api/messenger/media/{server_name}/{media_id}"
@@ -572,17 +576,28 @@ class MessengerService:
 
         return self._with_matrix(call)
 
-    def send_message(self, room_id, text):
+    def send_message(self, room_id, text, txn_id=""):
         room_id = _require_room_id(room_id)
         text = str(text or "").strip()
         if not text:
             return messages.result(False, "api.messenger.send.empty")
-        txn_id = new_txn_id()
+        txn_id = txn_id if isinstance(txn_id, str) and TXN_ID_RE.fullmatch(txn_id) else new_txn_id()
+        attempted = []
 
         def call(client):
+            attempted.append(True)
             return client.send_message(room_id, txn_id, build_text_message(text))
 
-        response = self._with_matrix(call)
+        try:
+            response = self._with_matrix(call)
+        except MessengerStageError as error:
+            if not attempted or error.stage not in (STAGE_TIMEOUT, STAGE_NETWORK) or transport_reason(error) in NOT_SENT_REASONS:
+                raise
+            logger.warning("sending a message got no answer: %s", error.stage)
+            return messages.result(False, SEND_UNCLEAR_KEY, uncertain=True, txn_id=txn_id)
+        if response.status_code in UNCLEAR_SEND_STATUSES:
+            logger.warning("sending a message answered %s, the outcome is unclear", response.status_code)
+            return messages.result(False, SEND_UNCLEAR_KEY, uncertain=True, txn_id=txn_id)
         if response.status_code not in (200, 201):
             logger.warning("sending a message answered %s", response.status_code)
             return messages.result(False, "api.messenger.send.failed")

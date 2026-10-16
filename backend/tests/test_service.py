@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from types import SimpleNamespace
 from urllib.parse import quote
 
 import pytest
@@ -298,6 +299,10 @@ class FileClient(FakeClient):
             headers = {"content-type": "application/pdf"}
 
         return Upstream()
+
+    def fetch_file(self, path, limit, timeout=60):
+        self.paths.append(path)
+        return SimpleNamespace(status_code=200, url=self.url + path, headers={"content-type": "application/pdf"}, content=b"%PDF", truncated=False)
 
 
 class FakeResponse:
@@ -803,6 +808,9 @@ class FakeAbsenceDsa:
     def sick_notes(self, since=None):
         return self._notes
 
+    def sick_notes_or_raise(self, since=None):
+        return self._notes
+
     def sick_note_children(self):
         return [{"id": 7, "name": "Mia", "class_name": "2b"}]
 
@@ -1244,11 +1252,11 @@ def test_report_absence_explains_a_rejected_payload(tmp_path):
 
 
 def test_report_absence_reports_unexpected_status_with_number(tmp_path):
-    service, _ = with_absences(tmp_path, FakeAbsenceDsa(status=500))
+    service, _ = with_absences(tmp_path, FakeAbsenceDsa(status=409))
     result = service.report_absence(
         {"type": "deregister", "student_id": 7, "deregister_from": "bus", "date": "2026-09-04"}
     )
-    assert "500" in result["message"]
+    assert "409" in result["message"]
 
 
 def test_delete_absence_never_touches_a_sick_note(tmp_path):
@@ -1785,11 +1793,11 @@ def test_confirm_letter_reports_a_missing_form(tmp_path):
     assert store.load_letters_confirmations() == {}
 
 
-def test_confirm_letter_refuses_accept_decline(tmp_path):
+def test_confirm_letter_sends_no_accept_decline_without_a_chosen_answer(tmp_path):
     service, store, client = _confirm_service(tmp_path, [_fixture_text("letter_confirm_choice.html")])
     result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
     assert result["ok"] is False
-    assert result["message_key"] == "api.letters.confirm.unsupported"
+    assert result["message_key"] == "api.letters.confirm.noChoice"
     assert client.posts == []
     assert store.load_letters_confirmations() == {}
 
@@ -1984,14 +1992,14 @@ def test_the_evidence_marks_a_required_text_field_and_names_the_form_error_but_n
     assert "Freitag" not in str(evidence)
 
 
-def test_a_rejected_confirmation_says_what_the_school_answered_and_how_the_form_looks_after(tmp_path):
+def test_a_reply_with_a_form_error_is_unconfirmed_and_says_how_the_form_looks_after(tmp_path):
     seen = _fixture_text("letter_confirm_seen.html")
     after = _fixture_text("letter_confirm_seen_disabled.html")
     service, store, _ = _confirm_service(
         tmp_path, [seen, after], post_text=_fixture_text("letter_confirm_seen_required.html")
     )
     result = service.confirm_letter(CONFIRM_LETTER, CONFIRM_RECIPIENT)
-    assert result["message_key"] == "api.letters.confirm.rejected"
+    assert result["message_key"] == "api.letters.confirm.uncertain"
     diagnosis = result["diagnosis"]
     assert diagnosis["post_status"] == 200
     assert diagnosis["post_path"].startswith("/")

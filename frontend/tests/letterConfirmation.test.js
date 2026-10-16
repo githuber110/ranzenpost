@@ -77,16 +77,18 @@ describe("letter detail shows the confirmation block", () => {
     expect(block.querySelector("button.confirm-action")).not.toBeNull();
   });
 
-  test("accept/decline is shown honestly and offers no send button", () => {
+  test("a reply form the app does not know yet points to the in-app problem report, never to IServ", () => {
     const { window } = loadApp();
     const block = renderBlock(window, letterWith(null), { confirmation: OPEN_CHOICE });
     expect(block.querySelector(".confirm-title").textContent).toBe(
       window.eval('t("letters.confirm.choiceTitle")')
     );
     expect(block.querySelector(".confirm-text").textContent).toBe(
-      window.eval('t("letters.confirm.choiceText")')
+      window.eval('t("letters.confirm.unsupportedText")')
     );
-    expect(block.querySelector("button")).toBeNull();
+    expect(block.querySelectorAll("button").length).toBe(1);
+    expect(block.querySelector("button.letter-confirm-report")).not.toBeNull();
+    expect(block.querySelector("a")).toBeNull();
   });
 
   test("a letter without a confirmation renders no block", () => {
@@ -328,5 +330,194 @@ describe("the open letter decides whether a message goes along", () => {
     window.eval("state.sheet()").querySelectorAll(".btn-stack button")[0].click();
     await pending;
     expect(calls[0].body.text).toBe("Danke");
+  });
+});
+
+const CHOICE = {
+  mode: "submit",
+  multiple: false,
+  options: [
+    { id: "a1", label: "Zustimmen", selected: false },
+    { id: "b2", label: "Ablehnen", selected: false },
+  ],
+};
+const OPEN_ANSWER = { type: "confirmation", open: true, done: false, sendable: true, can_reply: false, confirmed_at: "", choice: CHOICE };
+
+function openDetail(window, letter, confirmation) {
+  window.eval("(function (letter, detail) { state.letters = { tab: 'current', letters: [letter] }; state.letterDetail = { letter, detail }; })")(
+    letter,
+    { body_html: "<p>x</p>", attachments: [], confirmation }
+  );
+}
+
+function card(window) {
+  return window.eval("letterConfirmationBlock(state.letterDetail.letter, state.letterDetail.detail)");
+}
+
+function answer(window, letter, choice, canReply, edit) {
+  return window.eval("(function (letter, choice, canReply, edit) { return sendLetterAnswer(letter, choice, canReply, edit); })")(letter, choice, canReply, edit);
+}
+
+describe("a letter that asks for an answer", () => {
+  test("shows each answer as an option and enables sending only after a choice", () => {
+    const { window } = loadApp();
+    const letter = letterWith(null);
+    openDetail(window, letter, OPEN_ANSWER);
+    const block = card(window);
+    expect(Array.from(block.querySelectorAll(".opt.letter-choice")).map((node) => node.textContent)).toEqual(["Zustimmen", "Ablehnen"]);
+    expect(block.querySelector(".letter-answer-send").disabled).toBe(true);
+    block.querySelectorAll(".opt.letter-choice")[1].click();
+    const after = card(window);
+    expect(after.querySelectorAll(".opt.letter-choice")[1].getAttribute("aria-pressed")).toBe("true");
+    expect(after.querySelector(".letter-answer-send").disabled).toBe(false);
+    expect(after.querySelectorAll(".btn:not(.ghost)").length).toBe(1);
+  });
+
+  test("cancelling the question sends nothing", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true }, calls);
+    const letter = letterWith(null);
+    openDetail(window, letter, OPEN_ANSWER);
+    card(window).querySelectorAll(".opt.letter-choice")[0].click();
+    const pending = answer(window, letter, CHOICE, false, false);
+    window.eval("state.onSheetClose()");
+    await pending;
+    expect(calls).toEqual([]);
+  });
+
+  test("confirming sends the chosen answer once and shows it as given", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true, message_key: "api.letters.confirm.answered", confirmed_at: "2026-09-03T14:05:00", answer: ["Ablehnen"] }, calls);
+    const letter = letterWith(null);
+    openDetail(window, letter, OPEN_ANSWER);
+    card(window).querySelectorAll(".opt.letter-choice")[1].click();
+    const pending = answer(window, letter, CHOICE, false, false);
+    expect(window.eval("state.sheet().querySelector('.dlg-quote').textContent")).toBe("Ablehnen");
+    window.eval("state.sheet().querySelectorAll('.btn-stack button')[0]").click();
+    await pending;
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toContain("api/letters/confirm");
+    expect(calls[0].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2", choices: ["b2"] });
+    const done = card(window);
+    expect(done.className).toContain("done");
+    expect(done.querySelector(".letter-answer").textContent).toBe(window.eval('t("letters.confirm.answerText", { answer: "Ablehnen" })'));
+    expect(done.querySelector(".opt")).toBeNull();
+  });
+
+  test("an answer the school did not take keeps the options for a new try", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: false, message_key: "api.letters.confirm.rejected", message: "nicht übernommen" }, calls);
+    const letter = letterWith(null);
+    openDetail(window, letter, OPEN_ANSWER);
+    card(window).querySelectorAll(".opt.letter-choice")[0].click();
+    const pending = answer(window, letter, CHOICE, false, false);
+    window.eval("state.sheet().querySelectorAll('.btn-stack button')[0]").click();
+    await pending;
+    const block = card(window);
+    expect(block.querySelector(".letter-answer-send").disabled).toBe(false);
+    expect(block.querySelector(".letter-confirm-reload")).toBeNull();
+    expect(block.textContent).toContain("nicht übernommen");
+  });
+
+  test("an unclear outcome offers to read the letter again inside the app", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: false, message_key: "api.letters.confirm.uncertain", message: "unklar" }, calls);
+    const letter = letterWith(null);
+    openDetail(window, letter, OPEN_ANSWER);
+    card(window).querySelectorAll(".opt.letter-choice")[0].click();
+    const pending = answer(window, letter, CHOICE, false, false);
+    window.eval("state.sheet().querySelectorAll('.btn-stack button')[0]").click();
+    await pending;
+    expect(card(window).querySelector(".letter-confirm-reload")).not.toBeNull();
+  });
+
+  test("an editable answer loads the form and sends the change with the edit flag", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    const answers = {
+      "api/letters/answer": { ok: true, choice: { mode: "radio", multiple: false, options: [{ id: "a1", label: "Ja", selected: true }, { id: "b2", label: "Nein", selected: false }] }, can_reply: true, text: "Gern" },
+      "api/letters/confirm": { ok: true, message_key: "api.letters.edit.ok", confirmed_at: "2026-09-04T10:00:00", answer: ["Nein"] },
+    };
+    window.fetch = (url, options) => {
+      const path = Object.keys(answers).find((key) => String(url).includes(key));
+      if (path) calls.push({ url: String(url), body: options && options.body ? JSON.parse(options.body) : null });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(path ? answers[path] : {}) });
+    };
+    const letter = letterWith(null);
+    openDetail(window, letter, { type: "answered", open: false, done: true, sendable: false, confirmed_at: "", editable: true });
+    await window.eval("(function (letter) { return openAnswerEdit(letter); })")(letter);
+    const editing = card(window);
+    expect(editing.querySelectorAll(".opt.letter-choice")[0].getAttribute("aria-pressed")).toBe("true");
+    expect(editing.querySelector("textarea").value).toBe("Gern");
+    editing.querySelectorAll(".opt.letter-choice")[1].click();
+    const choice = window.eval("state.letterDetail.letter.answerEdit.choice");
+    const pending = answer(window, letter, choice, true, true);
+    window.eval("state.sheet().querySelectorAll('.btn-stack button')[0]").click();
+    await pending;
+    expect(calls[0].url).toContain("api/letters/answer");
+    expect(calls[1].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2", choices: ["b2"], text: "Gern", edit: true });
+    const done = card(window);
+    expect(done.querySelector(".letter-answer").textContent).toBe(window.eval('t("letters.confirm.answerText", { answer: "Nein" })'));
+    expect(done.querySelector(".letter-answer-edit")).not.toBeNull();
+  });
+
+  test("the letter detail never links to the school website or opens a new tab", () => {
+    const { window } = loadApp();
+    const letter = letterWith(null);
+    for (const confirmation of [OPEN_ANSWER, OPEN_CHOICE, OPEN_SEEN, DONE_SEEN]) {
+      openDetail(window, letter, confirmation);
+      const view = window.eval("letterDetailView()");
+      for (const anchor of view.querySelectorAll("a[href]")) expect(anchor.getAttribute("href").includes("/iserv/")).toBe(false);
+      expect(view.querySelector("[target=_blank]")).toBeNull();
+    }
+  });
+});
+
+describe("review fixes for answers", () => {
+  test("a choice letter known only from the list never offers the read button", () => {
+    const { window } = loadApp();
+    const listed = { type: "confirmation", open: true, done: false, sendable: true, can_reply: false, confirmed_at: "" };
+    const block = renderBlock(window, letterWith(listed), { confirmation: null });
+    expect(block.querySelector("button.confirm-action:not(.ghost)")).toBeNull();
+    expect(block.textContent).not.toContain(window.eval('t("letters.confirm.action")'));
+    expect(block.querySelector(".letter-confirm-reload")).not.toBeNull();
+  });
+
+  test("an edit that empties the text sends an empty text and the question says so", async () => {
+    const { window } = loadApp();
+    const calls = [];
+    stubFetch(window, { ok: true, message_key: "api.letters.edit.ok", confirmed_at: "2026-09-04T10:00:00", answer: [] }, calls);
+    const letter = letterWith(null);
+    openDetail(window, letter, { type: "answered", open: false, done: true, sendable: false, confirmed_at: "", editable: true });
+    letter.answerEdit = { choice: null, can_reply: true };
+    letter.replyDraft = "   ";
+    const pending = answer(window, letter, null, true, true);
+    expect(window.eval("state.sheet().querySelector('.dlg-quote').textContent")).toBe(window.eval('t("letters.confirm.emptyText")'));
+    window.eval("state.sheet().querySelectorAll('.btn-stack button')[0]").click();
+    await pending;
+    expect(calls[0].body).toEqual({ connection_id: "", letter_id: "1", recipient_id: "2", text: "", edit: true });
+  });
+
+  test("several answers are joined the way the language writes lists", () => {
+    const { window } = loadApp();
+    const block = renderBlock(window, letterWith(null), {
+      confirmation: { type: "confirmation", open: false, done: true, sendable: false, confirmed_at: "", answer: ["Kuchen", "Getraenke", "Aufbau"] },
+    });
+    const expected = new Intl.ListFormat("de", { style: "long", type: "conjunction" }).format(["Kuchen", "Getraenke", "Aufbau"]);
+    expect(block.querySelector(".letter-answer").textContent).toBe(window.t("letters.confirm.answerText", { answer: expected }));
+  });
+
+  test("a failure note appears once on every kind of card", () => {
+    const { window } = loadApp();
+    const letter = letterWith(null);
+    letter.confirmationFailure = { message: "Nur einmal" };
+    for (const confirmation of [OPEN_ANSWER, DONE_SEEN, OPEN_SEEN]) {
+      openDetail(window, letter, confirmation);
+      expect(card(window).textContent.split("Nur einmal").length - 1).toBe(1);
+    }
   });
 });

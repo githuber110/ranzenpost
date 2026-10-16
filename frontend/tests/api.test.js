@@ -68,7 +68,7 @@ describe("request helpers run without a browser", () => {
   test("getJson sends through the injected fetch with the request timeout", async () => {
     const { api, calls } = setup({ reply: () => answer({ one: 1 }) });
     await expect(api.getJson("api/me")).resolves.toEqual({ one: 1 });
-    expect(calls).toEqual([{ url: `${INGRESS}api/me`, options: { signal: { ms: REQUEST_TIMEOUT_MS } } }]);
+    expect(calls).toEqual([{ url: `${INGRESS}api/me`, options: { signal: { ms: REQUEST_TIMEOUT_MS }, headers: { "X-Ranzenpost-App": "1" } } }]);
   });
 
   test("getJson keeps a signal the caller hands in", async () => {
@@ -93,7 +93,7 @@ describe("request helpers run without a browser", () => {
       url: `${INGRESS}api/config`,
       options: {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Ranzenpost-App": "1" },
         body: JSON.stringify({ a: 1 }),
         signal: { ms: REQUEST_TIMEOUT_MS },
       },
@@ -110,14 +110,14 @@ describe("request helpers run without a browser", () => {
       ["files", "first"],
       ["files", "second"],
     ]);
-    expect(calls[0].options).toEqual({ method: "POST", body: forms[0], signal: { ms: UPLOAD_TIMEOUT_MS } });
+    expect(calls[0].options).toEqual({ method: "POST", body: forms[0], signal: { ms: UPLOAD_TIMEOUT_MS }, headers: { "X-Ranzenpost-App": "1" } });
   });
 
   test("without AbortSignal.timeout a request goes out without a signal", async () => {
     const { api, calls } = setup({ signals: null });
     expect(api.requestSignal(5)).toBeUndefined();
     await api.getJson("api/me");
-    expect(calls[0].options).toEqual({ signal: undefined });
+    expect(calls[0].options).toEqual({ signal: undefined, headers: { "X-Ranzenpost-App": "1" } });
     expect(setup({ signals: {} }).api.requestSignal(5)).toBeUndefined();
   });
 
@@ -125,7 +125,7 @@ describe("request helpers run without a browser", () => {
     const raw = { ok: true, headers: { get: () => "attachment; filename=x.pdf" }, blob: () => Promise.resolve("blob") };
     const { api, calls } = setup({ reply: () => Promise.resolve(raw) });
     await expect(api.getFile("api/pinboard/attachment/x")).resolves.toBe(raw);
-    expect(calls).toEqual([{ url: `${INGRESS}api/pinboard/attachment/x`, options: undefined }]);
+    expect(calls).toEqual([{ url: `${INGRESS}api/pinboard/attachment/x`, options: { headers: { "X-Ranzenpost-App": "1" } } }]);
   });
 
   test("requestJson resolves ok bodies, maps failed bodies to a message and never throws", async () => {
@@ -134,7 +134,7 @@ describe("request helpers run without a browser", () => {
       ok: true,
       data: { subscriptions: [] },
     });
-    expect(ok.calls).toEqual([{ url: `${INGRESS}api/calendar/subscriptions`, options: undefined }]);
+    expect(ok.calls).toEqual([{ url: `${INGRESS}api/calendar/subscriptions`, options: { headers: { "X-Ranzenpost-App": "1" } } }]);
 
     const refused = setup({ reply: () => answer({ message_key: "a.b" }, false, 400) });
     await expect(refused.api.requestJson("api/x", { method: "DELETE" }, "fallback.key")).resolves.toEqual({
@@ -163,7 +163,7 @@ describe("request helpers run without a browser", () => {
         url: `${INGRESS}api/config`,
         options: {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Ranzenpost-App": "1" },
           body: JSON.stringify({ a: 1 }),
         },
       },

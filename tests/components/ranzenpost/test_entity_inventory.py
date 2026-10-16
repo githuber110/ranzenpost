@@ -20,7 +20,7 @@ HA_ATTRIBUTES = {
     "supported_features",
     "attribution",
 }
-MODULES = {"timetable": True, "letters": True, "pinboard": True, "absences": True, "conferences": True, "messenger": True, "calendar": False}
+MODULES = {"timetable": True, "letters": True, "pinboard": True, "absences": True, "conferences": True, "messenger": True, "calendar": False, "tasks": False, "news": False, "forums": False, "texts": False}
 
 
 def extra(hass, entity_id):

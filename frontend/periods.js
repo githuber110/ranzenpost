@@ -270,7 +270,7 @@
       if (!iso) continue;
       const found = days[iso] || (days[iso] = new Set());
       const number = Number(lesson.period);
-      if (Number.isInteger(number) && number > 0 && lesson.change_kind !== "added") found.add(number);
+      if (Number.isInteger(number) && number >= 0 && lesson.change_kind !== "added") found.add(number);
     }
     const out = {};
     for (const [iso, numbers] of Object.entries(days)) out[iso] = [...numbers].sort((a, b) => a - b);

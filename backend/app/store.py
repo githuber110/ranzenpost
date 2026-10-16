@@ -25,7 +25,15 @@ NOTIFY_EVENT_DEFAULTS = {
     "letters": True,
     "pinboard": True,
     "conferences": True,
+    "conference_booking_open": True,
+    "conference_cancelled": True,
+    "conference_reminder": True,
+    "conference_booking_reminder": True,
     "messenger": True,
+    "tasks": True,
+    "news": True,
+    "forums": True,
+    "texts": True,
 }
 
 DEFAULT_CONFIG = {
@@ -102,6 +110,7 @@ LEGACY_CONNECTION_KEYS = (
     "holiday_region",
     "poll_state",
 )
+SCHOOL_SNAPSHOT_FIELDS = ("schools", "tasks", "news", "task_details", "task_detail_shapes", "forums", "texts", "infodisplay")
 POLL_STATE_MODULE_KEYS = ("letter_keys", "pinboard_ids", "conference_keys", "messenger_unread")
 NESTED_FILE_NAMES = (
     "seen.json",
@@ -335,6 +344,7 @@ class Store:
         self.letters_search_cache_path = self.dir / "letters_search_cache.json"
         self.letters_confirmations_path = self.dir / "letters_confirmations.json"
         self.letters_replies_path = self.dir / "letters_replies.json"
+        self.older_absence_pending_path = self.dir / "older_absence_pending.json"
         self.holidays_cache_path = self.dir / "holidays_cache.json"
         self.calendar_subscriptions_path = self.dir / "calendar_subscriptions.json"
         self.calendar_snapshot_path = self.dir / "calendar_snapshot.json"
@@ -500,6 +510,7 @@ class Store:
             (self.load_letters_search_cache, self.save_letters_search_cache),
             (self.load_letters_confirmations, self.save_letters_confirmations),
             (self.load_letters_replies, self.save_letters_replies),
+            (self.load_older_absence_pending, self.save_older_absence_pending),
             (self.load_modules, self.save_modules),
         ):
             edit(self, load, save, lambda data: data.pop(connection_id, None))
@@ -536,9 +547,10 @@ class Store:
                 snapshot["children"] = {
                     key: value for key, value in children.items() if connection_of_key(key) != connection_id
                 }
-            schools = snapshot.get("schools")
-            if isinstance(schools, dict):
-                schools.pop(connection_id, None)
+            for field in SCHOOL_SNAPSHOT_FIELDS:
+                schools = snapshot.get(field)
+                if isinstance(schools, dict):
+                    schools.pop(connection_id, None)
 
         edit(self, self.load_calendar_snapshot, self.save_calendar_snapshot, drop_children)
 
@@ -630,6 +642,12 @@ class Store:
 
     def save_letters_replies(self, data):
         atomic_write.write_json(self.letters_replies_path, data)
+
+    def load_older_absence_pending(self):
+        return self._load_json_object(self.older_absence_pending_path)
+
+    def save_older_absence_pending(self, data):
+        atomic_write.write_json(self.older_absence_pending_path, data)
 
     def load_holidays_cache(self):
         return self._load_json_object(self.holidays_cache_path)
@@ -1000,6 +1018,12 @@ class ConnectionStore:
 
     def save_letters_replies(self, data):
         self._put_nested(self.base.load_letters_replies, self.base.save_letters_replies, data)
+
+    def load_older_absence_pending(self):
+        return self._nested(self.base.load_older_absence_pending)
+
+    def save_older_absence_pending(self, data):
+        self._put_nested(self.base.load_older_absence_pending, self.base.save_older_absence_pending, data)
 
     def load_modules(self):
         return self._nested(self.base.load_modules)

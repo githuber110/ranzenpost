@@ -3,7 +3,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 
-from .iserv.absences import berlin_offset
+from . import berlin
+
 
 SOURCE_BASE_URL = "https://openholidaysapi.org"
 COUNTRY_ISO_CODE = "DE"
@@ -96,10 +97,7 @@ SCHOOL_DAYS_PER_WEEK = 5
 
 
 def berlin_today(moment=None):
-    utc_naive = moment or datetime.now(timezone.utc).replace(tzinfo=None)
-    if berlin_offset(utc_naive + timedelta(hours=2)) == 2:
-        return (utc_naive + timedelta(hours=2)).date()
-    return (utc_naive + timedelta(hours=1)).date()
+    return berlin.today(moment)
 
 
 def region_options():

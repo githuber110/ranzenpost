@@ -136,9 +136,12 @@ def register_routes(app, service, wizard, subscription_registry, holiday_source,
         return {"saved": True}
 
     @app.post("/api/connections/{connection_id}/disconnect")
-    def disconnect_connection(connection_id: str):
+    def disconnect_connection(connection_id: str, body: dict = Body(default=None)):
         try:
-            result = service.disconnect(connection_id)
+            choice = (body or {}).get("token_id")
+            result = service.disconnect(
+                connection_id, (body or {}).get("force") is True, choice if isinstance(choice, str) and choice else None
+            )
         except DataError as error:
             return JSONResponse(status_code=404, content=upstream_write_error(NETWORK, error))
         if wizard is not None and not service.store.connections():

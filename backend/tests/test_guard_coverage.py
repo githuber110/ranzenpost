@@ -2,6 +2,7 @@ import tests.test_frontend_error_handling as error_guard
 import tests.test_frontend_literals as literal_guard
 import tests.test_i18n as i18n_guard
 from tests.frontend_sources import (
+    APP_PARTS_DIR,
     FRONTEND,
     GUARDED_SUFFIXES,
     MARKUP_SUFFIXES,
@@ -11,6 +12,7 @@ from tests.frontend_sources import (
     TEST_TREE_REASON,
     VENDOR_EXEMPT_PATHS,
     VENDOR_EXEMPT_REASON,
+    app_script_names,
     is_shipped,
     shipped_names,
     shipped_paths,
@@ -71,6 +73,15 @@ def test_the_guards_read_files_by_glob_and_not_from_a_hand_kept_list():
     for name in ("SCANNED_FILES", "JS_SOURCES", "STYLESHEETS"):
         assert callable(getattr(i18n_guard, name)), f"{name} must stay a glob, not a frozen tuple"
     assert callable(literal_guard.SOURCES)
+
+
+def test_the_app_sources_are_every_app_part_the_page_loads_and_end_with_app_js():
+    names = app_script_names()
+    parts = {name for name in shipped_names(SCRIPT_SUFFIXES) if name.startswith(APP_PARTS_DIR + "/")}
+    assert names[-1] == "app.js"
+    assert parts
+    assert set(names[:-1]) == parts
+    assert len(names) == len(set(names))
 
 
 def test_the_globs_actually_find_the_files_that_exist_today():

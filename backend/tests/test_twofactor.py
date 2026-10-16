@@ -6,6 +6,7 @@ from app.iserv.twofactor import (
     parse_delete_token,
     parse_password_form,
     parse_registration,
+    parse_token_list,
     parse_token_rows,
     password_changed,
     registration_rejected,
@@ -103,3 +104,33 @@ def test_parse_delete_token_reads_the_shared_csrf_token():
 
 def test_parse_delete_token_returns_none_without_the_form():
     assert parse_delete_token(read("twofactor_list.html")) is None
+
+
+DATED_LIST = """
+<table>
+  <thead><tr><th>Bezeichnung</th><th>Erstellt am</th><th>Aktionen</th></tr></thead>
+  <tbody>
+    <tr id="client-twofactor-row-b2b6b8b0-1111-4a2a-9c3c-abcdef123456"><td>ISERV-Connector</td><td>1.9.2026 08:15</td><td></td></tr>
+    <tr id="client-twofactor-row-c3c3c3c3-2222-4b2b-8d3d-abcdef654321"><td>ISERV-Connector</td><td><time datetime="2026-10-02T07:00:00">gestern</time></td><td></td></tr>
+    <tr id="client-twofactor-row-../../logout"><td>ISERV-Connector</td><td>31.02.2026</td><td></td></tr>
+    <tr><td>Authenticator</td><td>unbekannt</td><td></td></tr>
+  </tbody>
+</table>
+"""
+
+
+def test_the_token_list_keeps_every_entry_with_a_checked_id_and_a_created_date():
+    assert parse_token_list(DATED_LIST) == [
+        {"name": "ISERV-Connector", "uuid": "b2b6b8b0-1111-4a2a-9c3c-abcdef123456", "created": "2026-09-01"},
+        {"name": "ISERV-Connector", "uuid": "c3c3c3c3-2222-4b2b-8d3d-abcdef654321", "created": "2026-10-02"},
+        {"name": "ISERV-Connector", "uuid": "", "created": ""},
+        {"name": "Authenticator", "uuid": "", "created": ""},
+    ]
+
+
+def test_the_token_list_has_no_created_date_when_iserv_shows_none():
+    rows = parse_token_list(read("twofactor_list_uuid.html"))
+    assert rows == [
+        {"name": "parent@school.example", "uuid": "", "created": ""},
+        {"name": "ISERV-Connector", "uuid": "b2b6b8b0-1111-4a2a-9c3c-abcdef123456", "created": ""},
+    ]

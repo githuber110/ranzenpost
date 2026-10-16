@@ -103,7 +103,7 @@ def test_mail_is_only_available_when_the_menu_lists_it(tmp_path):
     assert service.mail_available() is False
 
 
-def test_the_app_gets_the_stored_count_and_a_link_per_school_with_mail(tmp_path):
+def test_the_app_gets_the_stored_count_per_school_with_mail_and_no_iserv_link(tmp_path):
     from tests.test_connections import two_schools
 
     service, store, one, two, _ = two_schools(tmp_path)
@@ -111,7 +111,7 @@ def test_the_app_gets_the_stored_count_and_a_link_per_school_with_mail(tmp_path)
     integration.record_school_mail(store, one, 3)
     body = service.mail_counts()
     assert [(entry["connection_id"], entry["unread"]) for entry in body["schools"]] == [(one, 3)]
-    assert body["schools"][0]["open_url"].endswith("/iserv/mail")
+    assert "open_url" not in body["schools"][0]
     assert body["schools"][0]["school"] == "School One"
 
 

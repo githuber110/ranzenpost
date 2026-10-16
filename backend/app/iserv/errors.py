@@ -79,6 +79,10 @@ class PasswordError(IServError):
     pass
 
 
+class PasswordUnclearError(IServError):
+    pass
+
+
 OUTAGE_KEY = "api.outage"
 REASON_TIMEOUT = "timeout"
 REASON_DNS = "dns"
@@ -94,6 +98,10 @@ RATE_LIMIT_CAP_SECONDS = 2 * 60 * 60
 
 
 class SchoolCalendarRefusedError(DataError):
+    pass
+
+
+class ModulePageRefusedError(DataError):
     pass
 
 

@@ -1,6 +1,6 @@
 import re
 
-from tests.frontend_sources import FRONTEND, SCRIPT_SUFFIXES, shipped_paths
+from tests.frontend_sources import FRONTEND, SCRIPT_SUFFIXES, app_source_text, shipped_paths
 
 FOREIGN_TEXT_FIELDS = {
     "letter": ("title", "sender", "subject"),
@@ -213,9 +213,8 @@ def test_the_foreign_text_factory_exists_and_forces_a_direction():
 
 
 def test_app_takes_the_foreign_text_factory_from_the_dom_kit():
-    source = (FRONTEND / "app.js").read_text(encoding="utf-8")
-    assert FACTORY_BINDING.search(source)
-    assert not FACTORY_REDEFINITION.search(source)
+    assert FACTORY_BINDING.search((FRONTEND / "app.js").read_text(encoding="utf-8"))
+    assert not FACTORY_REDEFINITION.search(app_source_text())
     assert FACTORY_REDEFINITION.search("function iservText(tag) {}")
     assert not FACTORY_BINDING.search("const { el } = dom;")
 

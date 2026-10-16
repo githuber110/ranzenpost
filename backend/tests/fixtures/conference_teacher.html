@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <title>Frau Muster - IServ - schule.example</title>
+</head>
+<body>
+<nav class="navbar"><a href="/iserv/">IServ</a></nav>
+<div id="content" class="content">
+  <h1>Frau Muster</h1>
+  <p>Raum R 101, Elternsprechtag Herbst am 05.11.2026</p>
+  <form name="booking" method="post" action="/iserv/parentconference/attendee/conference/7/teacher/12/book">
+    <!--FORM_ERROR-->
+    <input type="hidden" name="booking[_token]" value="token-book-1">
+    <div class="form-group">
+      <label class="control-label required">Zeit</label>
+      <div class="radio"><label><input type="radio" name="booking[slot]" value="101"<!--S101-->> 14:00 - 14:10</label></div>
+      <div class="radio"><label><input type="radio" name="booking[slot]" value="102" disabled> 14:10 - 14:20 (belegt)</label></div>
+      <div class="radio"><label><input type="radio" name="booking[slot]" value="103"<!--S103-->> 14:20 - 14:30</label></div>
+    </div>
+    <div class="form-group<!--CHILD_ERROR_CLASS-->">
+      <label for="booking_child" class="control-label required">Kind</label>
+      <select id="booking_child" name="booking[child]" class="form-control" required>
+        <option value="">Bitte wählen</option>
+        <option value="501">Kim</option>
+      </select>
+      <!--CHILD_ERROR-->
+    </div>
+    <div class="form-group">
+      <label for="booking_note" class="control-label">Anmerkung</label>
+      <textarea id="booking_note" name="booking[note]" class="form-control" maxlength="500"></textarea>
+    </div>
+    <button type="submit" name="booking[submit]" class="btn btn-success">Buchen</button>
+  </form>
+  <a class="btn btn-default" href="/iserv/parentconference/attendee/conference/7">Zurück</a>
+</div>
+</body>
+</html>

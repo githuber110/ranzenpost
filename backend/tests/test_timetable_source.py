@@ -8,6 +8,7 @@ from app.iserv.dsa import SCHOOL_APP_EXPIRED_KEY, SHARED_READ_SECONDS
 from app.iserv.errors import DataError, LoginError, TwoFactorError
 from app.iserv.timetable import TIMETABLE_REFUSED_KEY, TIMETABLE_SHAPE_KEY
 from app.store import Store
+from app.refusals import REFUSAL_SECONDS
 from app.timetable_source import MATCH_SECONDS, RECHECK_SECONDS, SOURCE_KEY, matching_option, name_words
 from app.iserv.models import Child
 from tests.support import add_school, connection_service
@@ -613,7 +614,10 @@ def test_a_restart_names_the_remembered_source_once(tmp_path, caplog):
         again.timetable(CHILD, reference=WEDNESDAY)
         again.timetable(CHILD, reference=WEDNESDAY, week_offset=1)
     lines = [line for line in source_lines(caplog) if "remembered" in line]
-    assert lines == ["school#%s timetable source time-table remembered, the school app is asked again every 3600 s" % service.id]
+    assert lines == [
+        "school#%s timetable source time-table remembered, the school app is asked again once a day "
+        "(86400 s refusal window), at sign-in or when the modules are checked again" % service.id
+    ]
 
 
 def test_the_connection_counts_the_children_its_school_account_lists(tmp_path):
@@ -678,6 +682,9 @@ def test_a_refusing_school_app_is_asked_again_only_when_the_recheck_is_due(tmp_p
         assert current_timetable_reads(school) == asked
         service.clock.now += RECHECK_SECONDS
         assert service.timetable(CHILD, reference=WEDNESDAY)["source"] == "time-table"
+        assert current_timetable_reads(school) == asked
+        service.clock.now += REFUSAL_SECONDS
+        assert service.timetable(CHILD, reference=WEDNESDAY)["source"] == "time-table"
     assert current_timetable_reads(school) == asked + 1
     assert remembered(service) == "time-table"
     assert len(source_changes(caplog)) == 1
@@ -703,6 +710,8 @@ def test_the_school_app_takes_over_again_once_it_stops_refusing(tmp_path):
     school.school_app = SCHOOL_APP_ANSWERS
     school.school_lessons = True
     service.clock.now += RECHECK_SECONDS
+    assert service.timetable(CHILD, reference=WEDNESDAY)["source"] == "time-table"
+    service.clock.now += REFUSAL_SECONDS
     result = service.timetable(CHILD, reference=WEDNESDAY)
     assert result["source"] == "school-app"
     assert [lesson["subject_code"] for lesson in result["lessons"]] == ["D"]

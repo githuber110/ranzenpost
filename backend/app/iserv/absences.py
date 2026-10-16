@@ -1,7 +1,7 @@
 import json
 from datetime import date, datetime, time, timedelta, timezone
 
-from .. import messages
+from .. import berlin, messages
 from .html import clean_html
 
 KIND_SICK = "sick"
@@ -79,6 +79,7 @@ SICK_LOCKED_KEY = "api.absence.lockedSick"
 SICK_LOCKED = messages.text(SICK_LOCKED_KEY)
 
 HISTORY_MAX_AGE_DAYS = 30
+HISTORY_HTML_FIELDS = ("body", "answer")
 
 HISTORY_LOCKED_KEY = "api.absence.lockedHistory"
 HISTORY_LOCKED = messages.text(HISTORY_LOCKED_KEY)
@@ -316,6 +317,9 @@ def merge_absence_history(live_entries, history, today=None, max_age_days=HISTOR
             continue
         historic = dict(record)
         historic.pop("seen_at", None)
+        for field in HISTORY_HTML_FIELDS:
+            if field in historic:
+                historic[field] = clean_html(historic.get(field))
         historic["from_history"] = True
         historic["deletable"] = False
         historic["locked_reason"] = HISTORY_LOCKED
@@ -345,13 +349,19 @@ def _sick_request(student, data, today, periods=None):
     if from_period is None and till_period is None:
         last_period = _max_period(periods)
         if last_period is not None:
-            from_period = 1
+            from_period = _min_period(periods)
             till_period = last_period
     if from_period is not None:
         payload["sickFromLessonNumber"] = from_period
     if till_period is not None:
         payload["sickTillLessonNumber"] = till_period
     return Request(SICK_NOTES_PATH, BODY_JSON, payload)
+
+
+def _min_period(periods):
+    numbers = [_as_int(slot.get("number")) for slot in periods or [] if isinstance(slot, dict)]
+    numbers = [number for number in numbers if number is not None]
+    return min(numbers) if numbers else None
 
 
 def _max_period(periods):
@@ -462,34 +472,14 @@ def _escape(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _last_sunday(year, month):
-    day = 31
-    while True:
-        try:
-            candidate = date(year, month, day)
-        except ValueError:
-            day -= 1
-            continue
-        if candidate.weekday() == 6:
-            return candidate
-        day -= 1
-
-
-def berlin_offset(moment):
-    year = moment.year
-    starts = datetime.combine(_last_sunday(year, 3), time(2, 0))
-    ends = datetime.combine(_last_sunday(year, 10), time(3, 0))
-    return 2 if starts <= moment < ends else 1
-
-
 def _iso_utc(day):
     local = datetime.combine(day, time(0, 0))
-    return (local - timedelta(hours=berlin_offset(local))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return (local - timedelta(hours=berlin.offset(local))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def _epoch(day, moment):
     local = datetime.combine(day, moment)
-    stamp = local - timedelta(hours=berlin_offset(local))
+    stamp = local - timedelta(hours=berlin.offset(local))
     return int(stamp.replace(tzinfo=timezone.utc).timestamp())
 
 
@@ -513,14 +503,6 @@ def _time_value(value, fallback):
         return fallback
 
 
-def berlin_date_from_utc(utc_naive):
-    if berlin_offset(utc_naive + timedelta(hours=2)) == 2:
-        local = utc_naive + timedelta(hours=2)
-    else:
-        local = utc_naive + timedelta(hours=1)
-    return local.date()
-
-
 def _date_part(value):
     if value in (None, ""):
         return ""
@@ -530,10 +512,10 @@ def _date_part(value):
     try:
         if isinstance(value, (int, float)):
             utc_naive = datetime.fromtimestamp(value, timezone.utc).replace(tzinfo=None)
-            return berlin_date_from_utc(utc_naive).isoformat()
+            return berlin.date_from_utc(utc_naive).isoformat()
         if "T" in text and text.endswith("Z"):
             utc_naive = datetime.fromisoformat(text[:-1])
-            return berlin_date_from_utc(utc_naive).isoformat()
+            return berlin.date_from_utc(utc_naive).isoformat()
     except (ValueError, OverflowError, OSError):
         return ""
     return text[:10]

@@ -5,7 +5,7 @@ from fastapi import Body
 
 from . import messages
 from .iserv.errors import DataError, LoginError, PasswordError, TwoFactorError
-from .service import NotConfiguredError
+from .service import PASSWORD_NOT_ARRIVED, PASSWORD_UNCLEAR, NotConfiguredError
 from .upstream import upstream_code, upstream_write_error, write_endpoint
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,11 @@ def _logged(label, call):
             raise
 
     return run
+
+
+def _token_choice(body):
+    value = (body or {}).get("token_id")
+    return value if isinstance(value, str) and value else None
 
 
 def register_routes(app, service, wizard):
@@ -48,6 +53,10 @@ def register_routes(app, service, wizard):
             return upstream_write_error(upstream_code(error), error)
         if outcome == "unverified":
             return messages.result(True, "api.password.unverified")
+        if outcome == PASSWORD_UNCLEAR:
+            return messages.result(False, "api.password.unclear", error="unclear", uncertain=True)
+        if outcome == PASSWORD_NOT_ARRIVED:
+            return messages.result(False, "api.password.notArrived", error="not_arrived")
         return messages.result(True, "api.password.changed")
 
     @app.post("/api/password/repair")
@@ -64,7 +73,11 @@ def register_routes(app, service, wizard):
         result = write_endpoint(
             _logged(
                 "account disconnect",
-                lambda: service.disconnect((body or {}).get("connection_id") or None),
+                lambda: service.disconnect(
+                    (body or {}).get("connection_id") or None,
+                    (body or {}).get("force") is True,
+                    _token_choice(body),
+                ),
             )
         )
         if wizard is not None and not service.store.connections():

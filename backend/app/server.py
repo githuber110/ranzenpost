@@ -11,11 +11,19 @@ from .absence_routes import register_routes as register_absence_routes
 from .account_routes import register_routes as register_account_routes
 from .calendar_routes import register_routes as register_calendar_routes
 from .cancellation_routes import register_routes as register_cancellation_routes
+from .conference_routes import register_routes as register_conference_routes
 from .config_routes import register_routes as register_config_routes
 from .connection_routes import register_routes as register_connection_routes
 from .iserv.errors import DataError, sign_in_reason_rank
 from .letter_routes import register_routes as register_letter_routes
+from .mail_routes import register_routes as register_mail_routes
+from .file_routes import register_routes as register_file_routes
+from .request_guard import register_request_guard
+from .contacts_routes import register_routes as register_contacts_routes
 from .mark_routes import register_routes as register_mark_routes
+from .news_routes import register_routes as register_news_routes
+from .forum_routes import register_routes as register_forum_routes
+from .task_routes import register_routes as register_task_routes
 from .period_routes import register_routes as register_period_routes
 from .pinboard_routes import register_routes as register_pinboard_routes
 from .poller import Poller
@@ -32,7 +40,7 @@ CONTENT_SECURITY_POLICY = (
     "font-src 'self'; "
     "script-src 'self'; "
     "connect-src 'self'; "
-    "frame-src blob:; "
+    "frame-src 'self' blob:; "
     "object-src 'none'; "
     "base-uri 'none'; "
     "form-action 'none'"
@@ -75,6 +83,7 @@ def create_app(
 ):
     app = FastAPI(title="Ranzenpost")
     from .integration_api import (
+        ROUTES as INTEGRATION_ROUTES,
         IntegrationAccess,
         ingress_only_from_env,
         register_ingress_guard,
@@ -109,13 +118,14 @@ def create_app(
     register_status_routes(app, access)
     app.state.integration_access = access
     register_ingress_guard(app, ingress_only_from_env() if ingress_only is None else ingress_only)
+    register_request_guard(app, INTEGRATION_ROUTES)
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
-        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
@@ -275,17 +285,31 @@ def create_app(
 
     register_letter_routes(app, service)
 
-    @app.get("/api/conferences")
-    def conferences():
-        return read_endpoint(service.conferences)
+    register_conference_routes(app, service)
 
     @app.get("/api/school-events")
     def school_events():
         return read_endpoint(service.school_events)
 
+    @app.get("/api/tasks")
+    def tasks():
+        return read_endpoint(service.tasks)
+
+    @app.get("/api/news")
+    def news():
+        return read_endpoint(service.news)
+
+    register_news_routes(app, service)
+    register_task_routes(app, service)
+    register_forum_routes(app, service)
+
     @app.get("/api/mail")
     def mail_counts():
         return read_endpoint(service.mail_counts)
+
+    register_mail_routes(app, service)
+    register_file_routes(app, service)
+    register_contacts_routes(app, service)
 
     register_absence_routes(app, service)
 

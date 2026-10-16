@@ -54,7 +54,7 @@ def number_of(value):
         number = int(str(value).strip())
     except (TypeError, ValueError):
         return None
-    return number if number > 0 else None
+    return number if number >= 0 else None
 
 
 def duration_of(value):
@@ -184,7 +184,7 @@ def own_duration(config, period):
 
 
 def lesson_span(config, period, native_start, native_end):
-    chosen = chosen_starts(config).get(number_of(period) or 0)
+    chosen = chosen_starts(config).get(number_of(period))
     start_native = minutes_of(native_start)
     end_native = minutes_of(native_end)
     native = end_native - start_native if start_native is not None and end_native is not None and end_native > start_native else None
@@ -198,7 +198,7 @@ def lesson_span(config, period, native_start, native_end):
         if native is not None:
             duration = native
         else:
-            slot = iserv_layer(config).get(number_of(period) or 0)
+            slot = iserv_layer(config).get(number_of(period))
             duration = base_duration(slot) or DEFAULT_MINUTES
     end = start + duration
     return start, end if end < DAY_MINUTES else None
@@ -282,7 +282,7 @@ def profiles(config):
             text = str(key)
             if not text.isdigit() or int(text) > 6 or not isinstance(numbers, list):
                 continue
-            clean[int(text)] = sorted({number for number in (number_of(value) for value in numbers) if number})
+            clean[int(text)] = sorted({number for number in (number_of(value) for value in numbers) if number is not None})
         result[str(child_id)] = clean
     return result
 

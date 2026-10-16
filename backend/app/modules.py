@@ -1,11 +1,14 @@
 import re
 import time
-from datetime import date, timedelta
+from datetime import date
 
 from bs4 import BeautifulSoup
 
-from .iserv.dsa import API_ROOT, CURRENT_TIMETABLE_PATH
+from .iserv.dsa import API_ROOT, CURRENT_TIMETABLE_PATH, SICK_NOTE_SELECTION_PATH
 from .iserv.dsa_timetable import query_date
+from .iserv.exercises import EXERCISE_PATH, is_exercise_page
+from .iserv.forums import FORUMS_PATH, is_forum_page
+from .iserv.infodisplay import INFODISPLAY_PATH, is_infodisplay_page
 from .iserv.messenger import (
     XHR_CREDENTIALS,
     XHR_UNREACHABLE,
@@ -15,18 +18,24 @@ from .iserv.messenger import (
     credentials_withheld,
     parse_bootstrap,
 )
+from .iserv.news import NEWS_PATH, is_news_page
+from .iserv.older_absences import older_list_present
 from .iserv.pages import path_of
+from .iserv.texts import TEXTS_PATH, is_text_page
 from .iserv.school_calendar import (
     CALENDAR_EVENTS_PATH,
     CALENDAR_SOURCES_PATH,
     CalendarShapeError,
-    events_params,
+    feed_request,
+    feed_sources,
     parse_events,
     parse_sources,
+    poll_window,
+    window_params,
 )
 from .pathpattern import path_pattern
 from .validate import normalize_school_url
-from .module_catalogue import link_only_path, official_name, slug_of
+from .module_catalogue import official_name, slug_of
 
 TIMETABLE = "timetable"
 LETTERS = "letters"
@@ -35,8 +44,14 @@ ABSENCES = "absences"
 CONFERENCES = "conferences"
 MESSENGER = "messenger"
 CALENDAR = "calendar"
-MODULES = (TIMETABLE, LETTERS, PINBOARD, ABSENCES, CONFERENCES, MESSENGER, CALENDAR)
-CONFIRMED_ONLY = frozenset({CALENDAR})
+TASKS = "tasks"
+NEWS = "news"
+FORUMS = "forums"
+TEXTS = "texts"
+INFODISPLAY = "infodisplay"
+ACCOUNT_MODULES = (FORUMS, TEXTS, INFODISPLAY)
+MODULES = (TIMETABLE, LETTERS, PINBOARD, ABSENCES, CONFERENCES, MESSENGER, CALENDAR, TASKS, NEWS) + ACCOUNT_MODULES
+CONFIRMED_ONLY = frozenset({CALENDAR, TASKS, NEWS}) | frozenset(ACCOUNT_MODULES)
 
 AVAILABLE = "available"
 MISSING = "missing"
@@ -49,10 +64,16 @@ SEGMENTS = {
     "parentconference": (CONFERENCES,),
     "messenger": (MESSENGER,),
     "calendar": (CALENDAR,),
+    "exercise": (TASKS,),
+    "news": (NEWS,),
     "dieschulapp": (PINBOARD, ABSENCES),
     "dsa-timetable": (TIMETABLE,),
     "dsa-pinboard": (PINBOARD,),
     "dsa-absences": (ABSENCES,),
+    "forum": (FORUMS,),
+    "forums": (FORUMS,),
+    "etherpad": (TEXTS,),
+    "infodisplay": (INFODISPLAY,),
 }
 IGNORED_SEGMENTS = frozenset(
     {
@@ -81,12 +102,18 @@ PROBES = {
     TIMETABLE: ("/iserv/time-table/", None),
     LETTERS: ("/iserv/parentletter/parent/index", None),
     PINBOARD: (DSA_API + "/pinboards/", {"fields": "id"}),
-    ABSENCES: (DSA_API + "/sickNotes/userSelection/", None),
+    ABSENCES: (DSA_API + "/" + SICK_NOTE_SELECTION_PATH, None),
     CONFERENCES: ("/iserv/parentconference/attendee/", None),
     MESSENGER: ("/iserv/messenger/", None),
     CALENDAR: (CALENDAR_SOURCES_PATH, None),
+    TASKS: (EXERCISE_PATH, None),
+    NEWS: (NEWS_PATH, None),
+    FORUMS: (FORUMS_PATH, None),
+    TEXTS: (TEXTS_PATH, None),
+    INFODISPLAY: (INFODISPLAY_PATH, None),
 }
 MISSING_STATUSES = (403, 404)
+ANSWER_REFUSED_STATUSES = (401, 403, 404)
 OUTCOME_RANK = {AVAILABLE: 2, UNKNOWN: 1, MISSING: 0}
 LOGIN_MARKERS = ("/iserv/auth/", "/iserv/login", "/idesk/login")
 VERSION_NUMBER = r"v?(\d+(?:\.\d+)+)(?!\.?\d)"
@@ -102,8 +129,17 @@ HISTORY_KEY = "history"
 LEGACY_TIMETABLE = "timetable-legacy"
 LEGACY_TIMETABLE_SEGMENT = "timetable"
 LEGACY_TIMETABLE_PATH = "/iserv/timetable/"
-PROBE_KEYS = MODULES + (LEGACY_TIMETABLE,)
+OLDER_ABSENCES = "absences-older"
+OLDER_ABSENCE_SEGMENT = "absence"
+OLDER_ABSENCE_PATH = "/iserv/absence/"
+PROBE_KEYS = MODULES + (LEGACY_TIMETABLE, OLDER_ABSENCES)
 COVERED_BY = {"absence_obsolete": ABSENCES}
+MAIL = "mail"
+FILES = "file"
+ADDRESSBOOK = "addressbook"
+MAILING_LISTS = "mailinglist"
+LISTED_MODULES = (FILES, ADDRESSBOOK, MAILING_LISTS)
+READ_BY_APP = frozenset({MAIL}) | frozenset(LISTED_MODULES)
 HISTORY_LIMIT = 30
 
 
@@ -195,25 +231,7 @@ def _unsupported_entry(entry):
         "label": _clean_label((entry or {}).get("label"), segment),
         "name": official_name(slug) or str((entry or {}).get("name") or ""),
     }
-    if link_only_path(slug):
-        cleaned["link_only"] = True
     return cleaned
-
-
-def open_url(school_url, slug):
-    path = link_only_path(slug)
-    if not path or not path.startswith(ISERV_ROOT + "/"):
-        return ""
-    return open_page_url(school_url, path)
-
-
-def with_open_urls(registry, school_url):
-    for field in ("unsupported", "covered"):
-        registry[field] = [
-            dict(entry, open_url=open_url(school_url, entry["slug"])) if entry.get("link_only") else entry
-            for entry in registry[field]
-        ]
-    return registry
 
 
 def open_page_url(school_url, path):
@@ -225,10 +243,17 @@ def open_page_url(school_url, path):
 
 
 def lists_module(registry, slug):
-    return any(isinstance(entry, dict) and entry.get("slug") == slug for entry in (registry or {}).get("unsupported") or [])
+    listed = list((registry or {}).get("unsupported") or []) + list((registry or {}).get("covered") or [])
+    return any(isinstance(entry, dict) and entry.get("slug") == slug for entry in listed)
+
+
+def read_by_app(entry):
+    return isinstance(entry, dict) and entry.get("slug") in READ_BY_APP
 
 
 def _covered(entry, flags):
+    if read_by_app(entry):
+        return True
     covering = COVERED_BY.get(entry.get("slug"))
     return bool(covering) and bool(flags.get(covering))
 
@@ -363,35 +388,65 @@ def _landed_on_login(response):
     return response is not None and _is_login_path(path_of(getattr(response, "url", "") or ""))
 
 
-def _messenger_served(response, fetch):
+def _messenger_served(response, fetch, today):
     if continuation_target(response):
-        return UNKNOWN
+        return UNKNOWN, 0
     html = getattr(response, "text", "") or ""
     try:
         parse_bootstrap(html)
-        return AVAILABLE
+        return AVAILABLE, 0
     except BootstrapNotFoundError:
         pass
     if credentials_withheld(html):
-        return AVAILABLE
-    verdict = authenticate_over_xhr(lambda path: fetch(path, None), html).verdict
-    if verdict == XHR_CREDENTIALS:
-        return AVAILABLE
-    if verdict == XHR_UNREACHABLE:
-        return UNKNOWN
-    return MISSING
+        return AVAILABLE, 0
+    outcome = authenticate_over_xhr(lambda path: fetch(path, None), html)
+    if outcome.verdict == XHR_CREDENTIALS:
+        return AVAILABLE, 0
+    statuses = [status for _path, status in outcome.attempts]
+    if outcome.verdict == XHR_UNREACHABLE or any(_inconclusive(status) for status in statuses):
+        return UNKNOWN, 0
+    return MISSING, _all_refused(statuses)
 
 
-def _school_calendar_served(response, fetch):
+def _all_refused(statuses):
+    if statuses and all(status in ANSWER_REFUSED_STATUSES for status in statuses):
+        return statuses[-1]
+    return 0
+
+
+def _inconclusive(status):
+    return status != 200 and status not in ANSWER_REFUSED_STATUSES
+
+
+def _refusal_of(response):
+    status = int(getattr(response, "status_code", 0) or 0)
+    return status if status in MISSING_STATUSES else 0
+
+
+def _calendar_feeds(response, today):
+    reader = getattr(response, "json", None)
+    try:
+        sources = feed_sources(reader() if callable(reader) else None)
+    except (ValueError, TypeError, CalendarShapeError):
+        return None
+    requests = [feed_request(source["url"], *poll_window(today)) for source in sources]
+    return [request for request in requests if request is not None]
+
+
+def _school_calendar_served(response, fetch, today):
     if not _json_reads(response, parse_sources):
-        return MISSING
-    today = date.today()
-    events = fetch(CALENDAR_EVENTS_PATH, events_params(today, today + timedelta(days=1)))
-    if events is None:
-        return UNKNOWN
-    if int(getattr(events, "status_code", 0) or 0) != 200:
-        return MISSING
-    return AVAILABLE if _json_reads(events, parse_events) else MISSING
+        return MISSING, 0
+    feeds = _calendar_feeds(response, today) or [(CALENDAR_EVENTS_PATH, window_params(today))]
+    statuses = []
+    for path, params in feeds:
+        events = fetch(path, params)
+        status = int(getattr(events, "status_code", 0) or 0)
+        if status == 200 and _json_reads(events, parse_events):
+            return AVAILABLE, 0
+        statuses.append(status)
+    if any(_inconclusive(status) for status in statuses):
+        return UNKNOWN, 0
+    return MISSING, _all_refused(statuses)
 
 
 def _json_reads(response, parse):
@@ -403,7 +458,22 @@ def _json_reads(response, parse):
     return True
 
 
-PAGE_CHECKS = {MESSENGER: _messenger_served, CALENDAR: _school_calendar_served}
+def _page_kept(within):
+    def check(response, fetch, today):
+        return (AVAILABLE if within(getattr(response, "url", "") or "") else MISSING), 0
+
+    return check
+
+
+PAGE_CHECKS = {
+    MESSENGER: _messenger_served,
+    CALENDAR: _school_calendar_served,
+    TASKS: _page_kept(is_exercise_page),
+    NEWS: _page_kept(is_news_page),
+    FORUMS: _page_kept(is_forum_page),
+    TEXTS: _page_kept(is_text_page),
+    INFODISPLAY: _page_kept(is_infodisplay_page),
+}
 
 
 def _school_app_timetable_probe(today):
@@ -423,19 +493,29 @@ def _probe(fetch, path, params):
         return None
 
 
-def _probe_all(fetch, today, school_app_timetable=True):
+def _probe_all(fetch, today, school_app_timetable=True, skip=frozenset(), earlier_probes=None):
     outcomes = {}
     records = {}
+    refused = {}
     pages = []
+    earlier_probes = earlier_probes or {}
     for name in MODULES:
         outcome = MISSING
+        if name in skip:
+            outcomes[name] = MISSING
+            if name in earlier_probes:
+                records[name] = earlier_probes[name]
+            continue
+        refusals = []
         for path, params in probes_of(name, today, school_app_timetable):
             response = _probe(fetch, path, params)
             if response is not None and not path.startswith(DSA_API):
                 pages.append(response)
             verdict = classify(response, path)
+            refusal = _refusal_of(response) if verdict == MISSING else 0
             if verdict == AVAILABLE and name in PAGE_CHECKS:
-                verdict = PAGE_CHECKS[name](response, fetch)
+                verdict, refusal = PAGE_CHECKS[name](response, fetch, today)
+            refusals.append(refusal)
             if name not in records or OUTCOME_RANK[verdict] >= OUTCOME_RANK[outcome]:
                 records[name] = probe_record(path, response, verdict)
             if OUTCOME_RANK[verdict] > OUTCOME_RANK[outcome]:
@@ -443,12 +523,17 @@ def _probe_all(fetch, today, school_app_timetable=True):
             if outcome == AVAILABLE:
                 break
         outcomes[name] = outcome
+        if outcome == MISSING and refusals and all(refusals):
+            refused[name] = refusals[-1]
     if pages and all(_landed_on_login(response) for response in pages):
-        return {name: UNKNOWN for name in MODULES}, records
-    if outcomes[TIMETABLE] != AVAILABLE:
+        return {name: MISSING if name in skip else UNKNOWN for name in MODULES}, records, {}
+    if outcomes[TIMETABLE] != AVAILABLE and TIMETABLE in skip:
+        if LEGACY_TIMETABLE in earlier_probes:
+            records[LEGACY_TIMETABLE] = earlier_probes[LEGACY_TIMETABLE]
+    elif outcomes[TIMETABLE] != AVAILABLE:
         response = _probe(fetch, LEGACY_TIMETABLE_PATH, None)
         records[LEGACY_TIMETABLE] = probe_record(LEGACY_TIMETABLE_PATH, response, classify(response, LEGACY_TIMETABLE_PATH))
-    return outcomes, records
+    return outcomes, records, refused
 
 
 def legacy_timetable_served(probes, outcomes):
@@ -464,6 +549,53 @@ def with_legacy_timetable(unsupported):
     return list(unsupported) + [entry]
 
 
+def _older_absence_verdict(response):
+    verdict = classify(response, OLDER_ABSENCE_PATH)
+    if verdict == AVAILABLE and not older_list_present(getattr(response, "text", "") or ""):
+        return MISSING
+    return verdict
+
+
+def _older_absence_linked(links, earlier):
+    if any(entry["segment"] == OLDER_ABSENCE_SEGMENT for entry in links):
+        return True
+    record = (earlier or {}).get("probes", {}).get(OLDER_ABSENCES) or {}
+    return not links and record.get("verdict") == AVAILABLE
+
+
+def _older_absence_probe(fetch, links, earlier, outcome):
+    if outcome == MISSING and _older_absence_linked(links, earlier):
+        response = _probe(fetch, OLDER_ABSENCE_PATH, None)
+        verdict = _older_absence_verdict(response)
+        if verdict == UNKNOWN and earlier is not None and earlier["probes"].get(OLDER_ABSENCES):
+            return earlier["probes"][OLDER_ABSENCES]
+        return probe_record(OLDER_ABSENCE_PATH, response, verdict)
+    if outcome == UNKNOWN and earlier is not None:
+        return earlier["probes"].get(OLDER_ABSENCES)
+    return None
+
+
+def older_absences_served(probes, outcomes):
+    record = probes.get(OLDER_ABSENCES) or {}
+    return record.get("verdict") == AVAILABLE and outcomes.get(ABSENCES) != AVAILABLE
+
+
+def older_absences(registry):
+    normalized = normalize(registry)
+    school_app = normalized["probes"].get(ABSENCES) or {}
+    record = normalized["probes"].get(OLDER_ABSENCES) or {}
+    return (
+        normalized["modules"][ABSENCES]
+        and record.get("verdict") == AVAILABLE
+        and school_app.get("verdict") != AVAILABLE
+    )
+
+
+def school_app_absences(registry):
+    normalized = normalize(registry)
+    return normalized["modules"][ABSENCES] and not older_absences(normalized)
+
+
 def _linked_modules(links):
     linked = set()
     for entry in links:
@@ -471,11 +603,58 @@ def _linked_modules(links):
     return linked
 
 
-def detect(html, fetch, previous, clock=time.time, login_html="", school_app_timetable=True):
+def _ledger_key(name):
+    return ("module", name)
+
+
+def _linked_key(name):
+    return ("module-linked", name)
+
+
+def _school_app_served_earlier(earlier, name):
+    if name == ABSENCES:
+        return school_app_absences(earlier)
+    return earlier["modules"][name]
+
+
+def _skipped_modules(earlier, ledger, linked):
+    if ledger is None or earlier is None:
+        return frozenset()
+    return frozenset(
+        name
+        for name in MODULES
+        if not _school_app_served_earlier(earlier, name)
+        and ledger.refused(_ledger_key(name))
+        and not (name in linked and not ledger.refused(_linked_key(name)))
+    )
+
+
+def _settle_ledger(ledger, skip, outcomes, refused, linked):
+    if ledger is None:
+        return
+    for name in MODULES:
+        if name in skip:
+            continue
+        if outcomes[name] == MISSING and refused.get(name):
+            ledger.note(_ledger_key(name), refused[name])
+            if name in linked:
+                ledger.note(_linked_key(name), 1)
+            else:
+                ledger.forget(_linked_key(name))
+        else:
+            ledger.forget(_ledger_key(name))
+            ledger.forget(_linked_key(name))
+
+
+def detect(html, fetch, previous, clock=time.time, login_html="", school_app_timetable=True, ledger=None):
     earlier = normalize(previous) if previous else None
     links = harvest_links(html)
-    outcomes, probes = _probe_all(fetch, date.fromtimestamp(clock()), school_app_timetable)
     linked = _linked_modules(links)
+    skip = _skipped_modules(earlier, ledger, linked)
+    outcomes, probes, refused = _probe_all(
+        fetch, date.fromtimestamp(clock()), school_app_timetable, skip, earlier["probes"] if earlier else None
+    )
+    _settle_ledger(ledger, skip, outcomes, refused, linked)
     flags = {}
     for name in MODULES:
         outcome = outcomes[name]
@@ -491,6 +670,11 @@ def detect(html, fetch, previous, clock=time.time, login_html="", school_app_tim
             flags[name] = name in linked
         else:
             flags[name] = True
+    older = _older_absence_probe(fetch, links, earlier, outcomes[ABSENCES])
+    if older is not None:
+        probes[OLDER_ABSENCES] = older
+    if older_absences_served(probes, outcomes):
+        flags[ABSENCES] = True
     unsupported, unknown = split_links(links)
     if not links and earlier is not None:
         unsupported = earlier["unsupported"] + earlier["covered"]
@@ -515,6 +699,7 @@ def _signature(registry):
         tuple(entry["segment"] for entry in normalized["unsupported"]),
         tuple(entry["segment"] for entry in normalized["covered"]),
         tuple(entry["segment"] for entry in normalized["unknown"]),
+        older_absences(normalized),
     )
 
 
@@ -562,7 +747,8 @@ def summary(registry):
     missing = [name for name in MODULES if not normalized["modules"][name]]
     unsupported = [entry["slug"] or entry["segment"] for entry in normalized["unsupported"]]
     segments = [entry["segment"] for entry in normalized["unknown"]]
-    covered = [entry["slug"] or entry["segment"] for entry in normalized["covered"]]
+    covered = [entry["slug"] or entry["segment"] for entry in normalized["covered"] if not read_by_app(entry)]
+    read = [entry["slug"] or entry["segment"] for entry in normalized["covered"] if read_by_app(entry)]
     parts = [
         "modules available: " + (", ".join(available) or "none"),
         "missing: " + (", ".join(missing) or "none"),
@@ -571,6 +757,10 @@ def summary(registry):
     ]
     if covered:
         parts.append(f"covered by another module: {len(covered)} ({', '.join(covered)})")
+    if read:
+        parts.append(f"read by the app: {len(read)} ({', '.join(read)})")
+    if older_absences(normalized):
+        parts.append("absences read from the older page (absence_obsolete)")
     return "; ".join(parts)
 
 

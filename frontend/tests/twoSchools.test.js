@@ -322,12 +322,12 @@ describe("the settings with one school stay as they were, plus one row", () => {
     expect(account.querySelector(".setting-row.destructive .lbl").textContent).toBe(label(window, "schools.reset"));
   });
 
-  test("the calendar group names the port state once the subscriptions are loaded", () => {
+  test("the calendar row counts the calendars once the subscriptions are loaded", () => {
     const { window } = loadApp();
-    seed(window, { extra: "state.calendar = { data: { port: 8199, port_open: true, subscriptions: [] } };" });
+    seed(window, { extra: "state.calendar = { data: { port: 8199, port_open: true, subscriptions: [{ id: \"a\" }, { id: \"b\" }] } };" });
     const view = window.eval("settingsView()");
     const row = [...view.querySelectorAll(".setting-row")].find((node) => node.querySelector(".lbl").textContent === label(window, "schools.calendar.access"));
-    expect(row.querySelector(".val").textContent).toBe(label(window, "schools.calendar.portOpen", { port: "8199" }));
+    expect(row.querySelector(".val").textContent).toBe(window.eval('tCount("schools.calendar.count", 2)'));
   });
 });
 

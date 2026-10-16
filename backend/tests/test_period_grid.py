@@ -243,3 +243,42 @@ def test_resolved_rows_never_end_after_midnight_and_stay_sorted():
                 assert str(row["number"]) not in iserv and row["source"] == period_grid.SOURCE_OWN
             elif str(row["number"]) not in iserv:
                 assert row["source"] == period_grid.SOURCE_SAVED
+
+
+ZERO_ISERV = {"0": {"start": "08:00", "end": "08:45"}, "1": {"start": "08:50", "end": "09:35"}}
+
+
+def test_period_zero_is_a_valid_period_number():
+    assert period_grid.number_of("0") == 0
+    assert period_grid.number_of(0) == 0
+    assert period_grid.number_of("-1") is None
+    assert period_grid.number_of(True) is None
+
+
+def test_iserv_period_zero_is_kept_in_the_grid_and_the_times():
+    merged = period_grid.merge_iserv(config_with(None, {}), ZERO_ISERV)
+    assert merged["period_times"] == {"0": "08:00", "1": "08:50"}
+    rows = rows_by_number(merged)
+    assert rows[0]["start"] == 8 * 60 and rows[0]["end"] == 8 * 60 + 45
+    assert [row["number"] for row in period_grid.resolve(merged)] == [0, 1]
+
+
+def test_period_zero_counts_as_a_regular_period_of_its_day():
+    lessons = [
+        {"date": "2026-10-16", "period": 0},
+        {"date": "2026-10-16", "period": 1},
+        {"date": "2026-10-15", "period": 1},
+        {"date": "2026-10-15", "period": 0, "change_kind": "added"},
+    ]
+    assert period_grid.regular_periods(lessons) == {3: [1], 4: [0, 1]}
+
+
+def test_a_day_profile_keeps_period_zero():
+    lessons = [{"date": "2026-10-16", "period": 0}, {"date": "2026-10-16", "period": 2}]
+    merged = period_grid.merge_profile(config_with(ZERO_ISERV), "kid", lessons)
+    assert period_grid.profiles(merged)["kid"][4] == [0, 2]
+
+
+def test_lesson_span_uses_the_chosen_start_of_period_zero():
+    config = config_with(ZERO_ISERV, {"0": "07:55", "1": "08:50"})
+    assert period_grid.lesson_span(config, 0, "08:00", "08:45") == (7 * 60 + 55, 8 * 60 + 40)

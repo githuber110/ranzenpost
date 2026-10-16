@@ -42,7 +42,7 @@ def _german_only_labels():
     german = json.loads((REPO_ROOT / "frontend" / "i18n" / "de.json").read_text(encoding="utf-8"))
     english = json.loads((REPO_ROOT / "frontend" / "i18n" / "en.json").read_text(encoding="utf-8"))
     card = (REPO_ROOT / "custom_components" / "ranzenpost" / "frontend" / "ranzenpost-card.js").read_text(encoding="utf-8")
-    card_german = card[: card.index('"block.showAll": "Show all"')]
+    card_german = card[card.index("    de: {") : card.index("    en: {")]
     labels = {value for key, value in german.items() if value != english.get(key)}
     labels |= set(re.findall(r'"block\.\w+": "([^"]+)"', card_german))
     return {label for label in labels if len(label) > 3}
@@ -53,3 +53,9 @@ def test_the_current_release_notes_quote_english_labels_only():
     section = extract_section(text, _top_heading(text))
     quoted = set(re.findall(r'"([^"]+)"', section))
     assert sorted(quoted & _german_only_labels()) == []
+
+
+def test_german_card_labels_count_as_german_and_english_ones_do_not():
+    labels = _german_only_labels()
+    assert "Elternbriefe" in labels
+    assert "Letters" not in labels

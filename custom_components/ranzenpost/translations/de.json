@@ -159,6 +159,18 @@
       "unread_mail": {
         "name": "Ungelesene E-Mails"
       },
+      "open_tasks": {
+        "name": "Offene Aufgaben"
+      },
+      "news": {
+        "name": "News"
+      },
+      "unread_forum_posts": {
+        "name": "Ungelesene Forenbeiträge"
+      },
+      "texts": {
+        "name": "Texte"
+      },
       "open_absences": {
         "name": "Offene Abwesenheiten"
       },
@@ -201,7 +213,11 @@
       "school_reachable": "Schule wieder erreichbar",
       "login_needed": "Anmeldung erforderlich",
       "school_new_letter": "Neuer Elternbrief",
-      "school_new_noticeboard_post": "Neuer Pinnwandbeitrag"
+      "school_new_noticeboard_post": "Neuer Pinnwandbeitrag",
+      "school_new_task": "Neue Aufgabe",
+      "school_new_news": "Neue News",
+      "school_new_forum_post": "Neuer Forenbeitrag",
+      "school_new_text": "Neuer Text"
     },
     "condition_type": {
       "is_school_day": "Ist ein Schultag",
