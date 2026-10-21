@@ -1501,10 +1501,10 @@ function overviewView() {
     if (anyOutage()) empty.push(outageBanner());
     if (moduleCardWanted()) empty.push(moduleCard(true));
     empty.push(overviewEmptyState());
-    return el("div", { class: "overview-host" }, [schoolIssueBanner(), mailNotice(), ...empty].filter(Boolean));
+    return el("div", { class: "overview-host" }, [schoolIssueBanner(), appUpdateBanner(), mailNotice(), ...empty].filter(Boolean));
   }
   overviewFlatten(container, chapters);
-  const notices = [schoolIssueBanner(), mailNotice()].filter(Boolean);
+  const notices = [schoolIssueBanner(), appUpdateBanner(), mailNotice()].filter(Boolean);
   if (!notices.length) return container;
   return el("div", { class: "overview-host" }, [...notices, container]);
 }

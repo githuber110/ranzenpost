@@ -2141,13 +2141,13 @@ button.section-head {
   .outage-row { flex-wrap: wrap; }
   .outage-row .btn { flex: 1 1 100%; }
 }
-.school-banner, .mail-notice {
+.school-banner, .mail-notice, .update-notice {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
   margin-block-end: var(--s-5);
 }
-.school-banner-row, .mail-notice-row {
+.school-banner-row, .mail-notice-row, .update-notice-row {
   display: flex;
   align-items: center;
   gap: var(--s-4);
@@ -2159,8 +2159,8 @@ button.section-head {
   font-size: 0.875rem;
 }
 .mail-notice-row { background: var(--surface-2); }
-.school-banner-text, .mail-notice-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
-.school-banner-row .btn, .mail-notice-row .btn { flex: none; }
+.school-banner-text, .mail-notice-text, .update-notice-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
+.school-banner-row .btn, .mail-notice-row .btn, .update-notice-row .btn { flex: none; }
 .swatch { width: 22px; height: 22px; border-radius: var(--r-xs); flex: none; border: 1px solid var(--line); }
 .swatch-grid {
   display: grid;
@@ -2547,6 +2547,12 @@ button.cal-add { margin-bottom: var(--s-4); }
 .update-step + .update-step { border-block-start: 1px solid var(--line); padding-block-start: var(--s-4); }
 .update-title { font-weight: 700; }
 .update-text { margin: 0; font-size: 0.875rem; line-height: 1.5; text-align: start; overflow-wrap: anywhere; }
+.update-step > .btn { text-decoration: none; margin-block-start: var(--s-2); }
+.update-notice-row .btn { text-decoration: none; }
+@media (max-width: 419px) {
+  .update-notice-row { flex-wrap: wrap; }
+  .update-notice-row .btn { flex: 1 1 100%; }
+}
 .ha-install { text-decoration: none; margin-bottom: var(--s-4); }
 
 .module-rows {
@@ -4025,8 +4031,8 @@ button.tt-cell.free { cursor: pointer; }
 .dir-icon { display: inline-flex; }
 [dir="rtl"] .dir-icon { transform: scaleX(-1); }
 .mail-many-hint[hidden] { display: none; }
-.screen[data-snap="on"] .overview-host > .mail-notice, .screen[data-snap="on"] .overview-host > .school-banner { scroll-snap-align: start; }
-.mail-notice-row .btn { width: auto; }
+.screen[data-snap="on"] .overview-host > .mail-notice, .screen[data-snap="on"] .overview-host > .school-banner, .screen[data-snap="on"] .overview-host > .update-notice { scroll-snap-align: start; }
+.mail-notice-row .btn, .update-notice-row .btn { width: auto; }
 .mail-tag { display: inline-flex; align-items: center; gap: var(--s-2); }
 .mail-tag-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex: none; display: inline-block; }
 .mail-tag-rows { display: flex; flex-direction: column; }

@@ -100,6 +100,14 @@ jobs:
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "${{ steps.meta.outputs.version }}" --notes-file release-notes.md
           fi
 
+      - name: Attach the integration zip for HACS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          python3 scripts/build_hacs_zip.py ranzenpost.zip
+          gh release upload "$tag" ranzenpost.zip --repo "$GITHUB_REPOSITORY" --clobber
+
   tests:
     runs-on: ubuntu-latest
     permissions:

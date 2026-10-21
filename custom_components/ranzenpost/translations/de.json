@@ -11,7 +11,7 @@
       },
       "install_addon": {
         "title": "Ranzenpost-App installieren",
-        "description": "Die Ranzenpost-App ist noch nicht installiert. Repository {repository} hinzufügen, dann die App installieren und starten?"
+        "description": "Die Ranzenpost-App ist noch nicht installiert. Repository {repository} hinzufügen, dann die App installieren und starten? Neue App-Versionen werden dann automatisch installiert. Das lässt sich in den Optionen abschalten."
       },
       "addon_no_discovery": {
         "title": "Die App hat sich noch nicht gemeldet",
@@ -75,13 +75,18 @@
         "description": "Wie oft die Integration die App abfragt und welche Profile Entitäten bekommen.",
         "data": {
           "scan_interval": "Abfrageintervall",
-          "children": "Profile"
+          "children": "Profile",
+          "auto_update": "App automatisch aktualisieren"
         },
         "data_description": {
           "scan_interval": "Sekunden zwischen zwei Anfragen an die App, mindestens 30.",
-          "children": "Leer lassen, um Entitäten für alle Profile anzulegen."
+          "children": "Leer lassen, um Entitäten für alle Profile anzulegen.",
+          "auto_update": "Home Assistant installiert neue Versionen der Ranzenpost-App von selbst."
         }
       }
+    },
+    "error": {
+      "auto_update_failed": "Home Assistant konnte die automatischen App-Updates nicht ändern. Bitte versuche es noch einmal."
     }
   },
   "entity": {
@@ -251,15 +256,62 @@
     },
     "addon_too_old": {
       "title": "Ranzenpost-App aktualisieren",
-      "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ({integration_version}) braucht mindestens {required_version}. Öffne in Home Assistant Einstellungen → Apps und dort unten rechts den App-Store. Wähle oben rechts im Menü „Nach Updates suchen“, öffne dann Ranzenpost und wähle „Aktualisieren“. Geräte und Entitäten erscheinen von selbst, sobald die App ihre Schulen wieder meldet."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost-App aktualisieren",
+            "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ({integration_version}) braucht mindestens {required_version}. Bestätige, dann aktualisiert Home Assistant die App jetzt. Das dauert ein bis zwei Minuten. Von Hand: Einstellungen → Apps → App-Store, im Menü „Nach Updates suchen“, dann Ranzenpost → „Aktualisieren“."
+          }
+        },
+        "progress": {
+          "update_app": "Home Assistant aktualisiert die Ranzenpost-App. Das kann ein paar Minuten dauern."
+        },
+        "abort": {
+          "no_supervisor": "Dieses Home Assistant hat keinen App-Store. Aktualisiere die Ranzenpost-App dort, wo sie läuft, zum Beispiel mit einem neuen Container-Image.",
+          "no_addon": "Die Ranzenpost-App dieser Verbindung wurde nicht gefunden. Aktualisiere sie von Hand: Einstellungen → Apps → Ranzenpost → „Aktualisieren“.",
+          "no_newer_version": "Der App-Store bietet noch keine neuere Ranzenpost-App an. Versuche es in ein paar Minuten noch einmal. Eine von Hand kopierte App bekommt keine Updates aus dem Store.",
+          "update_failed": "Das App-Update hat nicht geklappt. Den Grund zeigt Einstellungen → System → Protokolle → Supervisor. Von Hand: Einstellungen → Apps → Ranzenpost → „Aktualisieren“."
+        }
+      }
     },
     "app_update_needed": {
       "title": "Ranzenpost-App aktualisieren",
-      "description": "Die Ranzenpost-App läuft in Version {addon_version}, die Integration ist schon bei {integration_version}. Neue Funktionen gehen erst, wenn beide dieselbe Version haben. Öffne in Home Assistant Einstellungen → Apps und dort unten rechts den App-Store. Wähle oben rechts im Menü „Nach Updates suchen“, öffne dann Ranzenpost und wähle „Aktualisieren“. Dieser Hinweis verschwindet von selbst."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost-App aktualisieren",
+            "description": "Die Ranzenpost-App läuft in Version {addon_version}, die Integration ist schon bei {integration_version}. Neue Funktionen gehen erst, wenn beide dieselbe Version haben. Bestätige, dann aktualisiert Home Assistant die App jetzt. Das dauert ein bis zwei Minuten. Von Hand: Einstellungen → Apps → App-Store, im Menü „Nach Updates suchen“, dann Ranzenpost → „Aktualisieren“."
+          }
+        },
+        "progress": {
+          "update_app": "Home Assistant aktualisiert die Ranzenpost-App. Das kann ein paar Minuten dauern."
+        },
+        "abort": {
+          "no_supervisor": "Dieses Home Assistant hat keinen App-Store. Aktualisiere die Ranzenpost-App dort, wo sie läuft, zum Beispiel mit einem neuen Container-Image.",
+          "no_addon": "Die Ranzenpost-App dieser Verbindung wurde nicht gefunden. Aktualisiere sie von Hand: Einstellungen → Apps → Ranzenpost → „Aktualisieren“.",
+          "no_newer_version": "Der App-Store bietet noch keine neuere Ranzenpost-App an. Versuche es in ein paar Minuten noch einmal. Eine von Hand kopierte App bekommt keine Updates aus dem Store.",
+          "update_failed": "Das App-Update hat nicht geklappt. Den Grund zeigt Einstellungen → System → Protokolle → Supervisor. Von Hand: Einstellungen → Apps → Ranzenpost → „Aktualisieren“."
+        }
+      }
     },
     "integration_too_old": {
       "title": "Ranzenpost-Integration aktualisieren",
-      "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ist noch bei {integration_version}. Öffne HACS, öffne Ranzenpost und installiere das Update. Starte danach Home Assistant neu: Einstellungen → Menü oben rechts → „Home Assistant neu starten“. Bis dahin können Daten fehlen. Dieser Hinweis verschwindet von selbst."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost-Integration aktualisieren",
+            "description": "Die Ranzenpost-App läuft in Version {addon_version}, diese Integration ist noch bei {integration_version}. Bestätige, dann installiert HACS das Update jetzt. Danach fragt Home Assistant nach einem Neustart. Bis dahin können Daten fehlen."
+          }
+        },
+        "progress": {
+          "install_integration": "HACS installiert das Update der Ranzenpost-Integration."
+        },
+        "abort": {
+          "no_hacs": "HACS oder sein Ranzenpost-Update wurde nicht gefunden. Aktualisiere von Hand: Öffne HACS, öffne Ranzenpost und installiere das Update. Starte danach Home Assistant neu: Einstellungen → Menü oben rechts → „Home Assistant neu starten“.",
+          "no_newer_version": "HACS bietet noch keine neuere Ranzenpost-Integration an. Versuche es später noch einmal oder öffne HACS, öffne Ranzenpost und sieh dort nach dem Update.",
+          "update_failed": "HACS konnte das Update nicht installieren. Versuche es von Hand: Öffne HACS, öffne Ranzenpost und installiere das Update. Starte danach Home Assistant neu."
+        }
+      }
     },
     "restart_required": {
       "title": "Home Assistant neu starten, um das Ranzenpost-Update abzuschließen",

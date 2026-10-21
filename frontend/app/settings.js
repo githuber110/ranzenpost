@@ -314,15 +314,18 @@ function helpBundlePreparing() {
 function helpPageView() {
   const ready = !!helpReport();
   const preparing = helpBundlePreparing();
-  const saveButton = el("button", { class: "btn help-save", type: "button", onclick: saveHelpReport }, [icon("download", 18), t(preparing ? "help.preparing" : "help.save")]);
+  ensureHaStatus();
+  const outdated = appUpdateNotice();
+  const saveClass = outdated ? "btn ghost help-save" : "btn help-save";
+  const saveButton = el("button", { class: saveClass, type: "button", onclick: saveHelpReport }, [icon("download", 18), t(preparing ? "help.preparing" : "help.save")]);
   if (!ready || preparing) saveButton.disabled = true;
   const issueLink = el("a", { class: "btn ghost help-issue", href: moduleIssueUrl(), target: "_blank", rel: "noopener" }, [externalIcon(18), t("help.issue")]);
   issueLink.addEventListener("click", () => { rememberReportedModules(); });
   const copyButton = el("button", { class: "btn ghost slim help-copy", type: "button", onclick: copyHelpReport }, [icon("clip", 16), t("help.copy")]);
   if (!ready) copyButton.disabled = true;
-  ensureHaStatus();
   return el("div", { class: "help-page" }, [
-    updateHintBlock(),
+    outdated ? helpUpdateWarning(outdated) : null,
+    updateHintBlock(!!outdated),
     el("p", { class: "help-intro" }, t("help.intro.what")),
     el("p", { class: "help-intro" }, t("help.intro.not")),
     el("div", { class: "btn-stack help-actions" }, [saveButton, issueLink, copyButton]),
@@ -704,15 +707,21 @@ function coursesPageView() {
 
 const HA_INSTALL_URL = "https://my.home-assistant.io/redirect/hacs_repository/?owner=githuber110&repository=ranzenpost&category=integration";
 
-async function loadHaStatus() {
-  if (state.haStatusLoading) return;
+let haStatusRequest = 0;
+
+async function loadHaStatus(force) {
+  if (state.haStatusLoading && !force) return;
+  haStatusRequest += 1;
+  const request = haStatusRequest;
   state.haStatusLoading = true;
+  let loaded;
   try {
-    const data = await getJson("api/integration-status");
-    state.haStatus = { data, error: false };
+    loaded = { data: await getJson("api/integration-status"), error: false };
   } catch (error) {
-    state.haStatus = { data: null, error: true };
+    loaded = { data: null, error: true };
   }
+  if (request !== haStatusRequest) return;
+  state.haStatus = loaded;
   state.haStatusLoading = false;
   rerender();
 }
@@ -736,31 +745,122 @@ function ensureHaStatus() {
   if (state.haStatus === null && !state.haStatusLoading) loadHaStatus();
 }
 
-function updateStepText(step, data) {
+const HA_REPAIRS_PATH = "/config/repairs";
+const HA_REPAIRS_REDIRECT = "https://my.home-assistant.io/redirect/repairs/";
+const HA_UPDATES_PATH = "/config/updates";
+const HA_UPDATES_REDIRECT = "https://my.home-assistant.io/redirect/updates/";
+const HA_APP_PATH = "/hassio/addon/";
+const HA_APP_REDIRECT = "https://my.home-assistant.io/redirect/supervisor_addon/?addon=";
+const APP_SLUG_PATTERN = /^[a-z0-9_]+$/;
+
+function embeddedInHomeAssistant() {
+  try {
+    return window.self !== window.top;
+  } catch (error) {
+    return true;
+  }
+}
+
+function homeAssistantLink(path, redirect, label, className) {
+  if (embeddedInHomeAssistant()) return el("a", { class: className, href: path, target: "_top" }, label);
+  return el("a", { class: className, href: redirect, target: "_blank", rel: "noopener" }, [externalIcon(18), label]);
+}
+
+function integrationTarget(data, step) {
   const installed = String(data.integration_installed || "");
   const loaded = String(data.integration_version || "");
-  const app = String(data.app_version || state.appVersion || "");
   const restartPending = pendingUpdates().includes("restart");
-  const integration = step === "restart" || !restartPending ? loaded : installed || loaded;
+  return step === "restart" || !restartPending ? loaded : installed || loaded;
+}
+
+function appUpdateNotice() {
+  const data = state.haStatus && state.haStatus.data;
+  if (!data) return null;
+  const app = String(data.app_version || state.appVersion || "");
+  const store = data.app_update && typeof data.app_update === "object" ? data.app_update : {};
+  if (store.state === "newer" && store.latest) {
+    const slug = APP_SLUG_PATTERN.test(String(store.slug || "")) ? String(store.slug) : "";
+    return { kind: "store", app, latest: String(store.latest), slug };
+  }
+  if (pendingUpdates().includes("app")) return { kind: "repair", app, integration: integrationTarget(data, "app") };
+  return null;
+}
+
+function appUpdateTitle(notice) {
+  return notice.kind === "store" ? t("settings.update.store.title", { latest: notice.latest }) : t("settings.update.app.title");
+}
+
+function appUpdateText(notice) {
+  if (notice.kind === "store") return t("settings.update.store.text", { app: notice.app, latest: notice.latest });
+  return t("settings.update.app.text", { app: notice.app, integration: notice.integration, installed: "" });
+}
+
+function appUpdateButton(notice, className) {
+  if (notice.kind === "repair") {
+    return homeAssistantLink(HA_REPAIRS_PATH, HA_REPAIRS_REDIRECT, t("settings.update.app.open"), ["btn", className, "update-open-repairs"].filter(Boolean).join(" "));
+  }
+  const path = notice.slug ? `${HA_APP_PATH}${notice.slug}/info` : HA_UPDATES_PATH;
+  const redirect = notice.slug ? `${HA_APP_REDIRECT}${notice.slug}` : HA_UPDATES_REDIRECT;
+  return homeAssistantLink(path, redirect, t("settings.update.store.open"), ["btn", className, "update-open-app"].filter(Boolean).join(" "));
+}
+
+function updateStepText(step, data) {
+  const app = String(data.app_version || state.appVersion || "");
+  const integration = integrationTarget(data, step);
+  const installed = String(data.integration_installed || "");
   if (step === "integration" && !integration) return t("settings.update.integration.older", { app });
   return t(`settings.update.${step}.text`, { app, integration, installed });
 }
 
-function updateHintBlock() {
-  const steps = pendingUpdates();
-  if (!steps.length) return null;
+function appUpdateStep(notice) {
+  return el("div", { class: "update-step update-app" }, [
+    el("b", { class: "update-title" }, appUpdateTitle(notice)),
+    el("p", { class: "update-text" }, appUpdateText(notice)),
+    appUpdateButton(notice, "slim"),
+  ]);
+}
+
+function updateHintBlock(withoutApp) {
+  const notice = withoutApp ? null : appUpdateNotice();
+  const steps = pendingUpdates().filter((step) => step !== "app");
+  if (!notice && !steps.length) return null;
   const data = state.haStatus.data;
-  return el("section", { class: "update-hint", role: "status" }, steps.map((step) => el("div", { class: `update-step update-${step}` }, [
+  const blocks = steps.map((step) => el("div", { class: `update-step update-${step}` }, [
     el("b", { class: "update-title" }, t(`settings.update.${step}.title`)),
     el("p", { class: "update-text" }, updateStepText(step, data)),
-  ])));
+  ]));
+  if (notice) blocks.unshift(appUpdateStep(notice));
+  return el("section", { class: "update-hint", role: "status" }, blocks);
+}
+
+function appUpdateBanner() {
+  ensureHaStatus();
+  const notice = appUpdateNotice();
+  if (!notice) return null;
+  const text = notice.kind === "store"
+    ? t("overview.update.store", { app: notice.app, latest: notice.latest })
+    : t("overview.update.app", { app: notice.app, integration: notice.integration });
+  return el("div", { class: "update-notice", role: "status" }, [el("div", { class: "update-notice-row" }, [
+    el("span", { class: "update-notice-text" }, text),
+    appUpdateButton(notice, "slim"),
+  ])]);
+}
+
+function helpUpdateWarning(notice) {
+  return el("section", { class: "update-hint help-update-first", role: "status" }, [
+    el("div", { class: "update-step update-app" }, [
+      el("b", { class: "update-title" }, appUpdateTitle(notice)),
+      el("p", { class: "update-text" }, t("help.update.first")),
+      appUpdateButton(notice, ""),
+    ]),
+  ]);
 }
 
 async function openHomeAssistantSheet() {
   state.haStatus = null;
   state.haBusy = false;
   openSheet(homeAssistantSheet);
-  await loadHaStatus();
+  await loadHaStatus(true);
 }
 
 function homeAssistantSheet() {
@@ -869,7 +969,7 @@ async function rotateIntegrationToken() {
     return;
   }
   state.haStatus = null;
-  await loadHaStatus();
+  await loadHaStatus(true);
   toast(apiMessage(result, "api.integration.token.rotated"));
 }
 

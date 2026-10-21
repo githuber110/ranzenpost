@@ -1,8 +1,5 @@
-import json
-import os
 from datetime import timedelta
 
-import pytest
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.setup import async_setup_component
@@ -48,24 +45,6 @@ async def refresh(hass, aioclient_mock, frozen_now, info=None):
     await settle(hass)
 
 
-@pytest.fixture
-def manifest_on_disk(hass, tmp_path, monkeypatch):
-    path = tmp_path / "manifest.json"
-    stamps = iter(range(1_700_000_000, 1_800_000_000, 10))
-
-    def write(version):
-        path.write_text(json.dumps({"domain": DOMAIN, "version": version}), encoding="utf-8")
-        stamp = next(stamps)
-        os.utime(path, (stamp, stamp))
-
-    async def install(version):
-        await hass.async_add_executor_job(write, version)
-
-    write(MANIFEST_VERSION)
-    monkeypatch.setattr("custom_components.ranzenpost.coordinator.MANIFEST_FILE", path)
-    return install
-
-
 async def test_an_app_a_feature_release_behind_raises_an_error_repair_with_the_update_path(
     hass, aioclient_mock, frozen_now
 ):
@@ -74,7 +53,8 @@ async def test_an_app_a_feature_release_behind_raises_an_error_repair_with_the_u
     found = issue(hass, entry, "app_update_needed")
     assert found is not None
     assert found.severity == ir.IssueSeverity.ERROR
-    assert found.is_fixable is False
+    assert found.is_fixable is True
+    assert found.data == {"entry_id": entry.entry_id}
     assert found.translation_key == "app_update_needed"
     assert found.translation_placeholders["addon_version"] == PREVIOUS_FEATURE
     assert found.translation_placeholders["integration_version"] == MANIFEST_VERSION
@@ -133,21 +113,32 @@ async def test_every_version_repair_text_names_the_path_in_every_language(hass, 
     for language in LANGUAGES:
         issues = await async_get_translations(hass, language, "issues", {DOMAIN})
         prefix = f"component.{DOMAIN}.issues"
-        app = issues[f"{prefix}.app_update_needed.description"]
-        too_old = issues[f"{prefix}.addon_too_old.description"]
-        integration = issues[f"{prefix}.integration_too_old.description"]
-        restart = issues[f"{prefix}.restart_required.fix_flow.step.confirm.description"]
-        for text in (app, too_old, integration, restart):
+        flow = "fix_flow.step.confirm.description"
+        app = issues[f"{prefix}.app_update_needed.{flow}"]
+        too_old = issues[f"{prefix}.addon_too_old.{flow}"]
+        integration = issues[f"{prefix}.integration_too_old.{flow}"]
+        restart = issues[f"{prefix}.restart_required.{flow}"]
+        manual = issues[f"{prefix}.integration_too_old.fix_flow.abort.no_hacs"]
+        for text in (app, too_old, integration, restart, manual):
             assert "Ranzenpost" in text, language
         assert "{addon_version}" in app and "{integration_version}" in app, language
+        assert "{required_version}" in too_old, language
         assert "{installed_version}" in restart and "{loaded_version}" in restart, language
-        assert "HACS" in integration, language
-        assert "add-on" not in (app + too_old + integration + restart).lower(), language
+        assert "HACS" in integration and "HACS" in manual, language
+        for key in ("app_update_needed", "addon_too_old"):
+            for reason in ("no_supervisor", "no_addon", "no_newer_version", "update_failed"):
+                assert issues[f"{prefix}.{key}.fix_flow.abort.{reason}"], (language, key, reason)
+            assert issues[f"{prefix}.{key}.fix_flow.progress.update_app"], language
+        for reason in ("no_hacs", "no_newer_version", "update_failed"):
+            assert issues[f"{prefix}.integration_too_old.fix_flow.abort.{reason}"], (language, reason)
+        assert issues[f"{prefix}.integration_too_old.fix_flow.progress.install_integration"], language
+        everything = " ".join(value for key, value in issues.items() if key.startswith(prefix)).lower()
+        assert "add-on" not in everything, language
         if language in expected:
             settings, check, update, hacs, restart_label = expected[language]
             assert settings in app and check in app and update in app, language
             assert settings in too_old and check in too_old, language
-            assert hacs in integration and restart_label in integration, language
+            assert hacs in manual and restart_label in manual, language
             assert restart_label in restart, language
 
 
@@ -282,3 +273,17 @@ async def test_the_setup_check_names_the_integration_version_too(hass, aioclient
 
     headers = aioclient_mock.mock_calls[-1][3]
     assert headers.get(HEADER_INTEGRATION) == MANIFEST_VERSION
+
+
+async def test_an_ignored_version_repair_returns_when_the_versions_change(hass, aioclient_mock, frozen_now):
+    older = f"{LOADED[0]}.{LOADED[1] - 1}.1"
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(PREVIOUS_FEATURE))
+    ir.async_ignore_issue(hass, DOMAIN, f"app_update_needed:{entry.entry_id}", True)
+
+    await refresh(hass, aioclient_mock, frozen_now, info=info_of(PREVIOUS_FEATURE))
+    assert issue(hass, entry, "app_update_needed").dismissed_version is not None
+
+    await refresh(hass, aioclient_mock, frozen_now, info=info_of(older))
+    found = issue(hass, entry, "app_update_needed")
+    assert found.dismissed_version is None
+    assert found.translation_placeholders["addon_version"] == older

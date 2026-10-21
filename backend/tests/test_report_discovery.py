@@ -346,3 +346,18 @@ def test_calendar_source_reads_stop_with_the_page_budget():
     lines = reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
     assert "- Calendar source reads stopped: the report page limit is reached" in lines
     assert len(source_lines(lines)) == 2
+
+
+def test_a_plugin_source_shows_the_shape_of_its_answer_so_one_report_settles_its_format():
+    client, adapter = recording_client(source_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
+    head = next(index for index, line in enumerate(lines) if line.startswith("- Source 3: type plugin"))
+    shapes = []
+    for line in lines[head + 1:]:
+        if not line.startswith("  "):
+            break
+        shapes.append(line)
+    assert shapes[0] == "  - JSON value shapes:"
+    assert any("title: string" in line for line in shapes)
+    assert not any("Mathe Musterkind" in line for line in shapes)

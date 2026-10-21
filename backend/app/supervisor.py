@@ -133,6 +133,17 @@ def addon_version():
     return str(info.get("version") or "").strip()
 
 
+def self_update_info():
+    info = _addon_info()
+    if not info:
+        return None
+    return {
+        "version": str(info.get("version") or "").strip(),
+        "latest": str(info.get("version_latest") or "").strip(),
+        "slug": str(info.get("slug") or "").strip(),
+    }
+
+
 def core_version():
     return str(_core_config().get("version") or "").strip()
 

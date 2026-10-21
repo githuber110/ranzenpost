@@ -3,6 +3,27 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.5.0
+
+### New
+
+- Updates in one click. When the app or the integration is behind, the repair notice in Home Assistant has a button that
+  installs the update. A restart notice follows where needed.
+- The app shows when a newer version is waiting, with a button to the update.
+- A new setup switches on automatic updates for the app. The integration options have a switch for it.
+
+### Changed
+
+- A problem report names a newer app version when one is waiting, and the report page asks to update first.
+- The problem report shows the shape of plugin calendars such as the exam plan.
+- HACS counts downloads of the integration.
+
+### Fixed
+
+- An app installed again or from another source took a second integration entry. The integration now keeps its entry,
+  devices and automations.
+- An ignored update notice comes back when the versions change.
+
 ## 2610.4.0
 
 ### New

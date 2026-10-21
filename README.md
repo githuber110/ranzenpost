@@ -81,7 +81,7 @@ Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings
 
 **Without a Supervisor:** the integration asks for the app's host, port and token. The token is in the app under **Settings, Home Assistant**, with a copy button.
 
-**Updating:** always update both parts to the same release. The app: **Settings, Apps**, the **App store**, the menu in the top right, **Check for updates**, then **Ranzenpost (IServ)** and **Update**. The integration: open **Ranzenpost** in HACS and install the update, then restart Home Assistant and reload the page. If one part is behind or the restart is missing, Home Assistant shows a repair with these steps, and the app shows the same hint in its settings. Settings and the school connection survive an update.
+**Updating:** keep both parts on the same release. A new setup updates the app on its own, and the integration options have a switch for it. If one part is behind, Home Assistant shows a repair notice with a button that installs the update, followed by a restart notice where needed. The app shows the same hint with a button. By hand: the app under **Settings, Apps**, **App store**, menu in the top right, **Check for updates**, then **Ranzenpost (IServ)** and **Update**; the integration in HACS under **Ranzenpost**, then restart Home Assistant. Settings and the school connection survive an update.
 
 The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](iserv_connector/DOCS.md).
 

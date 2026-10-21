@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.hassio import is_hassio
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -26,11 +27,12 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 from homeassistant.loader import async_get_integration
 
+from .addon import entry_addon, is_ranzenpost_addon, set_auto_update
 from .api import AuthError, Child, ConnectionError, Info, RanzenpostApi
 from .const import (
     ADDON_REPOSITORY,
-    ADDON_SLUG,
     BRAND,
+    CONF_AUTO_UPDATE,
     CONF_CHILDREN,
     CONF_HOST,
     CONF_PORT,
@@ -68,6 +70,7 @@ ABORT_ALREADY_CONFIGURED = "already_configured"
 ERROR_CANNOT_CONNECT = "cannot_connect"
 ERROR_INVALID_AUTH = "invalid_auth"
 ERROR_UNKNOWN = "unknown"
+ERROR_AUTO_UPDATE = "auto_update_failed"
 PLACEHOLDER_ADDON = "addon"
 PLACEHOLDER_REPOSITORY = "repository"
 
@@ -103,12 +106,12 @@ def child_option_label(info: Info | None, child: Child) -> str:
     return f"{child.name} ({child.class_name})" if child.class_name else child.name
 
 
-def options_schema(options: Mapping[str, Any], info: Info | None) -> vol.Schema:
+def options_schema(options: Mapping[str, Any], info: Info | None, auto_update: bool | None = None) -> vol.Schema:
     children = info.children if info else ()
     choices = [SelectOptionDict(value=child.key, label=child_option_label(info, child)) for child in children]
     known = {child.key for child in children}
     chosen = [child_key for child_key in options.get(CONF_CHILDREN) or [] if child_key in known]
-    return vol.Schema(
+    schema = vol.Schema(
         {
             vol.Required(CONF_SCAN_INTERVAL, default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.All(
                 NumberSelector(
@@ -128,10 +131,9 @@ def options_schema(options: Mapping[str, Any], info: Info | None) -> vol.Schema:
             ),
         }
     )
-
-
-def is_ranzenpost_addon(slug: str) -> bool:
-    return slug == ADDON_SLUG or slug.endswith(f"_{ADDON_SLUG}")
+    if auto_update is None:
+        return schema
+    return schema.extend({vol.Optional(CONF_AUTO_UPDATE, default=auto_update): BooleanSelector()})
 
 
 async def validate_connection(hass: HomeAssistant, data: Mapping[str, Any]) -> Info:
@@ -178,11 +180,28 @@ class RanzenpostConfigFlow(ConfigFlow, domain=DOMAIN):
         self._addon_name = discovery_info.name or BRAND
         await self.async_set_unique_id(unique_id_of(self._data[CONF_HOST], self._data[CONF_PORT]))
         self._adopt_legacy_entry()
+        moved = self._entry_of_a_moved_app()
+        if moved is not None:
+            _LOGGER.info("the Ranzenpost app moved, its entry now points to %s", self.unique_id)
+            return self.async_update_reload_and_abort(
+                moved,
+                unique_id=self.unique_id,
+                title=f"{BRAND} ({self._data[CONF_HOST]})",
+                data_updates=self._data,
+                reason=ABORT_ALREADY_CONFIGURED,
+            )
         failed = self._entry_failed_with_another_token()
         if failed is not None:
             return self.async_update_reload_and_abort(failed, data_updates=self._data, reason=ABORT_ALREADY_CONFIGURED)
         self._abort_if_unique_id_configured(updates=self._data)
         return await self.async_step_hassio_confirm()
+
+    def _entry_of_a_moved_app(self) -> ConfigEntry | None:
+        if self.hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, self.unique_id) is not None:
+            return None
+        token = self._data[CONF_TOKEN]
+        same = [entry for entry in self.hass.config_entries.async_entries(DOMAIN) if token and entry.data.get(CONF_TOKEN) == token]
+        return same[0] if len(same) == 1 else None
 
     def _entry_failed_with_another_token(self) -> ConfigEntry | None:
         entry = self.hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, self.unique_id)
@@ -405,7 +424,14 @@ class RanzenpostConfigFlow(ConfigFlow, domain=DOMAIN):
             raise AddonNotFound(ADDON_REPOSITORY)
         if not addon.installed:
             await client.store.install_addon(addon.slug)
+            await self._switch_on_auto_update(client, addon.slug)
         await self._remember_addon(client, addon.slug)
+
+    async def _switch_on_auto_update(self, client, slug: str) -> None:
+        try:
+            await set_auto_update(client, slug, True)
+        except SupervisorError as err:
+            _LOGGER.warning("automatic updates of the add-on could not be switched on: %s", err)
 
     async def _remember_addon(self, client, slug: str) -> bool:
         info = await client.addons.addon_info(slug)
@@ -432,13 +458,53 @@ class RanzenpostConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RanzenpostOptionsFlow(OptionsFlow):
+    def __init__(self) -> None:
+        self._addon_slug: str | None = None
+        self._auto_update: bool | None = None
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            return self.async_create_entry(data=user_input)
+        errors: dict[str, str] = {}
+        defaults: Mapping[str, Any] = self.config_entry.options
+        if user_input is None:
+            await self._read_auto_update()
+        else:
+            options = dict(user_input)
+            wanted = options.pop(CONF_AUTO_UPDATE, None)
+            if await self._apply_auto_update(wanted):
+                return self.async_create_entry(data=options)
+            errors["base"] = ERROR_AUTO_UPDATE
+            defaults = {**defaults, **options}
         return self.async_show_form(
             step_id="init",
-            data_schema=options_schema(self.config_entry.options, await self._info()),
+            data_schema=options_schema(defaults, await self._info(), self._auto_update),
+            errors=errors,
         )
+
+    async def _read_auto_update(self) -> None:
+        if not is_hassio(self.hass):
+            return
+        client = get_supervisor_client(self.hass)
+        try:
+            addon = await entry_addon(client, self.config_entry.data.get(CONF_HOST, ""))
+            if addon is None:
+                return
+            info = await client.addons.addon_info(addon.slug)
+        except SupervisorError as err:
+            _LOGGER.warning("the supervisor could not be asked about automatic app updates: %s", err)
+            return
+        self._addon_slug = addon.slug
+        self._auto_update = bool(info.auto_update)
+
+    async def _apply_auto_update(self, wanted: bool | None) -> bool:
+        if wanted is None or self._addon_slug is None or bool(wanted) == self._auto_update:
+            return True
+        try:
+            await set_auto_update(get_supervisor_client(self.hass), self._addon_slug, bool(wanted))
+        except SupervisorError as err:
+            _LOGGER.error("automatic app updates could not be changed: %s", err)
+            return False
+        self._auto_update = bool(wanted)
+        return True
 
     async def _info(self) -> Info | None:
         coordinator = getattr(self.config_entry, "runtime_data", None)

@@ -11,7 +11,7 @@
       },
       "install_addon": {
         "title": "تثبيت تطبيق Ranzenpost",
-        "description": "تطبيق Ranzenpost غير مثبت بعد. هل تريد إضافة المستودع {repository} ثم تثبيت التطبيق وتشغيله؟"
+        "description": "تطبيق Ranzenpost غير مثبت بعد. هل تريد إضافة المستودع {repository} ثم تثبيت التطبيق وتشغيله؟ بعد ذلك تُثبَّت إصدارات التطبيق الجديدة تلقائيًا. يمكنك إيقاف ذلك من الخيارات."
       },
       "addon_no_discovery": {
         "title": "لم يعلن التطبيق عن نفسه بعد",
@@ -75,13 +75,18 @@
         "description": "كم مرة يستعلم التكامل من التطبيق، ولأي الملفات الشخصية تُنشأ الكيانات.",
         "data": {
           "scan_interval": "فترة الاستعلام",
-          "children": "الملفات الشخصية"
+          "children": "الملفات الشخصية",
+          "auto_update": "حدّث التطبيق تلقائيًا"
         },
         "data_description": {
           "scan_interval": "الثواني بين طلبين إلى التطبيق، 30 على الأقل.",
-          "children": "اتركه فارغًا لإنشاء كيانات لجميع الملفات الشخصية."
+          "children": "اتركه فارغًا لإنشاء كيانات لجميع الملفات الشخصية.",
+          "auto_update": "يثبّت Home Assistant الإصدارات الجديدة من تطبيق Ranzenpost من تلقاء نفسه."
         }
       }
+    },
+    "error": {
+      "auto_update_failed": "تعذّر على Home Assistant تغيير التحديثات التلقائية للتطبيق. حاول مرة أخرى."
     }
   },
   "entity": {
@@ -251,15 +256,62 @@
     },
     "addon_too_old": {
       "title": "حدّث تطبيق Ranzenpost",
-      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما يحتاج هذا التكامل ({integration_version}) إلى {required_version} على الأقل. في Home Assistant افتح إعدادات ← التطبيقات، ثم متجر التطبيقات من الزر في الأسفل. من القائمة في الأعلى اختر «التحقق من وجود تحديثات»، ثم افتح Ranzenpost واختر «تحديث». تظهر الأجهزة والكيانات من تلقاء نفسها بمجرد أن يبلّغ التطبيق عن مدارسه مجددًا."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "حدّث تطبيق Ranzenpost",
+            "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما يحتاج هذا التكامل ({integration_version}) إلى {required_version} على الأقل. أكّد، وسيحدّث Home Assistant التطبيق الآن. يستغرق ذلك دقيقة أو دقيقتين. يدويًا: إعدادات ← التطبيقات ← متجر التطبيقات، ومن القائمة «التحقق من وجود تحديثات»، ثم Ranzenpost ← «تحديث»."
+          }
+        },
+        "progress": {
+          "update_app": "يحدّث Home Assistant تطبيق Ranzenpost. قد يستغرق ذلك بضع دقائق."
+        },
+        "abort": {
+          "no_supervisor": "لا يحتوي Home Assistant هذا على متجر تطبيقات. حدّث تطبيق Ranzenpost حيث يعمل، مثلًا بصورة حاوية جديدة.",
+          "no_addon": "لم يُعثر على تطبيق Ranzenpost الخاص بهذا الاتصال. حدّثه يدويًا: إعدادات ← التطبيقات ← Ranzenpost ← «تحديث».",
+          "no_newer_version": "لا يعرض متجر التطبيقات إصدارًا أحدث من تطبيق Ranzenpost بعد. حاول مرة أخرى بعد بضع دقائق. التطبيق المنسوخ يدويًا لا يتلقى تحديثات من المتجر.",
+          "update_failed": "لم ينجح تحديث التطبيق. يظهر السبب في إعدادات ← النظام ← السجلات ← Supervisor. يدويًا: إعدادات ← التطبيقات ← Ranzenpost ← «تحديث»."
+        }
+      }
     },
     "app_update_needed": {
       "title": "حدّث تطبيق Ranzenpost",
-      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما التكامل بالإصدار {integration_version} بالفعل. لا تعمل الوظائف الجديدة إلا عندما يتطابق الإصداران. في Home Assistant افتح إعدادات ← التطبيقات، ثم متجر التطبيقات من الزر في الأسفل. من القائمة في الأعلى اختر «التحقق من وجود تحديثات»، ثم افتح Ranzenpost واختر «تحديث». يختفي هذا التنبيه من تلقاء نفسه."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "حدّث تطبيق Ranzenpost",
+            "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما التكامل بالإصدار {integration_version} بالفعل. لا تعمل الوظائف الجديدة إلا عندما يتطابق الإصداران. أكّد، وسيحدّث Home Assistant التطبيق الآن. يستغرق ذلك دقيقة أو دقيقتين. يدويًا: إعدادات ← التطبيقات ← متجر التطبيقات، ومن القائمة «التحقق من وجود تحديثات»، ثم Ranzenpost ← «تحديث»."
+          }
+        },
+        "progress": {
+          "update_app": "يحدّث Home Assistant تطبيق Ranzenpost. قد يستغرق ذلك بضع دقائق."
+        },
+        "abort": {
+          "no_supervisor": "لا يحتوي Home Assistant هذا على متجر تطبيقات. حدّث تطبيق Ranzenpost حيث يعمل، مثلًا بصورة حاوية جديدة.",
+          "no_addon": "لم يُعثر على تطبيق Ranzenpost الخاص بهذا الاتصال. حدّثه يدويًا: إعدادات ← التطبيقات ← Ranzenpost ← «تحديث».",
+          "no_newer_version": "لا يعرض متجر التطبيقات إصدارًا أحدث من تطبيق Ranzenpost بعد. حاول مرة أخرى بعد بضع دقائق. التطبيق المنسوخ يدويًا لا يتلقى تحديثات من المتجر.",
+          "update_failed": "لم ينجح تحديث التطبيق. يظهر السبب في إعدادات ← النظام ← السجلات ← Supervisor. يدويًا: إعدادات ← التطبيقات ← Ranzenpost ← «تحديث»."
+        }
+      }
     },
     "integration_too_old": {
       "title": "حدّث تكامل Ranzenpost",
-      "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما لا يزال هذا التكامل بالإصدار {integration_version}. افتح HACS، ثم افتح Ranzenpost وثبّت التحديث. بعد ذلك أعد تشغيل Home Assistant: إعدادات ← القائمة في الأعلى ← «أعد تشغيل Home Assistant». حتى ذلك الحين قد تنقص بعض البيانات. يختفي هذا التنبيه من تلقاء نفسه."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "حدّث تكامل Ranzenpost",
+            "description": "يعمل تطبيق Ranzenpost بالإصدار {addon_version}، بينما لا يزال هذا التكامل بالإصدار {integration_version}. أكّد، وسيثبّت HACS التحديث الآن. بعد ذلك يطلب Home Assistant إعادة التشغيل. حتى ذلك الحين قد تنقص بعض البيانات."
+          }
+        },
+        "progress": {
+          "install_integration": "يثبّت HACS تحديث تكامل Ranzenpost."
+        },
+        "abort": {
+          "no_hacs": "لم يُعثر على HACS أو على تحديث Ranzenpost فيه. حدّث يدويًا: افتح HACS، ثم افتح Ranzenpost وثبّت التحديث. بعد ذلك أعد تشغيل Home Assistant: إعدادات ← القائمة في الأعلى ← «أعد تشغيل Home Assistant».",
+          "no_newer_version": "لا يعرض HACS إصدارًا أحدث من تكامل Ranzenpost بعد. حاول لاحقًا، أو افتح Ranzenpost في HACS وابحث عن التحديث هناك.",
+          "update_failed": "تعذّر على HACS تثبيت التحديث. جرّب يدويًا: افتح HACS، ثم افتح Ranzenpost وثبّت التحديث. بعد ذلك أعد تشغيل Home Assistant."
+        }
+      }
     },
     "restart_required": {
       "title": "أعد تشغيل Home Assistant لإكمال تحديث Ranzenpost",

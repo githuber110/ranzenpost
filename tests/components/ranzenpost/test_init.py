@@ -374,7 +374,7 @@ async def test_an_addon_of_the_previous_release_sets_up_with_a_repair_that_asks_
     assert hass.states.async_entity_ids("sensor") == []
     issue = version_issue(hass, entry, "addon_too_old")
     assert issue.severity == ir.IssueSeverity.ERROR
-    assert issue.is_fixable is False
+    assert issue.is_fixable is True
     assert issue.translation_placeholders == {
         "addon_version": "2608.03.00",
         "integration_version": MANIFEST_VERSION,

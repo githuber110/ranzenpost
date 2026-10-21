@@ -11,6 +11,8 @@ CONF_PORT = "port"
 CONF_TOKEN = "token"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_CHILDREN = "children"
+CONF_AUTO_UPDATE = "auto_update"
+ISSUE_ENTRY = "entry_id"
 ENTRY_VERSION = 2
 LEGACY_UNIQUE_ID = DOMAIN
 

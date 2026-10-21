@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     EVENT_CACHE_TTL,
+    ISSUE_ENTRY,
     LOGIN_ISSUE_KEYS,
     LOGIN_NEEDED_ISSUE_KEY,
     MAX_SCAN_INTERVAL,
@@ -183,7 +184,7 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         self._entity_fingerprint: tuple | None = None
         self._version_issue: str | None = None
 
-    def _schedule_manifest_check(self) -> None:
+    def schedule_manifest_check(self) -> None:
         if self._manifest_check is not None and not self._manifest_check.done():
             return
         self._manifest_check = self.config_entry.async_create_background_task(
@@ -247,18 +248,25 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
             )
         self._version_issue = mismatch
         severe = mismatch_is_severe(mismatch, info.version, target)
+        issue_id = entry_issue_id(mismatch, entry_id)
+        placeholders = {
+            PLACEHOLDER_ADDON_VERSION: addon_version,
+            PLACEHOLDER_INTEGRATION_VERSION: integration_version,
+            PLACEHOLDER_REQUIRED_VERSION: MIN_ADDON_VERSION,
+        }
+        known = ir.async_get(self.hass).async_get_issue(DOMAIN, issue_id)
+        if known is not None and known.translation_placeholders is not None and known.translation_placeholders != placeholders:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
         ir.async_create_issue(
             self.hass,
             DOMAIN,
-            entry_issue_id(mismatch, entry_id),
-            is_fixable=False,
+            issue_id,
+            is_fixable=True,
+            is_persistent=True,
+            data={ISSUE_ENTRY: entry_id},
             severity=ir.IssueSeverity.ERROR if severe else ir.IssueSeverity.WARNING,
             translation_key=mismatch,
-            translation_placeholders={
-                PLACEHOLDER_ADDON_VERSION: addon_version,
-                PLACEHOLDER_INTEGRATION_VERSION: integration_version,
-                PLACEHOLDER_REQUIRED_VERSION: MIN_ADDON_VERSION,
-            },
+            translation_placeholders=placeholders,
         )
 
     def _sync_no_school_issue(self, info: Info) -> None:
@@ -277,7 +285,7 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         )
 
     async def _async_update_data(self) -> RanzenpostData:
-        self._schedule_manifest_check()
+        self.schedule_manifest_check()
         try:
             info = await self.api.info()
             info = replace(

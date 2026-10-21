@@ -69,8 +69,22 @@ describe("the settings tell which side still needs its update", () => {
     expect(hint.querySelector(".update-text").textContent).toBe(
       label(window, "settings.update.app.text", { app: "2609.3.0", integration: "2609.4.0", installed: "" })
     );
-    expect(hint.querySelectorAll("button, a").length).toBe(0);
+    const links = hint.querySelectorAll("button, a");
+    expect(links.length).toBe(1);
+    expect(links[0].textContent).toBe(label(window, "settings.update.app.open"));
+    expect(links[0].getAttribute("href")).toBe("https://my.home-assistant.io/redirect/repairs/");
     expect(view.querySelector(".ha-setting .val").textContent).toBe(label(window, "settings.ha.status.update"));
+  });
+
+  test("inside Home Assistant the repair button leaves the frame for the repairs page", async () => {
+    const { window } = await setup(status({ app_version: "2609.3.0", integration_version: "2609.4.0", updates: ["app"] }));
+    window.eval("embeddedInHomeAssistant = () => true");
+
+    const link = window.eval("settingsView()").querySelector(".update-hint a");
+
+    expect(link.getAttribute("href")).toBe("/config/repairs");
+    expect(link.getAttribute("target")).toBe("_top");
+    expect(link.classList.contains("ghost")).toBe(false);
   });
 
   test("an integration behind the app and a pending restart show both steps in order", async () => {
@@ -134,6 +148,104 @@ describe("the settings tell which side still needs its update", () => {
   });
 });
 
+const NEWER = { state: "newer", latest: "2609.5.0", slug: "abc123_ranzenpost" };
+
+describe("a newer app in the Home Assistant store", () => {
+  test("the settings name the waiting version with one button to the app page", async () => {
+    const { window } = await setup(status({ app_version: "2609.4.1", integration_version: "2609.4.1", app_update: NEWER }));
+    window.eval("embeddedInHomeAssistant = () => true");
+    const hint = window.eval("settingsView()").querySelector(".update-hint");
+
+    expect(steps(hint)).toEqual(["update-app"]);
+    expect(hint.querySelector(".update-title").textContent).toBe(label(window, "settings.update.store.title", { latest: "2609.5.0" }));
+    expect(hint.querySelector(".update-text").textContent).toBe(label(window, "settings.update.store.text", { app: "2609.4.1", latest: "2609.5.0" }));
+    const links = hint.querySelectorAll("button, a");
+    expect(links.length).toBe(1);
+    expect(links[0].getAttribute("href")).toBe("/hassio/addon/abc123_ranzenpost/info");
+    expect(links[0].getAttribute("target")).toBe("_top");
+  });
+
+  test("an integration ahead as well still gives only one app notice", async () => {
+    const { window } = await setup(status({ app_version: "2609.3.0", integration_version: "2609.4.0", updates: ["app"], app_update: NEWER }));
+    const view = window.eval("settingsView()");
+
+    expect(view.querySelectorAll(".update-hint").length).toBe(1);
+    expect(steps(view.querySelector(".update-hint"))).toEqual(["update-app"]);
+    expect(view.querySelectorAll(".update-hint a").length).toBe(1);
+    expect(view.querySelector(".update-hint a").getAttribute("href")).toBe("https://my.home-assistant.io/redirect/supervisor_addon/?addon=abc123_ranzenpost");
+  });
+
+  test("an unreadable slug falls back to the updates page", async () => {
+    const { window } = await setup(status({ app_update: { ...NEWER, slug: "../evil" } }));
+    window.eval("embeddedInHomeAssistant = () => true");
+
+    expect(window.eval("settingsView()").querySelector(".update-hint a").getAttribute("href")).toBe("/config/updates");
+  });
+
+  test("an unknown or current check shows nothing", async () => {
+    for (const check of [{ state: "unknown", latest: "", slug: "" }, { state: "current", latest: "", slug: "x_ranzenpost" }, null]) {
+      const { window } = await setup(status({ app_update: check }));
+      expect(window.eval("settingsView()").querySelector(".update-hint")).toBeNull();
+      expect(window.eval("appUpdateBanner()")).toBeNull();
+    }
+  });
+
+  test("the overview carries one notice with one button", async () => {
+    const { window } = await setup(status({ app_version: "2609.4.1", app_update: NEWER }));
+
+    const banner = window.eval("appUpdateBanner()");
+
+    expect(banner.classList.contains("update-notice")).toBe(true);
+    expect(banner.getAttribute("role")).toBe("status");
+    expect(banner.querySelector(".update-notice-text").textContent).toBe(label(window, "overview.update.store", { app: "2609.4.1", latest: "2609.5.0" }));
+    expect(banner.querySelectorAll("button, a").length).toBe(1);
+    expect(banner.querySelector("a").classList.contains("update-open-app")).toBe(true);
+  });
+
+  test("the overview points to the repair when the integration is ahead", async () => {
+    const { window } = await setup(status({ app_version: "2609.3.0", integration_version: "2609.4.0", updates: ["app"] }));
+
+    const banner = window.eval("appUpdateBanner()");
+
+    expect(banner.querySelector(".update-notice-text").textContent).toBe(label(window, "overview.update.app", { app: "2609.3.0", integration: "2609.4.0" }));
+    expect(banner.querySelectorAll("button, a").length).toBe(1);
+    expect(banner.querySelector("a").classList.contains("update-open-repairs")).toBe(true);
+  });
+
+  test("the overview shows the notice next to the school notices", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "app", "overview.js"), "utf8");
+
+    expect(source.match(/schoolIssueBanner\(\), appUpdateBanner\(\), mailNotice\(\)/g).length).toBe(2);
+  });
+
+  test("the problem report asks for the update first and keeps saving as the second choice", async () => {
+    const { window } = await setup(status({ app_version: "2609.4.1", app_update: NEWER }));
+
+    const help = window.eval("helpPageView()");
+
+    const warning = help.firstElementChild;
+    expect(warning.classList.contains("help-update-first")).toBe(true);
+    expect(warning.querySelector(".update-text").textContent).toBe(label(window, "help.update.first"));
+    const update = warning.querySelector("a");
+    expect(update.classList.contains("ghost")).toBe(false);
+    expect(update.classList.contains("update-open-app")).toBe(true);
+    expect(help.querySelector(".help-save").classList.contains("ghost")).toBe(true);
+    expect(help.querySelectorAll(".update-hint").length).toBe(1);
+  });
+
+  test("the problem report stays as before without a newer app", async () => {
+    for (const check of [{ state: "current", latest: "", slug: "x_ranzenpost" }, { state: "unknown", latest: "", slug: "" }]) {
+      const { window } = await setup(status({ app_update: check }));
+      const help = window.eval("helpPageView()");
+      expect(help.querySelector(".help-update-first")).toBeNull();
+      expect(help.querySelector(".help-save").classList.contains("ghost")).toBe(false);
+    }
+  });
+});
+
 describe("the update texts in every language", () => {
   test("carry the versions and the Home Assistant path", async () => {
     const { readFileSync } = await import("node:fs");
@@ -149,6 +261,14 @@ describe("the update texts in every language", () => {
       expect(bundle["settings.update.restart.text"], language).toContain("{installed}");
       expect(bundle["settings.update.restart.text"], language).toContain("Home Assistant");
       expect(bundle["settings.update.restart.text"].split(/[.。]\s+/).at(-1), language).toContain("Home Assistant");
+      expect(bundle["settings.update.store.title"], language).toContain("{latest}");
+      expect(bundle["settings.update.store.text"], language).toContain("{app}");
+      expect(bundle["settings.update.store.text"], language).toContain("{latest}");
+      expect(bundle["overview.update.store"], language).toContain("{latest}");
+      expect(bundle["overview.update.app"], language).toContain("{integration}");
+      for (const key of ["settings.update.app.open", "settings.update.store.open", "help.update.first"]) {
+        expect(bundle[key], `${language}.${key}`).toBeTruthy();
+      }
       for (const key of ["help.noStart", "help.report.failed", "settings.notify.noSupervisor"]) {
         expect(bundle[key].toLowerCase(), `${language}.${key}`).not.toContain("add-on");
       }

@@ -56,10 +56,23 @@ export const APP_PARTS_DIR = "app";
 export function pageBodyScripts(root = FRONTEND) {
   const html = readShipped("index.html", root);
   const body = /<body>([\s\S]*?)<\/body>/.exec(html);
-  return [...(body ? body[1] : "").matchAll(/<script\b([^>]*)>\s*<\/script[^>]*>/gi)].map((match) => {
-    const src = /\bsrc="\.\/([\w./-]+)\?v=\d+"/.exec(match[1]);
-    return { name: src ? src[1] : "", module: /\stype="module"/.test(match[1]) };
+  return scriptTagAttributes(body ? body[1] : "").map((attributes) => {
+    const src = /\bsrc="\.\/([\w./-]+)\?v=\d+"/.exec(attributes);
+    return { name: src ? src[1] : "", module: /\stype="module"/.test(attributes) };
   });
+}
+
+function scriptTagAttributes(markup) {
+  const found = [];
+  const lower = markup.toLowerCase();
+  let at = lower.indexOf("<script");
+  while (at >= 0) {
+    const close = lower.indexOf(">", at);
+    if (close < 0) break;
+    found.push(markup.slice(at + "<script".length, close));
+    at = lower.indexOf("<script", close);
+  }
+  return found;
 }
 
 export function appSourceNames(root = FRONTEND) {

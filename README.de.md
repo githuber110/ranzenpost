@@ -81,7 +81,7 @@ Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstel
 
 **Ohne Supervisor:** Die Integration fragt nach Host, Port und Token der App. Das Token steht in der App unter **Einstellungen, Home Assistant**, mit einem Kopierknopf.
 
-**Aktualisieren:** Bring immer beide Teile auf dasselbe Release. Die App: **Einstellungen, Apps**, den **App-Store**, das Menü oben rechts, **Nach Updates suchen**, dann **Ranzenpost (IServ)** und **Aktualisieren**. Die Integration: **Ranzenpost** in HACS öffnen und das Update installieren, dann Home Assistant neu starten und die Seite neu laden. Liegt ein Teil zurück oder fehlt der Neustart, zeigt Home Assistant einen Reparaturhinweis mit diesen Schritten, und die App zeigt denselben Hinweis in ihren Einstellungen. Einstellungen und die Verbindung zur Schule bleiben bei einem Update erhalten.
+**Aktualisieren:** Halte beide Teile auf demselben Release. Eine neue Einrichtung aktualisiert die App von selbst, in den Optionen der Integration gibt es dafür einen Schalter. Liegt ein Teil zurück, zeigt Home Assistant einen Reparaturhinweis mit einem Knopf, der das Update installiert, danach bei Bedarf einen Hinweis zum Neustart. Die App zeigt denselben Hinweis mit Knopf. Von Hand: die App unter **Einstellungen, Apps**, **App-Store**, Menü oben rechts, **Nach Updates suchen**, dann **Ranzenpost (IServ)** und **Aktualisieren**; die Integration in HACS unter **Ranzenpost**, danach Home Assistant neu starten. Einstellungen und die Verbindung zur Schule bleiben bei einem Update erhalten.
 
 Die Dokumentation in Home Assistant ist [`iserv_connector/DOCS.md`](iserv_connector/DOCS.md).
 

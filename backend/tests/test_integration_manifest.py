@@ -80,7 +80,7 @@ def test_manifest_is_valid_json_with_the_required_keys():
 
 def test_hacs_json_and_codeowners_exist_with_the_agreed_content():
     hacs = _json(HACS)
-    assert hacs == {"name": "Ranzenpost", "render_readme": True, "homeassistant": "2025.6.0"}
+    assert hacs == {"name": "Ranzenpost", "render_readme": True, "homeassistant": "2025.6.0", "zip_release": True, "filename": "ranzenpost.zip"}
     assert CODEOWNERS.read_text(encoding="utf-8").strip() == "* @githuber110"
 
 

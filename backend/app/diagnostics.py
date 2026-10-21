@@ -7,7 +7,7 @@ import threading
 import time
 import zipfile
 
-from . import berlin, integration, logfile, modules, namebook, supervisor, valueshape
+from . import app_update, berlin, integration, logfile, modules, namebook, supervisor, valueshape
 from .iserv.children import (
     child_select_present,
     parse_children,
@@ -797,6 +797,11 @@ def _versions(versions):
     return str(app or "unknown"), str(home_assistant or "unknown")
 
 
+def _app_update(versions):
+    given = versions or {}
+    return given.get("app_update") if "app_update" in given else app_update.status()
+
+
 def _integration_versions(service, versions):
     given = versions or {}
     if "integration" in given:
@@ -895,6 +900,7 @@ def report_parts(service, structure=True, log_lines=None, clock=time.time, versi
     lines.append("- Ranzenpost: %s" % app_version)
     activity = _integration_activity(service, versions, now)
     lines.extend(integration_lines(app_version, *_integration_versions(service, versions), *activity))
+    lines.append(app_update.report_line(_app_update(versions) or {}))
     lines.append("- Home Assistant: %s" % home_assistant)
     lines.append("- IServ: %s" % iserv_version)
     lines.append("- Language: %s" % (config.get("language") or "system"))

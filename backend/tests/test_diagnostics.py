@@ -248,7 +248,8 @@ def test_the_report_names_the_integration_version_and_what_still_needs_updating(
     start = lines.index("- Ranzenpost: 2609.4.1")
     assert lines[start + 1] == "- Integration: 2609.3.0 (installed 2609.4.0)"
     assert lines[start + 2] == "- Pending updates: integration, restart"
-    assert lines[start + 3] == "- Home Assistant: 2026.9.1"
+    assert lines[start + 3] == "- App update check: unknown"
+    assert lines[start + 4] == "- Home Assistant: 2026.9.1"
 
     matching = build(service, versions={"app": "2609.4.0", "home_assistant": "y", "integration": "2609.4.0"}, structure=False)
     assert "- Integration: 2609.4.0" in matching.splitlines()

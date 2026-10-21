@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 
-from . import feed, holidays, integration, messages, supervisor, versions
+from . import app_update, feed, holidays, integration, messages, supervisor, versions
 from .calendar_server import RateLimiter
 from .subscriptions import ONLINE_READY, known_child, token_log_prefix
 
@@ -183,6 +183,7 @@ class IntegrationAccess:
             "integration_version": "" if self.unversioned else self.integration_version,
             "integration_installed": "" if self.unversioned else self.integration_installed,
             "updates": self.pending_updates(app_version),
+            "app_update": app_update.status(),
         }
 
 

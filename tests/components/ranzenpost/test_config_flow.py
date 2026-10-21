@@ -83,6 +83,7 @@ def supervisor_mock(*, installed: bool, running: bool, discoveries=None) -> Magi
     info.state = AddonState.STARTED if running else AddonState.STOPPED
     client.addons.addon_info = AsyncMock(return_value=info)
     client.addons.start_addon = AsyncMock()
+    client.addons.set_addon_options = AsyncMock()
     return client
 
 
@@ -216,6 +217,36 @@ async def test_a_second_discovery_with_the_same_token_leaves_the_entry_alone(has
 
     assert result["reason"] == "already_configured"
     assert mock_setup.call_count == 1
+
+
+async def test_a_moved_app_with_the_same_token_takes_over_its_entry_instead_of_a_duplicate(hass, mock_setup):
+    entry = make_entry(host="local-ranzenpost")
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HASSIO}, data=service_info()
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == HOST
+    assert entry.unique_id == UNIQUE_ID
+    assert entry.title == f"Ranzenpost ({HOST})"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+async def test_a_new_app_with_another_token_still_asks_before_adding_a_second_entry(hass, mock_setup):
+    entry = make_entry(host="local-ranzenpost")
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HASSIO}, data=service_info(token=NEW_TOKEN)
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "hassio_confirm"
+    assert entry.data[CONF_HOST] == "local-ranzenpost"
 
 
 async def test_a_discovery_adopts_the_entry_of_the_previous_release_instead_of_offering_a_duplicate(hass, mock_setup):
@@ -395,6 +426,10 @@ async def test_user_flow_installs_starts_and_waits_for_the_addon(hass, aioclient
     assert client.store.add_repository.await_args.args[0].repository == ADDON_REPOSITORY
     client.store.install_addon.assert_awaited_once_with(ADDON_SLUG)
     client.addons.start_addon.assert_awaited_once_with(ADDON_SLUG)
+    client.addons.set_addon_options.assert_awaited_once()
+    slug, options = client.addons.set_addon_options.await_args.args
+    assert slug == ADDON_SLUG
+    assert options.auto_update is True
 
 
 async def test_user_flow_skips_the_repository_when_it_is_already_added(hass, aioclient_mock, mock_setup, fast_discovery):
@@ -411,6 +446,21 @@ async def test_user_flow_skips_the_repository_when_it_is_already_added(hass, aio
     assert result["step_id"] == "hassio_confirm"
     client.store.add_repository.assert_not_called()
     client.store.install_addon.assert_awaited_once_with(ADDON_SLUG)
+
+
+async def test_user_flow_installs_the_app_even_when_automatic_updates_cannot_be_switched_on(
+    hass, aioclient_mock, mock_setup, fast_discovery
+):
+    aioclient_mock.get(route("info"), json=fixture("info"))
+    client = supervisor_mock(installed=False, running=False, discoveries=[[], [discovery_message()]])
+    client.addons.set_addon_options = AsyncMock(side_effect=SupervisorError("refused"))
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await settled(hass, await hass.config_entries.flow.async_configure(result["flow_id"], {}))
+
+    assert result["step_id"] == "hassio_confirm"
+    client.addons.start_addon.assert_awaited_once_with(ADDON_SLUG)
 
 
 async def test_user_flow_aborts_when_the_install_fails(hass, mock_setup, fast_discovery):
@@ -446,6 +496,7 @@ async def test_user_flow_aborts_when_the_addon_does_not_start(hass, mock_setup, 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "addon_start_failed"
     client.store.install_addon.assert_not_called()
+    client.addons.set_addon_options.assert_not_called()
 
 
 async def test_user_flow_offers_the_manual_form_when_no_discovery_arrives(hass, aioclient_mock, mock_setup, fast_discovery):
@@ -584,3 +635,103 @@ async def test_options_flow_rejects_an_interval_below_the_minimum(hass, aioclien
 
     with pytest.raises(Exception):
         await hass.config_entries.options.async_configure(result["flow_id"], {CONF_SCAN_INTERVAL: 5, CONF_CHILDREN: []})
+
+
+def installed_addon(slug=ADDON_SLUG):
+    addon = MagicMock()
+    addon.slug = slug
+    return addon
+
+
+def options_supervisor(auto_update=False, addons=None) -> MagicMock:
+    client = MagicMock()
+    client.addons.list = AsyncMock(return_value=addons if addons is not None else [installed_addon()])
+    info = MagicMock()
+    info.auto_update = auto_update
+    client.addons.addon_info = AsyncMock(return_value=info)
+    client.addons.set_addon_options = AsyncMock()
+    return client
+
+
+def option_fields(result):
+    return {key.schema: key for key in result["data_schema"].schema}
+
+
+async def test_options_flow_without_a_supervisor_offers_no_automatic_app_updates(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert "auto_update" not in option_fields(result)
+
+
+async def test_options_flow_without_the_app_offers_no_automatic_app_updates(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+    client = options_supervisor(addons=[installed_addon("core_mosquitto")])
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert "auto_update" not in option_fields(result)
+
+
+async def test_options_flow_switches_on_automatic_app_updates_through_the_supervisor(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+    client = options_supervisor(auto_update=False)
+
+    with with_hassio(hass, client), patch("custom_components.ranzenpost.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert option_fields(result)["auto_update"].default() is False
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_SCAN_INTERVAL: 60, CONF_CHILDREN: [], "auto_update": True}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_SCAN_INTERVAL: 60, CONF_CHILDREN: []}
+    client.addons.set_addon_options.assert_awaited_once()
+    slug, options = client.addons.set_addon_options.await_args.args
+    assert slug == ADDON_SLUG
+    assert options.auto_update is True
+
+
+async def test_options_flow_leaves_unchanged_automatic_app_updates_alone(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+    client = options_supervisor(auto_update=True)
+
+    with with_hassio(hass, client), patch("custom_components.ranzenpost.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert option_fields(result)["auto_update"].default() is True
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_SCAN_INTERVAL: 60, CONF_CHILDREN: [], "auto_update": True}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    client.addons.set_addon_options.assert_not_called()
+
+
+async def test_options_flow_shows_an_error_when_the_supervisor_refuses_the_change(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+    client = options_supervisor(auto_update=True)
+    client.addons.set_addon_options = AsyncMock(side_effect=SupervisorError("refused"))
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_SCAN_INTERVAL: 90, CONF_CHILDREN: [], "auto_update": False}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "auto_update_failed"}
+    assert option_fields(result)[CONF_SCAN_INTERVAL].default() == 90
+    assert entry.options == {}
+
+
+async def test_the_options_texts_name_automatic_app_updates_in_every_language(hass):
+    for language in ("de", "en", "ar", "tr", "ru", "uk"):
+        options = await async_get_translations(hass, language, "options", {DOMAIN})
+        prefix = f"component.{DOMAIN}.options"
+        assert options[f"{prefix}.step.init.data.auto_update"], language
+        assert "Ranzenpost" in options[f"{prefix}.step.init.data_description.auto_update"], language
+        assert options[f"{prefix}.error.auto_update_failed"], language

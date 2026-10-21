@@ -11,7 +11,7 @@
       },
       "install_addon": {
         "title": "Ranzenpost uygulamasını kur",
-        "description": "Ranzenpost uygulaması henüz kurulu değil. {repository} deposu eklensin, ardından uygulama kurulup başlatılsın mı?"
+        "description": "Ranzenpost uygulaması henüz kurulu değil. {repository} deposu eklensin, ardından uygulama kurulup başlatılsın mı? Yeni uygulama sürümleri sonra otomatik olarak kurulur. Bunu seçeneklerden kapatabilirsiniz."
       },
       "addon_no_discovery": {
         "title": "Uygulama kendini bildirmedi",
@@ -75,13 +75,18 @@
         "description": "Entegrasyonun uygulamayı ne sıklıkla sorgulayacağı ve hangi profiller için varlık oluşturulacağı.",
         "data": {
           "scan_interval": "Sorgulama aralığı",
-          "children": "Profiller"
+          "children": "Profiller",
+          "auto_update": "Uygulamayı otomatik güncelle"
         },
         "data_description": {
           "scan_interval": "Uygulamaya iki istek arasındaki saniye, en az 30.",
-          "children": "Tüm profiller için varlık oluşturmak üzere boş bırakın."
+          "children": "Tüm profiller için varlık oluşturmak üzere boş bırakın.",
+          "auto_update": "Home Assistant, Ranzenpost uygulamasının yeni sürümlerini kendiliğinden kurar."
         }
       }
+    },
+    "error": {
+      "auto_update_failed": "Home Assistant otomatik uygulama güncellemelerini değiştiremedi. Lütfen tekrar deneyin."
     }
   },
   "entity": {
@@ -251,15 +256,62 @@
     },
     "addon_too_old": {
       "title": "Ranzenpost uygulamasını güncelleyin",
-      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, ancak bu entegrasyon ({integration_version}) en az {required_version} sürümünü gerektiriyor. Home Assistant'ta Ayarlar → Uygulamalar'ı, ardından sağ alttan Uygulama mağazası'nı açın. Sağ üstteki menüden “Güncellemeleri kontrol et” seçeneğini seçin, sonra Ranzenpost'u açın ve “Güncelle”yi seçin. Uygulama okullarını yeniden bildirdiğinde cihazlar ve varlıklar kendiliğinden görünür."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost uygulamasını güncelleyin",
+            "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, ancak bu entegrasyon ({integration_version}) en az {required_version} sürümünü gerektiriyor. Onaylayın, Home Assistant uygulamayı hemen güncellesin. Bu bir iki dakika sürer. Elle: Ayarlar → Uygulamalar → Uygulama mağazası, menüden “Güncellemeleri kontrol et”, sonra Ranzenpost → “Güncelle”."
+          }
+        },
+        "progress": {
+          "update_app": "Home Assistant, Ranzenpost uygulamasını güncelliyor. Bu birkaç dakika sürebilir."
+        },
+        "abort": {
+          "no_supervisor": "Bu Home Assistant'ın uygulama mağazası yok. Ranzenpost uygulamasını çalıştığı yerde güncelleyin, örneğin yeni bir container imajıyla.",
+          "no_addon": "Bu bağlantının Ranzenpost uygulaması bulunamadı. Elle güncelleyin: Ayarlar → Uygulamalar → Ranzenpost → “Güncelle”.",
+          "no_newer_version": "Uygulama mağazası henüz daha yeni bir Ranzenpost uygulaması sunmuyor. Birkaç dakika sonra tekrar deneyin. Elle kopyalanan bir uygulama mağazadan güncelleme almaz.",
+          "update_failed": "Uygulama güncellemesi başarısız oldu. Nedenini Ayarlar → Sistem → Günlükler → Supervisor gösterir. Elle: Ayarlar → Uygulamalar → Ranzenpost → “Güncelle”."
+        }
+      }
     },
     "app_update_needed": {
       "title": "Ranzenpost uygulamasını güncelleyin",
-      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, entegrasyon ise zaten {integration_version} sürümünde. Yeni işlevler ancak ikisi aynı sürümde olduğunda çalışır. Home Assistant'ta Ayarlar → Uygulamalar'ı, ardından sağ alttan Uygulama mağazası'nı açın. Sağ üstteki menüden “Güncellemeleri kontrol et” seçeneğini seçin, sonra Ranzenpost'u açın ve “Güncelle”yi seçin. Bu bildirim kendiliğinden kaybolur."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost uygulamasını güncelleyin",
+            "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, entegrasyon ise zaten {integration_version} sürümünde. Yeni işlevler ancak ikisi aynı sürümde olduğunda çalışır. Onaylayın, Home Assistant uygulamayı hemen güncellesin. Bu bir iki dakika sürer. Elle: Ayarlar → Uygulamalar → Uygulama mağazası, menüden “Güncellemeleri kontrol et”, sonra Ranzenpost → “Güncelle”."
+          }
+        },
+        "progress": {
+          "update_app": "Home Assistant, Ranzenpost uygulamasını güncelliyor. Bu birkaç dakika sürebilir."
+        },
+        "abort": {
+          "no_supervisor": "Bu Home Assistant'ın uygulama mağazası yok. Ranzenpost uygulamasını çalıştığı yerde güncelleyin, örneğin yeni bir container imajıyla.",
+          "no_addon": "Bu bağlantının Ranzenpost uygulaması bulunamadı. Elle güncelleyin: Ayarlar → Uygulamalar → Ranzenpost → “Güncelle”.",
+          "no_newer_version": "Uygulama mağazası henüz daha yeni bir Ranzenpost uygulaması sunmuyor. Birkaç dakika sonra tekrar deneyin. Elle kopyalanan bir uygulama mağazadan güncelleme almaz.",
+          "update_failed": "Uygulama güncellemesi başarısız oldu. Nedenini Ayarlar → Sistem → Günlükler → Supervisor gösterir. Elle: Ayarlar → Uygulamalar → Ranzenpost → “Güncelle”."
+        }
+      }
     },
     "integration_too_old": {
       "title": "Ranzenpost entegrasyonunu güncelleyin",
-      "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, bu entegrasyon ise hâlâ {integration_version} sürümünde. HACS'ı açın, Ranzenpost'u açın ve güncellemeyi kurun. Ardından Home Assistant'ı yeniden başlatın: Ayarlar → sağ üstteki menü → “Home Assistant'ı Yeniden Başlat”. O zamana kadar bazı veriler eksik olabilir. Bu bildirim kendiliğinden kaybolur."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ranzenpost entegrasyonunu güncelleyin",
+            "description": "Ranzenpost uygulaması {addon_version} sürümünde çalışıyor, bu entegrasyon ise hâlâ {integration_version} sürümünde. Onaylayın, HACS güncellemeyi hemen kursun. Ardından Home Assistant yeniden başlatma ister. O zamana kadar bazı veriler eksik olabilir."
+          }
+        },
+        "progress": {
+          "install_integration": "HACS, Ranzenpost entegrasyonu güncellemesini kuruyor."
+        },
+        "abort": {
+          "no_hacs": "HACS veya Ranzenpost güncellemesi bulunamadı. Elle güncelleyin: HACS'ı açın, Ranzenpost'u açın ve güncellemeyi kurun. Ardından Home Assistant'ı yeniden başlatın: Ayarlar → sağ üstteki menü → “Home Assistant'ı Yeniden Başlat”.",
+          "no_newer_version": "HACS henüz daha yeni bir Ranzenpost entegrasyonu sunmuyor. Daha sonra tekrar deneyin veya HACS'ta Ranzenpost'u açıp güncellemeye orada bakın.",
+          "update_failed": "HACS güncellemeyi kuramadı. Elle deneyin: HACS'ı açın, Ranzenpost'u açın ve güncellemeyi kurun. Ardından Home Assistant'ı yeniden başlatın."
+        }
+      }
     },
     "restart_required": {
       "title": "Ranzenpost güncellemesini tamamlamak için Home Assistant'ı yeniden başlatın",

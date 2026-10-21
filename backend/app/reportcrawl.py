@@ -144,6 +144,7 @@ SIGN_IN_SEGMENTS = frozenset({"login", "logout", "logoff", "auth", "oauth", "sso
 CALENDAR_PROBE_DAYS = 30
 CALENDAR_SOURCES_HEAD = "##### Calendar sources (app window %s)"
 MAX_CALENDAR_SOURCES = 12
+SOURCE_SHAPE_LINES = 40
 QUERY_KEY = re.compile(r"^[a-z][a-z_]{0,19}$")
 KNOWN_API_LABEL = "##### Known API GET %s"
 ACCOUNT_API_HEAD = "### Account APIs"
@@ -593,6 +594,16 @@ def _source_answer(answer, source):
         return facts + ", events unreadable"
 
 
+def _source_shape_lines(reply, source):
+    if reply is None or status_of(reply) != 200 or source_kind(source["type"]) == "cal":
+        return []
+    try:
+        data = json_of(reply)
+    except (ValueError, TypeError):
+        return []
+    return ["  - JSON value shapes:"] + ["    - " + line for line in valueshape.shape_lines(data, SOURCE_SHAPE_LINES)]
+
+
 def calendar_source_lines(client, answer, today):
     first, last = poll_window(today)
     lines = [CALENDAR_SOURCES_HEAD % ("%s to %s" % (first.isoformat(), last.isoformat()))]
@@ -617,6 +628,7 @@ def calendar_source_lines(client, answer, today):
         path, params = request
         reply, problem = read_unfollowed(client, path + "?" + urlencode(params))
         lines.append(line + " -> " + (problem if reply is None else _source_answer(reply, source)))
+        lines.extend(_source_shape_lines(reply, source))
     if len(sources) > MAX_CALENDAR_SOURCES:
         lines.append("- Sources not read: %d beyond the limit of %d" % (len(sources) - MAX_CALENDAR_SOURCES, MAX_CALENDAR_SOURCES))
     return lines
