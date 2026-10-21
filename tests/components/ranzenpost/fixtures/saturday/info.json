@@ -17,7 +17,8 @@
         "news": false,
         "forums": false,
         "texts": false,
-        "infodisplay": false
+        "infodisplay": false,
+        "whiteboards": false
       },
       "disabled": {
         "timetable": false,
@@ -31,7 +32,8 @@
         "news": false,
         "forums": false,
         "texts": false,
-        "infodisplay": false
+        "infodisplay": false,
+        "whiteboards": false
       },
       "status": "ok",
       "children": [

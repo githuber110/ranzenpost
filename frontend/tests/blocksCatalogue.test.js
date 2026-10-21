@@ -7,9 +7,9 @@ function catalogue() {
 }
 
 describe("the block catalogue is one shared list with rules", () => {
-  test("sixteen blocks, each with a module, an area, two limits and a default size", () => {
+  test("seventeen blocks, each with a module, an area, two limits and a default size", () => {
     const blocks = catalogue();
-    expect(blocks.blockKeys()).toEqual(["today", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay"]);
+    expect(blocks.blockKeys()).toEqual(["today", "next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
     for (const block of blocks.BLOCK_CATALOGUE) {
       expect(blocks.AREA_MODULES[block.area]).toContain(block.module);
       expect(block.compact).toBeGreaterThanOrEqual(1);
@@ -37,8 +37,8 @@ describe("the block catalogue is one shared list with rules", () => {
   test("only blocks of modules the account has are offered, per surface", () => {
     const blocks = catalogue();
     const on = (name) => name === "timetable" || name === "messenger";
-    expect(blocks.offeredBlocks(on).map((block) => block.key)).toEqual(["today", "next_lesson", "week", "holidays", "changes", "chat"]);
-    expect(blocks.offeredBlocks(on, "card").map((block) => block.key)).toEqual(["today", "next_lesson", "week", "holidays", "changes"]);
+    expect(blocks.offeredBlocks(on).map((block) => block.key)).toEqual(["today", "next_day", "next_lesson", "week", "holidays", "changes", "chat"]);
+    expect(blocks.offeredBlocks(on, "card").map((block) => block.key)).toEqual(["today", "next_day", "next_lesson", "week", "holidays", "changes"]);
   });
 
   test("every block names its scope and an account without a profile is offered no profile block", () => {
@@ -49,7 +49,7 @@ describe("the block catalogue is one shared list with rules", () => {
     }
     const childless = blocks.offeredBlocks(() => true, null, true).map((block) => block.key);
     expect(childless).toEqual(blocks.BLOCK_CATALOGUE.filter((block) => block.scope !== "child").map((block) => block.key));
-    expect(childless).toEqual(["letters", "noticeboard", "conferences", "holidays", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay"]);
+    expect(childless).toEqual(["letters", "noticeboard", "conferences", "holidays", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
     expect(blocks.offeredBlocks(() => false, null, true).map((block) => block.key)).toEqual(["holidays"]);
   });
 
@@ -73,13 +73,13 @@ describe("the block catalogue is one shared list with rules", () => {
     const blocks = catalogue();
     const offered = blocks.offeredBlocks(() => true);
     const hidden = blocks.hiddenBlocks([{ key: "today", size: "normal" }, { key: "chat", size: "compact" }], offered);
-    expect(hidden.map((block) => block.key)).toEqual(["next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "school_events", "tasks", "news", "forums", "texts", "infodisplay"]);
+    expect(hidden.map((block) => block.key)).toEqual(["next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
   });
 
   test("navigation keeps known areas in order and appends the missing ones", () => {
     const blocks = catalogue();
-    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]);
-    expect(blocks.normalizeNavigation(undefined)).toEqual([...blocks.DEFAULT_NAVIGATION, "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]);
+    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
+    expect(blocks.normalizeNavigation(undefined)).toEqual([...blocks.DEFAULT_NAVIGATION, "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
   });
 
   test("moving a key swaps it with its neighbour and stops at the ends", () => {

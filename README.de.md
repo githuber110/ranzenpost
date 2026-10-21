@@ -13,7 +13,7 @@
   <a href="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml"><img src="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/githuber110/ranzenpost/releases"><img src="https://img.shields.io/github/v/release/githuber110/ranzenpost?label=release" alt="Release"></a>
   <a href="https://www.home-assistant.io"><img src="https://img.shields.io/badge/Home%20Assistant-2025.6%2B-41BDF5.svg" alt="Home Assistant 2025.6 oder neuer"></a>
-  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-custom-41BDF5.svg" alt="HACS Custom Repository"></a>
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-default-41BDF5.svg" alt="Im HACS-Standardkatalog"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT-Lizenz"></a>
 </p>
 
@@ -29,7 +29,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>Die App in der Seitenleiste</b><br>Stundenplan mit Vertretungen, Elternbriefe, Pinnwand, Chat, Schultermine, Aufgaben, News, E-Mail, Dateien und Krankmeldungen. Eine Krankmeldung bekommt einen Prüfschritt, bevor etwas rausgeht.</td>
-    <td width="33%" valign="top"><b>Eine Karte für jedes Dashboard</b><br>Heute, die nächste Stunde, die Woche, Briefe, Ferien und mehr. Bausteine, Größe und Kinder wählst du im visuellen Editor.</td>
+    <td width="33%" valign="top"><b>Eine Karte für jedes Dashboard</b><br>Heute, der nächste Schultag, die nächste Stunde, die Woche, Briefe, Ferien und mehr. Bausteine, Größe und Kinder wählst du im visuellen Editor.</td>
     <td width="33%" valign="top"><b>Mehrere Schulen, eine App</b><br>Zwei Kinder an zwei Schulen oder zwei Konten. Ein Posteingang, eine Übersicht, jede Schule mit eigener Anmeldung.</td>
   </tr>
   <tr>
@@ -77,7 +77,7 @@ Installiere **Ranzenpost** in HACS und starte Home Assistant neu. Dann **Einstel
 
 **App von Hand:** **Einstellungen, Apps**, unten rechts den **App-Store**, das Menü oben rechts, **Repositories**, `https://github.com/githuber110/ranzenpost` einfügen.
 
-**Integration von Hand:** **HACS**, das Menü oben rechts, **Benutzerdefinierte Repositories**, `https://github.com/githuber110/ranzenpost` einfügen, **Integration** wählen.
+**Integration von Hand:** **HACS** öffnen, nach **Ranzenpost** suchen, dann **Herunterladen**. Ranzenpost steht im HACS-Standardkatalog, ein benutzerdefiniertes Repository ist nicht mehr nötig. Wer es früher so hinzugefügt hat, muss nichts ändern.
 
 **Ohne Supervisor:** Die Integration fragt nach Host, Port und Token der App. Das Token steht in der App unter **Einstellungen, Home Assistant**, mit einem Kopierknopf.
 
@@ -91,7 +91,7 @@ Die Dokumentation in Home Assistant ist [`iserv_connector/DOCS.md`](iserv_connec
 
 ### Übersicht
 
-Die Übersicht sammelt, was heute wichtig ist, in Blöcken, die du auswählst und ordnest: die Stunden von heute, die nächste Stunde, die Woche, Änderungen, Briefe, Beiträge, Abwesenheiten, Chat, Sprechtage, Ferien, die Termine der Schule, Aufgaben, News, Foren, Texte und Infobildschirme.
+Die Übersicht sammelt, was heute wichtig ist, in Blöcken, die du auswählst und ordnest: die Stunden von heute, der nächste Schultag, die nächste Stunde, die Woche, Änderungen, Briefe, Beiträge, Abwesenheiten, Chat, Sprechtage, Ferien, die Termine der Schule, Aufgaben, News, Foren, Texte, Infobildschirme und Tafeln.
 
 Schultermine haben außerdem eine eigene Ansicht: die geteilten Kalender, die das Konto in IServ sieht, für die nächsten Wochen.
 
@@ -136,9 +136,9 @@ Offene Aufgaben stehen nach Abgabedatum vorn. Erledigte und vergangene folgen. E
 
 Jede News steht mit Kategorie und Datum in der Liste. News lassen sich nach Kategorie filtern und durchsuchen. Archiv und Paketnews erscheinen, wenn du sie im Filter wählst, und erst dann liest Ranzenpost sie. Eine News öffnet sich in der App mit vollem Text, Dateien und Links. Dateien öffnen und speichern sich über Ranzenpost.
 
-### Foren, Texte und Infobildschirme
+### Foren, Texte, Infobildschirme und Tafeln
 
-Foren listet jedes Forum, das das Konto sieht, mit Bereich und ungelesenen Beiträgen. Alles als gelesen markieren fragt vorher nach. Texte listet jeden Text, den das Konto sieht, auch ausgeblendete, mit Besitzer, Daten und Schlagwörtern. Es gibt einen Filter nach Auswahl und Schlagwort und eine Suche. Infobildschirme listet die Infobildschirme, die das Konto sieht, mit Namen. Diese drei Bereiche erscheinen nur, wenn das Konto das Modul hat.
+Foren listet jedes Forum, das das Konto sieht, mit Bereich und ungelesenen Beiträgen. Alles als gelesen markieren fragt vorher nach. Texte listet jeden Text, den das Konto sieht, auch ausgeblendete, mit Besitzer, Daten und Schlagwörtern. Es gibt einen Filter nach Auswahl und Schlagwort und eine Suche. Infobildschirme listet die Infobildschirme, die das Konto sieht, mit Namen. Tafeln listet die Tafeln, die das Konto sieht, mit Besitzer und Daten. Diese vier Bereiche erscheinen nur, wenn das Konto das Modul hat.
 
 ### E-Mail
 
@@ -174,7 +174,7 @@ Ab 900 Pixel Breite ersetzt eine Navigationsleiste die Tab-Leiste. Ab 1280 Pixel
 
 ### Dashboard-Karte
 
-Die Integration registriert `custom:ranzenpost-card`. Füge sie über die Kartenauswahl hinzu und richte sie im visuellen Editor ein: Titel, Kinder, Bausteine und eine Größe je Baustein. Die Karte folgt Sprache und Design des Dashboards. Sie besteht aus denselben Bausteinen wie die Übersicht der App: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` und `texts`. Angeboten werden nur Bausteine der Module, die deine Schule hat. Ein Baustein ohne Inhalt wird nicht gezeichnet, und die meisten Bausteine öffnen mit „Alle ansehen“ die App; der Ferien-Baustein hat keinen solchen Link. Bei mehreren Kindern stehen die Tagesbausteine nebeneinander und die Familienbausteine einmal. Ein Konto ohne verknüpftes Profil bekommt trotzdem Elternbriefe, Pinnwand, Elternsprechtage, Ferien, Schultermine, Aufgaben, News, Foren und Texte seiner Schule.
+Die Integration registriert `custom:ranzenpost-card`. Füge sie über die Kartenauswahl hinzu und richte sie im visuellen Editor ein: Titel, Kinder, Bausteine und eine Größe je Baustein. Die Karte folgt Sprache und Design des Dashboards. Sie besteht aus denselben Bausteinen wie die Übersicht der App: `today`, `next_day`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` und `texts`. Angeboten werden nur Bausteine der Module, die deine Schule hat. Ein Baustein ohne Inhalt wird nicht gezeichnet, und die meisten Bausteine öffnen mit „Alle ansehen“ die App; der Ferien-Baustein hat keinen solchen Link. Bei mehreren Kindern stehen die Tagesbausteine nebeneinander und die Familienbausteine einmal. Ein Konto ohne verknüpftes Profil bekommt trotzdem Elternbriefe, Pinnwand, Elternsprechtage, Ferien, Schultermine, Aufgaben, News, Foren und Texte seiner Schule.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -204,6 +204,17 @@ children:
   - mia
 ```
 
+Zum Ranzenpacken am Nachmittag zeigt der Heute-Baustein ab 15 Uhr den nächsten Schultag:
+
+```yaml
+type: custom:ranzenpost-card
+blocks:
+  - key: today
+    switch: "15:00"
+children:
+  - mia
+```
+
 Ohne Tagesbausteine, für ein Handy-Dashboard:
 
 ```yaml
@@ -215,7 +226,7 @@ blocks:
   - conferences
 ```
 
-`children` nimmt Vornamen, Vornamen mit der Schule in Klammern oder die Schlüssel der Kinder aus der App. Lässt du es weg, zeigt die Karte alle Kinder. Jeder Baustein ist ein Schlüssel oder ein Schlüssel mit `size`, `compact` oder `normal`. Die älteren Schlüssel `view` und `child` funktionieren weiter.
+`children` nimmt Vornamen, Vornamen mit der Schule in Klammern oder die Schlüssel der Kinder aus der App. Lässt du es weg, zeigt die Karte alle Kinder. Jeder Baustein ist ein Schlüssel oder ein Schlüssel mit `size`, `compact` oder `normal`. Der Baustein `today` nimmt außerdem `switch`: `end` zeigt nach der letzten Stunde den nächsten Schultag, eine Uhrzeit wie `"15:00"` ab dieser Zeit. Der Baustein `next_day` zeigt immer den nächsten Schultag, mit „Morgen“ oder mit Wochentag und Datum. Die älteren Schlüssel `view` und `child` funktionieren weiter.
 
 </details>
 
@@ -252,6 +263,7 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 | Foren (`forums`, `forum`) | Foren | Jedes Forum der Übersicht mit Bereich, Beschreibung, ungelesenen Beiträgen und letztem Beitrag | Alles als gelesen markieren, nach einer Bestätigung |
 | Texte (`etherpad`) | Texte | Jeder Text, den das Konto in einer IServ-Auswahl sieht, auch ausgeblendete, mit Besitzer, Daten und Schlagwörtern | Nichts. Filter und Suche arbeiten in der App |
 | Infobildschirme (`infodisplay`) | Infobildschirm | Die Infobildschirme, die das Konto sieht, mit Namen | Nichts |
+| Tafeln (`excalidraw`) | Tafeln | Die Tafeln, die das Konto sieht, mit Besitzer und Daten | Nichts |
 | E-Mail (`mail`) | IServ-Postfach | Ordner, E-Mails mit Anlagen, Suche, Schlagwörter, Absenderadressen, Empfänger- und Gruppensuche, die Mail-Einstellungen | Senden, Antworten, Weiterleiten, Entwürfe, Markierungen, Schlagwörter, Verschieben, Archivieren, Löschen, Ordner, Lesebestätigungen, Abwesenheitsnotiz, Weiterleitung, Filterregeln, Signaturen, als Spam und als kein Spam markieren, mit Rückgängig |
 | Dateien (`file`) | Dateien | Eigene Dateien und Gruppenordner mit Name, Größe, Typ und Datum, die Suche, die Dateien selbst | Hochladen in die eigenen Dateien und Gruppenordner, nach einer Bestätigung |
 | Adressbuch (`addressbook`) | Adressbuch | Personen aus einer Suche mit Adresse und Klasse, auch als E-Mail-Empfänger | Nichts |

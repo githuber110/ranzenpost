@@ -81,3 +81,17 @@ def test_a_news_detail_that_moves_elsewhere_is_named_without_a_shape():
     client = DetailClient(Response(200, SCHOOL + NEWS_PATH, NEWS_PAGE))
     lines = reportlists.list_lines("news", {NEWS_PATH: Response(200, SCHOOL + NEWS_PATH, NEWS_PAGE)}, client)
     assert lines[-1].startswith("- News detail ") and "answered 200, final /iserv/news" in lines[-1]
+
+
+def test_the_page_structure_shows_the_main_text_with_names_masked():
+    from app.pageshape import html_skeleton
+
+    html = (
+        "<html><body><nav><ul><li>Mail</li></ul></nav>"
+        "<div id='content'><h1>Infobildschirm</h1><p>Keine Infobildschirme für Erika Musterfrau, 12 Tage.</p>"
+        "<table><tr><td>Geheim</td></tr></table></div></body></html>"
+    )
+    line = next(line for line in html_skeleton(html) if line.startswith("- Main text:"))
+
+    assert "Keine" in line and "Infobildschirm" in line
+    assert "Erika" not in line and "Musterfrau" not in line and "12" not in line and "Geheim" not in line

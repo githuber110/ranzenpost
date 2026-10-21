@@ -10,7 +10,7 @@ from app.store import Store
 
 from tests.test_server import FakeService, FakeWizard
 
-OPENAPI_SHA256 = "eac4c69f6336b7484b3000b8bb1bb95d15517a5ad0bab4d100fbfc6c4dd36b07"
+OPENAPI_SHA256 = "4c71829f9e215f4f0bb81a85703d6c6cb525b9f18f71e314d9cbaee6adf0c860"
 
 API_ROUTES = [
     (["GET"], "/api/integration/info", "info"),
@@ -93,6 +93,7 @@ API_ROUTES = [
     (["POST"], "/api/forums/read", "forums_read"),
     (["GET"], "/api/texts", "texts"),
     (["GET"], "/api/infodisplay", "infodisplay"),
+    (["GET"], "/api/whiteboards", "whiteboards"),
     (["GET"], "/api/mail", "mail_counts"),
     (["GET"], "/api/mail/folders", "mail_folders"),
     (["GET"], "/api/mail/messages", "mail_messages"),

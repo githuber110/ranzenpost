@@ -3,6 +3,32 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.4.0
+
+### New
+
+- A "Next school day" block for the overview and the dashboard card. It shows the next day with lessons, with the known
+  substitutions and cancellations, under "Tomorrow" or the weekday and date.
+- The "Today" block of the card can switch to the next school day after the last lesson or from a set time.
+- Whiteboards from IServ as a list with title, owner and dates.
+
+### Changed
+
+- Ranzenpost is in the HACS default store. Search for Ranzenpost in HACS to install it.
+- New cards start with the blocks Today and Next school day.
+- The family view of the card shows the next school day instead of the next calendar day.
+- The problem report shows the visible text of each explored page with names masked, and skips the mail rules when
+  their port is closed.
+
+### Fixed
+
+- Parallel lessons on the card showed the subject of the first one, for example "G" twice instead of "G" and "GB".
+- Normal lessons on the card showed "Datum: ..." instead of the teacher and room.
+- Substitutions show on every day of the card, not only today.
+- Plugin calendars such as the exam plan are read. 2610.3.0 listed them but did not request them.
+- The integration looks up its devices per config entry. Home Assistant drops the old lookup in 2027.8.
+- Mail connections require TLS 1.2 or newer.
+
 ## 2610.3.0
 
 ### New

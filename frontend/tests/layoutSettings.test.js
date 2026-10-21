@@ -46,7 +46,7 @@ describe("settings › Layout › Overview", () => {
     expect(shown.every((row) => row.querySelector(".switch").getAttribute("aria-checked") === "true")).toBe(true);
     expect(shown.every((row) => row.querySelector(".block-tools .segment.mini") && row.querySelectorAll(".order-btns .icon-btn").length === 2)).toBe(true);
     const hidden = [...page.querySelectorAll(".settings-group")[1].querySelectorAll(".block-row")];
-    expect(hidden.map((row) => row.dataset.block)).toEqual(["next_lesson", "week", "noticeboard", "absences", "conferences", "holidays", "changes", "chat"]);
+    expect(hidden.map((row) => row.dataset.block)).toEqual(["next_day", "next_lesson", "week", "noticeboard", "absences", "conferences", "holidays", "changes", "chat"]);
     expect(hidden.every((row) => row.classList.contains("off") && !row.querySelector(".block-tools"))).toBe(true);
     expect(page.querySelector(".layout-foot").textContent).toBe(label(window, "settings.blocks.foot"));
   });
@@ -157,7 +157,7 @@ describe("settings › Layout › Overview", () => {
     }
     input.value = "";
     input.dispatchEvent(new window.Event("input", { bubbles: true }));
-    expect(page.querySelectorAll(".block-row").length).toBe(10);
+    expect(page.querySelectorAll(".block-row").length).toBe(11);
   });
 
   test("every offered block has its six texts in the base bundle", () => {
@@ -217,7 +217,7 @@ describe("settings › Layout › Navigation", () => {
     window.eval('state.view = "settings"; state.settingsPage = "layout"; render();');
     const page = window.document;
     page.querySelector('.nav-row[data-area="messenger"] .order-btns [data-dir="up"]').click();
-    expect(window.eval("window.__posts[0].body")).toEqual({ navigation: ["timetable", "messenger", "post", "conferences", "absence", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"] });
+    expect(window.eval("window.__posts[0].body")).toEqual({ navigation: ["timetable", "messenger", "post", "conferences", "absence", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"] });
     expect(page.activeElement).toBe(page.querySelector('.nav-row[data-area="messenger"] .order-btns [data-dir="up"]'));
   });
 
@@ -227,7 +227,7 @@ describe("settings › Layout › Navigation", () => {
     const page = navigationPage(window);
     const row = page.querySelector('.nav-row[data-area="post"]');
     row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true }));
-    expect(window.eval("window.__posts[0].body.navigation")).toEqual(["timetable", "post", "absence", "messenger", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]);
+    expect(window.eval("window.__posts[0].body.navigation")).toEqual(["timetable", "post", "absence", "messenger", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
     row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
     expect(window.eval("window.__posts.length")).toBe(1);
   });

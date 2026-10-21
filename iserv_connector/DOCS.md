@@ -31,9 +31,10 @@ in the sidebar, a dashboard card and entities for automations.
   the filter. A task opens with what its IServ page shows, read only when you open it: text, files, the
   own hand-in, feedback and model solutions. Hand in files or text, remove handed-in files and mark a
   task as done in the app, each after a confirmation.
-- **Forums, texts and info screens**: forums with their unread posts, where marking everything as read
-  asks first. Every text the account sees, with filter, tags and search. The info screens the account
-  sees. Each appears only where the account has the module.
+- **Forums, texts, info screens and whiteboards**: forums with their unread posts, where marking
+  everything as read asks first. Every text the account sees, with filter, tags and search. The info
+  screens the account sees. The whiteboards the account sees, with owner and dates. Each appears only
+  where the account has the module.
 - **Email**: the IServ mailbox with folders, search, reading, replying, forwarding, drafts,
   attachments, read receipts, tags, sender addresses and recipient search. An email can become an event
   in your IServ calendar. Out-of-office note, forwarding, filter rules and signatures are edited in the
@@ -149,8 +150,8 @@ and the install link for the integration. Calls through the Ingress proxy cannot
 or missing token answers 401, and ten failed attempts a minute from one source are answered 429.
 Every other route on that port only answers the Supervisor's Ingress proxy.
 
-Install the integration itself through HACS: add this repository as a custom repository (category
-**Integration**) or use the button in the main
+Install the integration itself through HACS: search for **Ranzenpost** in HACS, which lists it in its
+default store, or use the button in the main
 [README](https://github.com/githuber110/ranzenpost#3-add-the-integration), then
 **Settings → Devices & services → Add integration → Ranzenpost**. With a Supervisor it is found and
 set up automatically; otherwise enter the host, port and token shown above by hand.
@@ -182,9 +183,10 @@ school's login needs you, a repair names the school and clears once the login wo
 ## Dashboard card
 
 The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the
-visual editor: a title, the children, the blocks (`today`, `next_lesson`, `week`, `changes`,
+visual editor: a title, the children, the blocks (`today`, `next_day`, `next_lesson`, `week`, `changes`,
 `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`,
-`forums`, `texts`) and a size per block, `compact` or `normal`. Only blocks of modules your school has are offered, and a block without
+`forums`, `texts`) and a size per block, `compact` or `normal`. The `today` block also takes `switch`:
+`end` shows the next school day after the last lesson, a time such as `"15:00"` from that time on. Only blocks of modules your school has are offered, and a block without
 content is not drawn. An account without a linked profile still gets letters, noticeboard, conferences,
 holidays, school events, tasks, news, forums and texts of its school. After installing or updating the integration, restart
 Home Assistant and reload the page so the browser loads the new card.

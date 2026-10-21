@@ -12,6 +12,7 @@ const LAYOUTS = [
   "blocks=today:compact,next_lesson:compact,letters:compact&second=lessons",
   "blocks=today,letters,holidays&second=lessons",
   "blocks=today:compact,next_lesson:compact&children=alex",
+  "blocks=today,next_day&children=alex",
   "blocks=today:compact,letters:compact,holidays&scene=showcase&names=Mia,Tom",
 ];
 

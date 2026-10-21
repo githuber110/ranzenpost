@@ -25,7 +25,7 @@ describe("today view", () => {
       "lesson-20260902-p4@sample",
     ]);
     expect(texts(root, ".row .row-title")).toEqual(["Maths", "English", "Art"]);
-    expect(texts(root, ".row .row-sub")).toEqual(["Mrs Example, R101", "Mr Stand-in · R202", "Ms Brush · R303"]);
+    expect(texts(root, ".row .row-sub")).toEqual(["Example · R101", "Mr Stand-in · R202", "Ms Brush · R303"]);
     expect(texts(root, ".row .row-meta")).toEqual(["09:00", "09:50", "11:40"]);
     expect(rows[0].getAttribute("aria-current")).toBe("true");
     expect(rows[0].querySelector(".row-when.now").textContent).toBe("Jetzt");

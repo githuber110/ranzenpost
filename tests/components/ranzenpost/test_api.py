@@ -1,6 +1,6 @@
 import pytest
 
-from custom_components.ranzenpost.api import AuthError, ConnectionError, NotFoundError, RanzenpostApi
+from custom_components.ranzenpost.api import AuthError, ConnectionError, Event, NotFoundError, RanzenpostApi
 
 
 class FakeResponse:
@@ -42,3 +42,12 @@ async def test_every_answer_is_released_after_reading(status, raised):
         with pytest.raises(raised):
             await api._get("/api/integration/info")
     assert response.released is True
+
+def _event_json(**extra):
+    return {"uid": "u", "start": "2026-09-02T08:00:00+02:00", "end": "2026-09-02T08:45:00+02:00", **extra}
+
+
+def test_an_event_from_an_older_app_leaves_the_substitution_unknown():
+    assert Event.from_json(_event_json()).substitution is None
+    assert Event.from_json(_event_json(substitution=True)).substitution is True
+    assert Event.from_json(_event_json(substitution=False)).substitution is False

@@ -172,7 +172,7 @@ for (const width of [390, 1024]) {
         await expect(page.locator('.mail-row[data-uid="3"] .mail-tag')).toHaveText("Wichtig");
         await page.locator(".mail-settings-open").click();
         await page.waitForSelector(".mail-settings .mail-setting-page", { timeout: 10000 });
-        await expect(page.locator(".mail-setting-page")).toHaveCount(4);
+        await expect(page.locator(".mail-setting-page")).toHaveCount(5);
         await noHandOff(page);
         await expectInside(page);
         await page.screenshot({ path: `test-results/mail-settings-${width}-${theme}.png`, fullPage: true });

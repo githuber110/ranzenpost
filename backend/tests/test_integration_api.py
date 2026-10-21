@@ -595,7 +595,7 @@ def test_lesson_events_carry_the_feed_texts_and_the_cancelled_flag(tmp_path):
     assert timed[0]["uid"].endswith("@ranzenpost.local")
     assert "Deutsch" in timed[0]["summary"]
     assert "Datum" in timed[0]["description"]
-    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind", "teacher"}
+    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind", "teacher", "substitution"}
     assert timed[0]["teacher"] == "Behrens"
 
 
@@ -977,15 +977,16 @@ def test_info_carries_the_module_registry_of_each_school(tmp_path):
         "forums": False,
         "texts": False,
         "infodisplay": False,
+        "whiteboards": False,
     }
-    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False}
+    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False}
     assert "unknown" not in schools[0]
 
 
 def test_info_shows_every_module_for_a_school_without_a_registry(tmp_path):
     client, store, _ = _app(tmp_path)
     body = client.get(PREFIX + "/info", headers=_auth(store)).json()
-    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False}
+    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False}
 
 
 def test_state_reads_unread_counts_from_the_school_of_the_child(tmp_path):

@@ -13,7 +13,8 @@
     "subject": "",
     "name": "",
     "kind": "school_event",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   },
   {
     "uid": "school-event-20260910@sample",
@@ -29,6 +30,7 @@
     "subject": "",
     "name": "",
     "kind": "school_event",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   }
 ]

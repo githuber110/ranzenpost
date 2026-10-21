@@ -13,7 +13,8 @@
     "subject": "Maths",
     "name": "",
     "kind": "",
-    "teacher": "Example"
+    "teacher": "Example",
+    "substitution": false
   },
   {
     "uid": "lesson-20260902-p4@sample",
@@ -29,7 +30,8 @@
     "subject": "Art",
     "name": "",
     "kind": "",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   },
   {
     "uid": "lesson-20260903-p1@sample",
@@ -45,6 +47,7 @@
     "subject": "Biology",
     "name": "",
     "kind": "",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   }
 ]

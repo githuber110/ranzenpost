@@ -30,6 +30,7 @@ GERMAN_HAYSTACK_MODULES = {
     "mail.py": "folder names a mail server may use without special-use flags; matched against folder names, never shown",
     "older_absence_form.py": "field and link labels of IServ's older absence form; matched against page text, never shown",
     "files.py": "IServ's own German column labels of the file table; matched against header text, never shown",
+    "whiteboards.py": "IServ's own German column labels of the whiteboard table; matched against header text, never shown",
     "mailinglists.py": "IServ's own German cancel button words of a confirmation page; matched, never shown",
 }
 

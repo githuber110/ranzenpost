@@ -14,6 +14,7 @@ function accountState(key) {
   if (key === "forums") return state.forums;
   if (key === "texts") return state.texts;
   if (key === "infodisplay") return state.infodisplay;
+  if (key === "whiteboards") return state.whiteboards;
   return null;
 }
 
@@ -29,11 +30,16 @@ function loadInfodisplay() {
   return loadAccountList("infodisplay", "api/infodisplay", ["overview", "infodisplay"], (value) => { state.infodisplay = value; });
 }
 
+function loadWhiteboards() {
+  return loadAccountList("whiteboards", "api/whiteboards", ["overview", "whiteboards"], (value) => { state.whiteboards = value; });
+}
+
 function loadAccountLists() {
   return Promise.all([
     moduleOn("forums") ? loadForums() : null,
     moduleOn("texts") ? loadTexts() : null,
     moduleOn("infodisplay") ? loadInfodisplay() : null,
+    moduleOn("whiteboards") ? loadWhiteboards() : null,
   ]);
 }
 
@@ -377,6 +383,57 @@ function infodisplayView() {
   return view;
 }
 
+function whiteboardSub(board) {
+  const parts = [];
+  const owner = String(board.owner || "").trim();
+  if (owner) parts.push(owner);
+  const created = listMoment(board.created, board.created_text);
+  if (created) parts.push(t("whiteboards.created", { date: created }));
+  const changed = listMoment(board.changed, board.changed_text);
+  if (changed) parts.push(t("whiteboards.changed", { date: changed }));
+  return parts.join(" · ");
+}
+
+function whiteboardRow(board) {
+  return plainRow(board.title || t("whiteboards.untitled"), whiteboardSub(board), [schoolTag(board)], null, false, "whiteboard-row");
+}
+
+function byBoardChange(left, right) {
+  const leftMoment = String(left.changed || left.created || "");
+  const rightMoment = String(right.changed || right.created || "");
+  return rightMoment.localeCompare(leftMoment) || String(left.title || "").localeCompare(String(right.title || ""), currentLanguage(), { sensitivity: "base", numeric: true });
+}
+
+function sortedWhiteboards() {
+  return accountEntries("whiteboards").sort(byBoardChange);
+}
+
+function whiteboardsView() {
+  const view = el("div", { class: "school-list" });
+  const data = state.whiteboards;
+  if (!data) {
+    view.append(loadingBlock());
+    return view;
+  }
+  const boards = sortedWhiteboards();
+  if (listUnreadable(data, boards.length)) {
+    view.append(unreadableBlock("board"));
+    return view;
+  }
+  if (data.error || listUnknown(data, boards.length)) {
+    view.append(listFailure("whiteboards", () => { state.whiteboards = null; rerender(); loadWhiteboards(); }));
+    return view;
+  }
+  const note = refreshFailureNote("whiteboards");
+  if (note) view.append(note);
+  if (!boards.length) {
+    view.append(emptyBlock("board", t("whiteboards.empty.title"), t("whiteboards.empty.text")));
+    return view;
+  }
+  view.append(el("div", { class: "rows" }, boards.map(whiteboardRow)));
+  return view;
+}
+
 function accountChapter(size, key, view, rows, build, load) {
   if (!moduleOn(key)) return null;
   const data = accountState(key);
@@ -411,4 +468,11 @@ function infodisplayChapter(size) {
     `screen:${screen.connection_id || ""}:${screen.id}`,
     sizedRow(size, screen.title || t("infodisplay.untitled"), "", "", false, () => setView("infodisplay"), [schoolTag(screen)])
   ), loadInfodisplay);
+}
+
+function whiteboardsChapter(size) {
+  return accountChapter(size, "whiteboards", "whiteboards", sortedWhiteboards, (board) => overviewBlock(
+    `whiteboard:${board.connection_id || ""}:${board.id}`,
+    sizedRow(size, board.title || t("whiteboards.untitled"), String(board.owner || ""), listMoment(board.changed || board.created, board.changed ? board.changed_text : board.created_text), false, () => setView("whiteboards"), [schoolTag(board)])
+  ), loadWhiteboards);
 }

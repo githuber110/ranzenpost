@@ -101,7 +101,7 @@ describe("a school account without a child", () => {
     const card = await mountCard({ blocks: SCHOOL_BLOCKS }, makeHass({ empty: true }));
 
     expect(card.shadowRoot.querySelector(".empty b").textContent).toBe("Die Ranzenpost-Integration hat noch keine Profile.");
-    expect(await CardClass.getStubConfig(makeHass({ empty: true }))).toEqual({ blocks: ["today", "next_lesson"] });
+    expect(await CardClass.getStubConfig(makeHass({ empty: true }))).toEqual({ blocks: ["today", "next_day"] });
   });
 });
 

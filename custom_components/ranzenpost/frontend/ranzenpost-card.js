@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2610.3.0";
+  const CARD_VERSION = "2610.4.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -44,8 +44,14 @@
   const SIZE_NORMAL = "normal";
   const SIZES = [SIZE_COMPACT, SIZE_NORMAL];
   const ABSENCE_DAYS_AHEAD = 14;
+  const NEXT_DAY_AHEAD = 28;
+  const SWITCH_END = "end";
+  const SWITCH_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const SWITCH_TIME_DEFAULT = "15:00";
+  const SWITCH_CHOICES = ["off", SWITCH_END, "time"];
   const BLOCK_CATALOGUE = [
     { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "next_day", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child" },
     { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "family" },
@@ -61,17 +67,19 @@
     { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
+    { key: "whiteboards", module: "whiteboards", area: "whiteboards", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const CARD_BLOCKS = BLOCK_CATALOGUE.filter((block) => block.surfaces.includes("card"));
-  const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay"];
+  const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"];
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
-  const DAY_BLOCKS = ["today", "next_lesson", "week"];
+  const DAY_BLOCKS = ["today", "next_day", "next_lesson", "week"];
   const HOLIDAY_AHEAD_DAYS = 365;
   const SCHOOL_EVENTS_AHEAD_DAYS = 60;
   const COURSE_CELL_MIN = 3;
   const BLOCK_TARGETS = {
     today: "view=timetable",
+    next_day: "view=timetable",
     next_lesson: "view=timetable",
     week: "view=timetable",
     changes: "view=timetable",
@@ -284,6 +292,14 @@
       "editor.title": "Titel",
       "block.today": "Heute",
       "block.today.explain": "Stunden von heute, Änderungen, Schulschluss.",
+      "block.next_day": "Nächster Schultag",
+      "block.next_day.explain": "Stunden des nächsten Schultags mit Vertretungen und Ausfällen.",
+      "nextDay.unknown": "Der nächste Schultag steht noch nicht im Stundenplan.",
+      "editor.switch": "{name}: danach den nächsten Schultag zeigen",
+      "editor.switch.off": "Aus",
+      "editor.switch.end": "Nach der letzten Stunde",
+      "editor.switch.time": "Ab Uhrzeit",
+      "editor.switch.at": "Uhrzeit für {name}",
       "block.next_lesson": "Nächste Stunde",
       "block.next_lesson.explain": "Die nächste Stunde, auch morgen früh.",
       "block.week": "Woche",
@@ -310,6 +326,8 @@
       "block.texts.explain": "Die zuletzt geänderten Texte.",
       "block.infodisplay": "Infobildschirme",
       "block.infodisplay.explain": "Die Infobildschirme aus IServ.",
+      "block.whiteboards": "Tafeln",
+      "block.whiteboards.explain": "Die Tafeln aus IServ.",
       "block.changes": "Änderungen",
       "block.changes.explain": "Vertretungen und Ausfälle von heute.",
       "block.chat": "Chat",
@@ -368,6 +386,14 @@
       "editor.title": "Title",
       "block.today": "Today",
       "block.today.explain": "Today's lessons, changes and the end of school.",
+      "block.next_day": "Next school day",
+      "block.next_day.explain": "Lessons of the next school day with substitutions and cancellations.",
+      "nextDay.unknown": "The next school day is not in the timetable yet.",
+      "editor.switch": "{name}: then show the next school day",
+      "editor.switch.off": "Off",
+      "editor.switch.end": "After the last lesson",
+      "editor.switch.time": "From a time",
+      "editor.switch.at": "Time for {name}",
       "block.next_lesson": "Next lesson",
       "block.next_lesson.explain": "The next lesson, even tomorrow morning.",
       "block.week": "Week",
@@ -394,6 +420,8 @@
       "block.texts.explain": "The texts changed last.",
       "block.infodisplay": "Info screens",
       "block.infodisplay.explain": "The info screens from IServ.",
+      "block.whiteboards": "Whiteboards",
+      "block.whiteboards.explain": "The whiteboards from IServ.",
       "block.changes": "Changes",
       "block.changes.explain": "Substitutions and cancellations of today.",
       "block.chat": "Chat",
@@ -452,6 +480,14 @@
       "editor.title": "العنوان",
       "block.today": "اليوم",
       "block.today.explain": "حصص اليوم والتغييرات ونهاية الدوام.",
+      "block.next_day": "اليوم الدراسي التالي",
+      "block.next_day.explain": "حصص اليوم الدراسي التالي مع الحصص البديلة والإلغاءات.",
+      "nextDay.unknown": "اليوم الدراسي التالي غير موجود في الجدول بعد.",
+      "editor.switch": "{name}: ثم عرض اليوم الدراسي التالي",
+      "editor.switch.off": "إيقاف",
+      "editor.switch.end": "بعد آخر حصة",
+      "editor.switch.time": "من وقت محدد",
+      "editor.switch.at": "الوقت لـ {name}",
       "block.next_lesson": "الحصة التالية",
       "block.next_lesson.explain": "الحصة التالية، حتى صباح الغد.",
       "block.week": "الأسبوع",
@@ -478,6 +514,8 @@
       "block.texts.explain": "آخر النصوص التي تغيّرت.",
       "block.infodisplay": "شاشات المعلومات",
       "block.infodisplay.explain": "شاشات المعلومات من IServ.",
+      "block.whiteboards": "السبورات",
+      "block.whiteboards.explain": "السبورات من IServ.",
       "block.changes": "التغييرات",
       "block.changes.explain": "الحصص البديلة والملغاة اليوم.",
       "block.chat": "الدردشة",
@@ -536,6 +574,14 @@
       "editor.title": "Başlık",
       "block.today": "Bugün",
       "block.today.explain": "Bugünün dersleri, değişiklikler ve okul çıkışı.",
+      "block.next_day": "Sonraki okul günü",
+      "block.next_day.explain": "Sonraki okul gününün dersleri, yerine geçen dersler ve iptallerle.",
+      "nextDay.unknown": "Sonraki okul günü henüz ders programında yok.",
+      "editor.switch": "{name}: ardından sonraki okul gününü göster",
+      "editor.switch.off": "Kapalı",
+      "editor.switch.end": "Son dersten sonra",
+      "editor.switch.time": "Belirli bir saatten",
+      "editor.switch.at": "{name} için saat",
       "block.next_lesson": "Sonraki ders",
       "block.next_lesson.explain": "Sonraki ders, yarın sabah olsa bile.",
       "block.week": "Hafta",
@@ -562,6 +608,8 @@
       "block.texts.explain": "Son değişen metinler.",
       "block.infodisplay": "Bilgi ekranları",
       "block.infodisplay.explain": "IServ'deki bilgi ekranları.",
+      "block.whiteboards": "Tahtalar",
+      "block.whiteboards.explain": "IServ'deki tahtalar.",
       "block.changes": "Değişiklikler",
       "block.changes.explain": "Bugünün vekil dersleri ve iptalleri.",
       "block.chat": "Sohbet",
@@ -620,6 +668,14 @@
       "editor.title": "Заголовок",
       "block.today": "Сегодня",
       "block.today.explain": "Уроки на сегодня, изменения, конец занятий.",
+      "block.next_day": "Следующий учебный день",
+      "block.next_day.explain": "Уроки следующего учебного дня с заменами и отменами.",
+      "nextDay.unknown": "Следующего учебного дня пока нет в расписании.",
+      "editor.switch": "{name}: затем показывать следующий учебный день",
+      "editor.switch.off": "Выкл.",
+      "editor.switch.end": "После последнего урока",
+      "editor.switch.time": "С определённого времени",
+      "editor.switch.at": "Время для блока {name}",
       "block.next_lesson": "Следующий урок",
       "block.next_lesson.explain": "Следующий урок, даже завтра утром.",
       "block.week": "Неделя",
@@ -646,6 +702,8 @@
       "block.texts.explain": "Недавно изменённые тексты.",
       "block.infodisplay": "Инфоэкраны",
       "block.infodisplay.explain": "Инфоэкраны из IServ.",
+      "block.whiteboards": "Доски",
+      "block.whiteboards.explain": "Доски из IServ.",
       "block.changes": "Изменения",
       "block.changes.explain": "Замены и отмены на сегодня.",
       "block.chat": "Чат",
@@ -704,6 +762,14 @@
       "editor.title": "Заголовок",
       "block.today": "Сьогодні",
       "block.today.explain": "Уроки на сьогодні, зміни, кінець занять.",
+      "block.next_day": "Наступний навчальний день",
+      "block.next_day.explain": "Уроки наступного навчального дня із замінами та скасуваннями.",
+      "nextDay.unknown": "Наступного навчального дня ще немає в розкладі.",
+      "editor.switch": "{name}: потім показувати наступний навчальний день",
+      "editor.switch.off": "Вимк.",
+      "editor.switch.end": "Після останнього уроку",
+      "editor.switch.time": "З певного часу",
+      "editor.switch.at": "Час для блоку {name}",
       "block.next_lesson": "Наступний урок",
       "block.next_lesson.explain": "Наступний урок, навіть завтра вранці.",
       "block.week": "Тиждень",
@@ -730,6 +796,8 @@
       "block.texts.explain": "Нещодавно змінені тексти.",
       "block.infodisplay": "Інфоекрани",
       "block.infodisplay.explain": "Інфоекрани з IServ.",
+      "block.whiteboards": "Дошки",
+      "block.whiteboards.explain": "Дошки з IServ.",
       "block.changes": "Зміни",
       "block.changes.explain": "Заміни та скасування на сьогодні.",
       "block.chat": "Чат",
@@ -1008,6 +1076,9 @@
     .block-tools select { block-size: 40px; padding-block: 0; }
     .order-move { inline-size: 40px; block-size: 40px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 1.1rem; cursor: pointer; }
     .order-move:disabled { opacity: 0.35; cursor: default; }
+    .switch-tools { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding-inline-start: 28px; }
+    .switch-pick { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+    .switch-tools select, .switch-tools input { block-size: 40px; padding-block: 0; }
   `;
 
   const eventCache = new Map();
@@ -1026,17 +1097,36 @@
     return block[sizeOf(block, size)];
   }
 
+  function switchOf(value) {
+    if (Number.isInteger(value) && value >= 0 && value < 24 * 60) return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+    const text = value === undefined || value === null ? "" : String(value).trim();
+    return text === SWITCH_END || SWITCH_TIME.test(text) ? text : "";
+  }
+
   function normaliseBlocks(raw) {
     const kept = [];
     const seen = new Set();
     for (const entry of Array.isArray(raw) ? raw : []) {
-      const key = entry && typeof entry === "object" ? entry.key : entry;
+      const given = entry && typeof entry === "object" ? entry : null;
+      const key = given ? given.key : entry;
       const block = typeof key === "string" ? blockOf(key) : null;
       if (!block || seen.has(block.key)) continue;
       seen.add(block.key);
-      kept.push({ key: block.key, size: sizeOf(block, entry && typeof entry === "object" ? entry.size : null) });
+      const normalised = { key: block.key, size: sizeOf(block, given ? given.size : null) };
+      const turn = block.key === "today" && given ? switchOf(given.switch) : "";
+      if (turn) normalised.switch = turn;
+      kept.push(normalised);
     }
     return kept;
+  }
+
+  function entryConfig(entry) {
+    const block = blockOf(entry.key);
+    if (entry.size === block.size && !entry.switch) return entry.key;
+    const shaped = { key: entry.key };
+    if (entry.size !== block.size) shaped.size = entry.size;
+    if (entry.switch) shaped.switch = entry.switch;
+    return shaped;
   }
 
   function unknownBlockOf(raw) {
@@ -1265,6 +1355,14 @@
     return plainDigits(dateFormatter(locale, { timeZone: zone, weekday: "short", day: "2-digit", month: "2-digit" }).format(zonedMidnight(key, zone)));
   }
 
+  function formatWeekdayLong(key, locale, zone) {
+    return dateFormatter(locale, { timeZone: zone, weekday: "long" }).format(zonedMidnight(key, zone));
+  }
+
+  function formatLongDate(key, locale, zone) {
+    return formatDate(zonedMidnight(key, zone), locale, zone);
+  }
+
   function formatNumber(value, locale) {
     try {
       return new Intl.NumberFormat(locale).format(value);
@@ -1483,6 +1581,7 @@
       end,
       allDay,
       cancelled: !!raw.cancelled,
+      substitution: typeof raw.substitution === "boolean" ? raw.substitution : null,
       color: /^#[0-9a-fA-F]{6}$/.test(raw.color || "") ? raw.color : "",
       subjectCode: String(raw.subject_code || ""),
       subjectName: String(raw.subject || ""),
@@ -1506,13 +1605,19 @@
     return match ? match[1] : event.summary;
   }
 
-  function firstLine(text) {
-    return String(text || "").split(/\r?\n/)[0].trim();
+  function changeFits(change, event) {
+    if (!change || !change.start || new Date(change.start).getTime() !== event.start.getTime()) return false;
+    return !event.subjectCode || !change.subject_code || String(change.subject_code) === event.subjectCode;
   }
 
-  function changeOf(changes, event) {
-    const at = event.start.getTime();
-    return changes.find((change) => change && change.start && new Date(change.start).getTime() === at) || null;
+  function changeOf(changes, event, events) {
+    const same = changes.filter((change) => changeFits(change, event));
+    if (same.length !== 1) return null;
+    return events.filter((other) => changeFits(same[0], other)).length === 1 ? same[0] : null;
+  }
+
+  function nextDayKeyOf(events, todayKey) {
+    return events.reduce((found, event) => (event.dayKey > todayKey && (!found || event.dayKey < found) ? event.dayKey : found), null);
   }
 
   function overlaps(left, right) {
@@ -1521,15 +1626,13 @@
 
   function buildLessons(events, exams, changes, now) {
     const lessons = events.map((event) => {
-      const change = changeOf(changes, event);
+      const change = changeOf(changes, event, events);
       const cancelled = event.cancelled || !!(change && change.cancelled);
-      const meta = change
-        ? [change.teacher, change.room].filter(Boolean).join(" · ")
-        : firstLine(event.description) || event.location;
+      const meta = change ? [change.teacher, change.room].filter(Boolean).join(" · ") : [event.teacher, event.location].filter(Boolean).join(" · ");
       return {
         ...event,
         cancelled,
-        substitution: !!(change && change.substitution && !cancelled),
+        substitution: !cancelled && (event.substitution === true || !!(change && change.substitution)),
         subject: (change && change.subject) || event.subjectName || cleanSummary(event),
         code: (change && change.subject_code) || event.subjectCode || "",
         teacher: (change && change.teacher) || event.teacher || "",
@@ -1813,9 +1916,9 @@
         if (!registry.children.length) plan.message = t("children.none");
         plan.missing = plan.children.length < (wanted.length || 1) && !childless.length;
         plan.dayKeys = [todayKey];
-        if (config.days === 2) plan.dayKeys.push(shiftKey(todayKey, 1, zone));
+        plan.withNextDay = config.days === 2;
         plan.start = zonedMidnight(todayKey, zone);
-        plan.end = zonedMidnight(shiftKey(todayKey, config.days, zone), zone);
+        plan.end = zonedMidnight(shiftKey(todayKey, plan.withNextDay ? NEXT_DAY_AHEAD : 1, zone), zone);
       } else {
         if (config.child === undefined || config.child === null || config.child === "") {
           plan.message = t("child.missing");
@@ -1870,8 +1973,11 @@
         : [todayKey];
       plan.start = zonedMidnight(keys.has("week") && mondayKey < todayKey ? mondayKey : todayKey, zone);
       plan.end = zonedMidnight(shiftKey(keys.has("week") ? mondayKey : todayKey, keys.has("week") ? SCHOOL_DAYS : 1, zone), zone);
+      const ahead = keys.has("next_day") || plan.blocks.some((entry) => entry.key === "today" && entry.switch);
+      const far = zonedMidnight(shiftKey(todayKey, NEXT_DAY_AHEAD, zone), zone);
+      if (ahead && far > plan.end) plan.end = far;
       const needsDays = DAY_BLOCKS.some((key) => keys.has(key));
-      const withOwn = keys.has("today");
+      const withOwn = keys.has("today") || keys.has("next_day");
       for (const child of plan.children) {
         if (needsDays) this._pushDayRequests(plan, child, withOwn);
         for (const key of [KEY_CHANGES, KEY_LETTERS, KEY_POSTS, KEY_SCHOOL_END, KEY_STAMP, KEY_NEXT_LESSON, KEY_ABSENCES]) {
@@ -2185,15 +2291,17 @@
 
     _familyMember(plan, byEntity, child) {
       const { t, locale, zone } = plan;
-      const labels = ["day.today", "day.tomorrow"];
-      const days = this._hasTimetable(child)
-        ? plan.dayKeys
-            .map((dayKey, index) => {
-              const day = this._dayRows(plan, byEntity, child, dayKey, index === 0, "day.free");
-              return panelHead(t(labels[index]), formatWeekdayDay(dayKey, locale, zone)) + rowsBlock(day.rows, dayKey);
-            })
-            .join("")
-        : emptyBlock("timetable", t("timetable.none"));
+      let days = emptyBlock("timetable", t("timetable.none"));
+      if (this._hasTimetable(child)) {
+        const today = this._dayRows(plan, byEntity, child, plan.todayKey, true, "day.free");
+        days = panelHead(t("day.today"), formatWeekdayDay(plan.todayKey, locale, zone)) + rowsBlock(today.rows, plan.todayKey);
+        if (plan.withNextDay) {
+          const dayKey = this._nextDayKey(plan, byEntity, child);
+          const head = this._dayHead(plan, dayKey);
+          const rows = dayKey ? this._dayRows(plan, byEntity, child, dayKey, false, "day.free").rows : this._unknownNextDay(plan, byEntity, child);
+          days += panelHead(head.label, head.meta) + rowsBlock(rows, dayKey || "");
+        }
+      }
       return `<div class="tt-child" data-child="${esc(child.id)}">${childHead(plan.registry, child, childLabel(plan.registry, child))}${days}<div class="counts">${this._counts(plan, child)}</div></div>`;
     }
 
@@ -2217,9 +2325,11 @@
       return `<a class="panel-link" href="${esc(path)}" data-block-link="${esc(key)}">${esc(plan.t(labelKey || "block.showAll"))}</a>`;
     }
 
-    _blockHead(plan, entry, meta, count, fresh, linkKey) {
-      const countHtml = count > 0 ? `<span class="count${fresh ? " fresh" : ""}">${esc(formatNumber(count, plan.locale))}</span>` : "";
-      return panelHead(plan.t(`block.${entry.key}`), meta, countHtml + this._blockLink(plan, entry.key, linkKey));
+    _blockHead(plan, entry, meta, count, fresh, linkKey, label, countLabel) {
+      const number = formatNumber(count, plan.locale);
+      const named = countLabel ? ` title="${esc(`${countLabel}: ${number}`)}" aria-label="${esc(`${countLabel}: ${number}`)}"` : "";
+      const countHtml = count > 0 ? `<span class="count${fresh ? " fresh" : ""}"${named}>${esc(number)}</span>` : "";
+      return panelHead(label || plan.t(`block.${entry.key}`), meta, countHtml + this._blockLink(plan, entry.key, linkKey));
     }
 
     _blockShell(entry, inner) {
@@ -2279,6 +2389,7 @@
     _renderBlock(plan, byEntity, entry, child) {
       switch (entry.key) {
         case "today": return this._todayBlock(plan, byEntity, entry, child);
+        case "next_day": return this._nextDayBlock(plan, byEntity, entry, child);
         case "next_lesson": return this._nextLessonBlock(plan, entry, child);
         case "week": return this._weekBlock(plan, byEntity, entry, child);
         case "letters": return this._noticesBlock(plan, entry, child, KEY_LETTERS, "letters");
@@ -2299,6 +2410,9 @@
     _todayBlock(plan, byEntity, entry, child) {
       const { t, locale, zone } = plan;
       if (!this._hasTimetable(child)) return "";
+      if (entry.switch && this._switched(plan, byEntity, child, entry.switch)) {
+        return this._blockShell(entry, this._nextDayInner(plan, byEntity, entry, child));
+      }
       const holiday = holidayOn(this._holidays(plan, byEntity, child), plan.todayKey);
       const all = this._childLessons(plan, byEntity, child, plan.todayKey, true);
       const own = this._ownEvents(plan, byEntity, child, plan.todayKey, true);
@@ -2313,8 +2427,48 @@
       else if (!shown.length) rows = noteRow(esc(t("school.over")));
       else rows = shown.map(render).join("") + (compact ? "" : this._schoolEndNote(plan, child, all));
       const changes = numberOf(this._hass, child.entities[KEY_CHANGES]);
-      const head = this._blockHead(plan, entry, formatWeekdayDay(plan.todayKey, locale, zone), changes, changes > 0, "block.toTimetable");
+      const head = this._blockHead(plan, entry, formatWeekdayDay(plan.todayKey, locale, zone), changes, changes > 0, "block.toTimetable", "", t("count.changes"));
       return this._blockShell(entry, head + rowsBlock(rows, plan.todayKey));
+    }
+
+    _switched(plan, byEntity, child, mode) {
+      if (mode !== SWITCH_END) return slotKey(plan.now, plan.zone) >= mode;
+      return !this._childLessons(plan, byEntity, child, plan.todayKey, true).some((lesson) => !lesson.allDay && !lesson.cancelled && lesson.end > plan.now);
+    }
+
+    _nextDayKey(plan, byEntity, child) {
+      return nextDayKeyOf(byEntity.get(child.entities[KEY_LESSONS]) || [], plan.todayKey);
+    }
+
+    _dayHead(plan, dayKey) {
+      const { t, locale, zone } = plan;
+      if (!dayKey) return { label: t("block.next_day"), meta: "" };
+      if (dayKey === shiftKey(plan.todayKey, 1, zone)) return { label: t("day.tomorrow"), meta: formatWeekdayDay(dayKey, locale, zone) };
+      return { label: formatWeekdayLong(dayKey, locale, zone), meta: formatLongDate(dayKey, locale, zone) };
+    }
+
+    _unknownNextDay(plan, byEntity, child) {
+      const holiday = holidayOn(this._holidays(plan, byEntity, child), shiftKey(plan.todayKey, 1, plan.zone));
+      return (holiday ? noteRow(`<b dir="auto">${esc(holiday.summary)}</b>`) : "") + noteRow(esc(plan.t("nextDay.unknown")));
+    }
+
+    _nextDayInner(plan, byEntity, entry, child) {
+      const { t, locale, zone } = plan;
+      const dayKey = this._nextDayKey(plan, byEntity, child);
+      const head = this._dayHead(plan, dayKey);
+      if (!dayKey) return this._blockHead(plan, entry, head.meta, 0, false, "block.toTimetable", head.label) + rowsBlock(this._unknownNextDay(plan, byEntity, child));
+      const lessons = this._childLessons(plan, byEntity, child, dayKey, false);
+      const own = this._ownEvents(plan, byEntity, child, dayKey, false);
+      const compact = entry.size === SIZE_COMPACT;
+      const shown = byStart(lessons, own).slice(0, limitOf(blockOf(entry.key), entry.size));
+      const rows = shown.map((item) => (item.own ? ownRow(item, t, locale, zone, compact) : lessonRow(item, t, locale, zone, compact))).join("");
+      const changes = lessons.filter((lesson) => lesson.cancelled || lesson.substitution).length;
+      return this._blockHead(plan, entry, head.meta, changes, changes > 0, "block.toTimetable", head.label, t("count.changes")) + rowsBlock(rows, dayKey);
+    }
+
+    _nextDayBlock(plan, byEntity, entry, child) {
+      if (!this._hasTimetable(child)) return "";
+      return this._blockShell(entry, this._nextDayInner(plan, byEntity, entry, child));
     }
 
     _nextLessonBlock(plan, entry, child) {
@@ -2605,7 +2759,7 @@
     _emit() {
       const config = { type: `custom:${CARD_TAG}` };
       if (this._config.title) config.title = this._config.title;
-      config.blocks = this._config.blocks.map((entry) => (entry.size === blockOf(entry.key).size ? entry.key : { key: entry.key, size: entry.size }));
+      config.blocks = this._config.blocks.map(entryConfig);
       if (this._config.children.length) config.children = this._config.children.slice();
       this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
     }
@@ -2641,6 +2795,18 @@
       } else if (field.name.startsWith("size_")) {
         const entry = this._config.blocks.find((item) => item.key === field.name.slice(5));
         if (entry && SIZES.includes(field.value)) entry.size = field.value;
+      } else if (field.name === "switch_today") {
+        const entry = this._config.blocks.find((item) => item.key === "today");
+        if (!entry) return;
+        if (field.value === "time") entry.switch = SWITCH_TIME.test(entry.switch || "") ? entry.switch : SWITCH_TIME_DEFAULT;
+        else if (field.value === SWITCH_END) entry.switch = SWITCH_END;
+        else delete entry.switch;
+      } else if (field.name === "switch_time_today") {
+        const entry = this._config.blocks.find((item) => item.key === "today");
+        if (!entry || !SWITCH_TIME.test(field.value)) return;
+        entry.switch = field.value;
+        this._emit();
+        return;
       } else {
         return;
       }
@@ -2717,7 +2883,18 @@
       const button = (direction, arrow, disabled) =>
         `<button type="button" class="order-move" data-move="${direction}" data-block="${esc(key)}" aria-label="${esc(t(`editor.order.${direction}`, { name }))}"${disabled ? " disabled" : ""}><span aria-hidden="true">${arrow}</span></button>`;
       const moves = total > 1 ? `${button("up", "↑", index === 0)}${button("down", "↓", index === total - 1)}` : "";
-      return `<li class="block-row on" data-block="${esc(key)}">${pick}<span class="block-tools">${select}${moves}</span></li>`;
+      const extra = key === "today" ? this._switchTools(t, entry, name) : "";
+      return `<li class="block-row on" data-block="${esc(key)}">${pick}<span class="block-tools">${select}${moves}</span>${extra}</li>`;
+    }
+
+    _switchTools(t, entry, name) {
+      const mode = !entry.switch ? "off" : entry.switch === SWITCH_END ? SWITCH_END : "time";
+      const options = SWITCH_CHOICES.map((choice) => `<option value="${esc(choice)}"${choice === mode ? " selected" : ""}>${esc(t(`editor.switch.${choice}`))}</option>`).join("");
+      const select = `<label class="switch-pick"><span>${esc(t("editor.switch", { name }))}</span><select name="switch_today">${options}</select></label>`;
+      const time = mode === "time"
+        ? `<input type="time" name="switch_time_today" value="${esc(entry.switch)}" aria-label="${esc(t("editor.switch.at", { name }))}">`
+        : "";
+      return `<span class="switch-tools">${select}${time}</span>`;
     }
 
     _blockList(t) {

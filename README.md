@@ -13,7 +13,7 @@
   <a href="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml"><img src="https://github.com/githuber110/ranzenpost/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/githuber110/ranzenpost/releases"><img src="https://img.shields.io/github/v/release/githuber110/ranzenpost?label=release" alt="Release"></a>
   <a href="https://www.home-assistant.io"><img src="https://img.shields.io/badge/Home%20Assistant-2025.6%2B-41BDF5.svg" alt="Home Assistant 2025.6 or newer"></a>
-  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-custom-41BDF5.svg" alt="HACS custom repository"></a>
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-default-41BDF5.svg" alt="In the HACS default store"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 
@@ -29,7 +29,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>The app in your sidebar</b><br>Timetable with substitutions, parent letters, noticeboard, chat, school events, tasks, news, email, files and sick notes. A sick note gets a review step before anything is sent.</td>
-    <td width="33%" valign="top"><b>A card for every dashboard</b><br>Today, the next lesson, the week, letters, holidays and more. Pick the blocks, the size and the children in the visual editor.</td>
+    <td width="33%" valign="top"><b>A card for every dashboard</b><br>Today, the next school day, the next lesson, the week, letters, holidays and more. Pick the blocks, the size and the children in the visual editor.</td>
     <td width="33%" valign="top"><b>Several schools, one app</b><br>Two children at two schools, or two accounts. One feed, one overview, each school on its own login.</td>
   </tr>
   <tr>
@@ -77,7 +77,7 @@ Install **Ranzenpost** in HACS and restart Home Assistant. Then go to **Settings
 
 **App by hand:** **Settings, Apps**, the **App store** (the **Install app** button at the bottom right), the menu in the top right, **Repositories**, paste `https://github.com/githuber110/ranzenpost`.
 
-**Integration by hand:** **HACS**, the menu in the top right, **Custom repositories**, paste `https://github.com/githuber110/ranzenpost`, pick **Integration**.
+**Integration by hand:** open **HACS**, search for **Ranzenpost**, then **Download**. Ranzenpost is part of the HACS default store, so you no longer add it as a custom repository. If you added it that way before, nothing changes for you.
 
 **Without a Supervisor:** the integration asks for the app's host, port and token. The token is in the app under **Settings, Home Assistant**, with a copy button.
 
@@ -91,7 +91,7 @@ The documentation shown inside Home Assistant is [`iserv_connector/DOCS.md`](ise
 
 ### Overview
 
-The overview collects what matters today in blocks you choose and order: today's lessons, the next lesson, the week, changes, letters, posts, absences, chat, parent-teacher days, holidays, the school's events, tasks, news, forums, texts and info screens.
+The overview collects what matters today in blocks you choose and order: today's lessons, the next school day, the next lesson, the week, changes, letters, posts, absences, chat, parent-teacher days, holidays, the school's events, tasks, news, forums, texts, info screens and whiteboards.
 
 School events also get their own view: the shared calendars the account sees in IServ, for the next weeks.
 
@@ -136,9 +136,9 @@ Open tasks come first by due date. Done and past tasks follow. A task opens with
 
 Every news item is listed with its category and date. News can be filtered by category and searched. The archive and the package news show when you pick them in the filter, and Ranzenpost reads them only then. A news item opens in the app with its full text, files and links. Files open and download through Ranzenpost.
 
-### Forums, texts and info screens
+### Forums, texts, info screens and whiteboards
 
-Forums lists every forum the account sees, with its section and its unread posts. Mark all read asks first. Texts lists every text the account sees, hidden ones too, with owner, dates and tags. It has a filter by selection and by tag, and a search. Info screens lists the info screens the account sees by name. These three areas appear only where the account has the module.
+Forums lists every forum the account sees, with its section and its unread posts. Mark all read asks first. Texts lists every text the account sees, hidden ones too, with owner, dates and tags. It has a filter by selection and by tag, and a search. Info screens lists the info screens the account sees by name. Whiteboards lists the whiteboards the account sees with owner and dates. These four areas appear only where the account has the module.
 
 ### Email
 
@@ -174,7 +174,7 @@ From 900 pixels wide, a navigation rail replaces the tab bar. From 1280 pixels, 
 
 ### Dashboard card
 
-The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` and `texts`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link. With several children the day blocks sit side by side and the family blocks come once. An account without a linked profile still gets letters, noticeboard, conferences, holidays, school events, tasks, news, forums and texts of its school.
+The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_day`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` and `texts`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link. With several children the day blocks sit side by side and the family blocks come once. An account without a linked profile still gets letters, noticeboard, conferences, holidays, school events, tasks, news, forums and texts of its school.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -204,6 +204,17 @@ children:
   - mia
 ```
 
+For packing the schoolbag in the afternoon, the today block shows the next school day from 15:00:
+
+```yaml
+type: custom:ranzenpost-card
+blocks:
+  - key: today
+    switch: "15:00"
+children:
+  - mia
+```
+
 Without day blocks, for a phone dashboard:
 
 ```yaml
@@ -215,7 +226,7 @@ blocks:
   - conferences
 ```
 
-`children` takes first names, first names with the school in brackets, or the children's keys from the app. Leave it out for every child. Each block is a key or a key with a `size`, `compact` or `normal`. The older `view` and `child` keys still work.
+`children` takes first names, first names with the school in brackets, or the children's keys from the app. Leave it out for every child. Each block is a key or a key with a `size`, `compact` or `normal`. The `today` block also takes `switch`: `end` shows the next school day after the last lesson, a time such as `"15:00"` from that time on. The `next_day` block always shows the next school day, labelled tomorrow or with its weekday and date. The older `view` and `child` keys still work.
 
 </details>
 
@@ -252,6 +263,7 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Forums (`forums`, `forum`) | Forums | Every forum of the overview with its section, description, unread posts and last post | Mark everything as read, after a confirmation |
 | Texts (`etherpad`) | Texts | Every text the account sees in each IServ selection, also hidden ones, with owner, dates and tags | Nothing. Filter and search work in the app |
 | Info screens (`infodisplay`) | Info display | The info screens the account sees, by name | Nothing |
+| Whiteboards (`excalidraw`) | Whiteboards | The whiteboards the account sees, with owner and dates | Nothing |
 | Email (`mail`) | IServ mailbox | Folders, emails with attachments, search, tags, sender addresses, recipient and group search, the mail settings | Send, reply, forward, drafts, flags, tags, move, archive, delete, folders, read receipts, out-of-office note, forwarding, filter rules, signatures, mark as spam and not spam, with undo |
 | Files (`file`) | Files | Own files and group folders with name, size, type and date, the search, the files themselves | Upload into the own files and group folders, after a confirmation |
 | Address book (`addressbook`) | Address book | People found by a search, with address and class, also as email recipients | Nothing |

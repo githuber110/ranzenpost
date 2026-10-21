@@ -79,6 +79,7 @@ export function createFormat({ dateFormatter, relativeFormatter, currentLanguage
   const formatWeekdayShort = (date) => dateFormatter({ weekday: "short" }).format(date);
   const formatDayNumber = (date) => dateFormatter({ day: "2-digit" }).format(date);
   const formatWeekdayDay = (date) => dateFormatter({ weekday: "short", day: "2-digit", month: "2-digit" }).format(date);
+  const formatWeekdayLong = (date) => dateFormatter({ weekday: "long" }).format(date);
 
   function formatWeekdayDate(value) {
     const date = parseAnyDate(value);
@@ -167,6 +168,7 @@ export function createFormat({ dateFormatter, relativeFormatter, currentLanguage
     formatWeekdayShort,
     formatDayNumber,
     formatWeekdayDay,
+    formatWeekdayLong,
     formatWeekdayDate,
     showDate,
     showDateTime,

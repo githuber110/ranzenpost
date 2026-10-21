@@ -15,6 +15,8 @@ MAX_ENDPOINTS = 120
 MAX_HEADERS = 60
 MAX_TABLE_ROWS_LINES = 20
 MAX_OPTION_VALUES = 12
+MAIN_TEXT_CHARS = 160
+MAIN_TEXT_SKIP = ("script", "style", "noscript", "template", "nav", "header", "footer", "aside", "form", "table", "ul", "ol", "select", "button")
 COUNT_WORDS = frozenset("size pagesize count limit length per copies days hours minutes".split())
 NAME_WORD = re.compile(r"[A-Z]?[a-z]+")
 HEADER_CHARS = 40
@@ -154,11 +156,25 @@ def unique(values, limit):
     return seen
 
 
+def main_text(soup):
+    root = soup.find("main") or soup.find(id="content") or soup.body
+    if root is None:
+        return ""
+    copy = BeautifulSoup(str(root), "html.parser")
+    for node in copy.find_all(MAIN_TEXT_SKIP):
+        node.decompose()
+    text = " ".join(copy.get_text(" ").split())
+    return DIGIT_RUN.sub("<n>", visible_text(text))[:MAIN_TEXT_CHARS].strip()
+
+
 def html_skeleton(html, link_shape=None):
     link_shape = link_shape or valueshape.link_shape
     soup = BeautifulSoup(html or "", "html.parser")
     lines = []
     lines.extend(page_extras(soup))
+    shown = main_text(soup)
+    if shown:
+        lines.append("- Main text: '%s'" % shown)
     landmarks = unique((_selector(node) for node in soup.find_all(LANDMARK_TAGS)), MAX_LANDMARKS)
     if landmarks:
         lines.append("- Landmarks: " + " | ".join(landmarks))

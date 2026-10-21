@@ -62,8 +62,16 @@ def data_of_device(hass: HomeAssistant, ref: DeviceRef):
 
 
 @callback
-def device_id_of(hass: HomeAssistant, identifier: tuple[str, str]) -> str | None:
-    device = dr.async_get(hass).async_get_device(identifiers={identifier})
+def entry_device(registry: dr.DeviceRegistry, entry_id: str, identifier: tuple[str, str]) -> dr.DeviceEntry | None:
+    if hasattr(registry, "async_get_device_by_identifier"):
+        return registry.async_get_device_by_identifier(identifier=identifier, config_entry_id=entry_id)
+    device = registry.async_get_device(identifiers={identifier})
+    return device if device is not None and entry_id in device.config_entries else None
+
+
+@callback
+def device_id_of(hass: HomeAssistant, entry_id: str, identifier: tuple[str, str]) -> str | None:
+    device = entry_device(dr.async_get(hass), entry_id, identifier)
     return device.id if device else None
 
 

@@ -560,6 +560,27 @@ describe("plan and today", () => {
   });
 });
 
+describe("the next school day in the overview", () => {
+  function week() {
+    const lessons = [];
+    ["21.09.2026", "22.09.2026", "23.09.2026", "24.09.2026", "25.09.2026"].forEach((date, index) => {
+      for (let period = 1; period <= 5; period += 1) {
+        lessons.push({ date, day_of_week: index + 1, period, start_time: clock(BASE[period - 1]), end_time: clock(BASE[period - 1] + 45), subject_code: "D", subject_label: "Deutsch", change_kind: "" });
+      }
+    });
+    return { lessons, period_times: {}, start_date: "21.09.2026", end_date: "25.09.2026" };
+  }
+
+  test("lists the choir of the next school day after its lessons", async () => {
+    const { window } = await setup();
+    const chapter = atDay(window, "2026-09-22T17:00:00", ['() => { state.weekOffset = 0; state.timetable = testArgs[0]; return nextDayChapter("normal"); }', week()]);
+    const keys = chapter.blocks.map((block) => block.key);
+    expect(chapter.title).toBe(tr(window, "blocks.day.tomorrow"));
+    expect(keys.indexOf(`next_day:${ONE}:sam:own:c1`)).toBeGreaterThan(keys.indexOf(`next_day:${ONE}:sam:5`));
+    expect(keys.some((key) => key.includes(":own:p1"))).toBe(false);
+  });
+});
+
 describe("weekend appointments and typed start times", () => {
   function plainWeek() {
     const lessons = [];

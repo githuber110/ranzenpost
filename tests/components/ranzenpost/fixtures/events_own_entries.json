@@ -13,7 +13,8 @@
     "subject": "",
     "name": "",
     "kind": "own_entries",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   },
   {
     "uid": "own-20260903-e2@sample",
@@ -29,6 +30,7 @@
     "subject": "",
     "name": "",
     "kind": "own_entries",
-    "teacher": ""
+    "teacher": "",
+    "substitution": false
   }
 ]

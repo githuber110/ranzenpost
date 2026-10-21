@@ -239,13 +239,13 @@ const MATRIX = [
     surface: "today row-sub",
     keys: ["teachers"],
     stages: [
-      { config: TODAY, hass: () => makeHass(), check: (root) => expect(texts(root, ".row .row-sub")).toContain("Mrs Example, R101") },
+      { config: TODAY, hass: () => makeHass(), check: (root) => expect(texts(root, ".row .row-sub")).toContain("Example · R101") },
       {
         config: TODAY,
-        hass: withLessons(MATHS_UID, { description: "Mrs New Teacher, R101" }),
+        hass: withLessons(MATHS_UID, { teacher: "New Teacher" }),
         check: (root) => {
-          expect(texts(root, ".row .row-sub")).toContain("Mrs New Teacher, R101");
-          expect(texts(root, ".row .row-sub")).not.toContain("Mrs Example, R101");
+          expect(texts(root, ".row .row-sub")).toContain("New Teacher · R101");
+          expect(texts(root, ".row .row-sub")).not.toContain("Example · R101");
         },
       },
     ],

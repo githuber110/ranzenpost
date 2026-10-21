@@ -37,20 +37,30 @@ const SCREENS = [
   { id: "1202", title: "Mensa", path: "/iserv/infodisplay/show/1202", connection_id: SCHOOL_ID },
 ];
 
+function board(id, title, owner, created, changed) {
+  return { id, title, owner, created, created_text: "", changed, changed_text: "", path: `/iserv/excalidraw/${id}`, connection_id: SCHOOL_ID };
+}
+
+const BOARDS = [
+  board("b1", "Klassenfahrt", "Schülerrat", "2026-09-20T08:30", ""),
+  board("b2", "Bruchrechnen", "Kim Muster", "2026-10-01T08:30", "2026-10-20T16:45"),
+];
+
 function seed(window) {
   evalWith(window, `
     state.children = [];
     state.childrenRead = true;
     state.me = { forename: "Sam" };
     state.config = { notify_services: [], notify_events: {}, phones: [], period_times: {} };
-    state.modules = applyModules({ modules: { forums: true, texts: true, infodisplay: true } });
+    state.modules = applyModules({ modules: { forums: true, texts: true, infodisplay: true, whiteboards: true } });
     state.letters = { letters: [] };
     state.pinboard = { folders: [], feed: [] };
     state.conferences = { items: [] };
     state.forums = { forums: testArgs[0], schools: [Object.assign({}, testArgs[3][0], { mark_read: true })], unavailable: [] };
     state.texts = { texts: testArgs[1], schools: [Object.assign({}, testArgs[3][0], { filters: testArgs[4] })], unavailable: [] };
     state.infodisplay = { infodisplay: testArgs[2], schools: testArgs[3], unavailable: [] };
-  `, FORUMS, TEXTS, SCREENS, SCHOOLS, FILTERS);
+    state.whiteboards = { whiteboards: testArgs[5], schools: testArgs[3], unavailable: [] };
+  `, FORUMS, TEXTS, SCREENS, SCHOOLS, FILTERS, BOARDS);
 }
 
 function texts(nodes) {
@@ -71,13 +81,15 @@ describe("forums, texts and info screens are confirmed-only account modules", ()
     expect(window.eval("defaultModules().available.forums")).toBe(false);
     expect(window.eval("defaultModules().available.texts")).toBe(false);
     expect(window.eval("defaultModules().available.infodisplay")).toBe(false);
+    expect(window.eval("defaultModules().available.whiteboards")).toBe(false);
     seed(window);
-    expect(window.eval("visibleViews().map((item) => item.key)")).toEqual(expect.arrayContaining(["forums", "texts", "infodisplay"]));
+    expect(window.eval("visibleViews().map((item) => item.key)")).toEqual(expect.arrayContaining(["forums", "texts", "infodisplay", "whiteboards"]));
     evalWith(window, "state.modules = applyModules({ modules: {} });");
     expect(window.eval("visibleViews().map((item) => item.key)")).not.toContain("forums");
     expect(window.eval("forumsChapter('normal')")).toBeNull();
     expect(window.eval("textsChapter('normal')")).toBeNull();
     expect(window.eval("infodisplayChapter('normal')")).toBeNull();
+    expect(window.eval("whiteboardsChapter('normal')")).toBeNull();
   });
 });
 
@@ -193,8 +205,9 @@ describe("a list Ranzenpost cannot read yet", () => {
       state.forums = { forums: [], schools: [], unavailable: [testArgs[0]], unreadable: [testArgs[0]] };
       state.texts = { texts: [], schools: [], unavailable: [testArgs[0]], unreadable: [testArgs[0]] };
       state.infodisplay = { infodisplay: [], schools: [], unavailable: [testArgs[0]], unreadable: [testArgs[0]] };
+      state.whiteboards = { whiteboards: [], schools: [], unavailable: [testArgs[0]], unreadable: [testArgs[0]] };
     `, SCHOOL_ID);
-    for (const name of ["forumsView", "textsView", "infodisplayView"]) {
+    for (const name of ["forumsView", "textsView", "infodisplayView", "whiteboardsView"]) {
       const view = window.eval(`${name}()`);
       expect(view.querySelector(".empty b").textContent).toBe(window.t("accountLists.unreadable.title"));
       expect(view.querySelector(".empty p").textContent).toBe(window.t("accountLists.unreadable.text"));
@@ -203,6 +216,7 @@ describe("a list Ranzenpost cannot read yet", () => {
     expect(window.eval("forumsChapter('normal')")).toBeNull();
     expect(window.eval("textsChapter('normal')")).toBeNull();
     expect(window.eval("infodisplayChapter('normal')")).toBeNull();
+    expect(window.eval("whiteboardsChapter('normal')")).toBeNull();
   });
 
   test("an unreachable school still shows the error", () => {
@@ -264,5 +278,38 @@ describe("the info screen list", () => {
     expect(window.eval("infodisplayChapter('normal').count")).toBe(2);
     evalWith(window, "state.infodisplay = { infodisplay: [], schools: [], unavailable: [] };");
     expect(window.eval("infodisplayView()").querySelector(".empty b").textContent).toBe("Keine Infobildschirme");
+  });
+});
+
+describe("the whiteboard list", () => {
+  test("lists every whiteboard newest change first with owner and both dates and links nowhere", () => {
+    const { window } = loadApp();
+    seed(window);
+    const view = window.eval("whiteboardsView()");
+    expect(texts(view.querySelectorAll(".whiteboard-row .row-title"))).toEqual(["Bruchrechnen", "Klassenfahrt"]);
+    const subs = texts(view.querySelectorAll(".whiteboard-row .row-sub"));
+    expect(subs[0]).toMatch(/^Kim Muster · Erstellt .+ · Geändert .+$/);
+    expect(subs[1]).toMatch(/^Schülerrat · Erstellt [^·]+$/);
+    expect(subs[0]).toContain(window.eval("listMoment('2026-10-20T16:45', '')"));
+    expect(view.querySelector("[href], [target]")).toBeNull();
+    expect(view.querySelector(".whiteboard-row button")).toBeNull();
+  });
+
+  test("feeds the overview chapter and says when there is none, unknown stays an error", () => {
+    const { window } = loadApp();
+    seed(window);
+    expect(window.eval("whiteboardsChapter('normal').count")).toBe(2);
+    evalWith(window, "state.whiteboards = { whiteboards: [], schools: [], unavailable: [] };");
+    expect(window.eval("whiteboardsView()").querySelector(".empty b").textContent).toBe("Keine Tafeln");
+    expect(window.eval("whiteboardsChapter('normal')")).toBeNull();
+    evalWith(window, "state.whiteboards = { whiteboards: [], schools: [], unavailable: [testArgs[0]], unreadable: [] };", SCHOOL_ID);
+    expect(window.eval("whiteboardsView()").querySelector(".empty b").textContent).toBe("Nicht erreichbar");
+  });
+
+  test("an untitled whiteboard gets a name in every language", () => {
+    const { window } = loadApp();
+    seed(window);
+    evalWith(window, "state.whiteboards = { whiteboards: [Object.assign({}, testArgs[0], { title: '' })], schools: [], unavailable: [] };", BOARDS[0]);
+    expect(window.eval("whiteboardsView()").querySelector(".row-title").textContent).toBe("Tafel ohne Titel");
   });
 });

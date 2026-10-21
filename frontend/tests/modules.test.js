@@ -57,7 +57,7 @@ function label(window, key, vars) {
 function all(overrides = {}) {
   const available = {};
   for (const name of MODULES) available[name] = true;
-  return { ...available, calendar: false, tasks: false, news: false, forums: false, texts: false, infodisplay: false, ...overrides };
+  return { ...available, calendar: false, tasks: false, news: false, forums: false, texts: false, infodisplay: false, whiteboards: false, ...overrides };
 }
 
 describe("the module registry decides which views exist", () => {

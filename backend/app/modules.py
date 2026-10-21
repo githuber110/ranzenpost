@@ -22,6 +22,7 @@ from .iserv.news import NEWS_PATH, is_news_page
 from .iserv.older_absences import older_list_present
 from .iserv.pages import path_of
 from .iserv.texts import TEXTS_PATH, is_text_page
+from .iserv.whiteboards import WHITEBOARDS_PATH, is_whiteboard_page
 from .iserv.school_calendar import (
     CALENDAR_EVENTS_PATH,
     CALENDAR_SOURCES_PATH,
@@ -49,7 +50,8 @@ NEWS = "news"
 FORUMS = "forums"
 TEXTS = "texts"
 INFODISPLAY = "infodisplay"
-ACCOUNT_MODULES = (FORUMS, TEXTS, INFODISPLAY)
+WHITEBOARDS = "whiteboards"
+ACCOUNT_MODULES = (FORUMS, TEXTS, INFODISPLAY, WHITEBOARDS)
 MODULES = (TIMETABLE, LETTERS, PINBOARD, ABSENCES, CONFERENCES, MESSENGER, CALENDAR, TASKS, NEWS) + ACCOUNT_MODULES
 CONFIRMED_ONLY = frozenset({CALENDAR, TASKS, NEWS}) | frozenset(ACCOUNT_MODULES)
 
@@ -74,6 +76,7 @@ SEGMENTS = {
     "forums": (FORUMS,),
     "etherpad": (TEXTS,),
     "infodisplay": (INFODISPLAY,),
+    "excalidraw": (WHITEBOARDS,),
 }
 IGNORED_SEGMENTS = frozenset(
     {
@@ -111,6 +114,7 @@ PROBES = {
     FORUMS: (FORUMS_PATH, None),
     TEXTS: (TEXTS_PATH, None),
     INFODISPLAY: (INFODISPLAY_PATH, None),
+    WHITEBOARDS: (WHITEBOARDS_PATH, None),
 }
 MISSING_STATUSES = (403, 404)
 ANSWER_REFUSED_STATUSES = (401, 403, 404)
@@ -473,6 +477,7 @@ PAGE_CHECKS = {
     FORUMS: _page_kept(is_forum_page),
     TEXTS: _page_kept(is_text_page),
     INFODISPLAY: _page_kept(is_infodisplay_page),
+    WHITEBOARDS: _page_kept(is_whiteboard_page),
 }
 
 

@@ -19,6 +19,9 @@ POLL_DAYS_BACK = 7
 POLL_DAYS_AHEAD = 120
 CARRY_SECONDS = 7 * 24 * 3600
 FEED_PATH = re.compile(r"^/iserv/calendar/feed(?:/[A-Za-z0-9_-]+){1,3}$")
+PLUGIN_PATH = re.compile(r"^/iserv/calendar/api/plugin/?$")
+PLUGIN_NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+PLUGIN_KEY = "plugin"
 WRITING_SEGMENTS = frozenset({"delete", "remove", "edit", "update", "create", "new", "action", "actions", "upload", "save"})
 WINDOW_KEYS = frozenset({"start", "end"})
 SOURCE_KIND = re.compile(r"^[a-z]{1,12}$")
@@ -81,13 +84,22 @@ def problem_text(reason):
     return reason if isinstance(reason, str) else "%s: %s" % (type(reason).__name__, reason)
 
 
+def _plugin_query(query):
+    names = [value for key, value in query if key == PLUGIN_KEY]
+    return len(names) == 1 and bool(PLUGIN_NAME.match(names[0]))
+
+
 def feed_request(url, first, last):
     parts = urlsplit(str(url or "").strip())
-    if parts.scheme or parts.netloc or parts.fragment or not FEED_PATH.match(parts.path):
-        return None
-    if WRITING_SEGMENTS.intersection(segment.casefold() for segment in parts.path.split("/")):
+    if parts.scheme or parts.netloc or parts.fragment:
         return None
     query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key not in WINDOW_KEYS]
+    if PLUGIN_PATH.match(parts.path):
+        if not _plugin_query(query):
+            return None
+        query = [(key, value) for key, value in query if key == PLUGIN_KEY]
+    elif not FEED_PATH.match(parts.path) or WRITING_SEGMENTS.intersection(segment.casefold() for segment in parts.path.split("/")):
+        return None
     return parts.path, query + list(events_params(first, last).items())
 
 

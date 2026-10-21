@@ -66,6 +66,7 @@ class RanzenpostCalendarEvent(CalendarEvent):
     name: str = ""
     kind: str = ""
     teacher: str = ""
+    substitution: bool | None = None
 
 
 def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
@@ -83,6 +84,7 @@ def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
         name=event.name,
         kind=event.kind,
         teacher=event.teacher,
+        substitution=event.substitution,
     )
 
 

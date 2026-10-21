@@ -992,6 +992,7 @@ def test_health_and_the_registry_route_carry_the_module_registry(tmp_path):
         "forums": False,
         "texts": False,
         "infodisplay": False,
+        "whiteboards": False,
     }
     assert health["modules"]["unknown"] == []
     assert api.get("/api/modules").json() == health["modules"]
@@ -1032,7 +1033,7 @@ def test_config_serves_layout_defaults_for_a_fresh_store(tmp_path):
     api, _ = client(tmp_path)
     body = api.get("/api/config").json()
     assert body["overview_blocks"] == blocks.default_overview_blocks()
-    assert body["navigation"] == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
+    assert body["navigation"] == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]
     assert body["modules_disabled"] == []
 
 
@@ -1049,7 +1050,7 @@ def test_config_post_validates_the_layout_keys(tmp_path):
     assert response.status_code == 200
     body = api.get("/api/config").json()
     assert body["overview_blocks"] == [{"key": "today", "size": "normal"}]
-    assert body["navigation"] == ["messenger", "timetable", "absence", "post", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
+    assert body["navigation"] == ["messenger", "timetable", "absence", "post", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]
     assert body["modules_disabled"] == ["messenger"]
 
 

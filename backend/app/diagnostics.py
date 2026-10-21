@@ -90,6 +90,7 @@ KNOWN_ROWS = (
     (modules.FORUMS, "forum", modules.PROBES[modules.FORUMS][0]),
     (modules.TEXTS, "etherpad", modules.PROBES[modules.TEXTS][0]),
     (modules.INFODISPLAY, "infodisplay", modules.PROBES[modules.INFODISPLAY][0]),
+    (modules.WHITEBOARDS, "excalidraw", modules.PROBES[modules.WHITEBOARDS][0]),
 )
 CATALOGUE_SLUGS = {LEGACY_TIMETABLE: "timetable"}
 TIME_TABLE_SLUG = "timetable"

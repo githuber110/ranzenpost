@@ -76,6 +76,7 @@ describe("the forum block", () => {
     expect(await offeredInEditor(makeHass())).not.toContain("forums");
     expect(await offeredInEditor(makeHass({ schoolLists: true }))).toContain("forums");
     expect(await offeredInEditor(makeHass({ schoolLists: true }))).not.toContain("infodisplay");
+    expect(await offeredInEditor(makeHass({ schoolLists: true }))).not.toContain("whiteboards");
   });
 });
 

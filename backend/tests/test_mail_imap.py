@@ -1,11 +1,12 @@
 import imaplib
 import logging
 import re
+import ssl
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import integration, modules
+from app import integration, mail_service, modules
 from app.iserv import mail, mail_structure
 from app.iserv.errors import DataError
 from app.mail_service import MailService
@@ -341,3 +342,15 @@ def test_mail_moves_from_unsupported_to_read_by_the_app():
     assert modules.lists_module(modules.normalize({"unsupported": [MAIL_ENTRY]}), "mail") is True
     assert modules.lists_module(modules.normalize({}), "mail") is False
     assert re.search(r"not supported: 1 \(print\).*read by the app: 1 \(mail\)", modules.summary(registry))
+
+
+def test_the_mail_connections_refuse_anything_older_than_tls_1_2():
+    assert mail.tls_context().minimum_version >= ssl.TLSVersion.TLSv1_2
+
+
+def test_the_refusal_fingerprint_tells_accounts_apart_without_holding_the_password():
+    first = mail_service._fingerprint("parent", "secret-one")
+    assert first == mail_service._fingerprint("parent", "secret-one")
+    assert first != mail_service._fingerprint("parent", "secret-two")
+    assert first != mail_service._fingerprint("other", "secret-one")
+    assert "secret" not in first

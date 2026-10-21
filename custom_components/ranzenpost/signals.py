@@ -191,7 +191,7 @@ def async_fire_signals(hass: HomeAssistant, entry_id: str, signals: list[Signal]
             identifier = child_key_identifier(entry_id, signal.child_key)
         else:
             identifier = school_identifier(entry_id, signal.school_id)
-        device_id = device_id_of(hass, identifier)
+        device_id = device_id_of(hass, entry_id, identifier)
         if device_id is None:
             continue
         hass.bus.async_fire(

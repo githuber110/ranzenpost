@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 FORUMS_EVENT = "forums"
 FORUMS_KEY = "notify.forums.new"
 FORUM_STATE_KEY = "forum_unread"
-PLAIN_LISTS = ((modules.INFODISPLAY, account_lists.SCREENS_FIELD),)
+PLAIN_LISTS = ((modules.INFODISPLAY, account_lists.SCREENS_FIELD), (modules.WHITEBOARDS, account_lists.WHITEBOARDS_FIELD))
 
 
 def _counted(value):

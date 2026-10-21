@@ -387,6 +387,39 @@ def test_exam_and_absence_events_name_the_mark_and_the_kind(tmp_path):
     assert absences[0]["kind"] == "sick" and absences[0]["name"] == ""
     assert all(event["name"] == "" and event["kind"] == "" for event in lessons)
 
+def test_lesson_events_name_their_own_substitution(tmp_path):
+    client, store, _ = _app(tmp_path)
+    _today_snapshot(store)
+
+    lessons = client.get(PREFIX + f"/events?{CHILD_QUERY}&kind=lessons&start=2026-09-02&end=2026-09-02", headers=_auth(store)).json()
+    timed = sorted((event for event in lessons if not event["all_day"]), key=lambda event: event["start"])
+
+    assert [(event["start"][11:16], event["cancelled"], event["substitution"]) for event in timed] == [
+        ("08:00", False, False),
+        ("08:50", False, True),
+        ("09:45", False, False),
+        ("10:30", True, False),
+    ]
+
+
+def _parallel_snapshot(store):
+    lessons = [
+        _lesson(day=WEDNESDAY, period=6, subject_code="G", subject_label="G", teacher_code="", teacher_label="", room="A3.07", start_time="12:10", change_kind="cancelled"),
+        _lesson(day=WEDNESDAY, period=6, subject_code="GB", subject_label="G-bili", teacher_code="", teacher_label="", room="A3.07", start_time="12:10", change_kind="cancelled"),
+    ]
+    store.save_calendar_snapshot(_snapshot(lessons))
+
+
+def test_two_parallel_cancelled_lessons_stay_two_changes_with_their_own_subject(tmp_path):
+    body = _state(tmp_path, _parallel_snapshot, NOW_EPOCH)
+
+    changes = body["changes_today"]
+    assert [(item["start"], item["subject_code"], item["cancelled"]) for item in changes] == [
+        ("2026-09-02T12:10:00+02:00", "G", True),
+        ("2026-09-02T12:10:00+02:00", "GB", True),
+    ]
+
+
 def _hour_school_snapshot(store):
     store.update_connection(SCHOOL, period_grid={"lessons": {"1": {"duration": 60}}})
     lessons = [

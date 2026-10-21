@@ -44,7 +44,7 @@ describe("family view", () => {
     expect(texts(members[0], ".counts .badge")).toEqual(["2", "1", "2"]);
     expect(texts(members[1], ".counts .count")).toEqual(["Elternbriefe", "Pinnwand", "Änderungen"]);
     expect(members[1].querySelector(".counts .badge")).toBeNull();
-    expect(texts(members[1], ".rows.flat .row-note .dlg-text")).toEqual(["Schulfrei", "Schulfrei"]);
+    expect(texts(members[1], ".rows.flat .row-note .dlg-text")).toEqual(["Schulfrei", "Der nächste Schultag steht noch nicht im Stundenplan."]);
     const holiday = root.querySelector("ha-card > .tt-hol.full");
     expect(holiday.querySelector(".ico-slot .ico")).not.toBeNull();
     expect(holiday.querySelector(".tt-hol-text .name").textContent).toBe("Autumn holidays");

@@ -111,6 +111,7 @@ def test_the_fixture_reads_the_empty_cookie_per_request():
 
 BLOCK_EMPTY_MARKER = {
     "today": 'block_emptied("today")',
+    "next_day": 'block_emptied("next_day")',
     "next_lesson": 'block_emptied("next_lesson")',
     "week": 'block_emptied("week")',
     "letters": 'module_emptied(modules.LETTERS)',
@@ -126,6 +127,7 @@ BLOCK_EMPTY_MARKER = {
     "forums": 'module_emptied(modules.FORUMS)',
     "texts": 'module_emptied(modules.TEXTS)',
     "infodisplay": 'module_emptied(modules.INFODISPLAY)',
+    "whiteboards": 'module_emptied(modules.WHITEBOARDS)',
 }
 
 

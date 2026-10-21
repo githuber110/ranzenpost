@@ -133,7 +133,7 @@ def test_the_settings_forms_and_lookup_are_recorded_as_shape_only(tmp_path):
     text = "\n".join(lines)
     assert "- Mail account data: page size 25, tags 2 (with colour 2), addresses 3, display name yes, auto archive 1, flags: hasActiveVacation" in lines
     assert "  - /iserv/mail/settings/vacation (linked): forms 1" in lines
-    assert "  - /iserv/mail/settings (guessed): no settings page (HTTP 200)" in lines
+    assert "  - /iserv/mail/settings (guessed): forms 1" in lines
     assert "      - text vacation[subject] (label len 7)" in lines
     assert "      - select signature[default] (label len 12) options 2" in lines
     assert any(line.startswith("      - collection: entries 1, prototype fields: text filter[rules][__name__][name]") for line in lines)
@@ -191,3 +191,19 @@ def test_the_tag_and_general_settings_pages_are_recorded_as_form_shapes():
     assert "  - mail links: /iserv/mail/settings/tags" in lines
     assert lines[-1] == "- Mail page /iserv/account/settings: not read (KeyError)"
     assert "Musterkind" not in "\n".join(lines) and "(root)" not in "\n".join(lines)
+
+
+def test_mail_rules_are_not_asked_again_when_the_sieve_port_was_not_reached(tmp_path):
+    service, _, school, _, _ = service_with_mail(tmp_path, FakeImap)
+    connection = service.connection(school)
+    opened = []
+    connection._mail_service.sieve_opener = lambda *args: opened.append(args)
+
+    def refuse(host):
+        raise TimeoutError(host)
+
+    lines = reportmail.mail_lines(None, connection, greet=refuse)
+
+    assert "- ManageSieve 4190: not reached (TimeoutError)" in lines
+    assert "- Sieve scripts: not read (port not reached)" in lines
+    assert opened == []

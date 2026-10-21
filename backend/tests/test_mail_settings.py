@@ -51,11 +51,12 @@ def test_settings_pages_are_found_from_links_and_known_places_and_the_shell_is_s
         pages = service.mail_web_call(school, "settings")["pages"]
     assert [(entry["path"], entry["kind"], entry["guessed"]) for entry in pages] == [
         ("/iserv/mail/settings/vacation", "vacation", False),
+        ("/iserv/mail/settings", "settings", True),
         ("/iserv/mail/settings/forward", "forward", True),
         ("/iserv/mail/settings/filter", "filter", True),
         ("/iserv/mail/settings/signature", "signature", True),
     ]
-    assert any("mail settings pages found: 4" in record.getMessage() for record in caplog.records)
+    assert any("mail settings pages found: 5" in record.getMessage() for record in caplog.records)
     assert not any(path == "/iserv/mail/help" for path, _ in web.asked)
 
 
@@ -174,7 +175,7 @@ def test_the_web_routes(tmp_path):
     api = TestClient(create_app(service))
     assert api.get("/api/mail/account", params={"connection": school}).json()["account"]["page_size"] == 25
     pages = api.get("/api/mail/settings", params={"connection": school}).json()["pages"]
-    assert len(pages) == 4
+    assert len(pages) == 5
     page = api.get("/api/mail/settings/page", params={"connection": school, "path": "/iserv/mail/settings/forward"}).json()
     assert page["forms"][0]["fields"][0]["name"] == "forward[address]"
     refused = api.post("/api/mail/settings/page", json={"connection_id": school, "path": page["path"], "form": 0, "values": {"forward[address]": "a@school.example"}}).json()
@@ -183,3 +184,18 @@ def test_the_web_routes(tmp_path):
     assert saved["ok"] is True and saved["verified"] is True
     assert web.forward == {"address": "a@school.example", "keep": False}
     assert api.get("/api/mail/recipients", params={"connection": school, "q": "office"}).json()["recipients"][0]["address"] == "office@school.example"
+
+
+def test_the_page_size_and_the_start_page_note_are_saved_through_the_general_settings_page(tmp_path):
+    service, school, web = service_with_web(tmp_path)
+    page = page_of(service, school, "settings")
+    assert page["path"] == "/iserv/mail/settings"
+    assert form_values(page) == {"settings[pageLimit]": "25", "settings[homepageInformation]": "1"}
+    kinds = {field["name"]: field["kind"] for field in page["forms"][0]["fields"]}
+    assert kinds == {"settings[pageLimit]": "number", "settings[homepageInformation]": "select"}
+
+    result = service.mail_web_call(school, "save_settings", page["path"], 0, {"settings[pageLimit]": "50", "settings[homepageInformation]": "0"}, None, True)
+
+    assert result["ok"] and result["verified"]
+    assert web.account_settings == {"pageLimit": "50", "homepageInformation": "0"}
+    assert web.posts[-1][0] == "/iserv/mail/account/settings"

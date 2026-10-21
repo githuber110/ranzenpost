@@ -172,7 +172,7 @@ def test_a_login_detects_the_modules_and_stores_them(tmp_path, caplog):
     assert store.load_modules()["modules"] == registry["modules"]
     lines = [record.getMessage() for record in caplog.records if record.levelno == logging.INFO]
     assert lines == [
-        f"school#{service.id} modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay; "
+        f"school#{service.id} modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay, whiteboards; "
         "missing: absences, calendar; not supported: 0; unknown: 0; read by the app: 1 (mail)"
     ]
     assert holder["client"].calls.count("/iserv/") == 1
@@ -226,9 +226,9 @@ def test_a_module_that_appears_later_is_picked_up_by_the_next_refresh_with_one_l
     prefix = f"school#{service.id} "
     lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert lines == [
-        "modules available: timetable, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay; missing: letters, calendar; "
+        "modules available: timetable, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay, whiteboards; missing: letters, calendar; "
         "not supported: 0; unknown: 0; read by the app: 1 (mail)",
-        "modules available: timetable, letters, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay; missing: calendar; "
+        "modules available: timetable, letters, pinboard, absences, conferences, messenger, tasks, news, forums, texts, infodisplay, whiteboards; missing: calendar; "
         "not supported: 0; unknown: 0; read by the app: 1 (mail)",
     ]
 
@@ -441,6 +441,7 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
         modules.FORUMS: False,
         modules.TEXTS: False,
         modules.INFODISPLAY: False,
+        modules.WHITEBOARDS: False,
     }
     assert [child["name"] for child in children] == ["Alex Example", "Robin Example"]
     assert children[0]["child_id"] == "letters:alex-example"
@@ -450,7 +451,7 @@ def test_without_a_timetable_the_letter_pages_name_the_children(tmp_path, caplog
     prefix = f"school#{service.id} "
     module_lines = [record.getMessage()[len(prefix):] for record in caplog.records if record.getMessage().startswith(prefix + "modules available")]
     assert module_lines == [
-        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger, calendar, tasks, news, forums, texts, infodisplay; "
+        "modules available: letters; missing: timetable, pinboard, absences, conferences, messenger, calendar, tasks, news, forums, texts, infodisplay, whiteboards; "
         "not supported: 0; unknown: 0; read by the app: 1 (mail)"
     ]
     assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []

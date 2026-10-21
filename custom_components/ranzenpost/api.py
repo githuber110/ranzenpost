@@ -544,6 +544,7 @@ class Event:
     name: str = ""
     kind: str = ""
     teacher: str = ""
+    substitution: bool | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Event:
@@ -564,6 +565,7 @@ class Event:
             name=str(data.get("name") or ""),
             kind=str(data.get("kind") or ""),
             teacher=str(data.get("teacher") or ""),
+            substitution=bool(data["substitution"]) if "substitution" in data else None,
         )
 
 

@@ -909,6 +909,7 @@ def _serialize_event(event):
         "name": event.name or "",
         "kind": event.kind or "",
         "teacher": event.teacher or "",
+        "substitution": bool(event.substitution),
     }
 
 

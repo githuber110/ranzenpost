@@ -380,6 +380,7 @@ def test_detect_marks_every_module_from_its_probe():
         modules.FORUMS: True,
         modules.TEXTS: True,
         modules.INFODISPLAY: True,
+        modules.WHITEBOARDS: True,
     }
     assert registry["iserv_version"] == "3.2.1"
     assert registry["checked_at"] > 0
@@ -463,7 +464,7 @@ def test_summary_line_names_available_missing_unsupported_and_unknown_segments_w
     }), None)
     line = modules.summary(registry)
     assert line == (
-        "modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay; "
+        "modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay, whiteboards; "
         "missing: absences, calendar; not supported: 1 (videoconference); unknown: 1 (mystery); read by the app: 2 (mail, file)"
     )
     assert "E-Mail" not in line

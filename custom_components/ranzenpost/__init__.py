@@ -30,6 +30,7 @@ from .coordinator import (
     entry_issue_id,
     login_issue_id,
 )
+from .devices import entry_device
 from .entity import child_identifier, child_unique_id, panel_url, school_device_info, school_identifier, school_unique_id
 from .online_feed import OnlineFeeds, async_remove_cloudhooks
 from .signals import async_fire_signals
@@ -84,18 +85,18 @@ def migrate_legacy_devices(hass: HomeAssistant, entry: RanzenpostConfigEntry, in
     registry = dr.async_get(hass)
     first = info.schools[0]
     for legacy_id in (f"{LEGACY_SCHOOL_PREFIX}{entry.entry_id}", f"{LEGACY_SCHOOL_PREFIX}{first.url_host}"):
-        legacy = registry.async_get_device(identifiers={(DOMAIN, legacy_id)})
-        if legacy is None or entry.entry_id not in legacy.config_entries:
+        legacy = entry_device(registry, entry.entry_id, (DOMAIN, legacy_id))
+        if legacy is None:
             continue
-        if registry.async_get_device(identifiers={school_identifier(entry.entry_id, first.id)}) is None:
+        if entry_device(registry, entry.entry_id, school_identifier(entry.entry_id, first.id)) is None:
             registry.async_update_device(legacy.id, new_identifiers={school_identifier(entry.entry_id, first.id)})
     if len(info.schools) != 1:
         return
     for child in first.children:
-        legacy = registry.async_get_device(identifiers={(DOMAIN, f"{LEGACY_CHILD_PREFIX}{child.raw_id}")})
-        if legacy is None or entry.entry_id not in legacy.config_entries:
+        legacy = entry_device(registry, entry.entry_id, (DOMAIN, f"{LEGACY_CHILD_PREFIX}{child.raw_id}"))
+        if legacy is None:
             continue
-        if registry.async_get_device(identifiers={child_identifier(entry.entry_id, child)}) is None:
+        if entry_device(registry, entry.entry_id, child_identifier(entry.entry_id, child)) is None:
             registry.async_update_device(legacy.id, new_identifiers={child_identifier(entry.entry_id, child)})
 
 
@@ -127,7 +128,7 @@ def sync_device_names_and_links(hass: HomeAssistant, entry: RanzenpostConfigEntr
     registry = dr.async_get(hass)
     link = panel_url(info.ingress_path)
     for school in info.schools:
-        device = registry.async_get_device(identifiers={school_identifier(entry.entry_id, school.id)})
+        device = entry_device(registry, entry.entry_id, school_identifier(entry.entry_id, school.id))
         if device is None:
             continue
         wanted = f"{BRAND} {school.label}".strip()
@@ -139,7 +140,7 @@ def sync_device_names_and_links(hass: HomeAssistant, entry: RanzenpostConfigEntr
         if changes:
             registry.async_update_device(device.id, **changes)
     for child in info.children:
-        device = registry.async_get_device(identifiers={child_identifier(entry.entry_id, child)})
+        device = entry_device(registry, entry.entry_id, child_identifier(entry.entry_id, child))
         if device is not None and device.configuration_url != link:
             registry.async_update_device(device.id, configuration_url=link)
 

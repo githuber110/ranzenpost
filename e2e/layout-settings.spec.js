@@ -46,8 +46,8 @@ for (const viewport of VIEWPORTS) {
         await page.waitForSelector(".blocks-page", { timeout: 8000 });
         const label = `${viewport.name}/${lang.key}/blocks`;
         expect(await page.locator(".blocks-page .settings-group").first().locator(".block-row").count()).toBe(6);
-        expect(await page.locator(".blocks-page .block-row.off").count()).toBe(4);
-        expect(await page.locator(".blocks-page .block-row.off").evaluateAll((rows) => rows.map((row) => row.dataset.block))).toEqual(["next_lesson", "week", "absences", "holidays"]);
+        expect(await page.locator(".blocks-page .block-row.off").count()).toBe(5);
+        expect(await page.locator(".blocks-page .block-row.off").evaluateAll((rows) => rows.map((row) => row.dataset.block))).toEqual(["next_day", "next_lesson", "week", "absences", "holidays"]);
         await assertClean(page, label);
         expect(await page.evaluate(() => document.documentElement.getAttribute("dir"))).toBe(lang.key === "ar" ? "rtl" : "ltr");
 
@@ -60,7 +60,7 @@ for (const viewport of VIEWPORTS) {
 
         await page.locator('.block-row[data-block="noticeboard"] .switch').click();
         await page.waitForTimeout(300);
-        expect(await page.locator(".blocks-page .block-row.off").evaluateAll((rows) => rows.map((row) => row.dataset.block))).toEqual(["next_lesson", "week", "noticeboard", "absences", "holidays"]);
+        expect(await page.locator(".blocks-page .block-row.off").evaluateAll((rows) => rows.map((row) => row.dataset.block))).toEqual(["next_day", "next_lesson", "week", "noticeboard", "absences", "holidays"]);
         const config = await page.evaluate(() => fetch("api/config").then((response) => response.json()));
         expect(config.overview_blocks.map((entry) => entry.key)).not.toContain("noticeboard");
         expect(config.overview_blocks.length).toBe(5);
@@ -109,7 +109,7 @@ for (const viewport of VIEWPORTS) {
         ]);
         await page.locator(".blocks-page .search-clear").click();
         await page.waitForTimeout(200);
-        expect(await page.locator(".blocks-page .block-row").count()).toBe(10);
+        expect(await page.locator(".blocks-page .block-row").count()).toBe(11);
         expect(await page.evaluate(() => document.activeElement && document.activeElement.className)).toContain("search-input");
       });
 
@@ -126,7 +126,7 @@ for (const viewport of VIEWPORTS) {
         const moved = await page.locator(".nav-rows > *").evaluateAll((nodes) => nodes.map((node) => node.dataset.band || node.dataset.area));
         expect(moved).toEqual(["bar", "overview", "timetable", "absence", "messenger", "more", "post", "conferences"]);
         const config = await page.evaluate(() => fetch("api/config").then((response) => response.json()));
-        expect(config.navigation).toEqual(["timetable", "absence", "messenger", "post", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]);
+        expect(config.navigation).toEqual(["timetable", "absence", "messenger", "post", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
         if (viewport.width < 900) {
           const tabs = await page.locator(".tabbar .tab").evaluateAll((nodes) => nodes.map((node) => node.dataset.view));
           expect(tabs).toEqual(["overview", "timetable", "absence", "messenger", "more"]);

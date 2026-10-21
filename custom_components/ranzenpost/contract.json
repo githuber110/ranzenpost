@@ -334,7 +334,8 @@
         "news",
         "forums",
         "texts",
-        "infodisplay"
+        "infodisplay",
+        "whiteboards"
       ],
       "properties": {
         "timetable": {
@@ -371,6 +372,9 @@
           "type": "boolean"
         },
         "infodisplay": {
+          "type": "boolean"
+        },
+        "whiteboards": {
           "type": "boolean"
         }
       },
@@ -391,7 +395,8 @@
         "news",
         "forums",
         "texts",
-        "infodisplay"
+        "infodisplay",
+        "whiteboards"
       ],
       "properties": {
         "timetable": {
@@ -428,6 +433,9 @@
           "type": "boolean"
         },
         "infodisplay": {
+          "type": "boolean"
+        },
+        "whiteboards": {
           "type": "boolean"
         }
       },
@@ -749,7 +757,8 @@
         "subject",
         "name",
         "kind",
-        "teacher"
+        "teacher",
+        "substitution"
       ],
       "properties": {
         "uid": {
@@ -799,6 +808,10 @@
         "teacher": {
           "type": "string",
           "description": "The surname of the teacher for lessons when IServ names it, otherwise the label or code; empty for other events."
+        },
+        "substitution": {
+          "type": "boolean",
+          "description": "True for a lesson that takes place with a change, such as another teacher, room or subject; false for cancelled lessons and other events."
         }
       },
       "additionalProperties": false,

@@ -2,7 +2,7 @@ from app import blocks, modules
 
 
 def test_the_catalogue_names_every_block_once_with_a_known_module():
-    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 16
+    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 18
     for block in blocks.BLOCKS:
         assert block["module"] in modules.MODULES
         assert block["area"] in blocks.AREA_MODULES
@@ -57,8 +57,9 @@ def test_navigation_keeps_known_areas_in_order_and_appends_the_missing_ones():
         "forums",
         "texts",
         "infodisplay",
+        "whiteboards",
     ]
-    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay"]
+    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]
 
 
 def test_modules_disabled_keeps_only_known_module_names():

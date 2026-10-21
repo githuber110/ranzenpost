@@ -65,6 +65,7 @@ class FakeMailWeb:
         self.rules = [{"name": "Newsletter", "field": "subject", "value": "Newsletter", "action": "move", "target": "Archiv"}]
         self.signature = {"text": "Viele Grüße\nAlexa", "default": addresses[0] if addresses else ""}
         self.events = []
+        self.account_settings = {"pageLimit": "25", "homepageInformation": "1"}
 
     def is_authenticated(self):
         return True
@@ -97,6 +98,18 @@ class FakeMailWeb:
             return self._create_page()
         if path == "/iserv/mail":
             return mail_page(self.addresses)
+        if path == "/iserv/mail/settings":
+            a = self.account_settings
+            choices = "".join('<option value="%s"%s>%s</option>' % (value, _selected(a["homepageInformation"], value), label) for value, label in (("1", "Anzeigen"), ("0", "Nicht anzeigen")))
+            return (
+                '<html><head><title>Einstellungen</title></head><body><h1>Einstellungen</h1>'
+                '<form name="settings" method="post" action="/iserv/mail/account/settings">'
+                '<label for="settings_pageLimit">Anzahl der E-Mails pro Seite in der Übersicht</label>'
+                '<input type="number" id="settings_pageLimit" name="settings[pageLimit]" value="%s" min="10" max="200">'
+                '<label for="settings_homepageInformation">Neue E-Mails auf der Startseite anzeigen</label>'
+                '<select id="settings_homepageInformation" name="settings[homepageInformation]">%s</select>'
+                '<input type="hidden" name="settings[_token]" value="%s"><button type="submit" name="settings[submit]">Speichern</button></form></body></html>'
+            ) % (a["pageLimit"], choices, TOKEN)
         if path == "/iserv/mail/settings/vacation":
             v = self.vacation
             return (
@@ -183,7 +196,10 @@ class FakeMailWeb:
             return Answer(400, "<p>Token</p>", url)
         if self.ignore_posts:
             return Answer(200, self._page(path), url)
-        if path == "/iserv/mail/settings/vacation":
+        if path == "/iserv/mail/account/settings":
+            self.account_settings = {"pageLimit": one("settings[pageLimit]"), "homepageInformation": one("settings[homepageInformation]")}
+            return Answer(200, self._page("/iserv/mail/settings"), SCHOOL + "/iserv/mail/settings")
+        elif path == "/iserv/mail/settings/vacation":
             self.vacation = {"enabled": one("vacation[enabled]") == "1", "subject": one("vacation[subject]"), "message": one("vacation[message]"), "start": one("vacation[start]")}
         elif path == "/iserv/mail/settings/forward":
             address = one("forward[address]")

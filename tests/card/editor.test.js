@@ -57,7 +57,7 @@ describe("config editor with blocks", () => {
     expect(texts(root, ".children label")).toEqual(["Alex", "Kim"]);
     expect(checkedValues(root, "children")).toEqual(["alex"]);
     expect([...root.querySelectorAll("input[name=blocks]")].map((input) => input.value)).toEqual([
-      "today", "letters", "next_lesson", "week", "noticeboard", "absences", "conferences", "holidays", "changes",
+      "today", "letters", "next_day", "next_lesson", "week", "noticeboard", "absences", "conferences", "holidays", "changes",
     ]);
     expect(checkedValues(root, "blocks")).toEqual(["today", "letters"]);
     expect(texts(root, ".blocks .block-row .hint")[0]).toBe("Stunden von heute, Änderungen, Schulschluss.");
@@ -200,7 +200,7 @@ describe("config editor with blocks", () => {
     expect(registered).toHaveLength(1);
     expect(registered[0].name).toBe("Ranzenpost");
     expect(registered[0].preview).toBe(true);
-    expect(await CardClass.getStubConfig(makeHass())).toEqual({ blocks: ["today", "next_lesson"], children: ["alex"] });
+    expect(await CardClass.getStubConfig(makeHass())).toEqual({ blocks: ["today", "next_day"], children: ["alex"] });
 
     const broken = makeHass();
     broken.callWS = async () => {

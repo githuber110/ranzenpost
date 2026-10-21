@@ -261,8 +261,8 @@ EXAM_EVENTS = [dict(EVENT, uid="x1", title="Mathe Musterkind", calendarName=None
 SOURCE_LIST = [
     {"label": "Musterkind privat", "id": "/f.max.muster/home", "subscription": False, "color": "#123456", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Ff.max.muster%2Fhome", "type": "cal", "droppable": True},
     {"label": "Eltern 5a", "id": "/eltern.5a/calendar", "subscription": True, "color": "#123456", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Feltern.5a%2Fcalendar", "type": "cal", "droppable": False},
-    {"label": "Klausuren Turnhalle", "id": "exam", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=exam", "type": "plugin", "droppable": False},
-    {"label": "Zeugnisse", "id": "zeugnisse", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=zeugnisse", "type": "plugin", "droppable": False},
+    {"label": "Klausuren Turnhalle", "id": "exam", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/api/plugin?plugin=exam", "type": "plugin", "droppable": False},
+    {"label": "Zeugnisse", "id": "zeugnisse", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/api/plugin?plugin=zeugnisse", "type": "plugin", "droppable": False},
     {"label": "Posteingang", "id": "/eltern/x", "subscription": False, "color": "#123456", "textColor": "#000000", "url": "/iserv/calendar/delete?id=5a", "type": "Eltern 5a", "droppable": False},
 ]
 
@@ -276,7 +276,7 @@ def source_answers():
             return json_answer(EXAM_EVENTS)
         return (500, {"Content-Type": "text/html"}, b"<html>Fehler Musterkind</html>")
 
-    answers[SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin"] = plugin
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/api/plugin"] = plugin
     answers[SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar"] = json_answer([FEED_EVENT])
     return answers
 
@@ -294,9 +294,9 @@ def test_every_calendar_source_gets_one_line_with_type_rule_url_shape_status_and
     assert lines[0].endswith("B, 1 events")
     assert lines[1].startswith("- Source 2: type cal, url /iserv/calendar/feed/calendar?cal=/<seg>/calendar -> 200 application/json ")
     assert lines[1].endswith("B, 1 events")
-    assert lines[2].startswith("- Source 3: type plugin, url /iserv/calendar/feed/plugin?plugin=exam -> 200 application/json ")
+    assert lines[2].startswith("- Source 3: type plugin, url /iserv/calendar/api/plugin?plugin=exam -> 200 application/json ")
     assert lines[2].endswith("B, 2 events")
-    assert lines[3].startswith("- Source 4: type plugin, url /iserv/calendar/feed/plugin?plugin=<seg> -> 500 text/html ")
+    assert lines[3].startswith("- Source 4: type plugin, url /iserv/calendar/api/plugin?plugin=<seg> -> 500 text/html ")
     assert lines[4] == "- Source 5: type <other>, url /iserv/calendar/delete?id=<seg>, not read: url outside the calendar feeds"
     assert len(lines) == 5
 
@@ -313,12 +313,12 @@ def test_the_report_reads_only_the_listed_school_feeds_with_the_app_window():
     client, adapter = recording_client(source_answers())
     fetcher = diagnostics.ReportFetcher(client)
     reportcrawl.known_api_lines(fetcher, "calendar", TODAY)
-    feeds = [url for url in adapter.sent if "/iserv/calendar/feed/" in url and "calendar-multi" not in url]
+    feeds = [url for url in adapter.sent if ("/iserv/calendar/feed/" in url or "/iserv/calendar/api/plugin" in url) and "calendar-multi" not in url]
     assert feeds == [
         SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar?cal=%2Ff.max.muster%2Fhome&start=2026-01-08&end=2026-05-15",
         SCHOOL_ONE_URL + "/iserv/calendar/feed/calendar?cal=%2Feltern.5a%2Fcalendar&start=2026-01-08&end=2026-05-15",
-        SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin?plugin=exam&start=2026-01-08&end=2026-05-15",
-        SCHOOL_ONE_URL + "/iserv/calendar/feed/plugin?plugin=zeugnisse&start=2026-01-08&end=2026-05-15",
+        SCHOOL_ONE_URL + "/iserv/calendar/api/plugin?plugin=exam&start=2026-01-08&end=2026-05-15",
+        SCHOOL_ONE_URL + "/iserv/calendar/api/plugin?plugin=zeugnisse&start=2026-01-08&end=2026-05-15",
     ]
     assert not [url for url in adapter.sent if "/delete" in url]
 

@@ -145,7 +145,7 @@ def test_a_refused_module_is_probed_once_per_day_not_per_poll(tmp_path):
 
 def test_calendar_feeds_that_all_refuse_are_probed_once_per_day_not_per_poll(tmp_path):
     rig = Rig(tmp_path)
-    feeds = ["/iserv/calendar/feed/calendar", "/iserv/calendar/feed/plugin"]
+    feeds = ["/iserv/calendar/feed/calendar", "/iserv/calendar/api/plugin"]
     rig.school.payloads[CALENDAR_SOURCES_PATH] = [
         {"id": "/school/calendar", "label": "School", "type": "cal", "url": feeds[0] + "?calendar=school"},
         {"id": "/class/calendar", "label": "Class", "type": "cal", "url": feeds[0] + "?calendar=class"},
@@ -297,7 +297,7 @@ def test_the_calendar_probe_and_the_event_read_ask_the_school_once_per_poll(tmp_
 def test_the_calendar_probe_hands_its_source_feed_to_the_event_read(tmp_path):
     rig = Rig(tmp_path)
     feed = "/iserv/calendar/feed/calendar"
-    plugin = "/iserv/calendar/feed/plugin"
+    plugin = "/iserv/calendar/api/plugin"
     rig.school.payloads[CALENDAR_SOURCES_PATH] = [
         {"id": "/school/calendar", "label": "School", "type": "cal", "url": feed + "?calendar=school"},
         {"id": "exams", "label": "Exams", "type": "plugin", "url": plugin + "?plugin=exams"},
@@ -474,3 +474,18 @@ def test_a_refused_week_or_child_does_not_block_another_one():
     assert client.user_requests(path, 8) == []
     assert client.user_requests(path) == []
     assert len(session.asked) == 2
+
+
+def test_a_readable_plugin_source_makes_the_calendar_available_when_the_own_feed_is_refused(tmp_path):
+    rig = Rig(tmp_path)
+    feed = "/iserv/calendar/feed/calendar"
+    plugin = "/iserv/calendar/api/plugin"
+    rig.school.payloads[CALENDAR_SOURCES_PATH] = [
+        {"id": "/own/home", "label": "Own", "type": "cal", "url": feed + "?cal=own"},
+        {"id": "exam-plan", "label": "Exams", "type": "plugin", "url": plugin + "?plugin=exam-plan"},
+    ]
+    rig.school.statuses[feed] = 403
+    rig.school.payloads[plugin] = []
+    rig.service.check_connection()
+    assert rig.service.module_available(modules.CALENDAR) is True
+    assert rig.hits(plugin) >= 1

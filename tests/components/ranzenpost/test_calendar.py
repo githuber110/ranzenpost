@@ -95,6 +95,7 @@ async def test_get_events_keeps_cancelled_lessons_with_the_addon_summary(hass, a
     assert events[0]["end"] == {"dateTime": "2026-09-02T09:45:00+02:00"}
     assert [event["color"] for event in events] == ["#3366cc", ""]
     assert [event["cancelled"] for event in events] == [False, True]
+    assert [event["substitution"] for event in events] == [False, False]
     calls = events_calls(aioclient_mock, "lessons", CHILD_1)
     assert "start=2026-09-02&end=2026-09-03" in str(calls[-1][1])
 
@@ -125,6 +126,7 @@ async def test_get_events_serves_all_day_events_with_exclusive_end(hass, aioclie
             "name": "",
             "kind": "",
             "teacher": "",
+            "substitution": False,
         }
     ]
 

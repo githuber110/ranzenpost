@@ -111,6 +111,7 @@ class FeedEvent:
     name: str = ""
     kind: str = ""
     teacher: str = ""
+    substitution: bool = False
 
 
 def _short_tag(seed):
@@ -534,6 +535,7 @@ def timetable_events(
                     subject_code=str(lesson.get("subject_code") or ""),
                     subject=subject_of(language, lesson),
                     teacher=str(field_value(shown, "teacher") or ""),
+                    substitution=bool(shown.get("change_kind")) and shown.get("change_kind") != "cancelled",
                 )
             )
     events.extend(_unscheduled_events(language, tag, unscheduled))

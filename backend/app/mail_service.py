@@ -1,6 +1,7 @@
 import hashlib
 import imaplib
 import logging
+import secrets
 import smtplib
 import threading
 import time
@@ -39,8 +40,13 @@ class MailConfirmRequired(DataError):
         super().__init__("the action needs a confirmation", message_key=CONFIRM_KEY)
 
 
+FINGERPRINT_SALT = secrets.token_bytes(16)
+FINGERPRINT_ROUNDS = 20000
+
+
 def _fingerprint(username, password):
-    return hashlib.sha256(("%s\0%s" % (username, password)).encode("utf-8")).hexdigest()
+    secret = ("%s\0%s" % (username, password)).encode("utf-8")
+    return hashlib.pbkdf2_hmac("sha256", secret, FINGERPRINT_SALT, FINGERPRINT_ROUNDS).hex()
 
 
 def sign_in(imap, username, password):

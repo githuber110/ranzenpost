@@ -110,7 +110,7 @@ LEGACY_CONNECTION_KEYS = (
     "holiday_region",
     "poll_state",
 )
-SCHOOL_SNAPSHOT_FIELDS = ("schools", "tasks", "news", "task_details", "task_detail_shapes", "forums", "texts", "infodisplay")
+SCHOOL_SNAPSHOT_FIELDS = ("schools", "tasks", "news", "task_details", "task_detail_shapes", "forums", "texts", "infodisplay", "whiteboards")
 POLL_STATE_MODULE_KEYS = ("letter_keys", "pinboard_ids", "conference_keys", "messenger_unread")
 NESTED_FILE_NAMES = (
     "seen.json",

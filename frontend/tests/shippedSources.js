@@ -56,7 +56,7 @@ export const APP_PARTS_DIR = "app";
 export function pageBodyScripts(root = FRONTEND) {
   const html = readShipped("index.html", root);
   const body = /<body>([\s\S]*?)<\/body>/.exec(html);
-  return [...(body ? body[1] : "").matchAll(/<script\b([^>]*)><\/script>/g)].map((match) => {
+  return [...(body ? body[1] : "").matchAll(/<script\b([^>]*)>\s*<\/script[^>]*>/gi)].map((match) => {
     const src = /\bsrc="\.\/([\w./-]+)\?v=\d+"/.exec(match[1]);
     return { name: src ? src[1] : "", module: /\stype="module"/.test(match[1]) };
   });

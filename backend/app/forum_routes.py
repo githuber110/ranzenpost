@@ -22,3 +22,7 @@ def register_routes(app, service):
     @app.get("/api/infodisplay")
     def infodisplay():
         return read_endpoint(service.infodisplay)
+
+    @app.get("/api/whiteboards")
+    def whiteboards():
+        return read_endpoint(service.whiteboards)

@@ -6,6 +6,7 @@ from .iserv.errors import DataError, OutageError
 from .iserv.forums import FORUMS_PATH, ForumShapeError, is_forum_page, parse_forums
 from .iserv.infodisplay import INFODISPLAY_PATH, ScreenShapeError, is_infodisplay_page, parse_screens
 from .iserv.texts import TEXTS_PATH, TextShapeError, is_text_page, parse_texts
+from .iserv.whiteboards import WHITEBOARDS_PATH, WhiteboardShapeError, is_whiteboard_page, parse_whiteboards
 from .pathpattern import path_pattern
 from .school_lists import CARRY_FIELD, PART_CURRENT, list_extra, module_answer
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 FORUMS_FIELD = "forums"
 TEXTS_FIELD = "texts"
 SCREENS_FIELD = "infodisplay"
+WHITEBOARDS_FIELD = "whiteboards"
 FILTERS_FIELD = "filters"
 MARK_READ_FIELD = "mark_read"
 COMPLETE_FIELD = "complete"
@@ -132,6 +134,15 @@ def read_screens(client):
     except ScreenShapeError as error:
         raise DataError(str(error), detail={"path": INFODISPLAY_PATH}) from error
     return {SCREENS_FIELD: parsed["screens"], CARRY_FIELD: []}
+
+
+def read_whiteboards(client):
+    response = module_answer(client, WHITEBOARDS_PATH, is_whiteboard_page)
+    try:
+        parsed = parse_whiteboards(getattr(response, "text", "") or "", WHITEBOARDS_PATH)
+    except WhiteboardShapeError as error:
+        raise DataError(str(error), detail={"path": WHITEBOARDS_PATH}) from error
+    return {WHITEBOARDS_FIELD: parsed["whiteboards"], CARRY_FIELD: []}
 
 
 def list_extra_of(listed):

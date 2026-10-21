@@ -100,6 +100,7 @@ const {
   formatWeekdayShort,
   formatDayNumber,
   formatWeekdayDay,
+  formatWeekdayLong,
   formatWeekdayDate,
   showDateTime,
   showTimestamp,
@@ -136,11 +137,12 @@ const VIEWS = [
   { key: "forums", label: "nav.forums", icon: "forums" },
   { key: "texts", label: "nav.texts", icon: "texts" },
   { key: "infodisplay", label: "nav.infodisplay", icon: "screen" },
+  { key: "whiteboards", label: "nav.whiteboards", icon: "board" },
 ];
 const VIEW_BY_KEY = Object.fromEntries(VIEWS.map((item) => [item.key, item]));
 const MORE_VIEW = { key: "more", label: "nav.more", icon: "more" };
 
-const ACCOUNT_MODULES = ["forums", "texts", "infodisplay"];
+const ACCOUNT_MODULES = ["forums", "texts", "infodisplay", "whiteboards"];
 const MODULE_NAMES = ["timetable", "letters", "pinboard", "absences", "conferences", "messenger", "calendar", "tasks", "news", ...ACCOUNT_MODULES];
 const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", ...ACCOUNT_MODULES];
 const VIEW_MODULES = {
@@ -159,6 +161,7 @@ const VIEW_MODULES = {
   forums: ["forums"],
   texts: ["texts"],
   infodisplay: ["infodisplay"],
+  whiteboards: ["whiteboards"],
   settings: [],
 };
 const MODULE_ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new";
@@ -228,11 +231,11 @@ function offeredBlocks(surface) {
 
 function enabledOverviewBlocks() {
   const raw = state.config && Array.isArray(state.config.overview_blocks) ? state.config.overview_blocks : null;
-  return layoutBlocks().normalizeOverviewBlocks(raw, offeredBlocks(), noChildren());
+  return layoutBlocks().normalizeOverviewBlocks(raw, offeredBlocks("overview"), noChildren());
 }
 
 function hiddenOverviewBlocks() {
-  return layoutBlocks().hiddenBlocks(enabledOverviewBlocks(), offeredBlocks());
+  return layoutBlocks().hiddenBlocks(enabledOverviewBlocks(), offeredBlocks("overview"));
 }
 
 function navigationAreas() {
@@ -480,6 +483,7 @@ const state = {
   textsSearch: "",
   textsFilter: "",
   infodisplay: null,
+  whiteboards: null,
   mail: null,
   mailCountsError: null,
   mailAccount: null,
@@ -902,6 +906,7 @@ const VIEW_ENTRY_DEFAULTS = {
   forums: {},
   texts: { textsSearch: "", textsFilter: "" },
   infodisplay: {},
+  whiteboards: {},
   settings: { helpPage: false, settingsPage: null, blocksSearch: "" },
 };
 
@@ -1731,6 +1736,7 @@ function activeViewLoadKeys() {
     case "forums":
     case "texts":
     case "infodisplay":
+    case "whiteboards":
       return [state.view];
     case "mail":
       return ["mailList"];
@@ -1846,6 +1852,9 @@ async function refreshActiveView() {
       break;
     case "infodisplay":
       await loadInfodisplay();
+      break;
+    case "whiteboards":
+      await loadWhiteboards();
       break;
     case "mail":
       await refreshMail();
@@ -2125,6 +2134,7 @@ function viewFor(view) {
     case "forums": return forumsView();
     case "texts": return textsView();
     case "infodisplay": return infodisplayView();
+    case "whiteboards": return whiteboardsView();
     case "mail": return state.mailCompose ? mailComposeView() : state.mailSettings ? mailSettingsView() : state.mailDetail && !paneOpen() ? mailDetailView() : mailView();
     case "files": return filesView();
     case "contacts": return contactsView();

@@ -18,6 +18,7 @@
     forums: ["forums"],
     texts: ["texts"],
     infodisplay: ["infodisplay"],
+    whiteboards: ["whiteboards"],
   };
   const DEFAULT_NAVIGATION = ["timetable", "absence", "post", "messenger", "conferences"];
   const BAR_LIMIT = 5;
@@ -26,6 +27,7 @@
 
   const BLOCK_CATALOGUE = [
     { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
+    { key: "next_day", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "next_lesson", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "compact", surfaces: ["overview", "card"], scope: "child" },
     { key: "week", module: "timetable", area: "timetable", compact: 1, normal: 1, size: "normal", surfaces: ["overview", "card"], scope: "child" },
     { key: "letters", module: "letters", area: "post", compact: 3, normal: 5, size: "normal", surfaces: ["overview", "card"], scope: "family" },
@@ -41,6 +43,7 @@
     { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
+    { key: "whiteboards", module: "whiteboards", area: "whiteboards", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const DEFAULT_OVERVIEW_KEYS = ["today", "letters", "noticeboard", "conferences", "changes", "chat", "tasks", "news", "forums"];

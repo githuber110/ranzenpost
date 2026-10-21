@@ -109,7 +109,9 @@ class MailUnreadable(DataError):
 
 
 def tls_context():
-    return ssl.create_default_context(cafile=certs.where())
+    context = ssl.create_default_context(cafile=certs.where())
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
 
 
 def open_imap(host):

@@ -939,6 +939,9 @@ class ConnectionService:
     def infodisplay(self):
         return account_lists.read_screens(self._session())
 
+    def whiteboards(self):
+        return account_lists.read_whiteboards(self._session())
+
     def forum_mark_read(self, confirmed=False):
         return self._forum_service.mark_all_read(confirmed)
 
@@ -1573,6 +1576,9 @@ class IServService:
 
     def infodisplay(self):
         return self._school_lists(modules.INFODISPLAY, account_lists.SCREENS_FIELD, lambda connection: connection.infodisplay(), True)
+
+    def whiteboards(self):
+        return self._school_lists(modules.WHITEBOARDS, account_lists.WHITEBOARDS_FIELD, lambda connection: connection.whiteboards(), True)
 
     def forum_mark_read(self, connection_id, confirmed=False):
         connection = self.known_connection(connection_id)

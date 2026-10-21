@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app import feed, holidays
+from app import poller as poller_module
 from app.poller import Poller
 from app.service import LETTERS_CHILD_PREFIX
 from app.server import create_app
@@ -321,7 +322,16 @@ def test_a_subscription_without_lessons_or_marks_fetches_nothing(tmp_path):
     assert warmed == []
 
 
-def test_the_first_feed_request_after_subscribing_already_carries_the_lessons(tmp_path):
+class FrozenTime:
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+    def time(self):
+        return NOW_EPOCH
+
+
+def test_the_first_feed_request_after_subscribing_already_carries_the_lessons(tmp_path, monkeypatch):
+    monkeypatch.setattr(poller_module, "time", FrozenTime())
     store = _store(tmp_path)
     registry = SubscriptionRegistry(store)
     service = FakeService(store)
@@ -612,7 +622,7 @@ def _own_entries_client(tmp_path):
     store.update_connection(SCHOOL, period_times={"1": "08:00"})
     service = FakeService(store)
     registry = SubscriptionRegistry(store, clock=lambda: NOW_EPOCH)
-    Poller(service, registry=registry, holiday_calendar=CountingHolidays()).refresh_child(CHILD_ID)
+    Poller(service, registry=registry, holiday_calendar=CountingHolidays(), clock=lambda: NOW_EPOCH).refresh_child(CHILD_ID)
     subscription = registry.create(CHILD_ID, ["timetable", "marks"], "5A")
     tick = {"now": datetime(2026, 9, 2, 6, 0)}
 

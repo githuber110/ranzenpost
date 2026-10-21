@@ -71,7 +71,9 @@ for (const width of [320, 390, 1024]) {
         await open(page, lang, "tasks");
         await page.locator(".school-list .task-row").first().click();
         await expect(page.locator(".sheet .sheet-title")).toHaveText("Reading log");
-        await expect(page.locator(".sheet .row-meta")).toContainText("13.10.2026");
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const due = [yesterday.getDate(), yesterday.getMonth() + 1].map((part) => String(part).padStart(2, "0")).join(".") + "." + yesterday.getFullYear();
+        await expect(page.locator(".sheet .row-meta")).toContainText(due);
         expect(await page.locator(".sheet [href], .sheet [target]").count()).toBe(0);
         await expectInside(page, page.locator(".sheet .row-meta"), width);
       });

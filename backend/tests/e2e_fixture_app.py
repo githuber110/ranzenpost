@@ -847,6 +847,8 @@ def scenario_lessons(child_id, periods, week_offset=0):
     for day in SCENARIO_WEEKDAYS:
         if block_emptied("today") and week_offset == 0 and day == today_dow:
             continue
+        if block_emptied("next_day") and (week_offset != 0 or day > today_dow):
+            continue
         if block_emptied("next_lesson") and day != today_dow:
             continue
         for period in range(1, periods + 1):
@@ -2287,6 +2289,27 @@ class FixtureService:
             tag(SCHOOL_ONE, {"id": "1202", "title": "Canteen", "path": "/iserv/infodisplay/show/1202"}),
         ]
         return {"infodisplay": listed, "schools": schools, "unavailable": []}
+
+    def whiteboards(self):
+        raise_when_unreachable()
+        schools = [tag(SCHOOL_ONE, {"last_success": 1_756_800_000})]
+        if module_emptied(modules.WHITEBOARDS):
+            return {"whiteboards": [], "schools": schools, "unavailable": []}
+        today = fixture_today()
+
+        def board(key, title, owner, created_days, changed_days):
+            created = (today - timedelta(days=created_days)).isoformat() + "T08:30"
+            changed = (today - timedelta(days=changed_days)).isoformat() + "T16:45"
+            return tag(SCHOOL_ONE, {
+                "id": key, "title": title, "owner": owner, "created": created, "created_text": "", "changed": changed, "changed_text": "",
+                "path": "/iserv/excalidraw/" + key,
+            })
+
+        listed = [
+            board("b1", "Fractions practice", "Class teacher", 9, 1),
+            board("b2", "Ideas for the class trip with a long title that needs two lines on a phone", "Student council", 20, 6),
+        ]
+        return {"whiteboards": listed, "schools": schools, "unavailable": []}
 
     def task_detail(self, connection_id, task_id):
         self.known_connection(connection_id)

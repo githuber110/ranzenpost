@@ -226,13 +226,16 @@ def imap_lines(structure):
     return lines
 
 
+SIEVE_NOT_REACHED = "- ManageSieve %d: not reached" % SIEVE_PORT
+
+
 def greeting_lines(host, connect=None):
     connect = connect or _sieve_greeting
     try:
         words = connect(host)
     except (OSError, ssl.SSLError) as error:
         logger.info("mail report: sieve greeting not read: %s", failure_cause(error))
-        return ["- ManageSieve %d: not reached (%s)" % (SIEVE_PORT, error_kind(error))]
+        return ["%s (%s)" % (SIEVE_NOT_REACHED, error_kind(error))]
     return ["- ManageSieve %d: %s" % (SIEVE_PORT, _words(words))]
 
 
@@ -351,9 +354,14 @@ def mail_lines(fetcher, connection, greet=None):
         service = None
     lines.extend(imap_lines(structure))
     host = service.school_host() if service is not None else ""
+    reached = True
     if host:
-        lines.extend(greeting_lines(host, greet))
-    if service is not None:
+        greeting = greeting_lines(host, greet)
+        reached = not any(line.startswith(SIEVE_NOT_REACHED) for line in greeting)
+        lines.extend(greeting)
+    if service is not None and not reached:
+        lines.extend(sieve_lines({"error": "not read (port not reached)"}))
+    elif service is not None:
         try:
             sieve_structure = service.sieve_structure()
         except Exception as error:

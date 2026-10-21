@@ -360,8 +360,8 @@ def test_the_listing_and_the_connection_agree_on_the_school_calendar(tmp_path, s
 OWN_HOME = {"label": "Mine", "id": "/f.parent/home", "subscription": False, "color": "#112233", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Ff.parent%2Fhome", "type": "cal", "droppable": True}
 GROUP_HOME = {"label": "Class 7b", "id": "/class.7b/home", "subscription": False, "color": "#223344", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Fclass.7b%2Fhome", "type": "cal", "droppable": False}
 SCHOOL_CAL = {"label": "School", "id": "/school.all/calendar", "subscription": True, "color": "#334455", "textColor": "#ffffff", "url": "/iserv/calendar/feed/calendar?cal=%2Fschool.all%2Fcalendar", "type": "cal", "droppable": False}
-EXAMS = {"label": "Exam plan", "id": "exam", "subscription": False, "color": "#445566", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=exam", "type": "plugin", "droppable": False}
-HOLIDAYS = {"label": "Holidays", "id": "holiday", "subscription": False, "color": "#556677", "textColor": "#000000", "url": "/iserv/calendar/feed/plugin?plugin=holiday", "type": "plugin", "droppable": False}
+EXAMS = {"label": "Exam plan", "id": "exam", "subscription": False, "color": "#445566", "textColor": "#000000", "url": "/iserv/calendar/api/plugin?plugin=exam-plan", "type": "plugin", "droppable": False}
+HOLIDAYS = {"label": "Holidays", "id": "holiday", "subscription": False, "color": "#556677", "textColor": "#000000", "url": "/iserv/calendar/api/plugin?plugin=holiday", "type": "plugin", "droppable": False}
 SOURCES = [OWN_HOME, GROUP_HOME, SCHOOL_CAL, EXAMS, HOLIDAYS]
 
 
@@ -379,8 +379,8 @@ DENTIST = raw("dentist@school.example", "Dentist", "2026-10-21T10:00:00+02:00", 
 SOURCES_PATH = "/iserv/calendar/api/eventsources"
 GROUP_FEED = "/iserv/calendar/feed/calendar?cal=/class.7b/home"
 SCHOOL_FEED = "/iserv/calendar/feed/calendar?cal=/school.all/calendar"
-EXAM_FEED = "/iserv/calendar/feed/plugin?plugin=exam"
-HOLIDAY_FEED = "/iserv/calendar/feed/plugin?plugin=holiday"
+EXAM_FEED = "/iserv/calendar/api/plugin?plugin=exam-plan"
+HOLIDAY_FEED = "/iserv/calendar/api/plugin?plugin=holiday"
 OWN_FEED = "/iserv/calendar/feed/calendar?cal=/f.parent/home"
 FEED_ANSWERS = {
     SOURCES_PATH: Answer(200, SOURCES),
@@ -436,18 +436,18 @@ def test_every_school_source_is_read_over_its_own_feed_with_the_window(tmp_path)
         ("/iserv/calendar/feed/calendar", [("cal", "/f.parent/home")] + window),
         ("/iserv/calendar/feed/calendar", [("cal", "/class.7b/home")] + window),
         ("/iserv/calendar/feed/calendar", [("cal", "/school.all/calendar")] + window),
-        ("/iserv/calendar/feed/plugin", [("plugin", "exam")] + window),
-        ("/iserv/calendar/feed/plugin", [("plugin", "holiday")] + window),
+        ("/iserv/calendar/api/plugin", [("plugin", "exam-plan")] + window),
+        ("/iserv/calendar/api/plugin", [("plugin", "holiday")] + window),
     ]
     assert read.failed == ("holiday",)
     assert read.answered == ("/f.parent/home", "/class.7b/home", "/school.all/calendar", "exam")
 
 
 def test_a_window_already_in_the_source_url_is_replaced_by_the_own_window(tmp_path):
-    exams = dict(EXAMS, url="/iserv/calendar/feed/plugin?plugin=exam&start=2020-01-01&end=2020-02-01")
+    exams = dict(EXAMS, url="/iserv/calendar/api/plugin?plugin=exam-plan&start=2020-01-01&end=2020-02-01")
     service, client = feed_service(tmp_path, {SOURCES_PATH: Answer(200, [exams]), EXAM_FEED: Answer(200, [EXAM])})
     service.read_school_calendar(*WINDOW)
-    assert client.asked[-1] == ("/iserv/calendar/feed/plugin", [("plugin", "exam"), ("start", "2026-10-01"), ("end", "2026-11-30")])
+    assert client.asked[-1] == ("/iserv/calendar/api/plugin", [("plugin", "exam-plan"), ("start", "2026-10-01"), ("end", "2026-11-30")])
 
 
 def test_an_event_from_two_sources_is_shown_once_and_names_its_calendar(tmp_path):
@@ -480,7 +480,7 @@ def test_one_failing_source_is_logged_once_and_does_not_drop_the_others(tmp_path
     assert len(records) == 1
     assert records[0].levelno == logging.INFO
     line = records[0].getMessage()
-    assert "plugin /iserv/calendar/feed/plugin not read: OutageError" in line
+    assert "plugin /iserv/calendar/api/plugin not read: OutageError" in line
     assert "holiday" not in line and "f.parent" not in line
 
 
@@ -547,11 +547,13 @@ def test_a_source_outside_the_calendar_feeds_is_never_requested(tmp_path):
         dict(EXAMS, id="e", url="/iserv/calendar/feed/calendar/actions/delete"),
         dict(EXAMS, id="f", url=""),
         dict(EXAMS, id="g", url=None),
+        dict(EXAMS, id="h", url="/iserv/calendar/api/plugin/delete?plugin=exam-plan"),
+        dict(EXAMS, id="i", url="/iserv/calendar/api/plugin"),
     ]
     answers = {SOURCES_PATH: Answer(200, [EXAMS] + bad), EXAM_FEED: Answer(200, [EXAM])}
     service, client = feed_service(tmp_path, answers)
     assert titles(service.read_school_calendar(*WINDOW).events) == ["Maths exam"]
-    assert [path for path, _ in client.asked] == [SOURCES_PATH, "/iserv/calendar/feed/plugin"]
+    assert [path for path, _ in client.asked] == [SOURCES_PATH, "/iserv/calendar/api/plugin"]
 
 
 @pytest.mark.parametrize(

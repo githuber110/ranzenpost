@@ -74,6 +74,19 @@ for (const width of [390, 1024]) {
         await expect(page.locator(".school-list .screen-row .row-title")).toHaveText(["Entrance hall", "Canteen"]);
         await nothingLeavesTheApp(page);
       });
+
+      test("the whiteboard view lists every whiteboard with owner and dates and says when there is none", async ({ page }) => {
+        await open(page, lang, "whiteboards");
+        const rows = page.locator(".school-list .whiteboard-row");
+        await expect(rows.locator(".row-title")).toHaveText(["Fractions practice", "Ideas for the class trip with a long title that needs two lines on a phone"]);
+        await expect(rows.first().locator(".row-sub")).toContainText("Class teacher");
+        await expect(page.locator(".school-list .whiteboard-row button")).toHaveCount(0);
+        await nothingLeavesTheApp(page);
+        await expectInside(page, rows.nth(1).locator(".row-title"), width);
+        await open(page, lang, "whiteboards", "light", [{ name: "e2e_empty", value: "whiteboards", url: BASE_URL }]);
+        await expect(page.locator(".school-list .whiteboard-row")).toHaveCount(0);
+        await expect(page.locator(".school-list .empty b")).toHaveCount(1);
+      });
     });
   }
 }
@@ -84,7 +97,7 @@ for (const width of [390, 1024]) {
       test.use({ viewport: { width, height: 900 }, colorScheme: theme });
 
       test("every view next to the school events view", async ({ page }) => {
-        for (const area of ["forums", "texts", "infodisplay", "calendar", "post", "overview"]) {
+        for (const area of ["forums", "texts", "infodisplay", "whiteboards", "calendar", "post", "overview"]) {
           await open(page, "de", area, theme);
           expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(theme);
           await page.screenshot({ path: `test-results/look-${area}-${width}-${theme}.png`, fullPage: true });
