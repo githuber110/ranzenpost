@@ -239,7 +239,7 @@ Die Integration legt ein Gerät pro Schule und eines pro Kind an. Entitäts-IDs 
 
 Wähle im Automationseditor das Gerät eines Kindes für Auslöser wie **Stundenplan geändert**, **Stunde fällt aus** oder **Neuer Elternbrief** und für Bedingungen wie **Ist ein Schultag**. Ganz ohne YAML. Die Integration fragt die App alle 60 Sekunden und spricht nie selbst mit IServ.
 
-Die [Home-Assistant-Referenz](docs/home-assistant.de.md) nennt jede Entität mit ihren Attributen, alle Auslöser und Bedingungen und vier Automationen zum Übernehmen.
+Die [Home-Assistant-Referenz](docs/home-assistant.de.md) nennt jede Entität mit ihren Attributen, alle Auslöser und Bedingungen, vier Automationen zum Übernehmen, die Optionen, Hilfe bei häufigen Problemen und wie man Ranzenpost entfernt.
 
 ### Push-Nachrichten und Reparaturen
 

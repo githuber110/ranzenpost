@@ -1332,6 +1332,7 @@ async function persistTo(path, payload) {
   if (!outcome.ok) return outcome;
   state.timetable = null;
   state.overviewWeeks = {};
+  state.overviewWeekMondays = {};
   state.absence = null;
   try {
     state.config = await getJson("api/config");

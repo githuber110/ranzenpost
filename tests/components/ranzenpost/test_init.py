@@ -141,6 +141,7 @@ async def test_setup_retries_when_the_addon_is_unreachable(hass, aioclient_mock)
     await hass.async_block_till_done()
 
     assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert entry.reason.startswith("The Ranzenpost app did not answer: ")
 
 
 async def test_setup_starts_reauth_when_the_token_is_rejected(hass, aioclient_mock):
@@ -445,3 +446,19 @@ async def test_devices_link_the_app_panel_when_home_assistant_names_add_ons_apps
     assert school.configuration_url == "homeassistant://app/ranzenpost"
     state = next(state for state in hass.states.async_all("sensor") if "ingress_path" in state.attributes)
     assert state.attributes["ingress_path"] == "/app/ranzenpost"
+
+
+async def test_unselecting_a_child_removes_its_device_and_entities(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock)
+    devices = dr.async_get(hass)
+    entities = er.async_get(hass)
+    alex = entities.async_get("sensor.ranzenpost_alex_unread_letters")
+    assert alex is not None and alex.device_id is not None
+
+    hass.config_entries.async_update_entry(entry, options={CONF_CHILDREN: [CHILD_2], CONF_SCAN_INTERVAL: 60})
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert devices.async_get(alex.device_id) is None
+    assert entities.async_get("sensor.ranzenpost_alex_unread_letters") is None
+    assert entities.async_get("sensor.ranzenpost_kim_unread_letters") is not None

@@ -235,6 +235,14 @@ def test_health(tmp_path):
     assert body["connection"] == "ok"
 
 
+def test_ping_answers_without_asking_the_school(tmp_path):
+    service = FakeService(Store(tmp_path / "data"))
+    service.health_overview = lambda: (_ for _ in ()).throw(AssertionError("ping must not build the health overview"))
+    response = TestClient(create_app(service)).get("/api/ping")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_password_change_success(tmp_path):
     api, _ = client(tmp_path)
     response = api.post("/api/password", json={"current": "old-pass", "new": "new-pass-123"})

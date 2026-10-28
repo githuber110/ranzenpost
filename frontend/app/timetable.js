@@ -1,11 +1,13 @@
 async function loadTimetable() {
+  const monday = isoDate(weekMonday());
   const timetable = await getJson(`api/timetable?child=${encodeURIComponent(state.childId)}&week=${state.weekOffset}`);
   const config = await getJson("api/config");
-  return { timetable, config };
+  return { timetable, config, monday };
 }
 
 function applyTimetable(loaded) {
   state.timetable = loaded.timetable;
+  state.timetableMonday = loaded.monday || "";
   state.config = loaded.config;
 }
 
@@ -96,7 +98,7 @@ function compactLesson(entry, isPast) {
   const row = el("button", {
     class: rowClassNames(isPast),
     type: "button",
-    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
+    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId, lesson)),
   }, [
     dot,
     el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? iservText("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
@@ -119,7 +121,7 @@ function compactLessonPairItem(entry) {
   const item = el("button", {
     class: "row-pair-item",
     type: "button",
-    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId)),
+    onclick: () => openLessonSheet(lesson, entry.time, entry.childId, overviewWeekLessons(entry.childId, lesson)),
   }, [
     dot,
     el("div", { class: "row-main" }, [compactLessonTitle(lesson, kind), sub ? el("div", { class: "row-sub" }, sub) : null, markTag(entry.mark)]),
@@ -135,7 +137,7 @@ function compactCoursesRow(entries, isPast, courses) {
   return el("button", {
     class: `${rowClassNames(isPast)} courses-row`,
     type: "button",
-    onclick: () => openCoursesSheet(lessons, entries[0].time, childId, overviewWeekLessons(childId), courses),
+    onclick: () => openCoursesSheet(lessons, entries[0].time, childId, overviewWeekLessons(childId, lessons[0]), courses),
   }, [
     el("span", { class: "row-dot courses-dot" }, [el("i", {})]),
     el("div", { class: "row-main" }, [
@@ -469,14 +471,15 @@ async function reloadTimetable() {
 function timetableGrid(data, childId, options) {
   const opts = options || {};
   const owner = childId || state.childId;
+  const school = connectionOfKey(owner) || currentConnectionId();
   const weekLessons = Array.isArray(data.lessons) ? data.lessons : [];
-  const times = periodTimes(data);
+  const times = periodTimes(data, owner);
   const monday = opts.monday || weekMonday();
   const todayIso = isoDate(new Date());
-  const fullWeek = holidayFullWeek(monday, data);
+  const fullWeek = holidayFullWeek(monday, data, school);
   const blocked = [];
   for (let day = 0; day < HOLIDAY_SCHOOL_DAYS; day += 1) {
-    blocked.push(!!fullWeek || holidayBlocksLessons(isoDate(addDays(monday, day))));
+    blocked.push(!!fullWeek || holidayBlocksLessons(isoDate(addDays(monday, day)), school));
   }
   const dayCount = planWeekDays(owner, monday);
   const columns = blocked.concat(Array.from({ length: dayCount - HOLIDAY_SCHOOL_DAYS }, () => false));
@@ -490,7 +493,7 @@ function timetableGrid(data, childId, options) {
   grid.append(el("div", { style: "grid-column:1;grid-row:1" }));
   for (let day = 0; day < dayCount; day += 1) {
     const date = addDays(monday, day);
-    const entry = holidayDay(isoDate(date));
+    const entry = holidayDay(isoDate(date), school);
     grid.append(
       el("div", {
         class: isoDate(date) === todayIso ? "tt-head today" : "tt-head",
@@ -502,7 +505,7 @@ function timetableGrid(data, childId, options) {
     );
   }
   if (fullWeek) {
-    grid.append(holidayFullField(fullWeek, monday));
+    grid.append(holidayFullField(fullWeek, monday, school));
     const own = ownPlanLayout(data, owner, monday, columns.map((_, day) => day < HOLIDAY_SCHOOL_DAYS), [], 3);
     if (own) for (const node of own.nodes) grid.append(node);
     return grid;
@@ -543,7 +546,7 @@ function timetableGrid(data, childId, options) {
     }
   }
   if (own) for (const node of own.nodes) grid.append(node);
-  for (const field of holidayRunFields(monday, blocked, own ? own.total : rows.length)) grid.append(field);
+  for (const field of holidayRunFields(monday, blocked, own ? own.total : rows.length, school)) grid.append(field);
   return grid;
 }
 
@@ -713,24 +716,28 @@ function timetableWeekLessons() {
   return data && Array.isArray(data.lessons) ? data.lessons : [];
 }
 
-function overviewWeekLessons(childId) {
-  const week = overviewWeekData(childId, 0);
+function overviewWeekLessons(childId, lesson) {
+  const date = parseIsoDay(lessonIso(lesson));
+  const weekIdx = date ? Math.round((startOfWeek(date).getTime() - startOfWeek(new Date()).getTime()) / (7 * 86400000)) : 0;
+  const week = overviewWeekData(childId, Math.max(0, weekIdx));
   return week && Array.isArray(week.lessons) ? week.lessons : [];
 }
 
-function weekSubjectOccurrences(subject, weekLessons) {
+function weekSubjectOccurrences(subject, weekLessons, childId) {
+  const owner = childId || state.childId;
+  const school = connectionOfKey(owner) || currentConnectionId();
   return (weekLessons || [])
     .filter((lesson) => lessonSubjectKey(lesson) === subject
-      && displayChangeKind(lesson, state.childId) !== "cancelled"
-      && !holidayBlocksLessons(lessonIso(lesson)))
+      && displayChangeKind(lesson, owner) !== "cancelled"
+      && !holidayBlocksLessons(lessonIso(lesson), school))
     .sort((left, right) =>
       Number(left.day_of_week) - Number(right.day_of_week) || Number(left.period) - Number(right.period));
 }
 
-function lessonWeekPosition(lesson, weekLessons) {
+function lessonWeekPosition(lesson, weekLessons, childId) {
   const subject = lessonSubjectKey(lesson);
   if (!subject) return null;
-  const occurrences = weekSubjectOccurrences(subject, weekLessons);
+  const occurrences = weekSubjectOccurrences(subject, weekLessons, childId);
   const total = occurrences.length;
   if (total < 1) return null;
   const position = occurrences.findIndex((entry) =>
@@ -832,20 +839,28 @@ function moveSlot(move, long, origin) {
   return t(key, vars);
 }
 
+function isMove(move) {
+  return !!move && typeof move === "object";
+}
+
 function lessonMove(lesson, kind) {
   if (!lesson || !kind) return null;
   if (kind === "cancelled") {
-    return lesson.change_kind === "cancelled" && moveSlot(lesson.moved_to) ? { to: true, move: lesson.moved_to } : null;
+    return lesson.change_kind === "cancelled" && isMove(lesson.moved_to) ? { to: true, move: lesson.moved_to } : null;
   }
-  return moveSlot(lesson.moved_from) ? { to: false, move: lesson.moved_from } : null;
+  return isMove(lesson.moved_from) ? { to: false, move: lesson.moved_from } : null;
 }
 
 function moveCellLabel(moved) {
-  return t(moved.to ? "timetable.cell.movedTo" : "timetable.cell.movedFrom", { slot: moveSlot(moved.move, false) });
+  const slot = moveSlot(moved.move, false);
+  if (!slot) return t(moved.to ? "timetable.cell.movedAway" : "timetable.cell.movedHere");
+  return t(moved.to ? "timetable.cell.movedTo" : "timetable.cell.movedFrom", { slot });
 }
 
 function moveBannerText(moved) {
-  return t(moved.to ? "timetable.banner.movedTo" : "timetable.banner.movedFrom", { slot: moveSlot(moved.move, true, !moved.to) });
+  const slot = moveSlot(moved.move, true, !moved.to);
+  if (!slot) return t(moved.to ? "timetable.banner.movedAway" : "timetable.banner.movedHere");
+  return t(moved.to ? "timetable.banner.movedTo" : "timetable.banner.movedFrom", { slot });
 }
 
 function bareChange(lesson, kind) {
@@ -996,7 +1011,7 @@ function lessonSheet(lesson, time, childId, weekLessons) {
   const mark = markOfLesson(lesson, childId);
   const cancellation = cancellationOfLesson(lesson, childId);
   const body = [];
-  const weekPosition = lessonWeekPosition(lesson, weekLessons);
+  const weekPosition = lessonWeekPosition(lesson, weekLessons, childId);
   if (weekPosition) {
     body.push(el("p", { class: "lesson-week-count" }, tCount("timetable.lesson.weekCount", weekPosition.total, {
       position: formatNumber(weekPosition.position),

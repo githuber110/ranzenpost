@@ -27,6 +27,12 @@ MAX_SCAN_INTERVAL = 3600
 REQUEST_TIMEOUT = 15
 EVENT_CACHE_TTL = timedelta(minutes=5)
 UPCOMING_WINDOW_DAYS = 14
+MAX_EVENT_RANGE_DAYS = 400
+ERROR_CALENDAR_UNAVAILABLE = "calendar_unavailable"
+ERROR_APP_UNREACHABLE = "app_unreachable"
+ERROR_APP_TOKEN_REJECTED = "app_token_rejected"
+ERROR_WRONG_DEVICE_CONDITION = "wrong_device_condition"
+ERROR_WRONG_DEVICE_TRIGGER = "wrong_device_trigger"
 DISCOVERY_WAIT_SECONDS = 120
 DISCOVERY_POLL_SECONDS = 5
 
@@ -36,6 +42,7 @@ KIND_ABSENCES = "absences"
 KIND_HOLIDAYS = "holidays"
 KIND_OWN_ENTRIES = "own_entries"
 KIND_SCHOOL_EVENTS = "school_events"
+EVENT_KIND_NOTICE = "notice"
 CHILD_CALENDAR_KINDS = (KIND_LESSONS, KIND_EXAMS, KIND_ABSENCES)
 OPT_IN_CALENDAR_KINDS = (KIND_OWN_ENTRIES,)
 PURPOSE_CARD = "card"
@@ -96,6 +103,7 @@ UNKNOWN_VERSION = "unknown"
 CHANGE_SUBSTITUTION = "substitution"
 CHANGE_CANCELLATION = "cancellation"
 CHANGE_KINDS = (CHANGE_SUBSTITUTION, CHANGE_CANCELLATION, "room_change", "new_lesson")
+MOVE_DIRECTIONS = ("away", "here")
 
 EVENT_RANZENPOST = "ranzenpost_event"
 ATTR_TYPE = "type"
@@ -185,6 +193,14 @@ KEY_NEXT_HOLIDAY = "next_holiday"
 KEY_NEXT_FREE_DAY = "next_free_day"
 KEY_NEXT_CONFERENCE = "next_conference"
 KEY_CONNECTION = "connection"
+
+FIELD_NOW_LESSON = "now_lesson"
+FIELD_NEXT_LESSON = "next_lesson"
+FIELD_SCHOOL_END_TODAY = "school_end_today"
+FIELD_NEXT_SCHOOL_DAY = "next_school_day"
+FIELD_CHANGES_TODAY = "changes_today"
+FIELD_SCHOOL_DAY_TODAY = "school_day_today"
+FIELD_TIMETABLE_CHANGED_TODAY = "timetable_changed_today"
 
 ATTR_START = "start"
 ATTR_END = "end"

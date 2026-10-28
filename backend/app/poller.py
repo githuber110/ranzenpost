@@ -418,6 +418,17 @@ class Poller:
             kept[key] = value
         return kept
 
+    def _change_filter(self, config):
+        today = self._today()
+        if self.holiday_calendar is None:
+            return integration.change_filter(today, {"status": holidays.STATUS_DISABLED})
+        try:
+            payload = self.holiday_calendar.range_info(today, feed.lesson_window(today)[1], config, partial=True)
+        except Exception:
+            logger.warning("the holiday dates for new timetable changes could not be read", exc_info=True)
+            payload = None
+        return integration.change_filter(today, payload)
+
     def _warm_holidays(self, store):
         if self.holiday_calendar is None:
             return
@@ -732,6 +743,7 @@ class Poller:
             )
             baseline = copy.deepcopy(snapshot)
             snapshot_dirty = self._clear_missing(snapshot, flags, connection_id) if cleanup else False
+            change_filter = None
             for key, child_id, child in keyed if flags[modules.TIMETABLE] else []:
                 name = child_first_name(child.get("name")) or child.get("name")
                 try:
@@ -774,12 +786,15 @@ class Poller:
                 previous_plan_signature = previous.get("plan_signature") if previous else None
                 previous_anchor = previous.get("week_anchor") if previous else None
                 regular_plan_signature = previous.get("regular_plan_signature") if previous else None
+                if change_filter is None:
+                    change_filter = self._change_filter(config)
                 fresh_changes, change_keys = integration.detect_changes(
                     language,
                     key,
                     lessons,
                     previous.get(integration.CHANGE_KEYS) if previous and not rebased else None,
                     now_epoch,
+                    change_filter,
                 )
                 changes.extend(fresh_changes)
                 same_week = previous is None or previous_anchor == week_anchor

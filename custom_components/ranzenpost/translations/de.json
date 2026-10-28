@@ -47,6 +47,20 @@
         "data": {
           "token": "Token"
         }
+      },
+      "reconfigure": {
+        "title": "Verbindung ändern",
+        "description": "Ranzenpost läuft gerade unter {host}. Gib den neuen Host, Port oder Token ein.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Hostname oder IP-Adresse des Ranzenpost-Containers.",
+          "port": "Port der Integrations-API, standardmäßig 8099.",
+          "token": "Zugangstoken aus den Ranzenpost-Einstellungen."
+        }
       }
     },
     "progress": {
@@ -65,7 +79,8 @@
       "addon_install_failed": "Die Ranzenpost-App konnte nicht installiert werden. Sieh im Supervisor-Protokoll nach.",
       "addon_start_failed": "Die Ranzenpost-App konnte nicht gestartet werden. Sieh im App-Protokoll nach.",
       "not_ranzenpost_addon": "Diese Meldung gehört nicht zur Ranzenpost-App.",
-      "reauth_successful": "Das Token wurde erneuert."
+      "reauth_successful": "Das Token wurde erneuert.",
+      "reconfigure_successful": "Die Verbindung ist geändert."
     }
   },
   "options": {
@@ -327,6 +342,23 @@
     "no_school_yet": {
       "title": "Noch keine Schule angemeldet",
       "description": "Öffne Ranzenpost in der Seitenleiste und melde dich bei deiner Schule an. Geräte und Entitäten erscheinen von selbst."
+    }
+  },
+  "exceptions": {
+    "calendar_unavailable": {
+      "message": "Der Kalender ließ sich nicht aus der Ranzenpost-App lesen. Bitte später erneut versuchen."
+    },
+    "app_unreachable": {
+      "message": "Die Ranzenpost-App hat nicht geantwortet: {error}"
+    },
+    "app_token_rejected": {
+      "message": "Die Ranzenpost-App hat das Zugangstoken abgelehnt."
+    },
+    "wrong_device_condition": {
+      "message": "{type} ist keine Bedingung dieses Geräts."
+    },
+    "wrong_device_trigger": {
+      "message": "{type} ist kein Auslöser dieses Geräts."
     }
   }
 }

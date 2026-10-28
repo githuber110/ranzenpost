@@ -269,7 +269,7 @@ def test_info_describes_the_add_on_the_schools_and_the_children(tmp_path):
     assert body["version"] == "2609.02.00"
     assert set(body) == {"version", "schools", "language", "timezone", "feed_port_open", "last_poll", "ingress_path", "online_feeds", "outside_access"}
     assert set(body["schools"][0]) == {
-        "id", "name", "url_host", "modules", "disabled", "status", "status_reason", "children", "last_poll", "last_success", "own_entries", "mail"
+        "id", "name", "url_host", "modules", "modules_known", "disabled", "status", "status_reason", "children", "last_poll", "last_success", "own_entries", "mail"
     }
     assert body["schools"][0]["own_entries"] is False
     assert body["ingress_path"] == ""
@@ -595,7 +595,7 @@ def test_lesson_events_carry_the_feed_texts_and_the_cancelled_flag(tmp_path):
     assert timed[0]["uid"].endswith("@ranzenpost.local")
     assert "Deutsch" in timed[0]["summary"]
     assert "Datum" in timed[0]["description"]
-    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind", "teacher", "substitution"}
+    assert set(timed[0]) == {"uid", "summary", "description", "location", "start", "end", "all_day", "cancelled", "color", "subject_code", "subject", "name", "kind", "teacher", "substitution", "moved"}
     assert timed[0]["teacher"] == "Behrens"
 
 
@@ -682,7 +682,7 @@ def test_holiday_events_follow_the_region_of_the_named_school(tmp_path):
     seen = []
 
     class RegionSpy(FakeHolidayCalendar):
-        def range_info(self, start, end, config=None):
+        def range_info(self, start, end, config=None, partial=False):
             seen.append((config or {}).get("holiday_region"))
             return super().range_info(start, end, config)
 
@@ -756,6 +756,7 @@ def test_school_admits_when_nothing_is_ahead(tmp_path):
         "region": "DE-NI",
         "unread_letters": {"count": 0, "items": []},
         "unread_posts": {"count": 0, "items": []},
+        "unknown": [],
         "unread_mail": None,
         "open_tasks": None,
         "news": None,
@@ -1123,3 +1124,24 @@ def test_school_names_a_public_holiday_as_the_next_free_day_before_the_school_ho
     assert body["next_holiday"]["name"] == "Herbstferien"
     assert body["next_free_day"] == {"name": "Tag der Deutschen Einheit", "start": "2026-10-03", "end": "2026-10-03", "days_until": 31}
 
+
+
+def test_info_says_whether_the_modules_of_a_school_are_known(tmp_path):
+    client, store, _ = _app(tmp_path)
+    unchecked = client.get(PREFIX + "/info", headers=_auth(store)).json()["schools"][0]
+    store.connection_store(SCHOOL).save_modules(dict(modules.default_registry(), checked_at=NOW_EPOCH))
+    checked = client.get(PREFIX + "/info", headers=_auth(store)).json()["schools"][0]
+
+    assert unchecked["modules_known"] is False
+    assert checked["modules_known"] is True
+
+
+def test_a_module_registry_that_cannot_be_read_is_unknown_not_empty():
+    class Broken:
+        def modules(self):
+            raise OSError("registry file unreadable")
+
+    registry, known = modules.registry_read(Broken())
+
+    assert known is False
+    assert registry == modules.default_registry()

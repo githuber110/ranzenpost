@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -21,13 +22,19 @@ from .const import (
     ATTR_SUMMARY,
     CALENDAR_MODULES,
     CHILD_CALENDAR_KINDS,
+    DOMAIN,
+    ERROR_CALENDAR_UNAVAILABLE,
+    EVENT_KIND_NOTICE,
     KIND_HOLIDAYS,
+    MAX_EVENT_RANGE_DAYS,
     OPT_IN_CALENDAR_KINDS,
     SCHOOL_CALENDAR_MODULES,
     UPCOMING_WINDOW_DAYS,
 )
 from .coordinator import RanzenpostConfigEntry, RanzenpostCoordinator, selected_children
 from .entity import RanzenpostChildEntity, RanzenpostSchoolEntity
+
+PARALLEL_UPDATES = 0
 
 _LOGGER = logging.getLogger(__name__)
 SCHOOL_CHILD_ID = ""
@@ -67,6 +74,7 @@ class RanzenpostCalendarEvent(CalendarEvent):
     kind: str = ""
     teacher: str = ""
     substitution: bool | None = None
+    moved: str = ""
 
 
 def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
@@ -85,6 +93,7 @@ def to_calendar_event(event: Event) -> RanzenpostCalendarEvent:
         kind=event.kind,
         teacher=event.teacher,
         substitution=event.substitution,
+        moved=event.moved,
     )
 
 
@@ -117,7 +126,7 @@ def _is_active(event: Event, now: datetime) -> bool:
 
 
 def _upcoming_event(events: list[Event], now: datetime) -> Event | None:
-    candidates = [event for event in events if not event.cancelled]
+    candidates = [event for event in events if not event.cancelled and event.kind != EVENT_KIND_NOTICE]
     for event in candidates:
         if _is_active(event, now):
             return event
@@ -144,9 +153,14 @@ class RanzenpostCalendarMixin(CalendarEntity):
         return upcoming_attributes(_upcoming_event(self._upcoming, dt_util.utcnow()))
 
     async def async_get_events(self, hass: HomeAssistant, start_date: datetime, end_date: datetime) -> list[CalendarEvent]:
-        first = dt_util.as_local(start_date).date()
-        last = dt_util.as_local(end_date).date()
-        events = await self.coordinator.events.events(self.child_key, self.kind, first, last, self.school_query)
+        zone = self.coordinator.time_zone
+        first = dt_util.as_utc(start_date).astimezone(zone).date()
+        last = min(dt_util.as_utc(end_date).astimezone(zone).date(), first + timedelta(days=MAX_EVENT_RANGE_DAYS))
+        try:
+            events = await self.coordinator.events.events(self.child_key, self.kind, first, last, self.school_query)
+        except (RanzenpostError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.warning("the %s events of %s could not be read: %s", self.kind, self.entity_id, err)
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key=ERROR_CALENDAR_UNAVAILABLE) from err
         return [
             to_calendar_event(event)
             for event in events
@@ -169,7 +183,7 @@ class RanzenpostCalendarMixin(CalendarEntity):
         )
 
     async def _async_refresh_upcoming(self) -> None:
-        today = dt_util.now().date()
+        today = dt_util.now(self.coordinator.time_zone).date()
         try:
             self._upcoming = await self.coordinator.events.events(
                 self.child_key, self.kind, today, today + timedelta(days=UPCOMING_WINDOW_DAYS), self.school_query

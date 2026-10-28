@@ -445,8 +445,8 @@ function accountChapter(size, key, view, rows, build, load) {
     return chapter;
   }
   const listed = rows();
-  if (!listed.length) return null;
-  return chapterRows(chapter, size, layoutBlocks().blockOf(key), listed, build, overviewAllRow(`${key}:all`, t(`overview.all.${key}`), () => setView(view)));
+  if (!listed.length) return listPartlyUnknown(data) ? overviewListFailure(chapter, key, load) : null;
+  return withPartialNote(chapterRows(chapter, size, layoutBlocks().blockOf(key), listed, build, overviewAllRow(`${key}:all`, t(`overview.all.${key}`), () => setView(view))), key, data);
 }
 
 function forumsChapter(size) {

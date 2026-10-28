@@ -72,6 +72,49 @@ describe("settings › Layout › Overview", () => {
     expect(window.eval("window.__posts[0].body")).toEqual({ overview_blocks: [{ key: "today", size: "normal" }, { key: "letters", size: "compact" }] });
   });
 
+  test("only the today row offers the switch to the next school day, and it writes off, end and a time", () => {
+    const { window } = loadApp();
+    seed(window, 'state.config.overview_blocks = [{ key: "today", size: "compact" }, { key: "letters", size: "normal" }];');
+    let page = overviewPage(window);
+    expect(page.querySelectorAll(".block-turn").length).toBe(1);
+    const select = () => page.querySelector('.block-row[data-block="today"] select[data-switch="today"]');
+    expect(select().value).toBe("off");
+    expect(page.querySelector('[data-switch-time="today"]')).toBeNull();
+    const pick = (value) => {
+      select().value = value;
+      select().dispatchEvent(new window.Event("change"));
+    };
+    pick("end");
+    expect(window.eval("window.__posts[0].body")).toEqual({ overview_blocks: [{ key: "today", size: "compact", switch: "end" }, { key: "letters", size: "normal" }] });
+    page = overviewPage(window);
+    pick("time");
+    expect(window.eval("window.__posts[1].body.overview_blocks[0]")).toEqual({ key: "today", size: "compact", switch: "15:00" });
+    page = overviewPage(window);
+    const time = page.querySelector('[data-switch-time="today"]');
+    expect(time.value).toBe("15:00");
+    time.value = "13:30";
+    time.dispatchEvent(new window.Event("change"));
+    expect(window.eval("window.__posts[2].body.overview_blocks[0]")).toEqual({ key: "today", size: "compact", switch: "13:30" });
+    page = overviewPage(window);
+    page.querySelector('.block-row[data-block="letters"] .order-btns [data-dir="up"]').click();
+    expect(window.eval("window.__posts[3].body.overview_blocks")).toEqual([{ key: "letters", size: "normal" }, { key: "today", size: "compact", switch: "13:30" }]);
+    page = overviewPage(window);
+    page.querySelector('.block-row[data-block="today"] .segment.mini [role="radio"]:last-child').click();
+    expect(window.eval("window.__posts[4].body.overview_blocks[1]")).toEqual({ key: "today", size: "normal", switch: "13:30" });
+    page = overviewPage(window);
+    pick("off");
+    expect(window.eval("window.__posts[5].body.overview_blocks[1]")).toEqual({ key: "today", size: "normal" });
+  });
+
+  test("a change keeps the saved blocks of a module that is missing right now, at their place", () => {
+    const { window } = loadApp();
+    seed(window, 'state.config.overview_blocks = [{ key: "today", size: "normal" }, { key: "news", size: "compact" }, { key: "letters", size: "normal" }]; state.modules.available.news = false;');
+    const page = overviewPage(window);
+    expect(page.querySelector('.block-row[data-block="news"]')).toBeNull();
+    page.querySelector('.block-row[data-block="letters"] .segment.mini [role="radio"]').click();
+    expect(window.eval("window.__posts[0].body")).toEqual({ overview_blocks: [{ key: "today", size: "normal" }, { key: "news", size: "compact" }, { key: "letters", size: "compact" }] });
+  });
+
   test("the arrows reorder, the first up and the last down are disabled, focus returns to the pressed arrow", () => {
     const { window } = loadApp();
     seed(window, 'state.config.overview_blocks = [{ key: "today", size: "normal" }, { key: "letters", size: "normal" }, { key: "chat", size: "compact" }];');

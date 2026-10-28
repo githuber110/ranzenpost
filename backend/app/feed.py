@@ -31,6 +31,7 @@ STATE_TOUCH_SECONDS = 60 * 60
 TAG_LENGTH = 16
 UID_DOMAIN = "ranzenpost.local"
 SCHOOL_EVENT_KIND = "school_event"
+NOTICE_KIND = "notice"
 DEFAULT_CALENDAR_COLOR = "#0e6b70"
 WEEK_SPAN_DAYS = 6
 
@@ -66,6 +67,8 @@ SCHOOL_CHANGE_KEY = "timetable.change.school"
 SCHOOL_STATUS_KEY = "timetable.banner.school"
 MOVE_SUMMARY_KEYS = {"moved_to": "calendar.event.summary.movedTo", "moved_from": "calendar.event.summary.movedFrom"}
 MOVE_DETAIL_KEYS = {"moved_to": "calendar.detail.movedTo", "moved_from": "calendar.detail.movedFrom"}
+PLACELESS_SUMMARY_KEYS = {"moved_to": "calendar.event.summary.movedAway", "moved_from": "calendar.event.summary.movedHere"}
+PLACELESS_DETAIL_KEYS = {"moved_to": "calendar.detail.movedAway", "moved_from": "calendar.detail.movedHere"}
 HIDDEN_TEACHER_KEY = "timetable.teacher.hidden"
 HOLIDAY_FALLBACK_KEYS = {
     holidays.KIND_SCHOOL: "holidays.day.free",
@@ -112,6 +115,7 @@ class FeedEvent:
     kind: str = ""
     teacher: str = ""
     substitution: bool = False
+    moved: str = ""
 
 
 def _short_tag(seed):
@@ -172,6 +176,26 @@ def _clock(span):
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+def lesson_block(payload, open_without_region=False):
+    if payload.get("status") == holidays.STATUS_PARTIAL:
+        return lambda day: holidays.day_unknown(payload, day, open_without_region)
+    return holidays.day_unknown(payload, None, open_without_region)
+
+
+def blocked_on(blocked, day):
+    return blocked(day) if callable(blocked) else bool(blocked)
+
+
+def blocked_span(blocked, start, end):
+    days = [day for day in _days_between(start, end) if blocked_on(blocked, day)]
+    return (days[0], days[-1]) if days else None
+
+
+def clock_text(value):
+    minutes = period_grid.loose_minutes_of(value)
+    return period_grid.clock_of(minutes) if minutes is not None else ""
+
+
 def lesson_start(day, start_time):
     hour, minute = (int(part) for part in str(start_time).split(":"))
     return datetime(day.year, day.month, day.day, hour, minute)
@@ -211,7 +235,19 @@ def _status_key(lesson):
 
 def _move(lesson, name):
     value = lesson.get(name)
-    return value if isinstance(value, dict) and value.get("date") and value.get("period") else None
+    return value if isinstance(value, dict) else None
+
+
+def _placed(moved):
+    return bool(moved.get("date") and moved.get("period"))
+
+
+def move_direction(lesson):
+    if lesson.get("change_kind") == "cancelled":
+        return "away" if _move(lesson, "moved_to") is not None else ""
+    if lesson.get("change_kind"):
+        return "here" if _move(lesson, "moved_from") is not None else ""
+    return ""
 
 
 def move_target(language, moved, origin=False):
@@ -228,6 +264,8 @@ def _moved_summary(language, lesson, name, title):
     moved = _move(lesson, name)
     if moved is None:
         return None
+    if not _placed(moved):
+        return _text(language, PLACELESS_SUMMARY_KEYS[name], {"title": title})
     return _text(language, MOVE_SUMMARY_KEYS[name], {"target": move_target(language, moved, name == "moved_from"), "title": title})
 
 
@@ -348,8 +386,10 @@ def _change_lines(language, lesson, none_text):
         )
     for name, key in MOVE_DETAIL_KEYS.items():
         moved = _move(lesson, name)
-        if moved is not None:
+        if moved is not None and _placed(moved):
             rows.append(_text(language, key, {"target": move_target(language, moved, name == "moved_from")}))
+        elif moved is not None:
+            rows.append(_text(language, PLACELESS_DETAIL_KEYS[name], {}))
     note = str(lesson.get("change_note") or "").strip()
     if note:
         rows.append(_text(language, "calendar.detail.note", {"note": note}))
@@ -483,7 +523,7 @@ def lesson_minutes(config, period, slot):
 
 def lesson_start_of(slot):
     for _, lesson in slot:
-        value = str(lesson.get("start_time") or "").strip()
+        value = clock_text(lesson.get("start_time"))
         if value:
             return value
     return ""
@@ -499,7 +539,7 @@ def timetable_events(
     events = []
     unscheduled = {}
     for (day, period), slot in sorted(_grouped_lessons(collected).items()):
-        if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
+        if blocked_on(blocked, day) or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
             continue
         start_time = configured_time(settings, period) or lesson_start_of(slot)
         minutes = lesson_minutes(settings, period, slot)
@@ -536,6 +576,7 @@ def timetable_events(
                     subject=subject_of(language, lesson),
                     teacher=str(field_value(shown, "teacher") or ""),
                     substitution=bool(shown.get("change_kind")) and shown.get("change_kind") != "cancelled",
+                    moved=move_direction(shown),
                 )
             )
     events.extend(_unscheduled_events(language, tag, unscheduled))
@@ -557,6 +598,7 @@ def _unscheduled_events(language, tag, unscheduled):
                 end=day + timedelta(days=1),
                 all_day=True,
                 transparent=True,
+                kind=NOTICE_KIND,
             )
         )
     return events
@@ -657,7 +699,7 @@ def mark_events(language, config, snapshot, entries, child_key, today, now_epoch
         if not marks.in_range(entry, start, end):
             continue
         day = holidays.parse_day(entry.get("date"))
-        start_time = str(times.get(str(int(entry.get("period") or 0))) or "")
+        start_time = clock_text(times.get(str(int(entry.get("period") or 0))))
         lesson = marks.resolved_lesson(snapshot, entry, now_epoch)
         summary = mark_summary(language, config, entry)
         description = mark_description(language, config, entry, day, start_time, lesson)
@@ -786,8 +828,8 @@ def absence_events(language, tag, config, snapshot, child_id, today):
             continue
         opening = _absence_period(entry, "from_period")
         closing = _absence_period(entry, "till_period")
-        begin_time = str(times.get(str(opening)) or "") if opening is not None else ""
-        end_time = str(times.get(str(closing)) or "") if closing is not None else ""
+        begin_time = clock_text(times.get(str(opening))) if opening is not None else ""
+        end_time = clock_text(times.get(str(closing))) if closing is not None else ""
         uid = f"{tag}-absence-{entry.get('kind', '')}-{entry.get('id', '')}@{UID_DOMAIN}"
         summary = absence_summary(language, entry)
         description = absence_description(language, config, entry, first, last)
@@ -976,12 +1018,14 @@ def _notice(language, tag, today, marker, summary_key, description_key, variable
         end=today + timedelta(days=1),
         all_day=True,
         transparent=True,
+        kind=NOTICE_KIND,
     )
 
 
 def notice_events(language, tag, today, blocked, window, last_success, now_epoch):
     events = []
-    if blocked:
+    span = blocked_span(blocked, window[0], window[1])
+    if span:
         events.append(
             _notice(
                 language,
@@ -990,7 +1034,7 @@ def notice_events(language, tag, today, blocked, window, last_success, now_epoch
                 "holidays",
                 "calendar.notice.holidays.summary",
                 "calendar.notice.holidays.description",
-                {"start": _german_date(window[0]), "end": _german_date(window[1])},
+                {"start": _german_date(span[0]), "end": _german_date(span[1])},
             )
         )
     if not last_success:
@@ -1056,14 +1100,14 @@ def own_entry_events(language, tag, config, snapshot, child_id, day_map, blocked
     profile = period_grid.profiles(config).get(raw_child) or {}
 
     def periods_on(day):
-        if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
+        if blocked_on(blocked, day) or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
             return []
         if any(start <= day <= end for start, end in spans):
             return period_grid.regular_periods(by_day.get(day, [])).get(day.weekday(), [])
         return profile.get(day.weekday())
 
     def free_on(day):
-        return blocked or bool((day_map.get(day.isoformat()) or {}).get("free"))
+        return blocked_on(blocked, day) or bool((day_map.get(day.isoformat()) or {}).get("free"))
 
     events = []
     rows = period_grid.resolve(config)
@@ -1262,16 +1306,16 @@ def subscription_config(store, subscription):
     return config_for_connection(store, owning_connection(subscription))
 
 
-def gather_events(subscription, store, holiday_calendar, now=None):
+def gather_events(subscription, store, holiday_calendar, now=None, open_without_region=False):
     moment = _moment(now)
     epoch = int(moment.replace(tzinfo=timezone.utc).timestamp())
     today = holidays.berlin_today(moment)
     config = subscription_config(store, subscription)
     window = lesson_window(today)
     payload = holiday_calendar.range_info(
-        window[0], today + timedelta(days=HOLIDAY_DAYS_AHEAD), config
+        window[0], today + timedelta(days=HOLIDAY_DAYS_AHEAD), config, partial=True
     )
-    blocked = payload.get("status") != holidays.STATUS_OK
+    blocked = lesson_block(payload, open_without_region)
     day_map = payload.get("days") or {}
     snapshot = store.load_calendar_snapshot()
     return build_events(

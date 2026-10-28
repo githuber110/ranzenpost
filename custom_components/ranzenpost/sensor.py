@@ -8,11 +8,12 @@ from typing import Any
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
-from .api import Absence, Exam, Holiday, Info, Lesson, Notices, School, SchoolInfo, State
+from .api import Exam, Holiday, Info, Lesson, Notices, School, SchoolInfo, State
 from .const import (
     ATTR_ABSENCES,
     ATTR_CHANGES,
@@ -44,6 +45,11 @@ from .const import (
     ATTR_VERSION,
     ATTR_INTEGRATION_VERSION,
     CONNECTION_STATES,
+    FIELD_CHANGES_TODAY,
+    FIELD_NEXT_LESSON,
+    FIELD_NEXT_SCHOOL_DAY,
+    FIELD_NOW_LESSON,
+    FIELD_SCHOOL_END_TODAY,
     KEY_CHANGES_TODAY,
     KEY_CONNECTION,
     KEY_CURRENT_LESSON,
@@ -79,6 +85,8 @@ from .const import (
 from .coordinator import RanzenpostConfigEntry, RanzenpostCoordinator, selected_children
 from .entity import RanzenpostChildEntity, RanzenpostSchoolEntity
 
+PARALLEL_UPDATES = 0
+
 
 def _minutes_from_now(moment: datetime | None) -> int:
     if moment is None:
@@ -103,19 +111,10 @@ def _exam_value(exam: Exam | None) -> str:
     return exam.subject if exam and exam.subject else STATE_NONE
 
 
-def _absence_value(absence: Absence | None) -> str:
-    return absence.start.isoformat() if absence and absence.start else STATE_NONE
 
 
 def _school_day_attributes(state: State) -> dict[str, Any]:
     return state.next_school_day.as_attributes() if state.next_school_day else {}
-
-
-def _conference_moment(school: School, info: Info) -> datetime | None:
-    if school.next_conference is None:
-        return None
-    zone = dt_util.get_time_zone(info.timezone) or dt_util.DEFAULT_TIME_ZONE
-    return datetime.combine(school.next_conference.date, datetime.min.time(), tzinfo=zone)
 
 
 def _holiday_attributes(holiday: Holiday | None) -> dict[str, Any]:
@@ -163,6 +162,8 @@ class ChildSensorDescription(SensorEntityDescription):
     value_fn: Callable[[State], Any]
     attributes_fn: Callable[[State], dict[str, Any]] = lambda state: {}
     module: str | None = None
+    field: str | None = None
+    follows_clock: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -171,20 +172,25 @@ class SchoolSensorDescription(SensorEntityDescription):
     attributes_fn: Callable[[School, SchoolInfo, Info], dict[str, Any]] = lambda school, listed, info: {}
     module: str | None = None
     mail: bool = False
+    field: str | None = None
 
 
 CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
     ChildSensorDescription(
         key=KEY_CURRENT_LESSON,
-        value_fn=lambda state: _lesson_value(state.now_lesson),
-        attributes_fn=lambda state: _lesson_attributes(state.now_lesson),
+        value_fn=lambda state: _lesson_value(state.lesson_at(dt_util.now())),
+        attributes_fn=lambda state: _lesson_attributes(state.lesson_at(dt_util.now())),
         module=MODULE_TIMETABLE,
+        field=FIELD_NOW_LESSON,
+        follows_clock=True,
     ),
     ChildSensorDescription(
         key=KEY_NEXT_LESSON,
-        value_fn=lambda state: _lesson_value(state.next_lesson),
-        attributes_fn=lambda state: _lesson_attributes(state.next_lesson),
+        value_fn=lambda state: _lesson_value(state.lesson_after(dt_util.now())),
+        attributes_fn=lambda state: _lesson_attributes(state.lesson_after(dt_util.now())),
         module=MODULE_TIMETABLE,
+        field=FIELD_NEXT_LESSON,
+        follows_clock=True,
     ),
     ChildSensorDescription(
         key=KEY_SCHOOL_END_TODAY,
@@ -192,6 +198,7 @@ CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
         value_fn=lambda state: state.school_end_today,
         attributes_fn=lambda state: {ATTR_SCHOOL_DAY: state.school_day_today},
         module=MODULE_TIMETABLE,
+        field=FIELD_SCHOOL_END_TODAY,
     ),
     ChildSensorDescription(
         key=KEY_NEXT_SCHOOL_DAY,
@@ -199,12 +206,14 @@ CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
         value_fn=lambda state: state.next_school_day.start if state.next_school_day else None,
         attributes_fn=_school_day_attributes,
         module=MODULE_TIMETABLE,
+        field=FIELD_NEXT_SCHOOL_DAY,
     ),
     ChildSensorDescription(
         key=KEY_CHANGES_TODAY,
         value_fn=lambda state: len(state.changes_today),
         attributes_fn=lambda state: {ATTR_CHANGES: [_lesson_attributes(lesson) for lesson in state.changes_today]},
         module=MODULE_TIMETABLE,
+        field=FIELD_CHANGES_TODAY,
     ),
     ChildSensorDescription(
         key=KEY_NEXT_EXAM,
@@ -223,14 +232,14 @@ CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
     ),
     ChildSensorDescription(
         key=KEY_UNREAD_LETTERS,
-        value_fn=lambda state: state.unread_letters.count,
-        attributes_fn=lambda state: {ATTR_LETTERS: state.unread_letters.as_attributes()},
+        value_fn=lambda state: _notice_count(state.unread_letters),
+        attributes_fn=lambda state: _notice_attributes(ATTR_LETTERS, state.unread_letters),
         module=MODULE_LETTERS,
     ),
     ChildSensorDescription(
         key=KEY_UNREAD_POSTS,
-        value_fn=lambda state: state.unread_posts.count,
-        attributes_fn=lambda state: {ATTR_POSTS: state.unread_posts.as_attributes()},
+        value_fn=lambda state: _notice_count(state.unread_posts),
+        attributes_fn=lambda state: _notice_attributes(ATTR_POSTS, state.unread_posts),
         module=MODULE_PINBOARD,
     ),
     ChildSensorDescription(
@@ -241,7 +250,8 @@ CHILD_SENSORS: tuple[ChildSensorDescription, ...] = (
     ),
     ChildSensorDescription(
         key=KEY_NEXT_ABSENCE,
-        value_fn=lambda state: _absence_value(state.next_absence),
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda state: state.next_absence.start if state.next_absence else None,
         attributes_fn=lambda state: state.next_absence.as_attributes() if state.next_absence else {},
         module=MODULE_ABSENCES,
     ),
@@ -260,16 +270,18 @@ SCHOOL_SENSORS: tuple[SchoolSensorDescription, ...] = (
         key=KEY_NEXT_HOLIDAY,
         value_fn=lambda school, listed, info: school.next_holiday.name if school.next_holiday else STATE_NONE,
         attributes_fn=lambda school, listed, info: _holiday_attributes(school.next_holiday),
+        field=KEY_NEXT_HOLIDAY,
     ),
     SchoolSensorDescription(
         key=KEY_NEXT_FREE_DAY,
         value_fn=lambda school, listed, info: school.next_free_day.name if school.next_free_day else STATE_NONE,
         attributes_fn=lambda school, listed, info: _holiday_attributes(school.next_free_day),
+        field=KEY_NEXT_FREE_DAY,
     ),
     SchoolSensorDescription(
         key=KEY_NEXT_CONFERENCE,
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda school, listed, info: _conference_moment(school, info),
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda school, listed, info: school.next_conference.date if school.next_conference else None,
         attributes_fn=lambda school, listed, info: _conference_attributes(school),
         module=MODULE_CONFERENCES,
     ),
@@ -354,16 +366,53 @@ class RanzenpostChildSensor(RanzenpostChildEntity, SensorEntity):
     def __init__(self, coordinator: RanzenpostCoordinator, child, description: ChildSensorDescription) -> None:
         super().__init__(coordinator, SENSOR_DOMAIN, child, description.key)
         self.entity_description = description
+        self._clock_unsub: CALLBACK_TYPE | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._cancel_clock)
+        self._follow_clock()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._follow_clock()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _cancel_clock(self) -> None:
+        if self._clock_unsub is not None:
+            self._clock_unsub()
+            self._clock_unsub = None
+
+    @callback
+    def _follow_clock(self) -> None:
+        self._cancel_clock()
+        state = self.state_of_child
+        if not self.entity_description.follows_clock or state is None:
+            return
+        moment = state.next_boundary(dt_util.now())
+        if moment is not None:
+            self._clock_unsub = async_track_point_in_utc_time(self.hass, self._clock_reached, dt_util.as_utc(moment))
+
+    @callback
+    def _clock_reached(self, _now: datetime) -> None:
+        self._clock_unsub = None
+        self._follow_clock()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> Any:
         state = self.state_of_child
-        return self.entity_description.value_fn(state) if state else None
+        if state is None or not state.knows(self.entity_description.field):
+            return None
+        return self.entity_description.value_fn(state)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         state = self.state_of_child
-        return self.entity_description.attributes_fn(state) if state else {}
+        if state is None or not state.knows(self.entity_description.field):
+            return {}
+        return self.entity_description.attributes_fn(state)
 
 
 class RanzenpostSchoolSensor(RanzenpostSchoolEntity, SensorEntity):
@@ -378,13 +427,15 @@ class RanzenpostSchoolSensor(RanzenpostSchoolEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         listed = self.school_info
-        if listed is None:
+        school = self.coordinator.data.school(self.school_id)
+        if listed is None or not school.knows(self.entity_description.field):
             return None
-        return self.entity_description.value_fn(self.coordinator.data.school(self.school_id), listed, self.info)
+        return self.entity_description.value_fn(school, listed, self.info)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         listed = self.school_info
-        if listed is None:
+        school = self.coordinator.data.school(self.school_id)
+        if listed is None or not school.knows(self.entity_description.field):
             return {}
-        return self.entity_description.attributes_fn(self.coordinator.data.school(self.school_id), listed, self.info)
+        return self.entity_description.attributes_fn(school, listed, self.info)

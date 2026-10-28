@@ -35,18 +35,23 @@ def _day(free=False, overrides=False, kind="", name="", name_key="", period_id="
 
 
 class FakeHolidayCalendar:
-    def __init__(self, status=holidays.STATUS_OK, days=None):
+    def __init__(self, status=holidays.STATUS_OK, days=None, missing_years=()):
         self.status = status
         self.days = dict(days or {})
+        self.missing_years = list(missing_years)
         self.calls = 0
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         self.calls += 1
         filled = {}
         day = start
         while day <= end:
             filled[day.isoformat()] = self.days.get(day.isoformat(), _day())
             day += timedelta(days=1)
+        if self.missing_years:
+            if not partial:
+                return {"status": holidays.STATUS_UNKNOWN, "stale": False, "days": {}, "periods": []}
+            return {"status": holidays.STATUS_PARTIAL, "stale": False, "days": filled, "periods": [], "missing_years": self.missing_years}
         return {"status": self.status, "stale": False, "days": filled, "periods": []}
 
 
@@ -598,6 +603,42 @@ def test_an_unknown_holiday_status_drops_the_lessons_and_says_so(tmp_path):
 
     assert "SUMMARY:1. Stunde Deutsch (Behrens)" not in ics
     assert "Ferienabgleich nicht möglich" in ics
+
+
+def test_a_missing_next_year_keeps_the_lessons_of_the_covered_year(tmp_path):
+    store = _store(tmp_path)
+    store.save_calendar_snapshot(_snapshot([_lesson()]))
+    calendar = FakeHolidayCalendar(missing_years=[2027])
+
+    ics = _build(store, _subscription(store), calendar)
+
+    assert "SUMMARY:1. Stunde Deutsch (Behrens)" in ics
+    assert "Ferienabgleich nicht möglich" not in ics
+
+
+def test_only_the_uncovered_days_lose_their_lessons_and_the_notice_names_them():
+    window = (date(2026, 8, 17), date(2026, 9, 27))
+    blocked = lambda day: day >= date(2026, 9, 14)
+    collected = {
+        ("a",): (date(2026, 9, 2), _lesson(day="02.09.2026")),
+        ("b",): (date(2026, 9, 15), _lesson(day="15.09.2026", period=2)),
+    }
+
+    events = feed.timetable_events("de", "tag", collected, {}, blocked)
+    notices = feed.notice_events("de", "tag", date(2026, 9, 2), blocked, window, NOW_EPOCH, NOW_EPOCH)
+
+    assert [event.start.date() for event in events] == [date(2026, 9, 2)]
+    assert len(notices) == 1
+    assert notices[0].kind == feed.NOTICE_KIND
+    assert "14.09.2026" in notices[0].description and "27.09.2026" in notices[0].description
+
+
+def test_a_lesson_without_a_time_becomes_a_notice_of_the_day():
+    collected = {("a",): (date(2026, 9, 2), _lesson(day="02.09.2026", start_time="kaputt"))}
+
+    events = feed.timetable_events("de", "tag", collected, {}, False)
+
+    assert [(event.all_day, event.kind) for event in events] == [(True, feed.NOTICE_KIND)]
 
 
 def test_an_old_snapshot_produces_a_visible_notice(tmp_path):

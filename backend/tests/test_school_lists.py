@@ -356,7 +356,7 @@ def test_an_outage_is_raised_to_the_poll(tmp_path):
 
 
 class HolidaysStub:
-    def range_info(self, first, last, config):
+    def range_info(self, first, last, config, partial=False):
         return {"status": "ok", "days": {}}
 
 

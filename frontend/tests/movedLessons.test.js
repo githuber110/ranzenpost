@@ -66,6 +66,21 @@ describe("moved lessons of the time-table module", () => {
     expect(node.querySelector(".room").textContent).toBe("auf Do 3–4");
   });
 
+  test("a move whose other half the school does not show still reads as a move", () => {
+    const { window } = loadApp();
+    const nowhere = { date: "", period: null, period_end: null };
+    const away = cell(window, Object.assign({}, AWAY, { moved_to: nowhere }));
+    expect(away.classList.contains("moved")).toBe(true);
+    expect(away.querySelector(".room").textContent).toBe(text(window, "timetable.cell.movedAway"));
+    const here = cell(window, Object.assign({}, HERE, { moved_from: nowhere }));
+    expect(here.classList.contains("moved")).toBe(true);
+    expect(here.querySelector(".room").textContent).toBe(text(window, "timetable.cell.movedHere"));
+    expect(lessonSheetOf(window, Object.assign({}, HERE, { moved_from: nowhere })).querySelector(".banner").textContent)
+      .toContain(text(window, "timetable.banner.movedHere"));
+    expect(lessonSheetOf(window, Object.assign({}, AWAY, { moved_to: nowhere })).querySelector(".banner").textContent)
+      .toContain(text(window, "timetable.banner.movedAway"));
+  });
+
   test("a change without a move keeps the known labels", () => {
     const { window } = loadApp();
     expect(cell(window, Object.assign({}, AWAY, { moved_to: null })).querySelector(".room").textContent).toBe("Entfällt");

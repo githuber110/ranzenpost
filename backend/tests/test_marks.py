@@ -42,7 +42,7 @@ class FakeHolidayCalendar:
         self.status = status
         self.days = dict(days or {})
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         filled = {}
         day = start
         while day <= end:

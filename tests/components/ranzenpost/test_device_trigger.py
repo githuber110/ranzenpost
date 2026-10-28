@@ -17,7 +17,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.ranzenpost.const import CHILD_TRIGGERS, DOMAIN, SCHOOL_NOTICE_TRIGGERS, SCHOOL_TRIGGERS
-from custom_components.ranzenpost.device_trigger import async_validate_trigger_config
+from custom_components.ranzenpost.device_trigger import async_get_triggers, async_validate_trigger_config
 
 from . import CHILD_1, CHILD_2, SCHOOL, fixture, mock_addon, setup_entry
 
@@ -157,6 +157,33 @@ async def test_a_new_letter_fires_with_its_title_and_the_same_letter_never_fires
     assert [call.data["value"] for call in calls] == ["Trip money"]
 
 
+async def test_a_letter_that_arrives_while_the_letters_are_unknown_fires_once_afterwards(hass, aioclient_mock, frozen_now):
+    def with_letters(*ids):
+        state = fixture("state_child_1")
+        state["unread_letters"] = {
+            "count": len(ids),
+            "items": [{"title": f"Letter {item}", "sender": "", "date": "", "child": "Alex", "id": item} for item in ids],
+            "ids": list(ids),
+        }
+        return state
+
+    unknown = fixture("state_child_1")
+    unknown["unread_letters"] = None
+    events = async_capture_events(hass, "ranzenpost_event")
+    await setup_entry(hass, aioclient_mock)
+    await poll(hass, aioclient_mock, frozen_now, states={CHILD_1: with_letters("a")})
+    events.clear()
+
+    await poll(hass, aioclient_mock, frozen_now, states={CHILD_1: unknown})
+    assert hass.states.get("sensor.ranzenpost_alex_unread_letters").state == "unknown"
+    await poll(hass, aioclient_mock, frozen_now, states={CHILD_1: with_letters("b", "a")})
+    await poll(hass, aioclient_mock, frozen_now, states={CHILD_1: with_letters("b", "a")})
+
+    assert [(event.data["type"], event.data.get("id")) for event in events if event.data["type"] == "new_letter"] == [
+        ("new_letter", "b")
+    ]
+
+
 async def test_the_school_triggers_fire_on_status_transitions(hass, aioclient_mock, frozen_now):
     entry = await setup_entry(hass, aioclient_mock)
     school = school_device(hass, entry)
@@ -201,3 +228,11 @@ def test_every_trigger_and_condition_has_a_translated_name():
     assert set(strings["condition_type"]) == {"is_school_day", "lesson_running"}
     assert all(value.strip() for value in strings["trigger_type"].values())
     assert all(value.strip() for value in strings["condition_type"].values())
+
+
+async def test_a_device_ranzenpost_does_not_know_offers_nothing_and_is_not_refused(hass, aioclient_mock, frozen_now):
+    await setup_entry(hass, aioclient_mock)
+    config = trigger_of("unknown-device", "new_letter")
+
+    assert await async_get_triggers(hass, "unknown-device") == []
+    assert await async_validate_trigger_config(hass, config) == config

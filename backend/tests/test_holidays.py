@@ -294,6 +294,42 @@ def test_a_missing_year_makes_the_answer_unknown_rather_than_half_true(tmp_path)
     assert payload["days"] == {}
 
 
+def test_a_partial_answer_keeps_the_covered_year_and_names_the_missing_one(tmp_path):
+    calendar, fetcher = make_calendar(tmp_path)[:2]
+    calendar.range_info(date(2026, 12, 21), date(2026, 12, 27))
+    fetcher.offline = True
+
+    payload = calendar.range_info(date(2026, 12, 28), date(2027, 1, 3), partial=True)
+    whole = calendar.range_info(date(2026, 12, 28), date(2027, 1, 3))
+
+    assert payload["status"] == holidays.STATUS_PARTIAL
+    assert payload["missing_years"] == [2027]
+    assert "2026-12-28" in payload["days"]
+    assert holidays.day_unknown(payload, date(2026, 12, 31)) is False
+    assert holidays.day_unknown(payload, date(2027, 1, 1)) is True
+    assert whole["status"] == holidays.STATUS_UNKNOWN and "missing_years" not in whole
+
+
+def test_a_partial_request_without_any_covered_year_stays_unknown(tmp_path):
+    calendar, fetcher = make_calendar(tmp_path)[:2]
+    fetcher.offline = True
+
+    payload = calendar.range_info(date(2026, 10, 12), date(2026, 10, 18), partial=True)
+
+    assert payload["status"] == holidays.STATUS_UNKNOWN
+    assert holidays.day_unknown(payload, date(2026, 10, 12)) is True
+
+
+def test_only_a_switched_off_region_may_count_as_known_without_holidays(tmp_path):
+    calendar = make_calendar(tmp_path, region="")[0]
+
+    payload = calendar.range_info(date(2026, 10, 12), date(2026, 10, 18), partial=True)
+
+    assert payload["status"] == holidays.STATUS_DISABLED
+    assert holidays.day_unknown(payload, date(2026, 10, 12)) is True
+    assert holidays.day_unknown(payload, date(2026, 10, 12), open_without_region=True) is False
+
+
 def test_the_cache_keeps_regions_apart(tmp_path):
     store = make_store(tmp_path, "DE-NI")
     fetcher = CountingFetcher()

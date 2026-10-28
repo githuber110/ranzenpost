@@ -417,7 +417,7 @@ function renderTodayChapter(window, fixedIso, lessons, marks, absence) {
       Date = FixedDate;
       state.weekOffset = 0;
       state.modules.available.timetable = true;
-      state.children = [{ key: "c1", name: "Kind", class_name: "3b" }];
+      state.children = [{ key: "c1", name: "Kind", class_name: "3b", student_id: "c1" }];
       state.childId = "c1";
       state.overviewChildId = "c1";
       state.config = { subjects: { MA: { label: "Mathe" } }, period_times: {} };

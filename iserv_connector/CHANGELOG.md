@@ -3,6 +3,38 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2610.6.0
+
+### New
+
+- Moved lessons show as moves. When the school's IServ marks a move, the app, the calendar, the dashboard card and Home
+  Assistant name the old and the new place. When only one half is visible, they say the lesson was moved. Lessons in
+  Home Assistant have a new attribute `moved`.
+- The Today block of the app overview can switch to the next school day, after the last lesson or from a set time.
+- The connection to the app can be changed in Home Assistant without deleting anything. Open the three dots of the
+  Ranzenpost entry and pick Reconfigure.
+- Home Assistant can restart a hung app on its own. Turn on Watchdog on the app page.
+- The dashboard card follows the language, the date and time format and the number format set in Home Assistant.
+
+### Changed
+
+- Sensors show `unknown` instead of a wrong value while data is missing. This affects the next absence and the next
+  parent-teacher conference, the holiday sensors while holiday dates are missing, and unread letters and posts after a
+  failed read. Automations that check these sensors for `none` need to check for `unknown`.
+- Devices of children you deselect in the integration options are removed.
+- Errors of the integration are translated.
+- The problem report reads more modules and the change codes of the timetable.
+- The Home Assistant guide covers the options, troubleshooting, known limits and removal.
+
+### Fixed
+
+- The next lesson and the changes in the app overview no longer show lessons on holidays.
+- Each school uses its own holidays. A lesson on a holiday no longer fires a timetable change in Home Assistant.
+- Each timetable change fires once in Home Assistant.
+- The card shows true counts, keeps working when one calendar fails, and shows all-day notices as notes.
+- Entities stay when the module list of a school cannot be read.
+- The current and next lesson follow the clock between two updates.
+
 ## 2610.5.0
 
 ### New

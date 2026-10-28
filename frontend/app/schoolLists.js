@@ -125,6 +125,10 @@ function listUnknown(data, count) {
   return !!data && !data.error && !count && Array.isArray(data.unavailable) && data.unavailable.length > 0;
 }
 
+function listPartlyUnknown(data) {
+  return !!data && !data.error && Array.isArray(data.unavailable) && data.unavailable.length > 0;
+}
+
 function listFailure(key, retry) {
   if (anyOutage()) return outageEmptyBlock();
   return emptyBlock("alert", t(`${key}.error.title`), t(`${key}.error.text`), retryButton(retry));

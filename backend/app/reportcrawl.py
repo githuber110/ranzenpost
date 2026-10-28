@@ -82,6 +82,7 @@ PROVIDER_API_ROUTES = API_ROUTES | PROVIDER_ROUTES | frozenset(
     """.split()
 )
 VERSION_PART = re.compile(r"^v\d{1,2}$")
+SCRIPT_WORD = re.compile(r"^[a-z]{1,25}(?:[-_][a-z]{1,25}){0,3}$")
 FORM_ROUTES = frozenset("add edit new create".split())
 API_VERBS = frozenset("start archive archived participate participation redeem request requests".split())
 CHAIN_STOP_WORDS = frozenset("join logout logoff signout leave".split())
@@ -718,6 +719,13 @@ def _write_entries(answer, found, link_shape):
     return entries, endpoints
 
 
+def script_words(pattern):
+    return frozenset(
+        part for part in str(pattern or "").split("/")
+        if SCRIPT_WORD.match(part) and not _is_id(part) and not write_path("/" + part)
+    ) - API_VERBS - FORM_ROUTES
+
+
 def _api_targets(endpoints, prefix, scope=MODULE_SCOPE, bases=()):
     rule = scope.rule
     resolving = rule is not None and rule.apis
@@ -727,10 +735,11 @@ def _api_targets(endpoints, prefix, scope=MODULE_SCOPE, bases=()):
         if method not in (("GET", "-") if resolving else ("GET",)):
             continue
         candidates = resolved_paths(pattern, bases) if resolving else ([] if "<" in pattern or "?" in pattern else [pattern])
+        routes = scope.api_routes | script_words(pattern)
         for candidate in candidates:
             if method == "-" and candidate.rstrip("/").rsplit("/", 1)[-1].casefold() not in APP_API_WORDS:
                 continue
-            if not api_allowed(candidate, prefix, scope.api_routes, scope.external, rule):
+            if not api_allowed(candidate, prefix, routes, scope.external, rule):
                 continue
             if candidate != pattern and (pattern, candidate) not in resolved:
                 resolved.append((pattern, candidate))

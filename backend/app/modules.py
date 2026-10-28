@@ -305,14 +305,19 @@ def normalize(registry):
     return base
 
 
-def registry_of(service):
+def registry_read(service):
     reader = getattr(service, "modules", None)
     if not callable(reader):
-        return default_registry()
+        return default_registry(), False
     try:
-        return normalize(reader())
+        registry = normalize(reader())
     except Exception:
-        return default_registry()
+        return default_registry(), False
+    return registry, bool(registry["checked_at"])
+
+
+def registry_of(service):
+    return registry_read(service)[0]
 
 
 def _first_segment(href):

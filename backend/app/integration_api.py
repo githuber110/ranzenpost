@@ -268,7 +268,9 @@ def register_integration_routes(app, service, store, holiday_calendar, access, r
             return _refusal(404, ERROR_UNKNOWN_CHILD, UNKNOWN_CHILD_KEY)
         if not integration.has_snapshot(store, child):
             access.warm_once(child, warm)
-        return integration.build_state(store, holiday_calendar, child, access.now())
+        return integration.build_state(
+            store, holiday_calendar, child, access.now(), integration.reads_unknown_lists(request.headers.get(VERSION_HEADER))
+        )
 
     @app.get(ROUTE_EVENTS)
     def events(
@@ -310,7 +312,9 @@ def register_integration_routes(app, service, store, holiday_calendar, access, r
             return refusal
         if not _known_school(id):
             return _refusal(404, ERROR_UNKNOWN_SCHOOL, UNKNOWN_SCHOOL_KEY)
-        return integration.build_school(store, holiday_calendar, access.now(), id)
+        return integration.build_school(
+            store, holiday_calendar, access.now(), id, integration.reads_unknown_lists(request.headers.get(VERSION_HEADER))
+        )
 
     @app.get(ROUTE_CHANGES)
     def changes(request: Request):

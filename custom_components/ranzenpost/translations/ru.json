@@ -47,6 +47,20 @@
         "data": {
           "token": "Токен"
         }
+      },
+      "reconfigure": {
+        "title": "Изменить подключение",
+        "description": "Сейчас Ranzenpost работает на {host}. Введите новый хост, порт или токен.",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "token": "Токен"
+        },
+        "data_description": {
+          "host": "Имя хоста или IP-адрес контейнера Ranzenpost.",
+          "port": "Порт API интеграции, по умолчанию 8099.",
+          "token": "Токен доступа из настроек Ranzenpost."
+        }
       }
     },
     "progress": {
@@ -65,7 +79,8 @@
       "addon_install_failed": "Не удалось установить приложение Ranzenpost. Проверьте журнал Supervisor.",
       "addon_start_failed": "Не удалось запустить приложение Ranzenpost. Проверьте журнал приложения.",
       "not_ranzenpost_addon": "Это сообщение обнаружения не относится к приложению Ranzenpost.",
-      "reauth_successful": "Токен обновлён."
+      "reauth_successful": "Токен обновлён.",
+      "reconfigure_successful": "Подключение изменено."
     }
   },
   "options": {
@@ -327,6 +342,23 @@
     "no_school_yet": {
       "title": "Пока нет школы со входом",
       "description": "Откройте Ranzenpost в боковой панели и войдите в свою школу. Устройства и сущности появятся сами."
+    }
+  },
+  "exceptions": {
+    "calendar_unavailable": {
+      "message": "Не удалось прочитать календарь из приложения Ranzenpost. Повторите попытку позже."
+    },
+    "app_unreachable": {
+      "message": "Приложение Ranzenpost не ответило: {error}"
+    },
+    "app_token_rejected": {
+      "message": "Приложение Ranzenpost отклонило токен доступа."
+    },
+    "wrong_device_condition": {
+      "message": "{type} не является условием этого устройства."
+    },
+    "wrong_device_trigger": {
+      "message": "{type} не является триггером этого устройства."
     }
   }
 }

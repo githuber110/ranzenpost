@@ -12,6 +12,7 @@ from .const import (
     ATTR_TYPE,
     CHILD_TRIGGERS,
     DOMAIN,
+    ERROR_WRONG_DEVICE_TRIGGER,
     EVENT_RANZENPOST,
     SCHOOL_NOTICE_TRIGGERS,
     SCHOOL_TRIGGERS,
@@ -40,7 +41,9 @@ async def async_validate_trigger_config(hass: HomeAssistant, config: ConfigType)
         return config
     allowed = CHILD_TRIGGERS if ref.is_child else SCHOOL_TRIGGERS + SCHOOL_NOTICE_TRIGGERS
     if config[CONF_TYPE] not in allowed:
-        raise InvalidDeviceAutomationConfig(f"{config[CONF_TYPE]} is not a trigger of a {ref.kind} device")
+        raise InvalidDeviceAutomationConfig(
+            translation_domain=DOMAIN, translation_key=ERROR_WRONG_DEVICE_TRIGGER, translation_placeholders={"type": config[CONF_TYPE]}
+        )
     return config
 
 

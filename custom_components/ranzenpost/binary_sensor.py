@@ -9,20 +9,33 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import State
-from .const import KEY_SCHOOL_DAY_TODAY, KEY_TIMETABLE_CHANGED_TODAY, MODULE_TIMETABLE
+from .const import (
+    FIELD_SCHOOL_DAY_TODAY,
+    FIELD_TIMETABLE_CHANGED_TODAY,
+    KEY_SCHOOL_DAY_TODAY,
+    KEY_TIMETABLE_CHANGED_TODAY,
+    MODULE_TIMETABLE,
+)
 from .coordinator import RanzenpostConfigEntry, RanzenpostCoordinator, selected_children
 from .entity import RanzenpostChildEntity
+
+PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True, kw_only=True)
 class ChildBinarySensorDescription(BinarySensorEntityDescription):
     is_on_fn: Callable[[State], bool]
+    field: str | None = None
 
 
 CHILD_BINARY_SENSORS: tuple[ChildBinarySensorDescription, ...] = (
-    ChildBinarySensorDescription(key=KEY_SCHOOL_DAY_TODAY, is_on_fn=lambda state: state.school_day_today),
     ChildBinarySensorDescription(
-        key=KEY_TIMETABLE_CHANGED_TODAY, is_on_fn=lambda state: state.timetable_changed_today
+        key=KEY_SCHOOL_DAY_TODAY, is_on_fn=lambda state: state.school_day_today, field=FIELD_SCHOOL_DAY_TODAY
+    ),
+    ChildBinarySensorDescription(
+        key=KEY_TIMETABLE_CHANGED_TODAY,
+        is_on_fn=lambda state: state.timetable_changed_today,
+        field=FIELD_TIMETABLE_CHANGED_TODAY,
     ),
 )
 
@@ -52,4 +65,6 @@ class RanzenpostChildBinarySensor(RanzenpostChildEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         state = self.state_of_child
-        return self.entity_description.is_on_fn(state) if state else None
+        if state is None or not state.knows(self.entity_description.field):
+            return None
+        return self.entity_description.is_on_fn(state)

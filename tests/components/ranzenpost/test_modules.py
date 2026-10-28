@@ -221,3 +221,35 @@ async def test_switching_a_module_off_later_forgets_its_entities(hass, aioclient
     assert entry.state is ConfigEntryState.LOADED
     assert "sensor.ranzenpost_alex_unread_letters" not in ranzenpost_entities(hass)
     assert "sensor.ranzenpost_alex_unread_posts" in ranzenpost_entities(hass)
+
+
+async def test_a_module_list_that_could_not_be_read_keeps_every_entity(hass, aioclient_mock, frozen_now):
+    entry = await setup_with(hass, aioclient_mock, info_with())
+    unreadable = info_with(letters=False, conferences=False)
+    unreadable["schools"][0]["modules_known"] = False
+
+    aioclient_mock.clear_requests()
+    mock_addon(aioclient_mock, info=unreadable)
+    frozen_now.tick(timedelta(seconds=61))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert "sensor.ranzenpost_alex_unread_letters" in ranzenpost_entities(hass)
+    assert "sensor.ranzenpost_school_next_conference" in ranzenpost_entities(hass)
+    assert hass.states.get("sensor.ranzenpost_school_connection").attributes["modules"]["letters"] is True
+
+
+async def test_an_unknown_module_list_at_start_removes_no_entity(hass, aioclient_mock, frozen_now):
+    entry = await setup_with(hass, aioclient_mock, info_with())
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    unreadable = info_with(letters=False)
+    unreadable["schools"][0]["modules_known"] = False
+    aioclient_mock.clear_requests()
+    mock_addon(aioclient_mock, info=unreadable)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert "sensor.ranzenpost_alex_unread_letters" in ranzenpost_entities(hass)

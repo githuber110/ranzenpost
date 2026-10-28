@@ -675,6 +675,7 @@ async function disconnectSchool(id) {
   state.schoolModules = null;
   state.absence = null;
   state.overviewWeeks = {};
+  state.overviewWeekMondays = {};
   try {
     await reloadConnections();
   } catch (error) {

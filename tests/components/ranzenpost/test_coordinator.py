@@ -11,7 +11,7 @@ from custom_components.ranzenpost import async_remove_config_entry_device
 from custom_components.ranzenpost.const import DOMAIN
 from custom_components.ranzenpost.coordinator import login_issue_id
 
-from . import CHILD_1, CHILD_2, SCHOOL, fixture, mock_addon, route, setup_entry
+from . import CHILD_1, CHILD_2, SCHOOL, SECOND_SCHOOL, fixture, mock_addon, route, setup_entry, two_schools_info
 
 CHILD_3 = f"{SCHOOL}:child-3"
 LESSONS = "calendar.ranzenpost_alex_lessons"
@@ -284,3 +284,41 @@ async def test_removing_the_entry_deletes_its_login_repair_issue(hass, aioclient
     await hass.async_block_till_done()
 
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_the_device_of_a_child_taken_out_of_the_options_may_be_removed(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock)
+    kim = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, f"child:{entry.entry_id}:{CHILD_2}")})
+    assert await async_remove_config_entry_device(hass, entry, kim) is False
+
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "children": [CHILD_1]})
+    await hass.async_block_till_done()
+
+    assert await async_remove_config_entry_device(hass, entry, kim) is True
+
+
+async def test_the_sign_in_notice_of_a_school_that_left_the_app_is_removed(hass, aioclient_mock, frozen_now):
+    failed = two_schools_info()
+    failed["schools"][1]["status"] = "auth_failed"
+    entry = await setup_entry(hass, aioclient_mock, info=failed)
+    issue = login_issue_id(entry.entry_id, SECOND_SCHOOL)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue) is not None
+
+    aioclient_mock.clear_requests()
+    mock_addon(aioclient_mock)
+    await poll(hass, frozen_now)
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue) is None
+
+
+async def test_the_school_device_follows_a_new_app_version(hass, aioclient_mock, frozen_now):
+    entry = await setup_entry(hass, aioclient_mock)
+    newer = fixture("info")
+    newer["version"] = "2699.1.0"
+
+    aioclient_mock.clear_requests()
+    mock_addon(aioclient_mock, info=newer)
+    await poll(hass, frozen_now)
+
+    school = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, f"school:{entry.entry_id}:{SCHOOL}")})
+    assert school.sw_version == "2699.1.0"

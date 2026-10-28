@@ -73,3 +73,20 @@ def test_an_area_is_enabled_when_any_of_its_modules_is_available_and_not_disable
     assert not blocks.area_enabled("post", available, {"pinboard"})
     assert not blocks.area_enabled("messenger", available, {"messenger"})
     assert blocks.area_enabled("timetable", {}, set())
+
+
+def test_the_today_switch_is_kept_only_when_valid_and_only_on_today():
+    kept = blocks.normalize_overview_blocks([
+        {"key": "today", "switch": "end"},
+        {"key": "next_day", "switch": "end"},
+        {"key": "letters", "switch": "15:00"},
+    ])
+    assert kept == [
+        {"key": "today", "size": "normal", "switch": "end"},
+        {"key": "next_day", "size": "normal"},
+        {"key": "letters", "size": "normal"},
+    ]
+    assert blocks.normalize_overview_blocks([{"key": "today", "switch": " 07:05 "}])[0]["switch"] == "07:05"
+    assert blocks.normalize_overview_blocks([{"key": "today", "switch": 900}])[0]["switch"] == "15:00"
+    for wrong in ("24:00", "7:05", "later", True, None, -1, 1440, ["end"]):
+        assert "switch" not in blocks.normalize_overview_blocks([{"key": "today", "switch": wrong}])[0]

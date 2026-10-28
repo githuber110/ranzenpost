@@ -53,9 +53,9 @@ TYPE_WORD_ANCHOR = re.compile("|".join(CHANGE_TYPE_WORDS), re.IGNORECASE)
 TYPE_WINDOW = 1500
 TYPE_LABEL = r"(?:[\w$.]+\(\s*)?[\"'`]([^\"'`\\\n]{1,60})[\"'`]"
 TYPE_PAIRS = (
-    re.compile(r"(?<![\w$.])[\"']?(\d{1,2})[\"']?\s*:\s*" + TYPE_LABEL),
-    re.compile(r"\bcase\s+[\"']?(\d{1,2})[\"']?\s*:\s*(?:return\s+)?" + TYPE_LABEL),
-    re.compile(r"\[\s*[\"']?(\d{1,2})[\"']?\s*\]\s*=\s*" + TYPE_LABEL),
+    re.compile(r"(?<![\w$.])[\"']?(\d{1,3})[\"']?\s*:\s*" + TYPE_LABEL),
+    re.compile(r"\bcase\s+[\"']?(\d{1,3})[\"']?\s*:\s*(?:return\s+)?" + TYPE_LABEL),
+    re.compile(r"\[\s*[\"']?(\d{1,3})[\"']?\s*\]\s*=\s*" + TYPE_LABEL),
 )
 LABEL_WORD = re.compile(r"[^\W\d_]+")
 LABEL_DIGITS = re.compile(r"\d+")

@@ -246,7 +246,7 @@ function mailWhen(entry) {
 
 function mailDayLabel(day) {
   const today = isoDate(new Date());
-  const yesterday = isoDate(new Date(Date.now() - 86400000));
+  const yesterday = isoDate(addDays(new Date(), -1));
   if (day === today) return t("mail.day.today");
   if (day === yesterday) return t("mail.day.yesterday");
   return day ? formatWeekdayDate(day) || dateLabel(day) : t("mail.day.unknown");

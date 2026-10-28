@@ -2398,6 +2398,12 @@ def test_a_change_type_word_found_before_a_later_key_keeps_its_own_window(monkey
     assert [code for code, _labels in pairs] == [1, 2]
 
 
+def test_three_digit_change_codes_keep_their_labels():
+    anchors, pairs = scriptscan.change_type_labels(['var change_types={7:"Hierhin verschoben",102:"Wegverlegung"};'])
+    assert anchors == 1
+    assert pairs == [(7, ["Hierhin verschoben"]), (102, ["Wegverlegung"])]
+
+
 def test_a_script_without_a_change_type_table_says_so():
     lines = renderer_lines('fetch("/iserv/time-table/data");var x={1:"a"};')
     assert "- Change type anchors in scripts: 0" in lines

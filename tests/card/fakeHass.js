@@ -114,6 +114,7 @@ function toApiEvent(event) {
     subject: event.subject || "",
     teacher: event.teacher || "",
     ...(typeof event.substitution === "boolean" ? { substitution: event.substitution } : {}),
+    ...(event.moved ? { moved: event.moved } : {}),
   };
 }
 

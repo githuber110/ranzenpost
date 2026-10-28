@@ -510,8 +510,8 @@ CONFERENCE_SECOND_OFFSET = 12
 ABSENCE_AHEAD_OFFSET = 3
 
 SCENARIO_CHILDREN = [
-    {"child_id": "child-1", "name": "Mia Musterkind", "class_name": "3b"},
-    {"child_id": "child-2", "name": "Tom Musterkind-Langenscheidt", "class_name": "1a"},
+    {"child_id": "child-1", "name": "Mia Musterkind", "class_name": "3b", "student_id": "child-1"},
+    {"child_id": "child-2", "name": "Tom Musterkind-Langenscheidt", "class_name": "1a", "student_id": "child-2"},
 ]
 
 SCENARIOS = {
@@ -1628,7 +1628,7 @@ class FixtureService:
         scenario = current_scenario()
         if scenario:
             return [dict(child) for child in SCENARIO_CHILDREN[: scenario["children"]]]
-        return [{"child_id": "child-1", "name": "Mia Musterkind", "class_name": "3b"}]
+        return [{"child_id": "child-1", "name": "Mia Musterkind", "class_name": "3b", "student_id": "child-1"}]
 
     def children(self, connection_id=None):
         listed = []
@@ -2340,7 +2340,7 @@ class FixtureService:
                 "id": "d4e5f6a7b8c9401234e5f6a7b8c9d0e1",
                 "kind": "sick",
                 "label_key": "absence.type.sick.label",
-                "student_id": "",
+                "student_id": "child-1",
                 "status": "accepted",
                 "from_date": today.isoformat(),
                 "till_date": today.isoformat(),
@@ -2525,7 +2525,7 @@ class FixtureHolidays:
             monday += timedelta(days=7)
         return rows
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         if end < start:
             start, end = end, start
         window_start = start - timedelta(days=start.weekday())
@@ -3160,7 +3160,7 @@ class MatrixHolidays(FixtureHolidays):
             moved.append(entry)
         return moved
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         region = str((config or {}).get("holiday_region") or HOLIDAY_REGION)
         token = MATRIX_HOLIDAY_SHIFT.set(7 if matrix_active() and region != HOLIDAY_REGION else 0)
         try:

@@ -1,3 +1,5 @@
+import re
+
 from . import modules
 
 SIZE_COMPACT = "compact"
@@ -79,6 +81,20 @@ def normalize_modules_disabled(raw):
     return kept
 
 
+SWITCH_END = "end"
+SWITCH_TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+SWITCH_BLOCKS = ("today",)
+
+
+def switch_of(value):
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, int) and 0 <= value < 24 * 60:
+        return "%02d:%02d" % divmod(value, 60)
+    text = value.strip() if isinstance(value, str) else ""
+    return text if text == SWITCH_END or SWITCH_TIME.match(text) else ""
+
+
 def normalize_overview_blocks(raw, disabled=()):
     if not isinstance(raw, list):
         return default_overview_blocks()
@@ -93,7 +109,11 @@ def normalize_overview_blocks(raw, disabled=()):
             continue
         size = entry.get("size") if isinstance(entry, dict) else None
         seen.add(key)
-        kept.append({"key": key, "size": size if size in SIZES else BLOCK_BY_KEY[key]["size"]})
+        normalized = {"key": key, "size": size if size in SIZES else BLOCK_BY_KEY[key]["size"]}
+        turn = switch_of(entry.get("switch")) if key in SWITCH_BLOCKS and isinstance(entry, dict) else ""
+        if turn:
+            normalized["switch"] = turn
+        kept.append(normalized)
     return kept
 
 

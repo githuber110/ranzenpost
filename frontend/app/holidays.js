@@ -30,8 +30,8 @@ function holidayDay(iso, id) {
   return (data && data.days && data.days[iso]) || null;
 }
 
-function holidayWeek(mondayIso) {
-  const data = holidayData();
+function holidayWeek(mondayIso, id) {
+  const data = holidayData(id);
   if (!data || !Array.isArray(data.weeks)) return null;
   return data.weeks.find((week) => week.start === mondayIso) || null;
 }
@@ -54,13 +54,13 @@ function holidayNameLang(entry) {
   return entry.name ? HOLIDAY_SOURCE_LANGUAGE : null;
 }
 
-function holidayBlocksLessons(iso) {
-  const day = holidayDay(iso);
+function holidayBlocksLessons(iso, id) {
+  const day = holidayDay(iso, id);
   return !!(day && day.free && day.overrides_lessons);
 }
 
-function holidayIsUncertain(iso) {
-  const day = holidayDay(iso);
+function holidayIsUncertain(iso, id) {
+  const day = holidayDay(iso, id);
   return !!(day && day.free && !day.overrides_lessons);
 }
 
@@ -83,8 +83,8 @@ function holidayRangeLabel(period) {
   return `${formatShortDate(start)} – ${formatShortDate(end)}`;
 }
 
-function holidayResumeDate(from) {
-  const data = holidayData();
+function holidayResumeDate(from, id) {
+  const data = holidayData(id);
   if (!data || !data.days) return null;
   for (let offset = 0; offset < HOLIDAY_RESUME_SEARCH_DAYS; offset += 1) {
     const date = addDays(from, offset);
@@ -103,8 +103,8 @@ function holidayResumeFallback(period) {
   return date;
 }
 
-function holidayResumeLabel(from, period) {
-  const date = holidayResumeDate(from) || holidayResumeFallback(period);
+function holidayResumeLabel(from, period, id) {
+  const date = holidayResumeDate(from, id) || holidayResumeFallback(period);
   if (!date) return "";
   return t("holidays.week.resume", {
     date: t("holidays.date.weekday", { weekday: formatWeekdayShort(date), date: formatShortDate(date) }),
@@ -122,9 +122,9 @@ function holidayFieldSizing(name, span) {
   return { step: HOLIDAY_NAME_SIZES.length - 1, force: true };
 }
 
-function holidayFullWeek(monday, data) {
+function holidayFullWeek(monday, data, id) {
   if (!data || data.error || !Array.isArray(data.lessons)) return null;
-  const week = holidayWeek(isoDate(monday));
+  const week = holidayWeek(isoDate(monday), id);
   if (!week || week.coverage !== HOLIDAY_COVERAGE_FULL || !week.overrides_lessons) return null;
   return week;
 }
@@ -144,29 +144,30 @@ function holidayWeekSummary(week) {
   return "";
 }
 
-function holidaySheet(entry, title) {
-  const period = entry && entry.period_id ? holidayPeriod(entry.period_id) : entry;
+function holidaySheet(entry, title, id) {
+  const period = entry && entry.period_id ? holidayPeriod(entry.period_id, id) : entry;
   const kind = (entry && entry.kind) || (period && period.kind) || "";
   const facts = [[t("holidays.fact.kind"), kind === HOLIDAY_KIND_PUBLIC ? t("holidays.day.public") : t("holidays.kind.school")]];
   const range = holidayRangeLabel(period);
   if (range) facts.push([t("holidays.fact.range"), range]);
-  const region = holidayRegionLabel(currentConfig().holiday_region);
+  const box = holidayBox(id);
+  const region = holidayRegionLabel((box && box.region) || currentConfig().holiday_region);
   if (region) facts.push([t("holidays.fact.region"), region]);
   return sheet(title, [factList(facts), el("p", { class: "sheet-hint" }, t("holidays.source"))]);
 }
 
-function holidayFullField(week, monday) {
+function holidayFullField(week, monday, id) {
   const primary = week.primary || null;
   const name = holidayWeekLabel(week);
   const classes = ["tt-hol", "full"];
   if (primary && primary.kind === HOLIDAY_KIND_PUBLIC) classes.push("public");
-  const meta = holidayResumeLabel(monday, primary) || holidayRangeLabel(primary);
+  const meta = holidayResumeLabel(monday, primary, id) || holidayRangeLabel(primary);
   return el("button", {
     class: classes.join(" "),
     type: "button",
     "aria-label": t("holidays.aria.field", { name }),
     style: "grid-column:2 / span 5;grid-row:2",
-    onclick: () => openSheet(() => holidaySheet(primary, name)),
+    onclick: () => openSheet(() => holidaySheet(primary, name, id)),
   }, [
     icon("upcoming", 20),
     el("span", { class: "tt-hol-text" }, [
@@ -176,8 +177,8 @@ function holidayFullField(week, monday) {
   ]);
 }
 
-function holidayRunMeta(entry, monday) {
-  const period = holidayPeriod(entry.period_id);
+function holidayRunMeta(entry, monday, id) {
+  const period = holidayPeriod(entry.period_id, id);
   if (!period) return "";
   const friday = isoDate(addDays(monday, HOLIDAY_SCHOOL_DAYS - 1));
   const mondayIso = isoDate(monday);
@@ -188,7 +189,7 @@ function holidayRunMeta(entry, monday) {
   return holidayRangeLabel(period);
 }
 
-function holidayRunField(entry, monday, index, span, maxPeriod) {
+function holidayRunField(entry, monday, index, span, maxPeriod, id) {
   const name = holidayName(entry) || (entry.kind === HOLIDAY_KIND_PUBLIC ? t("holidays.day.public") : t("holidays.day.free"));
   if (!name) return null;
   const sizing = holidayFieldSizing(name, span);
@@ -196,20 +197,20 @@ function holidayRunField(entry, monday, index, span, maxPeriod) {
   if (entry.kind === HOLIDAY_KIND_PUBLIC) classes.push("public");
   if (sizing.step) classes.push(`sz-${sizing.step}`);
   if (sizing.force) classes.push("brk");
-  const meta = span > 1 ? holidayRunMeta(entry, monday) : "";
+  const meta = span > 1 ? holidayRunMeta(entry, monday, id) : "";
   return el("button", {
     class: classes.join(" "),
     type: "button",
     "aria-label": t("holidays.aria.field", { name }),
     style: `grid-column:${index + 2} / span ${span};grid-row:2 / span ${maxPeriod}`,
-    onclick: () => openSheet(() => holidaySheet(entry, name)),
+    onclick: () => openSheet(() => holidaySheet(entry, name, id)),
   }, [
     el("span", { class: "name", lang: holidayNameLang(entry) }, name),
     meta ? el("span", { class: "meta" }, meta) : null,
   ]);
 }
 
-function holidayRunFields(monday, blocked, maxPeriod) {
+function holidayRunFields(monday, blocked, maxPeriod, id) {
   const fields = [];
   let index = 0;
   while (index < HOLIDAY_SCHOOL_DAYS) {
@@ -217,15 +218,15 @@ function holidayRunFields(monday, blocked, maxPeriod) {
       index += 1;
       continue;
     }
-    const entry = holidayDay(isoDate(addDays(monday, index)));
+    const entry = holidayDay(isoDate(addDays(monday, index)), id);
     let last = index;
     while (last + 1 < HOLIDAY_SCHOOL_DAYS && blocked[last + 1]) {
-      const next = holidayDay(isoDate(addDays(monday, last + 1)));
+      const next = holidayDay(isoDate(addDays(monday, last + 1)), id);
       if (!next || !entry || next.period_id !== entry.period_id) break;
       last += 1;
     }
     if (entry) {
-      const field = holidayRunField(entry, monday, index, last - index + 1, maxPeriod);
+      const field = holidayRunField(entry, monday, index, last - index + 1, maxPeriod, id);
       if (field) fields.push(field);
     }
     index = last + 1;
@@ -242,7 +243,7 @@ function holidayTodayLines(iso, lessonCount, id) {
   const date = parseIsoDay(iso);
   const detail = day.kind === HOLIDAY_KIND_PUBLIC
     ? t("holidays.day.public")
-    : (date ? holidayResumeLabel(date, holidayPeriod(day.period_id, id)) : "");
+    : (date ? holidayResumeLabel(date, holidayPeriod(day.period_id, id), id) : "");
   return [
     el("p", { class: "dlg-text", style: "margin:0" }, [el("b", { lang: holidayNameLang(day) }, name)]),
     detail ? el("p", { class: "dlg-text", style: "margin:4px 0 0" }, detail) : null,

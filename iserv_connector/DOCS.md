@@ -125,6 +125,9 @@ offers the restart). The app shows the same hint under **Settings** and on the h
 problem report lists both versions. A dashboard card that still runs older code asks to reload the
 page. The hints disappear on their own once both sides match.
 
+Turn on **Watchdog** on the app page. Home Assistant then restarts the app on its own if it stops
+answering.
+
 ## Notifications
 
 Pick where notifications go (a Home Assistant notify service, or type an entity yourself, e.g.
@@ -168,7 +171,8 @@ attributes, so an automation or a template can read them without a second call.
   free day, the next parent-teacher conference, unread letters, posts and emails, open tasks, news,
   unread forum posts, texts and the connection.
 
-Every entity with its attributes, the values and units, the triggers and four automation recipes are
+Every entity with its attributes, the values and units, the triggers, four automation recipes, the
+options, help for common problems and how to remove Ranzenpost are
 in the
 [Home Assistant reference](https://github.com/githuber110/ranzenpost/blob/master/docs/home-assistant.md).
 The exact JSON shapes behind the entities are in `custom_components/ranzenpost/contract.json`.

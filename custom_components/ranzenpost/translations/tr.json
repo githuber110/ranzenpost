@@ -47,6 +47,20 @@
         "data": {
           "token": "Belirteç"
         }
+      },
+      "reconfigure": {
+        "title": "Bağlantıyı değiştir",
+        "description": "Ranzenpost şu anda {host} üzerinde çalışıyor. Yeni host, port veya token gir.",
+        "data": {
+          "host": "Ana bilgisayar",
+          "port": "Port",
+          "token": "Belirteç"
+        },
+        "data_description": {
+          "host": "Ranzenpost kapsayıcısının ana bilgisayar adı veya IP adresi.",
+          "port": "Entegrasyon API portu, varsayılan 8099.",
+          "token": "Ranzenpost ayarlarında gösterilen erişim belirteci."
+        }
       }
     },
     "progress": {
@@ -65,7 +79,8 @@
       "addon_install_failed": "Ranzenpost uygulaması kurulamadı. Supervisor günlüğünü kontrol edin.",
       "addon_start_failed": "Ranzenpost uygulaması başlatılamadı. Uygulama günlüğünü kontrol edin.",
       "not_ranzenpost_addon": "Bu keşif mesajı Ranzenpost uygulamasına ait değil.",
-      "reauth_successful": "Belirteç yenilendi."
+      "reauth_successful": "Belirteç yenilendi.",
+      "reconfigure_successful": "Bağlantı değiştirildi."
     }
   },
   "options": {
@@ -327,6 +342,23 @@
     "no_school_yet": {
       "title": "Henüz giriş yapılmış okul yok",
       "description": "Kenar çubuğundan Ranzenpost'u açın ve okulunuza giriş yapın. Cihazlar ve varlıklar kendiliğinden görünür."
+    }
+  },
+  "exceptions": {
+    "calendar_unavailable": {
+      "message": "Takvim Ranzenpost uygulamasından okunamadı. Lütfen daha sonra tekrar deneyin."
+    },
+    "app_unreachable": {
+      "message": "Ranzenpost uygulaması yanıt vermedi: {error}"
+    },
+    "app_token_rejected": {
+      "message": "Ranzenpost uygulaması erişim anahtarını reddetti."
+    },
+    "wrong_device_condition": {
+      "message": "{type} bu cihazın bir koşulu değil."
+    },
+    "wrong_device_trigger": {
+      "message": "{type} bu cihazın bir tetikleyicisi değil."
     }
   }
 }

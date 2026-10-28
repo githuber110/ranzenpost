@@ -170,7 +170,7 @@ def poller_for(tmp_path):
 
 
 class HolidaysStub:
-    def range_info(self, first, last, config):
+    def range_info(self, first, last, config, partial=False):
         return {"status": "ok", "days": {}}
 
 

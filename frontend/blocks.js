@@ -24,6 +24,10 @@
   const BAR_LIMIT = 5;
   const BLOCK_SEARCH_FROM = 20;
   const MORE_KEY = "more";
+  const SWITCH_END = "end";
+  const SWITCH_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const SWITCH_TIME_DEFAULT = "15:00";
+  const SWITCH_BLOCKS = ["today"];
 
   const BLOCK_CATALOGUE = [
     { key: "today", module: "timetable", area: "timetable", compact: 3, normal: 10, size: "normal", surfaces: ["overview", "card"], scope: "child" },
@@ -84,6 +88,14 @@
     return BLOCK_CATALOGUE.filter((block) => keys.includes(block.key)).map((block) => ({ key: block.key, size: block.size }));
   }
 
+  function switchOf(value) {
+    if (Number.isInteger(value) && value >= 0 && value < 24 * 60) {
+      return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+    }
+    const text = typeof value === "string" ? value.trim() : "";
+    return text === SWITCH_END || SWITCH_TIME.test(text) ? text : "";
+  }
+
   function normalizeOverviewBlocks(raw, offered, childless) {
     const allowed = new Set((offered || BLOCK_CATALOGUE).map((block) => block.key));
     const source = Array.isArray(raw) ? raw : defaultOverviewBlocks(childless);
@@ -94,7 +106,11 @@
       const block = typeof key === "string" ? blockOf(key) : null;
       if (!block || seen.has(block.key) || !allowed.has(block.key)) continue;
       seen.add(block.key);
-      kept.push({ key: block.key, size: sizeOf(block, entry && typeof entry === "object" ? entry.size : null) });
+      const given = entry && typeof entry === "object" ? entry : null;
+      const normalized = { key: block.key, size: sizeOf(block, given ? given.size : null) };
+      const turn = given && SWITCH_BLOCKS.includes(block.key) ? switchOf(given.switch) : "";
+      if (turn) normalized.switch = turn;
+      kept.push(normalized);
     }
     return kept;
   }
@@ -140,6 +156,9 @@
     BAR_LIMIT,
     BLOCK_SEARCH_FROM,
     MORE_KEY,
+    SWITCH_END,
+    SWITCH_TIME_DEFAULT,
+    SWITCH_BLOCKS,
     BLOCK_CATALOGUE,
     blockOf,
     blockKeys,
@@ -147,6 +166,7 @@
     limitOf,
     shownItems,
     offeredBlocks,
+    switchOf,
     normalizeOverviewBlocks,
     hiddenBlocks,
     normalizeNavigation,

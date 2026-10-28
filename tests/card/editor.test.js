@@ -161,6 +161,8 @@ describe("config editor with blocks", () => {
     change(root, "input[name=title]", "Familie");
     expect(emitted.at(-1)).toEqual({
       type: "custom:ranzenpost-card",
+      view: "family",
+      days: 1,
       title: "Familie",
       blocks: [{ key: "today", size: "compact" }, "letters", "noticeboard", "holidays"],
     });

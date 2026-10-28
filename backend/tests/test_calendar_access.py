@@ -18,7 +18,7 @@ CHILD_NAME = "Zwiebelfisch Quastenflosser"
 
 
 class StubHolidays:
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         days = {}
         day = start
         while day <= end:

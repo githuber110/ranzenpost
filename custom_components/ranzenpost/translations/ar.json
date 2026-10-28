@@ -47,6 +47,20 @@
         "data": {
           "token": "الرمز"
         }
+      },
+      "reconfigure": {
+        "title": "تغيير الاتصال",
+        "description": "يعمل Ranzenpost حاليًا على {host}. أدخل المضيف أو المنفذ أو الرمز الجديد.",
+        "data": {
+          "host": "المضيف",
+          "port": "المنفذ",
+          "token": "الرمز"
+        },
+        "data_description": {
+          "host": "اسم المضيف أو عنوان IP لحاوية Ranzenpost.",
+          "port": "منفذ واجهة برمجة التكامل، الافتراضي 8099.",
+          "token": "رمز الوصول المعروض في إعدادات Ranzenpost."
+        }
       }
     },
     "progress": {
@@ -65,7 +79,8 @@
       "addon_install_failed": "تعذر تثبيت تطبيق Ranzenpost. راجع سجل Supervisor.",
       "addon_start_failed": "تعذر تشغيل تطبيق Ranzenpost. راجع سجل التطبيق.",
       "not_ranzenpost_addon": "رسالة الاكتشاف هذه لا تخص تطبيق Ranzenpost.",
-      "reauth_successful": "تم تجديد الرمز."
+      "reauth_successful": "تم تجديد الرمز.",
+      "reconfigure_successful": "تم تغيير الاتصال."
     }
   },
   "options": {
@@ -327,6 +342,23 @@
     "no_school_yet": {
       "title": "لم يتم تسجيل الدخول إلى أي مدرسة بعد",
       "description": "افتح Ranzenpost من الشريط الجانبي وسجّل الدخول إلى مدرستك. تظهر الأجهزة والكيانات من تلقاء نفسها."
+    }
+  },
+  "exceptions": {
+    "calendar_unavailable": {
+      "message": "تعذّرت قراءة التقويم من تطبيق Ranzenpost. حاول مرة أخرى لاحقًا."
+    },
+    "app_unreachable": {
+      "message": "لم يستجب تطبيق Ranzenpost: {error}"
+    },
+    "app_token_rejected": {
+      "message": "رفض تطبيق Ranzenpost مفتاح الوصول."
+    },
+    "wrong_device_condition": {
+      "message": "{type} ليس شرطًا لهذا الجهاز."
+    },
+    "wrong_device_trigger": {
+      "message": "{type} ليس مشغّلًا لهذا الجهاز."
     }
   }
 }

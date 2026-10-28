@@ -162,8 +162,8 @@ def test_the_poll_records_unread_letters_posts_and_conferences(tmp_path):
     _poller(store, service).poll_once()
 
     state = integration.school_state(store, SCHOOL)
-    assert state["letters"] == [{"title": "Wandertag", "sender": "Frau Muster", "date": "2026-09-01", "child": "Zwiebelfisch"}]
-    assert state["posts"] == [{"title": "Mensa", "sender": "Sekretariat", "date": "", "child": ""}]
+    assert state["letters"] == [{"title": "Wandertag", "sender": "Frau Muster", "date": "2026-09-01", "child": "Zwiebelfisch", "id": "a:r"}]
+    assert state["posts"] == [{"title": "Mensa", "sender": "Sekretariat", "date": "", "child": "", "id": "2"}]
     assert state["conferences"] == [["15.09.2026", "Frau Muster", "Raum 101", "Termin buchen"]]
     assert state["last_poll"] == NOW_EPOCH
     assert state["last_poll_ok"] is True
@@ -356,3 +356,90 @@ def test_a_change_found_before_the_session_is_lost_later_in_the_poll_still_reach
     assert any(event.get("child_key") == CHILD_ID and event.get("changed") for event in events)
     slot = integration.school_state(store, SCHOOL)
     assert (slot["last_error"], slot["auth_reason"]) == (integration.ERROR_AUTH, "session_not_opened")
+
+
+TODAY = datetime(2026, 9, 2).date()
+
+
+def _cancelled(date, period=1):
+    return dict(_display_lesson(date=date, period=period, change_kind="cancelled"))
+
+
+def _holiday_payload(status="ok", days=None):
+    return {"status": status, "days": dict(days or {})}
+
+
+def test_a_change_on_a_past_day_never_becomes_an_event():
+    eligible = integration.change_filter(TODAY, _holiday_payload("disabled"))
+    lessons = [_cancelled("2026-09-01"), _cancelled("2026-09-03", period=2)]
+
+    fresh, known = integration.detect_changes("de", CHILD_ID, lessons, [], NOW_EPOCH, eligible)
+
+    assert [event["date"] for event in fresh] == ["2026-09-03"]
+    assert len(known) == 1
+
+
+def test_a_change_on_a_holiday_never_becomes_an_event():
+    days = {"2026-09-03": {"free": True, "overrides_lessons": True}}
+    eligible = integration.change_filter(TODAY, _holiday_payload("ok", days))
+
+    fresh, _ = integration.detect_changes("de", CHILD_ID, [_cancelled("2026-09-03")], [], NOW_EPOCH, eligible)
+
+    assert fresh == []
+
+
+def test_a_change_on_a_day_without_holiday_dates_waits_until_the_day_is_known():
+    lessons = [_cancelled("2026-09-03")]
+    waiting = integration.change_filter(TODAY, _holiday_payload("unknown"))
+
+    first, known = integration.detect_changes("de", CHILD_ID, lessons, [], NOW_EPOCH, waiting)
+    second, _ = integration.detect_changes("de", CHILD_ID, lessons, known, NOW_EPOCH + 60, integration.change_filter(TODAY, _holiday_payload()))
+
+    assert first == [] and known == []
+    assert [event["date"] for event in second] == ["2026-09-03"]
+
+
+def test_a_known_change_stays_known_when_its_day_turns_into_a_holiday():
+    lessons = [_cancelled("2026-09-03")]
+    _, known = integration.detect_changes("de", CHILD_ID, lessons, [], NOW_EPOCH, integration.change_filter(TODAY, _holiday_payload()))
+    holiday = integration.change_filter(TODAY, _holiday_payload("ok", {"2026-09-03": {"overrides_lessons": True}}))
+
+    fresh, kept = integration.detect_changes("de", CHILD_ID, lessons, known, NOW_EPOCH + 60, holiday)
+    again, _ = integration.detect_changes("de", CHILD_ID, lessons, kept, NOW_EPOCH + 120, integration.change_filter(TODAY, _holiday_payload()))
+
+    assert fresh == [] and again == []
+
+
+class HolidayWeek:
+    def range_info(self, start, end, config=None, partial=False):
+        return {"status": "ok", "days": {"2026-09-03": {"free": True, "overrides_lessons": True}}}
+
+
+def test_the_poll_leaves_out_changes_on_holidays(tmp_path):
+    store = _store(tmp_path)
+    service = RecordingService(store)
+    poller = Poller(service, store=store, registry=SubscriptionRegistry(store), clock=lambda: NOW_EPOCH, holiday_calendar=HolidayWeek())
+    poller.poll_once()
+    service.timetable_value = _week([_display_lesson(date="03.09.2026", change_kind="cancelled"), _display_lesson(date="02.09.2026", period=2, change_kind="cancelled")])
+
+    poller.clock = lambda: NOW_EPOCH + 60
+    poller.poll_once()
+
+    assert [(entry["date"], entry["period"]) for entry in store.load_integration_state()["changes"]] == [("2026-09-02", 2)]
+
+
+def test_a_failed_letter_read_leaves_the_letters_unknown_instead_of_old(tmp_path):
+    store = _store(tmp_path)
+    service = RecordingService(store, letters={"letters": [{"letter_id": "a", "recipient_id": "r", "title": "Wandertag", "unread": True}]})
+    _poller(store, service).poll_once()
+    assert integration.school_state(store, SCHOOL)["letters"][0]["id"] == "a:r"
+
+    def broken(tab="current"):
+        raise RuntimeError("letters page broke")
+
+    service.letters = broken
+    _poller(store, service, clock=NOW_EPOCH + 60).poll_once()
+
+    assert integration.school_state(store, SCHOOL)["letters_unknown"] is True
+    assert integration.school_state(store, SCHOOL)["posts"] == []
+    assert "posts_unknown" not in integration.school_state(store, SCHOOL)

@@ -63,7 +63,9 @@ for (const viewport of VIEWPORTS) {
         expect(await page.locator(".blocks-page .block-row.off").evaluateAll((rows) => rows.map((row) => row.dataset.block))).toEqual(["next_day", "next_lesson", "week", "noticeboard", "absences", "holidays"]);
         const config = await page.evaluate(() => fetch("api/config").then((response) => response.json()));
         expect(config.overview_blocks.map((entry) => entry.key)).not.toContain("noticeboard");
-        expect(config.overview_blocks.length).toBe(5);
+        const shown = await page.locator(".blocks-page .settings-group").first().locator(".block-row").evaluateAll((rows) => rows.map((row) => row.dataset.block));
+        expect(config.overview_blocks.map((entry) => entry.key).filter((key) => shown.includes(key))).toEqual(shown);
+        expect(config.overview_blocks.map((entry) => entry.key).filter((key) => !shown.includes(key)).sort()).toEqual(["forums", "news", "tasks"]);
         await assertClean(page, `${label}/hidden`);
       });
 

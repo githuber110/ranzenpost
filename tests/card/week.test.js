@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiCallsFor, makeHass } from "./fakeHass.js";
+import { CHILDREN, apiCallsFor, lessonsOf, makeHass } from "./fakeHass.js";
 import { freezeClock, loadCard, mountCard, texts } from "./loadCard.js";
 
 beforeEach(async () => {
@@ -160,6 +160,24 @@ describe("week view", () => {
     expect(card.shadowRoot.querySelector("style").textContent).toContain("@container (min-width: 96px) and (min-height: 64px) { .tt-cell .lroom { display: block; } .tt-cell .room.paired { display: none; } }");
     expect(cell.classList.contains("subject")).toBe(false);
     expect(cell.style.getPropertyValue("--subject-cell-fill")).toBe("");
+  });
+
+  it("names both halves of a move instead of a substitution or a plain cancellation", async () => {
+    const lessons = lessonsOf(CHILDREN[0].id).map((event) =>
+      event.uid === "lesson-20260902-p2@sample"
+        ? { ...event, substitution: true, moved: "here" }
+        : event.uid === "lesson-20260904-p1@sample"
+          ? { ...event, cancelled: true, moved: "away" }
+          : event
+    );
+    const card = await mountCard({ view: "week", child: "alex" }, makeHass({ events: { lessons } }));
+    const here = card.shadowRoot.querySelector('.tt-cell[data-uid="lesson-20260902-p2@sample"]');
+    const away = card.shadowRoot.querySelector('.tt-cell[data-uid="lesson-20260904-p1@sample"]');
+
+    expect(here.classList.contains("subbed")).toBe(true);
+    expect(here.querySelector(".room").textContent).toBe("Verlegt");
+    expect(away.classList.contains("out")).toBe(true);
+    expect(away.querySelector(".room").textContent).toBe("Verlegt");
   });
 
   it("closes with the legend and the stamp line", async () => {

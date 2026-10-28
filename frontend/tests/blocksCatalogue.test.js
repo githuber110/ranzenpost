@@ -61,6 +61,17 @@ describe("the block catalogue is one shared list with rules", () => {
     expect(blocks.normalizeOverviewBlocks([], offered)).toEqual([]);
   });
 
+  test("the today switch is kept only when valid and only on today, like the backend", () => {
+    const blocks = catalogue();
+    const kept = blocks.normalizeOverviewBlocks([{ key: "today", switch: "end" }, { key: "next_day", switch: "end" }, { key: "letters", switch: "15:00" }]);
+    expect(kept).toEqual([{ key: "today", size: "normal", switch: "end" }, { key: "next_day", size: "normal" }, { key: "letters", size: "normal" }]);
+    expect(blocks.normalizeOverviewBlocks([{ key: "today", switch: " 07:05 " }])[0].switch).toBe("07:05");
+    expect(blocks.normalizeOverviewBlocks([{ key: "today", switch: 900 }])[0].switch).toBe("15:00");
+    for (const wrong of ["24:00", "7:05", "later", true, null, -1, 1440, ["end"]]) {
+      expect(blocks.normalizeOverviewBlocks([{ key: "today", switch: wrong }])[0]).not.toHaveProperty("switch");
+    }
+  });
+
   test("a missing overview list defaults to the agreed blocks with tasks, news and forums, filtered to what is offered", () => {
     const blocks = catalogue();
     const allOffered = blocks.offeredBlocks(() => true);

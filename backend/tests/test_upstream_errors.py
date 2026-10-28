@@ -246,6 +246,7 @@ COVERED_ROUTES = {
 }
 
 ROUTES_WITHOUT_UPSTREAM_CALLS = {
+    "/api/ping": "answers the Supervisor watchdog without asking the school",
     "/api/health": "reports the connection state itself, including auth_failed",
     "/api/config": "local store only",
     "/api/timetable-availability": "alias of the stored module registry, never reaches IServ",

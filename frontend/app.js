@@ -434,6 +434,8 @@ const state = {
   holidayRegions: null,
   holidaySuggestion: null,
   overviewWeeks: {},
+  overviewWeekMondays: {},
+  timetableMonday: "",
   _overviewAnchor: null,
   _overviewPinboardOrder: null,
   _overviewNow: true,
@@ -936,6 +938,7 @@ function enterView(name, options) {
   const weekBefore = state.weekOffset;
   applyViewEntryDefaults(name);
   if (name === "post" && opts.segment) state.postTab = opts.segment;
+  if (name === "timetable" && Number.isInteger(opts.week)) state.weekOffset = opts.week;
   if (name === "timetable" && weekBefore !== state.weekOffset) {
     state.timetable = null;
     reloadTimetable();
@@ -1710,6 +1713,7 @@ function loadRest() {
 }
 
 const VISIBILITY_REFRESH_MS = 5 * 60 * 1000;
+const OVERVIEW_TICK_MS = 30 * 1000;
 let lastVisibilityRefreshAt = Date.now();
 let visibilityRefreshBound = false;
 
@@ -1780,6 +1784,7 @@ function flushDeferredRefresh() {
 function setupVisibilityRefresh() {
   if (visibilityRefreshBound) return;
   visibilityRefreshBound = true;
+  window.setInterval(overviewTick, OVERVIEW_TICK_MS);
   const maybeRefresh = () => {
     if (document.hidden) return;
     if (Date.now() - lastVisibilityRefreshAt < VISIBILITY_REFRESH_MS) return;
@@ -1800,7 +1805,7 @@ async function refreshActiveView() {
   switch (state.view) {
     case "overview": {
       await Promise.all([
-        ...state.children.map((child) => loadOverviewWeek(child.key, 0)),
+        ...state.children.flatMap((child) => overviewCachedWeeks(child.key).map((week) => loadOverviewWeek(child.key, week))),
         loadHolidays(),
         loadAbsences(),
         loadMarks(),
@@ -1882,7 +1887,7 @@ async function refreshEverything() {
   }
   const jobs = [loadHolidays()];
   if (moduleOn("timetable")) {
-    jobs.push(...state.children.map((child) => loadOverviewWeek(child.key, 0)));
+    jobs.push(...state.children.flatMap((child) => overviewCachedWeeks(child.key).map((week) => loadOverviewWeek(child.key, week))));
     jobs.push(loadMarks(), loadCancellations(), reloadTimetable());
   }
   if (moduleOn("absences")) jobs.push(loadAbsences());

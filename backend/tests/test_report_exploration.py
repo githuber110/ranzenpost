@@ -674,3 +674,48 @@ def test_a_spread_post_endpoint_of_the_poll_module_is_never_read():
     lines, sent, _ = structure(answers, guessed_row("poll", "poll", "/iserv/poll/"))
     assert "/iserv/poll/api/polls" in sent
     assert "/iserv/poll/api/tasks" not in sent
+
+
+TODO_WORD_SCRIPT = (
+    'const api=axios.create({baseURL:"/iserv/todo"});api.get("/api/todo-lists/tasks");'
+    'fetch("/api/todo-lists/delete-all");axios.post("/api/todo-lists/tasks",{title:t});'
+)
+
+
+def test_app_api_words_from_the_module_script_open_its_read_endpoints_but_never_a_write():
+    page = SCHOOL_ONE_URL + "/iserv/"
+    answers = todo_answers()
+    answers[page + "todo/static/assets/main-a1b2c3d4.js"] = (200, {"Content-Type": "text/javascript"}, TODO_WORD_SCRIPT.encode("utf-8"))
+    answers[page + "todo/api/todo-lists/tasks"] = json_answer([{"id": 9, "title": "Brief an Frau Lehrerin", "done": False}])
+    lines, sent, _ = structure(answers, guessed_row("todo", "todo", "/iserv/todo/"))
+    assert "/iserv/todo/api/todo-lists/tasks" in sent
+    assert "/iserv/todo/api/todo-lists/delete-all" not in sent
+    assert "  - [].done: boolean" in lines
+    assert_private(lines, ("Lehrerin",))
+
+
+AUSLEIHE_PAGE = """
+<html><head><script src="/iserv/ausleihe/static/js/app.a1b2c3d4.js"></script></head>
+<body><div id="app"></div></body></html>
+"""
+AUSLEIHE_SCRIPT = 'fetch("/iserv/ausleihe/api/loans");fetch("/iserv/ausleihe/api/loans/return",{method:"POST"});'
+
+
+def test_the_lending_library_reads_its_listing_api_as_shapes():
+    page = SCHOOL_ONE_URL + "/iserv/"
+    answers = {
+        page: nav("/iserv/ausleihe/"),
+        page + "ausleihe/": html_answer(AUSLEIHE_PAGE),
+        page + "ausleihe/static/js/app.a1b2c3d4.js": (200, {"Content-Type": "text/javascript"}, AUSLEIHE_SCRIPT.encode("utf-8")),
+        page + "ausleihe/api/loans": json_answer([{"id": 4, "title": "Mathebuch Klasse 5", "due": "2026-11-30"}]),
+    }
+    lines, sent, _ = structure(answers, guessed_row("ausleihe", "ausleihe", "/iserv/ausleihe/"))
+    assert "/iserv/ausleihe/api/loans" in sent
+    assert "/iserv/ausleihe/api/loans/return" not in sent
+    assert any(line.endswith(": string len 10, iso date") for line in lines)
+    assert_private(lines, ("Mathebuch",))
+
+
+def test_script_words_never_open_a_write_verb_or_an_id():
+    words = reportcrawl.script_words("/api/todo-lists/remove-all/archive/edit/4711/a1b2c3d4e5f6/tasks")
+    assert words == frozenset({"api", "todo-lists", "tasks"})

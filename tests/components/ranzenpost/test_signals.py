@@ -34,8 +34,11 @@ def signals(previous_info, previous_states, info, states, new_changes=()):
     return signals_between(previous_info, previous_states, info, states, list(new_changes))
 
 
-def test_the_first_poll_yields_no_signals():
-    assert signals_between(None, {}, info_of(), states_of(), [FRESH_CANCELLATION]) == []
+def test_the_first_poll_yields_only_the_signals_of_new_changes():
+    assert signals_between(None, {}, info_of(), states_of(), []) == []
+    assert signals_between(None, {}, info_of(), states_of(), [FRESH_CANCELLATION]) == [
+        Signal("lesson_cancelled", SCHOOL, CHILD_1, {"summary": "Sport is cancelled", "date": "2026-09-03", "period": 5})
+    ]
 
 
 def test_an_unchanged_poll_yields_no_signals():
@@ -161,3 +164,53 @@ def test_a_school_or_child_that_was_not_polled_before_yields_no_signal():
 
     empty = Info.from_json(dict(fixture("info"), schools=[]))
     assert signals(empty, {}, info_of("unreachable"), states_of()) == []
+
+
+def _letters(*ids, listed=10):
+    return {
+        "count": len(ids),
+        "items": [{"title": f"Letter {item}", "sender": "", "date": "", "child": "Alex", "id": item} for item in ids[:listed]],
+        "ids": list(ids),
+    }
+
+
+def test_new_letters_are_decided_on_the_full_id_list_not_on_the_ten_listed():
+    before = fixture("state_child_1")
+    before["unread_letters"] = _letters(*(f"l{index}" for index in range(1, 13)))
+    after = fixture("state_child_1")
+    after["unread_letters"] = _letters(*(f"l{index}" for index in range(2, 14)))
+
+    result = signals(info_of(), states_of(child_1=before), info_of(), states_of(child_1=after))
+
+    assert result == [Signal("new_letter", SCHOOL, CHILD_1, {"id": "l13"})]
+
+
+def test_a_newly_listed_letter_fires_with_its_title():
+    before = fixture("state_child_1")
+    before["unread_letters"] = _letters("a")
+    after = fixture("state_child_1")
+    after["unread_letters"] = _letters("b", "a")
+
+    result = signals(info_of(), states_of(child_1=before), info_of(), states_of(child_1=after))
+
+    assert result == [Signal("new_letter", SCHOOL, CHILD_1, {"title": "Letter b", "sender": "", "date": None, "id": "b"})]
+
+
+def test_unknown_letters_fire_nothing():
+    unknown = fixture("state_child_1")
+    unknown["unread_letters"] = None
+
+    assert signals(info_of(), states_of(), info_of(), states_of(child_1=unknown)) == []
+    assert signals(info_of(), states_of(child_1=unknown), info_of(), states_of()) == []
+
+
+def test_letters_first_sent_with_ids_fire_nothing_for_letters_known_by_title():
+    with_ids = fixture("state_child_1")
+    with_ids["unread_letters"]["items"] = [dict(item, id=f"x{index}") for index, item in enumerate(with_ids["unread_letters"]["items"])]
+    with_ids["unread_letters"]["ids"] = ["x0", "x1"]
+
+    assert signals(info_of(), states_of(), info_of(), states_of(child_1=with_ids)) == []
+
+
+def test_a_change_of_a_child_without_a_state_signals_nothing():
+    assert signals_between(None, {}, info_of(), {CHILD_2: states_of()[CHILD_2]}, [FRESH_CANCELLATION]) == []

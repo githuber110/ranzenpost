@@ -140,7 +140,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-integration-dev.txt
-      - run: pytest tests/components/ranzenpost -q -p no:cacheprovider
+      - run: pytest tests/components/ranzenpost -q -p no:cacheprovider --cov=custom_components.ranzenpost --cov-fail-under=98
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

@@ -127,6 +127,7 @@ async def test_get_events_serves_all_day_events_with_exclusive_end(hass, aioclie
             "kind": "",
             "teacher": "",
             "substitution": False,
+            "moved": "",
         }
     ]
 
@@ -201,3 +202,74 @@ async def test_unloading_the_entry_cancels_a_pending_upcoming_refresh(hass, aioc
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert cancelled
+
+
+NOTICE = {
+    "uid": "tag-notice-holidays@sample",
+    "summary": "Ranzenpost: holiday check not possible",
+    "description": "Holiday dates are missing.",
+    "location": "",
+    "start": "2026-09-02",
+    "end": "2026-09-03",
+    "all_day": True,
+    "cancelled": False,
+    "color": "",
+    "subject_code": "",
+    "subject": "",
+    "name": "",
+    "kind": "notice",
+    "teacher": "",
+    "substitution": False,
+}
+
+
+async def test_an_all_day_notice_is_listed_but_never_switches_the_lessons_calendar_on(
+    hass, aioclient_mock, frozen_now, hass_client
+):
+    aioclient_mock.get(route("events", child=CHILD_1, kind="lessons"), json=[NOTICE])
+    await setup_entry(hass, aioclient_mock)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    client = await hass_client()
+
+    events = await (await client.get(f"/api/calendars/{LESSONS}?{WINDOW}")).json()
+
+    assert hass.states.get(LESSONS).state == "off"
+    assert "message" not in hass.states.get(LESSONS).attributes
+    assert [(event["summary"], event["kind"]) for event in events] == [(NOTICE["summary"], "notice")]
+
+
+async def test_a_failing_app_answers_the_calendar_request_with_a_handled_error(
+    hass, aioclient_mock, frozen_now, hass_client, caplog
+):
+    await setup_entry(hass, aioclient_mock)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(route("events", child=CHILD_1, kind="lessons"), status=500, json={"error": "boom"})
+    client = await hass_client()
+
+    response = await client.get(f"/api/calendars/{LESSONS}?start=2026-09-10T00:00:00%2B02:00&end=2026-09-11T00:00:00%2B02:00")
+
+    assert response.status == 500
+    assert (await response.json())["message"].startswith("Error reading events")
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.ERROR] == []
+
+
+async def test_an_oversized_range_is_clamped_instead_of_refused(hass, aioclient_mock, frozen_now, hass_client):
+    await setup_entry(hass, aioclient_mock)
+    client = await hass_client()
+
+    response = await client.get(f"/api/calendars/{LESSONS}?start=2026-09-01T00:00:00%2B02:00&end=2028-01-01T00:00:00%2B01:00")
+
+    assert response.status == 200
+    assert "start=2026-09-01&end=2027-10-06" in str(events_calls(aioclient_mock, "lessons", CHILD_1)[-1][1])
+
+
+async def test_the_requested_days_follow_the_time_zone_of_the_app_not_of_home_assistant(
+    hass, aioclient_mock, frozen_now, hass_client
+):
+    await hass.config.async_set_time_zone("Asia/Tokyo")
+    await setup_entry(hass, aioclient_mock)
+    client = await hass_client()
+
+    await client.get(f"/api/calendars/{LESSONS}?start=2026-09-02T00:00:00%2B09:00&end=2026-09-03T00:00:00%2B09:00")
+
+    assert "start=2026-09-01&end=2026-09-02" in str(events_calls(aioclient_mock, "lessons", CHILD_1)[-1][1])

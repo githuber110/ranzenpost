@@ -168,6 +168,10 @@
         "modules": {
           "$ref": "#/$defs/modules"
         },
+        "modules_known": {
+          "type": "boolean",
+          "description": "False while the module list of the school could not be read or was never checked. Then modules holds only defaults, and Home Assistant removes no entity because of it."
+        },
         "disabled": {
           "$ref": "#/$defs/modulesDisabled"
         },
@@ -510,6 +514,10 @@
           ],
           "description": "The kind of change, empty for a regular lesson."
         },
+        "moved": {
+          "$ref": "#/$defs/moveDirection",
+          "description": "The side of a move: away for the lesson that moves elsewhere, here for its new place, empty otherwise. Older apps leave it out."
+        },
         "before": {
           "$ref": "#/$defs/changedFields"
         },
@@ -616,6 +624,14 @@
         "next_lesson": {
           "$ref": "#/$defs/lessonOrNull"
         },
+        "lessons_ahead": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/lesson"
+          },
+          "description": "The held lessons that are running or still ahead today and those of the next day with lessons, in order and only from days whose holiday dates are known. Home Assistant moves the current and the next lesson along the clock with them between two polls. Older add-ons send none."
+        },
         "school_end_today": {
           "oneOf": [
             {
@@ -643,10 +659,26 @@
           }
         },
         "unread_letters": {
-          "$ref": "#/$defs/notices"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null while the add-on could not read the list in its last poll; unknown, not empty. Only integrations newer than 2610.5.0 (header X-Ranzenpost-Integration) get null, the ids list and letter and post ids; older ones get the last known list without ids."
         },
         "unread_posts": {
-          "$ref": "#/$defs/notices"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null while the add-on could not read the list in its last poll; unknown, not empty. Only integrations newer than 2610.5.0 (header X-Ranzenpost-Integration) get null, the ids list and letter and post ids; older ones get the last known list without ids."
         },
         "open_absences": {
           "type": "object",
@@ -737,6 +769,23 @@
             ""
           ],
           "description": "Where the stamp comes from: IServ's own timetable stamp, the app's last successful fetch, or nothing."
+        },
+        "unknown": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "now_lesson",
+              "next_lesson",
+              "school_end_today",
+              "next_school_day",
+              "changes_today",
+              "school_day_today",
+              "timetable_changed_today"
+            ]
+          },
+          "description": "The fields whose value is not known, for example because the holiday dates of a day are missing. Such a field still carries its empty value, which must not be read as none. Older add-ons send no list."
         }
       },
       "additionalProperties": false
@@ -803,7 +852,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "The kind of absence for absences, own_entries for clubs and appointments, school_event for events from the school calendar, empty otherwise."
+          "description": "The kind of absence for absences, own_entries for clubs and appointments, school_event for events from the school calendar, notice for an all-day hint of the app such as missing holiday dates or lessons without a time, empty otherwise."
         },
         "teacher": {
           "type": "string",
@@ -812,6 +861,10 @@
         "substitution": {
           "type": "boolean",
           "description": "True for a lesson that takes place with a change, such as another teacher, room or subject; false for cancelled lessons and other events."
+        },
+        "moved": {
+          "$ref": "#/$defs/moveDirection",
+          "description": "The side of a move for a lesson: away for the lesson that moves elsewhere, here for its new place, empty otherwise. Older apps leave it out."
         }
       },
       "additionalProperties": false,
@@ -991,10 +1044,26 @@
           "type": "string"
         },
         "unread_letters": {
-          "$ref": "#/$defs/notices"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null while the add-on could not read the list in its last poll; unknown, not empty. Only integrations newer than 2610.5.0 (header X-Ranzenpost-Integration) get null, the ids list and letter and post ids; older ones get the last known list without ids."
         },
         "unread_posts": {
-          "$ref": "#/$defs/notices"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null while the add-on could not read the list in its last poll; unknown, not empty. Only integrations newer than 2610.5.0 (header X-Ranzenpost-Integration) get null, the ids list and letter and post ids; older ones get the last known list without ids."
         },
         "unread_mail": {
           "type": [
@@ -1047,6 +1116,18 @@
             }
           ],
           "description": "Every text of the IServ text module the account sees, in every IServ selection; title is the text, sender its owner, date the last change. Fresh lists the texts the add-on saw for the first time. Null until the first poll read the list or when the school has no text module."
+        },
+        "unknown": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "next_holiday",
+              "next_free_day"
+            ]
+          },
+          "description": "The fields whose value is not known: no holiday region is set, or no holiday starts before the first day without holiday dates. Such a field is null, which must not be read as none. Older add-ons send no list."
         }
       },
       "additionalProperties": false
@@ -1101,7 +1182,8 @@
           "minimum": 0
         },
         "new": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "True only until the next poll of the add-on. Home Assistant does not rely on it: it fires every change whose child, time, kind, summary, date and period it has not seen before and keeps the seen changes across restarts."
         }
       },
       "additionalProperties": false
@@ -1132,6 +1214,14 @@
         "cancellation",
         "room_change",
         "new_lesson"
+      ]
+    },
+    "moveDirection": {
+      "type": "string",
+      "enum": [
+        "",
+        "away",
+        "here"
       ]
     },
     "changedFields": {
@@ -1178,11 +1268,11 @@
         },
         "child": {
           "type": "string",
-          "description": "The first name of the child the letter is addressed to, empty for a post."
+          "description": "The first name of the child the letter is addressed to, empty for a post. A letter with a first name counts only in the state of that child."
         },
         "id": {
           "type": "string",
-          "description": "The stable IServ id of a task or news item. Older add-ons send none."
+          "description": "The stable IServ id of a letter, post, task or news item. Older add-ons send none."
         },
         "text": {
           "type": "string",
@@ -1262,6 +1352,15 @@
           "items": {
             "$ref": "#/$defs/freshNotice"
           }
+        },
+        "ids": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The ids of every counted entry, not only the listed ten. Home Assistant decides which letters and posts are new by this list. Sent only when every entry has an id."
         }
       },
       "additionalProperties": false

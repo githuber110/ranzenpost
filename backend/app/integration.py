@@ -1,9 +1,9 @@
 import os
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from . import berlin, blocks, cancellations, feed, holidays, marks, messages, modules, supervisor
+from . import berlin, blocks, cancellations, feed, holidays, marks, messages, modules, supervisor, versions
 from .iserv.badges import MAIL_MODULE
 from .iserv.conferences import dates_in
 from .iserv.errors import QUIET_SIGN_IN_REASONS, REASON_CODE_STEP_FAILED, REASON_RATE_LIMITED
@@ -27,6 +27,8 @@ from .subscriptions import (
     COMPONENT_SCHOOL_HOLIDAYS,
     COMPONENT_TIMETABLE,
     child_first_name,
+    child_name,
+    children_of_config,
 )
 
 TOKEN_BYTES = 32
@@ -104,6 +106,10 @@ WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 LESSON_DAYS_AHEAD = 14
 EXAM_DAYS_AHEAD = 30
 MAX_NOTICES = 10
+MAX_NOTICE_IDS = 200
+UNKNOWN_SUFFIX = "_unknown"
+UNKNOWN_LISTS_AFTER = "2610.5.0"
+MAX_LESSONS_AHEAD = 20
 LIST_COUNT_SUFFIX = "_count"
 FRESH_SUFFIX = "_fresh"
 FRESH_STAMP = "seen"
@@ -115,6 +121,10 @@ SCHOOL_TEXTS = "texts"
 STAMP_SOURCE_ISERV = "iserv"
 STAMP_SOURCE_APP = "app"
 CHANGE_FIELDS = ("subject", "teacher", "room")
+FIELD_NEXT_LESSON = "next_lesson"
+FIELD_NEXT_SCHOOL_DAY = "next_school_day"
+HOLIDAY_FIELDS = ("next_holiday", "next_free_day")
+TODAY_FIELDS = ("now_lesson", "school_end_today", "changes_today", "school_day_today", "timetable_changed_today")
 
 _version_cache = {}
 
@@ -293,7 +303,7 @@ def change_event(language, child_key, lesson, now_epoch):
     }
 
 
-def detect_changes(language, child_key, lessons, known_keys, now_epoch):
+def detect_changes(language, child_key, lessons, known_keys, now_epoch, eligible=None):
     current = {}
     for lesson in lessons or []:
         if not isinstance(lesson, dict) or not lesson.get("change_kind"):
@@ -302,12 +312,25 @@ def detect_changes(language, child_key, lessons, known_keys, now_epoch):
     if known_keys is None:
         return [], sorted(current)
     seen = set(known_keys)
+    open_now = {key: lesson for key, lesson in current.items() if eligible is None or eligible(lesson)}
     fresh = [
         change_event(language, child_key, lesson, now_epoch)
-        for key, lesson in current.items()
+        for key, lesson in open_now.items()
         if key not in seen
     ]
-    return fresh, sorted(current)
+    return fresh, sorted(set(open_now) | (seen & set(current)))
+
+
+def change_filter(today, payload):
+    def eligible(lesson):
+        day = holidays.parse_day(lesson.get("date"))
+        if day is None:
+            return True
+        if day < today or payload is None or holidays.day_unknown(payload, day, open_without_region=True):
+            return False
+        return not ((payload.get("days") or {}).get(day.isoformat()) or {}).get("overrides_lessons")
+
+    return eligible
 
 
 def _squeezed(value):
@@ -319,14 +342,24 @@ def _published_day(value):
     return day.isoformat() if day else ""
 
 
+def _notice_id(entry):
+    if entry.get("letter_id"):
+        return _squeezed(f"{entry.get('letter_id')}:{entry.get('recipient_id') or ''}")
+    return _squeezed(entry.get("id"))
+
+
 def notice_of(entry):
     if isinstance(entry, dict):
-        return {
+        notice = {
             "title": _squeezed(entry.get("title")),
             "sender": _squeezed(entry.get("sender") or entry.get("owner")),
             "date": _published_day(entry.get("published") or entry.get("date")),
             "child": child_first_name(entry.get("child")),
         }
+        identity = _notice_id(entry)
+        if identity:
+            notice["id"] = identity
+        return notice
     return {"title": _squeezed(entry), "sender": "", "date": "", "child": ""}
 
 
@@ -384,10 +417,12 @@ def record_school_poll(
             slot.pop(AUTH_REASON, None)
         if ok:
             slot[LAST_SUCCESS] = int(now_epoch)
-        if letters is not None:
-            slot["letters"] = list(letters)
-        if posts is not None:
-            slot["posts"] = list(posts)
+        for field, entries in (("letters", letters), ("posts", posts)):
+            if entries is None:
+                slot[field + UNKNOWN_SUFFIX] = True
+            else:
+                slot[field] = list(entries)
+                slot.pop(field + UNKNOWN_SUFFIX, None)
         if conferences is not None:
             slot["conferences"] = list(conferences)
         if school_name:
@@ -633,7 +668,7 @@ def build_schools(service, store):
         if not entry.get("setup_complete"):
             continue
         connection = service.connection(entry["id"])
-        registry = modules.registry_of(connection)
+        registry, modules_known = modules.registry_read(connection)
         slot = school_state(store, entry["id"])
         schools.append(
             {
@@ -641,6 +676,7 @@ def build_schools(service, store):
                 "name": school_name_of(store, entry),
                 "url_host": supervisor.sanitize_host(entry.get("school_url")),
                 "modules": registry["modules"],
+                "modules_known": modules_known,
                 "disabled": dict(disabled),
                 "status": _school_status(connection, slot),
                 "status_reason": _status_reason(connection, slot),
@@ -701,6 +737,7 @@ def _lesson_object(language, day, lesson, start_time, cancelled, local_now, minu
         "substitution": changed and not cancelled,
         "cancelled": bool(cancelled),
         "kind": KIND_CANCELLATION if cancelled else (change_kind(lesson) if changed else ""),
+        "moved": feed.move_direction(shown),
         "before": before,
         "after": after,
         "note": feed.change_note(language, shown),
@@ -709,8 +746,8 @@ def _lesson_object(language, day, lesson, start_time, cancelled, local_now, minu
     }
 
 
-def _day_lessons(language, config, snapshot, child_key, day, day_map, blocked, dropped, local_now):
-    if blocked or (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
+def _day_lessons(language, config, snapshot, child_key, day, day_map, dropped, local_now):
+    if (day_map.get(day.isoformat()) or {}).get("overrides_lessons"):
         return []
     collected = feed.lessons_in_window(snapshot, child_key, day, day, config)
     ordered = sorted(collected.items(), key=lambda item: (item[0][1], item[0][2:]))
@@ -720,7 +757,7 @@ def _day_lessons(language, config, snapshot, child_key, day, day_map, blocked, d
     items = []
     for _, (_, lesson) in ordered:
         period = int(lesson.get("period") or 0)
-        start_time = configured_time(config, period) or str(lesson.get("start_time") or "").strip()
+        start_time = configured_time(config, period) or feed.clock_text(lesson.get("start_time"))
         if not start_time:
             continue
         cancelled = lesson.get("change_kind") == "cancelled" or feed.lesson_dropped(dropped, day, lesson)
@@ -734,8 +771,32 @@ def _held(items):
     return [item for item in items if not item["cancelled"]]
 
 
+def _first_lesson_after(days, now_iso):
+    for _, known, items in days:
+        if not known:
+            return None, False
+        found = next((item for item in _held(items) if item["start"] > now_iso), None)
+        if found is not None:
+            return found, True
+    return None, True
+
+
+def _lessons_ahead(days, today, now_iso):
+    ahead = []
+    for day, known, items in days:
+        if not known:
+            break
+        held = [item for item in _held(items) if item["end"] > now_iso]
+        ahead.extend(held)
+        if day != today and held:
+            break
+    return ahead[:MAX_LESSONS_AHEAD]
+
+
 def _next_school_day(days, today, now_iso):
-    for day, items in days:
+    for day, known, items in days:
+        if not known:
+            return None, False
         held = _held(items)
         if not held:
             continue
@@ -749,8 +810,8 @@ def _next_school_day(days, today, now_iso):
             "end": max(item["end"] for item in held),
             "lessons": len(held),
             "first_lesson": held[0]["subject"],
-        }
-    return None
+        }, True
+    return None, True
 
 
 def _exam_object(language, config, snapshot, entry, today, now_epoch):
@@ -830,12 +891,38 @@ def _last_updated(config, snapshot, child_key):
     return None, ""
 
 
-def _counted(entries):
-    values = [notice_of(entry) for entry in entries or []]
-    return {"count": len(values), "items": values[:MAX_NOTICES]}
+def reads_unknown_lists(version):
+    parsed = versions.parse_version(version)
+    return parsed is not None and parsed > versions.parse_version(UNKNOWN_LISTS_AFTER)
 
 
-def build_state(store, holiday_calendar, child_key, now_epoch):
+def _first_names(config):
+    return {child_first_name(child.get("name")).casefold() for child in children_of_config(config)} - {""}
+
+
+def _for_child(notice, first_name, names):
+    named = notice["child"].casefold()
+    return not named or named == first_name.casefold() or named not in names
+
+
+def _counted(state, field, first_name="", names=frozenset(), unknown_lists=True):
+    entries = state.get(field)
+    listed = entries if isinstance(entries, list) else []
+    if unknown_lists and (entries is not listed or state.get(field + UNKNOWN_SUFFIX)):
+        return None
+    values = [notice_of(entry) for entry in listed]
+    if first_name:
+        values = [notice for notice in values if _for_child(notice, first_name, names)]
+    if not unknown_lists:
+        values = [{name: value for name, value in notice.items() if name != "id"} for notice in values]
+    counted = {"count": len(values), "items": values[:MAX_NOTICES]}
+    ids = [notice.get("id") for notice in values]
+    if unknown_lists and all(ids):
+        counted["ids"] = ids[:MAX_NOTICE_IDS]
+    return counted
+
+
+def build_state(store, holiday_calendar, child_key, now_epoch, unknown_lists=True):
     config = config_for_child(store, child_key)
     language = messages.normalize_language(config.get("language"))
     state = school_state(store, connection_of_key(child_key))
@@ -843,40 +930,49 @@ def build_state(store, holiday_calendar, child_key, now_epoch):
     local_now = berlin.local_from_epoch(now_epoch)
     today = local_now.date()
     horizon = today + timedelta(days=LESSON_DAYS_AHEAD)
-    payload = holiday_calendar.range_info(today, horizon, config)
-    blocked = payload.get("status") != holidays.STATUS_OK
+    payload = holiday_calendar.range_info(today, horizon, config, partial=True)
+    blocked = feed.lesson_block(payload, open_without_region=True)
     day_map = payload.get("days") or {}
     dropped = feed.dropped_slots(cancellations.entries_of(store.load_cancellations()), child_key)
-    days = [
-        (day, _day_lessons(language, config, snapshot, child_key, day, day_map, blocked, dropped, local_now))
-        for day in (today + timedelta(days=offset) for offset in range(LESSON_DAYS_AHEAD + 1))
-    ]
-    today_lessons = days[0][1]
+    days = []
+    for day in (today + timedelta(days=offset) for offset in range(LESSON_DAYS_AHEAD + 1)):
+        known = not feed.blocked_on(blocked, day)
+        lessons = _day_lessons(language, config, snapshot, child_key, day, day_map, dropped, local_now) if known else []
+        days.append((day, known, lessons))
+    today_known = days[0][1]
+    today_lessons = days[0][2]
     held_today = _held(today_lessons)
-    held_ahead = [item for _, items in days for item in _held(items)]
     now_iso = iso_local(local_now)
     now_lesson = next((item for item in held_today if item["start"] <= now_iso < item["end"]), None)
-    next_lesson = next((item for item in held_ahead if item["start"] > now_iso), None)
+    next_lesson, next_known = _first_lesson_after(days, now_iso)
+    next_day, next_day_known = _next_school_day(days, today, now_iso)
     changes_today = [item for item in today_lessons if item["substitution"] or item["cancelled"]]
     open_absences = _open_absences(language, snapshot, child_key, today)
     exams = _upcoming_exams(language, config, store, snapshot, child_key, today, now_epoch)
     stamp, source = _last_updated(config, snapshot, child_key)
+    first_name = child_first_name(child_name(config, child_key))
+    names = _first_names(config)
+    unknown = [] if today_known else list(TODAY_FIELDS)
+    unknown += [] if next_known else [FIELD_NEXT_LESSON]
+    unknown += [] if next_day_known else [FIELD_NEXT_SCHOOL_DAY]
     return {
         "now_lesson": now_lesson,
         "next_lesson": next_lesson,
+        "lessons_ahead": _lessons_ahead(days, today, now_iso),
         "school_end_today": max((item["end"] for item in held_today), default=None),
-        "next_school_day": _next_school_day(days, today, now_iso),
+        "next_school_day": next_day,
         "changes_today": changes_today,
-        "unread_letters": _counted(state.get("letters")),
-        "unread_posts": _counted(state.get("posts")),
+        "unread_letters": _counted(state, "letters", first_name, names, unknown_lists),
+        "unread_posts": _counted(state, "posts", first_name, names, unknown_lists),
         "open_absences": {"count": len(open_absences), "items": open_absences},
         "next_absence": _next_absence(open_absences, today),
         "next_exam": exams[0] if exams else None,
         "exams_upcoming": {"count": len(exams), "items": exams, "days": EXAM_DAYS_AHEAD},
-        "school_day_today": bool(today_lessons),
+        "school_day_today": bool(held_today),
         "timetable_changed_today": bool(changes_today),
         "timetable_last_updated": stamp,
         "timetable_last_updated_source": source,
+        "unknown": sorted(unknown),
     }
 
 
@@ -910,6 +1006,7 @@ def _serialize_event(event):
         "kind": event.kind or "",
         "teacher": event.teacher or "",
         "substitution": bool(event.substitution),
+        "moved": event.moved or "",
     }
 
 
@@ -925,7 +1022,7 @@ def build_events(store, holiday_calendar, child_key, kind, start, end, now_epoch
         "label": "",
         "color": "",
     }
-    events = feed.gather_events(subscription, store, holiday_calendar, utc_moment(now_epoch))
+    events = feed.gather_events(subscription, store, holiday_calendar, utc_moment(now_epoch), open_without_region=True)
     chosen = []
     for event in events:
         first = _event_day(event.start)
@@ -991,29 +1088,50 @@ def _holiday_payload(span, today):
     }
 
 
-def build_school(store, holiday_calendar, now_epoch, school_id=""):
+def _first_unknown_day(payload, today):
+    status = payload.get("status")
+    if status == holidays.STATUS_OK:
+        return None
+    if status != holidays.STATUS_PARTIAL:
+        return today
+    starts = [max(today, date(year, 1, 1)) for year in payload.get("missing_years") or () if year >= today.year]
+    return min(starts, default=None)
+
+
+def build_school(store, holiday_calendar, now_epoch, school_id="", unknown_lists=True):
     config = config_for_connection(store, school_id)
     language = messages.normalize_language(config.get("language"))
     today = berlin.local_from_epoch(now_epoch).date()
     horizon = today + timedelta(days=feed.HOLIDAY_DAYS_AHEAD)
-    payload = holiday_calendar.range_info(today, horizon, config)
-    day_map = payload.get("days") or {}
-    school = _upcoming_spans(language, day_map, today, horizon, holidays.KIND_SCHOOL)
-    free = school + _upcoming_spans(language, day_map, today, horizon, holidays.KIND_PUBLIC)
+    payload = holiday_calendar.range_info(today, horizon, config, partial=True)
+    gap = _first_unknown_day(payload, today)
+    day_map = (payload.get("days") or {}) if gap != today else {}
+    school = [
+        span
+        for span in _upcoming_spans(language, day_map, today, horizon, holidays.KIND_SCHOOL)
+        if gap is None or span["start"] < gap
+    ]
+    free = school + [
+        span
+        for span in _upcoming_spans(language, day_map, today, horizon, holidays.KIND_PUBLIC)
+        if gap is None or span["start"] < gap
+    ]
     free.sort(key=lambda span: (span["start"], span["end"]))
+    unknown = [name for name, found in zip(HOLIDAY_FIELDS, (school, free)) if not found and gap is not None]
     state = school_state(store, school_id)
     return {
         "next_holiday": _holiday_payload(school[0], today) if school else None,
         "next_free_day": _holiday_payload(free[0], today) if free else None,
         "next_conference": next_conference(state, today),
         "region": str(config.get("holiday_region") or ""),
-        "unread_letters": _counted(state.get("letters")),
-        "unread_posts": _counted(state.get("posts")),
+        "unread_letters": _counted(state, "letters", unknown_lists=unknown_lists),
+        "unread_posts": _counted(state, "posts", unknown_lists=unknown_lists),
         "unread_mail": school_mail(store, school_id),
         "open_tasks": school_list(state, SCHOOL_TASKS),
         "news": school_list(state, SCHOOL_NEWS),
         "unread_forum_posts": school_list(state, SCHOOL_FORUMS),
         "texts": school_list(state, SCHOOL_TEXTS),
+        "unknown": unknown,
     }
 
 

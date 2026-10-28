@@ -333,7 +333,7 @@ def test_editing_only_the_name_of_a_colliding_entry_is_allowed(school):
 
 
 class Holidays:
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         return {"status": "ok", "days": {}, "periods": [{"type": "summer", "kind": "school", "start": "2027-07-01"}]}
 
 
@@ -635,7 +635,7 @@ def test_a_rollover_leaves_every_old_date_alone_and_copies_the_rhythm_into_the_n
 
 
 class SummerHolidays:
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         return {"status": "ok", "days": {}, "periods": list(SUMMERS)}
 
 

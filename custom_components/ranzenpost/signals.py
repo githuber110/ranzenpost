@@ -64,8 +64,8 @@ def _iso(value) -> str | None:
     return value.isoformat() if value else None
 
 
-def _notice_key(notice: Notice) -> tuple[str, ...]:
-    if notice.id:
+def _notice_key(notice: Notice, by_id: bool = True) -> tuple[str, ...]:
+    if notice.id and by_id:
         return (notice.id,)
     return (notice.title, notice.sender, _iso(notice.date))
 
@@ -78,12 +78,19 @@ def _notice_data(item: Notice) -> dict[str, Any]:
     return data
 
 
-def _new_notices(previous: Notices, current: Notices) -> list[dict[str, Any]]:
+def _new_notices(previous: Notices | None, current: Notices | None) -> list[dict[str, Any]]:
+    if previous is None or current is None:
+        return []
     if current.fresh is not None:
         floor = max((item.seen for item in previous.fresh or ()), default=0)
         return [_notice_data(item) for item in sorted(current.fresh, key=lambda item: item.seen) if item.seen > floor]
-    known = {_notice_key(item) for item in previous.items}
-    fresh = [item for item in current.items if _notice_key(item) not in known]
+    if current.ids is not None and previous.ids is not None:
+        known_ids = set(previous.ids)
+        listed = {item.id: item for item in current.items if item.id}
+        return [_notice_data(listed[item]) if item in listed else {ATTR_ID: item} for item in current.ids if item not in known_ids]
+    by_id = all(item.id for item in (*previous.items, *current.items))
+    known = {_notice_key(item, by_id) for item in previous.items}
+    fresh = [item for item in current.items if _notice_key(item, by_id) not in known]
     if fresh:
         return [_notice_data(item) for item in fresh]
     if current.count > previous.count:
@@ -99,6 +106,14 @@ def _change_data(change: Change) -> dict[str, Any]:
     return {ATTR_SUMMARY: change.summary, ATTR_DATE: _iso(change.date), ATTR_PERIOD: change.period}
 
 
+def change_signals(child_key: str, school_id: str, new_changes: list[Change]) -> list[Signal]:
+    return [
+        Signal(CHANGE_TRIGGERS[change.kind], school_id, child_key, _change_data(change))
+        for change in new_changes
+        if change.child_key == child_key and change.kind in CHANGE_TRIGGERS
+    ]
+
+
 def child_signals(
     child_key: str, school_id: str, previous: State, current: State, new_changes: list[Change]
 ) -> list[Signal]:
@@ -106,10 +121,7 @@ def child_signals(
     if current.timetable_last_updated != previous.timetable_last_updated:
         data = {ATTR_LAST_UPDATED: _iso(current.timetable_last_updated), ATTR_SOURCE: current.timetable_last_updated_source}
         signals.append(Signal(TRIGGER_TIMETABLE_CHANGED, school_id, child_key, data))
-    for change in new_changes:
-        trigger = CHANGE_TRIGGERS.get(change.kind)
-        if change.child_key == child_key and trigger:
-            signals.append(Signal(trigger, school_id, child_key, _change_data(change)))
+    signals.extend(change_signals(child_key, school_id, new_changes))
     for data in _new_notices(previous.unread_letters, current.unread_letters):
         signals.append(Signal(TRIGGER_NEW_LETTER, school_id, child_key, data))
     for data in _new_notices(previous.unread_posts, current.unread_posts):
@@ -151,8 +163,7 @@ def school_notice_signals(school_id: str, previous: School, current: School) -> 
         (TRIGGER_SCHOOL_NEW_FORUM_POST, previous.unread_forum_posts, current.unread_forum_posts),
         (TRIGGER_SCHOOL_NEW_TEXT, previous.texts, current.texts),
     ):
-        if before is not None and now is not None:
-            signals.extend(Signal(trigger, school_id, "", data) for data in _new_notices(before, now))
+        signals.extend(Signal(trigger, school_id, "", data) for data in _new_notices(before, now))
     return signals
 
 
@@ -166,7 +177,12 @@ def signals_between(
     schools: dict[str, School] | None = None,
 ) -> list[Signal]:
     if previous_info is None:
-        return []
+        return [
+            signal
+            for child in info.children
+            if child.key in states
+            for signal in change_signals(child.key, child.school_id, new_changes)
+        ]
     signals: list[Signal] = []
     for school in info.schools:
         before = previous_info.school(school.id)
@@ -181,6 +197,8 @@ def signals_between(
         current = states.get(child.key)
         if before is not None and current is not None:
             signals.extend(child_signals(child.key, child.school_id, before, current, new_changes))
+        elif current is not None:
+            signals.extend(change_signals(child.key, child.school_id, new_changes))
     return signals
 
 

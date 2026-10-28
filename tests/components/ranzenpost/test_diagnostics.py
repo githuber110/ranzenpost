@@ -52,6 +52,7 @@ async def test_diagnostics_redact_the_token_and_carry_the_snapshot(hass, aioclie
     assert result["schools"][SCHOOL]["modules"]["letters"] is True
     assert set(result["states"]) == {"child-1", "child-2"}
     assert result["states"]["child-1"]["unread_letters"]["count"] == 2
+    assert result["states"]["child-1"]["unknown"] == []
     assert result["states"]["child-1"]["now_lesson"]["subject_code"] == "MA"
     assert result["states"]["child-1"]["now_lesson"]["start"] == "2026-09-02T09:00:00+02:00"
     assert result["states"]["child-1"]["open_absences"][0]["status"] == "pending"
@@ -91,6 +92,8 @@ async def test_diagnostics_carry_no_school_or_person_text(hass, aioclient_mock, 
     assert result["states"]["child-1"]["next_absence"]["summary"] == REDACTED
     assert result["changes"][0]["summary"] == REDACTED
     assert result["schools"][SCHOOL]["school"]["next_conference"]["title"] == REDACTED
+    assert result["schools"][SCHOOL]["school"]["unread_forum_posts"]["items"][0]["text"] == REDACTED
+    assert "Lunch break games" not in dump
 
 
 async def test_diagnostics_hide_child_keys_that_carry_a_name(hass, aioclient_mock, frozen_now):

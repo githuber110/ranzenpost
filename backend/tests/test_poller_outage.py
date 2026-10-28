@@ -85,7 +85,7 @@ def test_an_outage_is_recorded_as_its_own_state_and_never_as_a_login_failure(tmp
     assert AUTH_NOTIFIED_FLAG not in store.connection_store(SCHOOL).load_config()
 
 
-def test_an_outage_keeps_the_snapshot_and_the_last_known_summaries(tmp_path):
+def test_an_outage_keeps_the_snapshot_and_leaves_the_letters_unknown(tmp_path):
     store = _store(tmp_path)
     service = FlakyService(store, ["ok", _outage()])
     service.letters_value = {"letters": [{"letter_id": "l1", "recipient_id": "r1", "title": "Ausflug", "unread": True}]}
@@ -93,12 +93,12 @@ def test_an_outage_keeps_the_snapshot_and_the_last_known_summaries(tmp_path):
     notifier = NotifierRecorder()
     _poller(store, service, clock, notifier).poll_once()
     before = store.load_calendar_snapshot()
-    letters_before = integration.school_state(store, SCHOOL)["letters"]
+    assert integration.school_state(store, SCHOOL)["letters"][0]["id"] == "l1:r1"
     clock.advance(INTERVAL)
     _poller(store, service, clock, notifier).poll_once()
     assert store.load_calendar_snapshot() == before
     slot = integration.school_state(store, SCHOOL)
-    assert slot["letters"] == letters_before
+    assert slot["letters_unknown"] is True
     assert slot[integration.LAST_SUCCESS] == NOW_EPOCH
 
 

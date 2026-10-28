@@ -10,7 +10,14 @@ from aiohasupervisor import SupervisorError
 from aiohasupervisor.models import AddonState as SupervisorAddonState
 from aiohasupervisor.models import StoreAddRepository
 from homeassistant.components.hassio import get_supervisor_client
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    SOURCE_IGNORE,
+    ConfigEntry,
+    ConfigEntryState,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.hassio import is_hassio
@@ -23,6 +30,9 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 from homeassistant.loader import async_get_integration
@@ -60,6 +70,7 @@ STEP_WAIT_DISCOVERY = "wait_discovery"
 STEP_ADDON_NO_DISCOVERY = "addon_no_discovery"
 STEP_MANUAL = "manual"
 STEP_REAUTH_CONFIRM = "reauth_confirm"
+STEP_RECONFIGURE = "reconfigure"
 STEP_FINISH_ADDON = "finish_addon"
 STEP_INSTALL_FAILED = "install_failed"
 STEP_START_FAILED = "start_failed"
@@ -90,7 +101,9 @@ def manual_schema(defaults: Mapping[str, Any]) -> vol.Schema:
             vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=65535)
             ),
-            vol.Required(CONF_TOKEN, default=defaults.get(CONF_TOKEN, "")): str,
+            vol.Required(CONF_TOKEN, default=defaults.get(CONF_TOKEN, "")): TextSelector(
+                TextSelectorConfig(type=TextSelectorType.PASSWORD)
+            ),
         }
     )
 
@@ -107,30 +120,29 @@ def child_option_label(info: Info | None, child: Child) -> str:
 
 
 def options_schema(options: Mapping[str, Any], info: Info | None, auto_update: bool | None = None) -> vol.Schema:
-    children = info.children if info else ()
-    choices = [SelectOptionDict(value=child.key, label=child_option_label(info, child)) for child in children]
-    known = {child.key for child in children}
-    chosen = [child_key for child_key in options.get(CONF_CHILDREN) or [] if child_key in known]
-    schema = vol.Schema(
-        {
-            vol.Required(CONF_SCAN_INTERVAL, default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.All(
-                NumberSelector(
-                    NumberSelectorConfig(
-                        min=MIN_SCAN_INTERVAL,
-                        max=MAX_SCAN_INTERVAL,
-                        step=1,
-                        mode=NumberSelectorMode.BOX,
-                        unit_of_measurement="s",
-                    )
-                ),
-                vol.Coerce(int),
-                vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+    fields: dict[Any, Any] = {
+        vol.Required(CONF_SCAN_INTERVAL, default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.All(
+            NumberSelector(
+                NumberSelectorConfig(
+                    min=MIN_SCAN_INTERVAL,
+                    max=MAX_SCAN_INTERVAL,
+                    step=1,
+                    mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="s",
+                )
             ),
-            vol.Optional(CONF_CHILDREN, default=chosen): SelectSelector(
-                SelectSelectorConfig(options=choices, multiple=True, mode=SelectSelectorMode.LIST)
-            ),
-        }
-    )
+            vol.Coerce(int),
+            vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+        ),
+    }
+    if info is not None:
+        choices = [SelectOptionDict(value=child.key, label=child_option_label(info, child)) for child in info.children]
+        known = {child.key for child in info.children}
+        chosen = [child_key for child_key in options.get(CONF_CHILDREN) or [] if child_key in known]
+        fields[vol.Optional(CONF_CHILDREN, default=chosen)] = SelectSelector(
+            SelectSelectorConfig(options=choices, multiple=True, mode=SelectSelectorMode.LIST)
+        )
+    schema = vol.Schema(fields)
     if auto_update is None:
         return schema
     return schema.extend({vol.Optional(CONF_AUTO_UPDATE, default=auto_update): BooleanSelector()})
@@ -383,6 +395,29 @@ class RanzenpostConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={CONF_HOST: entry.data[CONF_HOST]},
         )
 
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            data = _entry_data(user_input)
+            unique_id = unique_id_of(data[CONF_HOST], data[CONF_PORT])
+            others = [other for other in self._async_current_entries() if other.entry_id != entry.entry_id and other.unique_id == unique_id]
+            if any(other.source != SOURCE_IGNORE for other in others):
+                return self.async_abort(reason=ABORT_ALREADY_CONFIGURED)
+            errors = await self._try_connection(data)
+            if not errors:
+                for ignored in others:
+                    await self.hass.config_entries.async_remove(ignored.entry_id)
+                default_title = f"{BRAND} ({entry.data[CONF_HOST]})"
+                title = f"{BRAND} ({data[CONF_HOST]})" if entry.title in (default_title, BRAND) else entry.title
+                return self.async_update_reload_and_abort(entry, unique_id=unique_id, title=title, data_updates=data)
+        return self.async_show_form(
+            step_id=STEP_RECONFIGURE,
+            data_schema=manual_schema(user_input or entry.data),
+            errors=errors,
+            description_placeholders={CONF_HOST: entry.data[CONF_HOST]},
+        )
+
     def _create_entry(self) -> ConfigFlowResult:
         return self.async_create_entry(title=f"{BRAND} ({self._data[CONF_HOST]})", data=self._data)
 
@@ -470,6 +505,8 @@ class RanzenpostOptionsFlow(OptionsFlow):
         else:
             options = dict(user_input)
             wanted = options.pop(CONF_AUTO_UPDATE, None)
+            if CONF_CHILDREN not in options and CONF_CHILDREN in self.config_entry.options:
+                options[CONF_CHILDREN] = list(self.config_entry.options[CONF_CHILDREN])
             if await self._apply_auto_update(wanted):
                 return self.async_create_entry(data=options)
             errors["base"] = ERROR_AUTO_UPDATE

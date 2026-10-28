@@ -48,6 +48,11 @@ def test_config_yaml_announces_the_integration_through_supervisor_discovery():
     assert re.search(r"^hassio_api:\s*true\s*$", text, re.MULTILINE), "the discovery call needs hassio_api: true"
 
 
+def test_config_yaml_lets_the_supervisor_watch_the_light_ping():
+    text = (ADDON / "config.yaml").read_text(encoding="utf-8")
+    assert re.search(r"^watchdog: http://\[HOST\]:\[PORT:8099\]/api/ping$", text, re.MULTILINE)
+
+
 def test_run_sh_exports_only_the_passphrase_from_the_options():
     text = (ADDON / "run.sh").read_text(encoding="utf-8")
     assert "ISERV_PASSPHRASE" in text

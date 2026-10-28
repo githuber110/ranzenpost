@@ -133,6 +133,10 @@ def create_app(
     def _connection_config(connection_id):
         return config_for_connection(service.store, service.pick_school(connection_id or None).id)
 
+    @app.get("/api/ping")
+    def ping():
+        return {"status": "ok"}
+
     @app.get("/api/health")
     def health():
         overall, rows = service.health_overview()

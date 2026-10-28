@@ -9,8 +9,15 @@ from homeassistant.helpers.condition import ConditionCheckerType
 from homeassistant.helpers.typing import ConfigType, TemplateVarsType
 from homeassistant.util import dt as dt_util
 
-from .api import Lesson, State
-from .const import CHILD_CONDITIONS, CONDITION_SCHOOL_DAY, DOMAIN, MODULE_TIMETABLE
+from .api import State
+from .const import (
+    CHILD_CONDITIONS,
+    CONDITION_SCHOOL_DAY,
+    DOMAIN,
+    ERROR_WRONG_DEVICE_CONDITION,
+    FIELD_SCHOOL_DAY_TODAY,
+    MODULE_TIMETABLE,
+)
 from .devices import DeviceRef, data_of_device, device_ref_of_id, modules_of_device
 
 CONDITION_SCHEMA = cv.DEVICE_CONDITION_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): vol.In(CHILD_CONDITIONS)})
@@ -24,20 +31,17 @@ def child_state_of(hass: HomeAssistant, ref: DeviceRef | None) -> State | None:
     return data.states.get(ref.key) if data else None
 
 
-def lesson_covers(lesson: Lesson | None, now) -> bool:
-    return bool(lesson and lesson.start and lesson.end and lesson.start <= now < lesson.end)
-
-
 def lesson_running(state: State) -> bool:
-    now = dt_util.now()
-    return lesson_covers(state.now_lesson, now) or lesson_covers(state.next_lesson, now)
+    return state.lesson_at(dt_util.now()) is not None
 
 
 async def async_validate_condition_config(hass: HomeAssistant, config: ConfigType) -> ConfigType:
     config = CONDITION_SCHEMA(config)
     ref = device_ref_of_id(hass, config[CONF_DEVICE_ID])
     if ref is not None and not ref.is_child:
-        raise InvalidDeviceAutomationConfig(f"{config[CONF_TYPE]} is not a condition of a {ref.kind} device")
+        raise InvalidDeviceAutomationConfig(
+            translation_domain=DOMAIN, translation_key=ERROR_WRONG_DEVICE_CONDITION, translation_placeholders={"type": config[CONF_TYPE]}
+        )
     return config
 
 
@@ -62,7 +66,7 @@ def async_condition_from_config(hass: HomeAssistant, config: ConfigType) -> Cond
         if state is None:
             return False
         if kind == CONDITION_SCHOOL_DAY:
-            return state.school_day_today
+            return state.knows(FIELD_SCHOOL_DAY_TODAY) and state.school_day_today
         return lesson_running(state)
 
     return test_condition

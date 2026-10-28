@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import async_get_device_automa
 from custom_components.ranzenpost.const import CHILD_CONDITIONS, DOMAIN
 from custom_components.ranzenpost.device_condition import async_condition_from_config, async_validate_condition_config
 
-from . import CHILD_1, CHILD_2, SCHOOL, fixture, setup_entry
+from . import CHILD_1, CHILD_2, SCHOOL, fixture, route, setup_entry
 
 FROZEN_LESSON_END = "2026-09-02T07:46:00+00:00"
 
@@ -70,6 +70,17 @@ async def test_is_school_day_follows_the_state_of_each_child(hass, aioclient_moc
 
     assert alex(hass, {}) is True
     assert kim(hass, {}) is False
+
+
+async def test_is_school_day_is_false_while_the_day_is_unknown(hass, aioclient_mock, frozen_now):
+    state = fixture("state_child_1")
+    state["unknown"] = ["school_day_today"]
+    aioclient_mock.get(route("state", child=CHILD_1), json=state)
+    entry = await setup_entry(hass, aioclient_mock)
+
+    alex = async_condition_from_config(hass, condition_of(child_device(hass, entry).id, "is_school_day"))
+
+    assert alex(hass, {}) is False
 
 
 async def test_lesson_running_is_true_only_while_the_clock_is_inside_a_lesson(hass, aioclient_mock, frozen_now):

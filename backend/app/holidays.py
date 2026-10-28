@@ -24,6 +24,7 @@ PERIOD_KEY_PREFIX = "holidays.period."
 STATUS_DISABLED = "disabled"
 STATUS_OK = "ok"
 STATUS_UNKNOWN = "unknown"
+STATUS_PARTIAL = "partial"
 
 COVERAGE_FULL = "full"
 COVERAGE_PARTIAL = "partial"
@@ -440,6 +441,15 @@ def _week_rows(start, end, days, periods):
     return rows
 
 
+def day_unknown(payload, day, open_without_region=False):
+    status = payload.get("status")
+    if status == STATUS_OK or (open_without_region and status == STATUS_DISABLED):
+        return False
+    if status == STATUS_PARTIAL:
+        return day.year in (payload.get("missing_years") or ())
+    return True
+
+
 class HolidayCalendar:
     def __init__(self, store, fetcher=None, clock=None):
         self.store = store
@@ -503,12 +513,12 @@ class HolidayCalendar:
         current_year = today.year
         outcome = {"stale": False, "changed": False}
         collected = {}
-        complete = True
+        missing = []
         required = list(range(start.year, end.year + 1))
         for year in required:
             entry = self._load_year(cache, region, year, now, current_year, outcome)
             if entry is None:
-                complete = False
+                missing.append(year)
                 continue
             for period in entry["periods"]:
                 if isinstance(period, dict) and period.get("id"):
@@ -517,9 +527,9 @@ class HolidayCalendar:
             self._load_year(cache, region, year, now, current_year, outcome)
         if outcome["changed"]:
             self.store.save_holidays_cache(cache)
-        return list(collected.values()), complete, outcome["stale"]
+        return list(collected.values()), missing, len(missing) < len(required), outcome["stale"]
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         if end < start:
             start, end = end, start
         window_start = start - timedelta(days=start.weekday())
@@ -540,9 +550,9 @@ class HolidayCalendar:
         }
         if not region:
             return payload
-        periods, complete, stale = self._periods(region, window_start, window_end)
+        periods, missing, covered, stale = self._periods(region, window_start, window_end)
         payload["stale"] = stale
-        if not complete:
+        if missing and not (partial and covered):
             payload["status"] = STATUS_UNKNOWN
             return payload
         overlapping = [
@@ -552,7 +562,9 @@ class HolidayCalendar:
         ]
         overlapping.sort(key=lambda period: (period["start"], period["end"], period["kind"], period["name"]))
         groups = known_groups(periods)
-        payload["status"] = STATUS_OK
+        payload["status"] = STATUS_PARTIAL if missing else STATUS_OK
+        if missing:
+            payload["missing_years"] = missing
         payload["groups"] = sorted(groups)
         payload["periods"] = overlapping
         payload["days"] = _day_map(window_start, window_end, overlapping, groups)

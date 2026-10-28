@@ -27,6 +27,9 @@ SUBSTITUTED_FIELDS = (
 )
 PLACEHOLDER_CHARACTERS = frozenset("-+?–— ")
 CHANGE_ITEMS_FORMAT = "lessons"
+MOVE_AWAY_CODE = "3"
+MOVE_HERE_CODE = "7"
+UNKNOWN_PLACE = {"date": "", "period": None, "period_end": None}
 
 
 def time_table_refusal(error):
@@ -730,10 +733,16 @@ def _codes(record):
     return frozenset(text.strip() for text in change_type_texts(record.get("change_types")) or [] if text and text.strip())
 
 
+def _codes_together(away, here):
+    if not away.codes or not here.codes or away.codes & here.codes:
+        return True
+    return MOVE_AWAY_CODE in away.codes and MOVE_HERE_CODE in here.codes
+
+
 def _moves_together(away, here):
     return (
         away.subject == here.subject
-        and (not away.codes or not here.codes or bool(away.codes & here.codes))
+        and _codes_together(away, here)
         and (not away.classes or not here.classes or bool(away.classes & here.classes))
         and (not away.teacher or not here.teacher or away.teacher == here.teacher)
         and not set(away.places) & set(here.places)
@@ -754,6 +763,12 @@ def _moves(reach, rows):
             continue
         moves[number] = {"moved_to": _span(here.places)}
         moves[partner] = {"moved_from": _span(away.places)}
+    for number, side in aways:
+        if number not in moves and MOVE_AWAY_CODE in side.codes:
+            moves[number] = {"moved_to": dict(UNKNOWN_PLACE)}
+    for number, side in heres:
+        if number not in moves and MOVE_HERE_CODE in side.codes:
+            moves[number] = {"moved_from": dict(UNKNOWN_PLACE)}
     return moves
 
 

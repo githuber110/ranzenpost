@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2610.5.0";
+  const CARD_VERSION = "2610.6.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -44,7 +44,12 @@
   const SIZE_NORMAL = "normal";
   const SIZES = [SIZE_COMPACT, SIZE_NORMAL];
   const ABSENCE_DAYS_AHEAD = 14;
+  const DATE_ORDERS = ["dmy", "mdy", "ymd"];
+  const NUMBER_LOCALES = { comma_decimal: ["en-US", "en"], decimal_comma: ["de", "es", "it"], space_comma: ["fr", "sv", "cs"], quote_decimal: ["de-CH"] };
+  const PARTS_FORMATTERS = new Map();
   const NEXT_DAY_AHEAD = 28;
+  const OWN_ENTRIES_MAX_DAYS = 31;
+  const REGISTRY_MAX_AGE_MS = 10 * 60 * 1000;
   const SWITCH_END = "end";
   const SWITCH_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
   const SWITCH_TIME_DEFAULT = "15:00";
@@ -74,6 +79,7 @@
   const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"];
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
   const DAY_BLOCKS = ["today", "next_day", "next_lesson", "week"];
+  const EDITOR_KEYS = ["type", "title", "blocks", "children", "child"];
   const HOLIDAY_AHEAD_DAYS = 365;
   const SCHOOL_EVENTS_AHEAD_DAYS = 60;
   const COURSE_CELL_MIN = 3;
@@ -245,6 +251,7 @@
     };
   })();
   const CROSS = String.fromCharCode(0x00d7);
+  const UNKNOWN_MARK = "?";
 
   const ICON_SHAPES = {
     exam: '<path d="M12 3.4 14.7 9l6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.9 9.3 9z" fill="currentColor" stroke-linejoin="round"/>',
@@ -265,6 +272,9 @@
       "lesson.next": "Nächste",
       "lesson.substitution": "Vertretung",
       "lesson.substitutionShort": "Vertr.",
+      "lesson.moved": "Verlegt",
+      "lesson.movedShort": "Verlegt",
+      "lesson.movedHere": "Hierher verlegt",
       "lesson.cancelled": "Entfällt",
       "lesson.exam": "Prüfung",
       "lesson.courses": "Kurse",
@@ -336,6 +346,10 @@
       "block.toTimetable": "Zum Stundenplan",
       "block.noBlocks": "Keine Bausteine gewählt. Wähle in der Karte mindestens einen.",
       "block.unknown": "Unbekannter Baustein „{block}“.",
+      "block.failed": "Konnte gerade nicht geladen werden.",
+      "block.partial": "Einige Einträge konnten gerade nicht geladen werden.",
+      "count.unknown": "unbekannt",
+      "format.list": "„{key}“ muss eine Liste sein.",
       "editor.blocks": "Bausteine",
       "editor.blocks.helper": "Nur Bausteine der Module, die dein Konto hat.",
       "editor.blocks.missing": "Ohne Modul an dieser Schule: {names}.",
@@ -359,6 +373,9 @@
       "lesson.next": "Next",
       "lesson.substitution": "Substitute",
       "lesson.substitutionShort": "Sub.",
+      "lesson.moved": "Moved",
+      "lesson.movedShort": "Moved",
+      "lesson.movedHere": "Moved here",
       "lesson.cancelled": "Cancelled",
       "lesson.exam": "Exam",
       "lesson.courses": "courses",
@@ -430,6 +447,10 @@
       "block.toTimetable": "Open the timetable",
       "block.noBlocks": "No blocks chosen. Pick at least one in the card.",
       "block.unknown": "Unknown block “{block}”.",
+      "block.failed": "Could not be loaded right now.",
+      "block.partial": "Some entries could not be loaded right now.",
+      "count.unknown": "unknown",
+      "format.list": "“{key}” must be a list.",
       "editor.blocks": "Blocks",
       "editor.blocks.helper": "Only blocks of the modules your account has.",
       "editor.blocks.missing": "Without a module at this school: {names}.",
@@ -453,6 +474,9 @@
       "lesson.next": "التالية",
       "lesson.substitution": "حصة بديلة",
       "lesson.substitutionShort": "بديل",
+      "lesson.moved": "نُقلت",
+      "lesson.movedShort": "نُقلت",
+      "lesson.movedHere": "نُقلت إلى هنا",
       "lesson.cancelled": "ملغاة",
       "lesson.exam": "اختبار",
       "lesson.courses": "مقررات",
@@ -524,6 +548,10 @@
       "block.toTimetable": "فتح الجدول",
       "block.noBlocks": "لم تُختر كتل. اختر كتلة واحدة على الأقل في البطاقة.",
       "block.unknown": "كتلة غير معروفة «{block}».",
+      "block.failed": "تعذّر التحميل حاليًا.",
+      "block.partial": "تعذّر تحميل بعض الإدخالات حاليًا.",
+      "count.unknown": "غير معروف",
+      "format.list": "يجب أن يكون «{key}» قائمة.",
       "editor.blocks": "الكتل",
       "editor.blocks.helper": "فقط كتل الوحدات التي يملكها حسابك.",
       "editor.blocks.missing": "بلا وحدة في هذه المدرسة: {names}.",
@@ -547,6 +575,9 @@
       "lesson.next": "Sonraki",
       "lesson.substitution": "Vekil öğretmen",
       "lesson.substitutionShort": "Vekil",
+      "lesson.moved": "Taşındı",
+      "lesson.movedShort": "Taşındı",
+      "lesson.movedHere": "Buraya taşındı",
       "lesson.cancelled": "İptal",
       "lesson.exam": "Sınav",
       "lesson.courses": "ders",
@@ -618,6 +649,10 @@
       "block.toTimetable": "Ders programını aç",
       "block.noBlocks": "Blok seçilmedi. Kartta en az bir blok seç.",
       "block.unknown": "Bilinmeyen blok “{block}”.",
+      "block.failed": "Şu anda yüklenemedi.",
+      "block.partial": "Bazı kayıtlar şu anda yüklenemedi.",
+      "count.unknown": "bilinmiyor",
+      "format.list": "“{key}” bir liste olmalı.",
       "editor.blocks": "Bloklar",
       "editor.blocks.helper": "Yalnızca hesabının sahip olduğu modüllerin blokları.",
       "editor.blocks.missing": "Bu okulda modülü olmayan: {names}.",
@@ -641,6 +676,9 @@
       "lesson.next": "Следующий",
       "lesson.substitution": "Замена",
       "lesson.substitutionShort": "Замена",
+      "lesson.moved": "Перенесено",
+      "lesson.movedShort": "Перенесено",
+      "lesson.movedHere": "Перенесено сюда",
       "lesson.cancelled": "Отмена",
       "lesson.exam": "Контрольная",
       "lesson.courses": "курсы",
@@ -712,6 +750,10 @@
       "block.toTimetable": "Открыть расписание",
       "block.noBlocks": "Блоки не выбраны. Выберите в карточке хотя бы один.",
       "block.unknown": "Неизвестный блок «{block}».",
+      "block.failed": "Сейчас не удалось загрузить.",
+      "block.partial": "Некоторые записи сейчас не удалось загрузить.",
+      "count.unknown": "неизвестно",
+      "format.list": "«{key}» должен быть списком.",
       "editor.blocks": "Блоки",
       "editor.blocks.helper": "Только блоки модулей, которые есть у вашего аккаунта.",
       "editor.blocks.missing": "Без модуля в этой школе: {names}.",
@@ -735,6 +777,9 @@
       "lesson.next": "Наступний",
       "lesson.substitution": "Заміна",
       "lesson.substitutionShort": "Зам.",
+      "lesson.moved": "Перенесено",
+      "lesson.movedShort": "Перенесено",
+      "lesson.movedHere": "Перенесено сюди",
       "lesson.cancelled": "Скасовано",
       "lesson.exam": "Контрольна",
       "lesson.courses": "курси",
@@ -806,6 +851,10 @@
       "block.toTimetable": "Відкрити розклад",
       "block.noBlocks": "Блоки не вибрано. Виберіть у картці хоча б один.",
       "block.unknown": "Невідомий блок «{block}».",
+      "block.failed": "Зараз не вдалося завантажити.",
+      "block.partial": "Деякі записи зараз не вдалося завантажити.",
+      "count.unknown": "невідомо",
+      "format.list": "«{key}» має бути списком.",
       "editor.blocks": "Блоки",
       "editor.blocks.helper": "Лише блоки модулів, які має ваш обліковий запис.",
       "editor.blocks.missing": "Без модуля в цій школі: {names}.",
@@ -1022,7 +1071,9 @@
     .legend i { inline-size: 3px; block-size: 12px; border-radius: 2px; display: block; }
     .legend i.dot { inline-size: 9px; block-size: 9px; border-radius: 50%; }
     .legend i.sym { inline-size: auto; block-size: auto; border-radius: 0; font-size: 0.75rem; font-weight: 700; line-height: 1; font-style: normal; }
-    .card-update { margin: 0; margin-block-end: var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); border-inline-start: 3px solid var(--warn); background: var(--surface-2); font-size: 0.8125rem; text-align: start; }
+    .badge.unknown { background: var(--surface-2); color: var(--ink-2); }
+    .panel-head .count.unknown { color: var(--ink-3); }
+    .card-note, .card-update { margin: 0; margin-block-end: var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); border-inline-start: 3px solid var(--warn); background: var(--surface-2); font-size: 0.8125rem; text-align: start; }
     .stamp { margin-block-start: var(--s-4); font-size: 0.6875rem; color: var(--ink-3); text-align: start; font-variant-numeric: tabular-nums; padding: 0 var(--s-4); }
     .empty { text-align: center; padding: var(--s-11) var(--s-6) var(--s-8); }
     .empty > .ico-slot > .ico { inline-size: 64px; block-size: 64px; margin: 0 auto var(--s-6); padding: 18px; background: var(--surface-2); border-radius: 50%; color: var(--ink-2); }
@@ -1100,7 +1151,17 @@
   function switchOf(value) {
     if (Number.isInteger(value) && value >= 0 && value < 24 * 60) return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
     const text = value === undefined || value === null ? "" : String(value).trim();
-    return text === SWITCH_END || SWITCH_TIME.test(text) ? text : "";
+    if (text === SWITCH_END) return text;
+    const loose = /^(\d{1,2}):([0-5]\d)$/.exec(text);
+    const padded = loose ? `${loose[1].padStart(2, "0")}:${loose[2]}` : "";
+    return SWITCH_TIME.test(padded) ? padded : "";
+  }
+
+  function listOf(value) {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+    return null;
   }
 
   function normaliseBlocks(raw) {
@@ -1110,7 +1171,7 @@
       const given = entry && typeof entry === "object" ? entry : null;
       const key = given ? given.key : entry;
       const block = typeof key === "string" ? blockOf(key) : null;
-      if (!block || seen.has(block.key)) continue;
+      if (!block || !block.surfaces.includes("card") || seen.has(block.key)) continue;
       seen.add(block.key);
       const normalised = { key: block.key, size: sizeOf(block, given ? given.size : null) };
       const turn = block.key === "today" && given ? switchOf(given.switch) : "";
@@ -1140,7 +1201,10 @@
   function blocksOfLegacy(config) {
     const view = config && config.view ? String(config.view) : DEFAULT_VIEW;
     const keys = LEGACY_BLOCKS[view] || LEGACY_BLOCKS[DEFAULT_VIEW];
-    return keys.map((key) => ({ key, size: view === "family" && key === "today" ? SIZE_COMPACT : blockOf(key).size }));
+    const family = view === "family";
+    const withNextDay = family && Number(config && config.days) !== 1;
+    const listed = withNextDay ? [keys[0], "next_day", ...keys.slice(1)] : keys;
+    return listed.map((key) => ({ key, size: family && (key === "today" || key === "next_day") ? SIZE_COMPACT : blockOf(key).size }));
   }
 
   function schoolBlocksOfLegacy() {
@@ -1233,8 +1297,47 @@
     return `<span class="ico-slot">${iconSvg(name, size)}</span>`;
   }
 
+  function systemLocale() {
+    return (typeof navigator !== "undefined" && navigator.language) || FALLBACK_LANGUAGE;
+  }
+
+  function hourCycleOf(choice) {
+    if (choice === "12") return "h12";
+    if (choice === "24") return "h23";
+    if (choice !== "system") return "";
+    const cycle = plainFormatter(systemLocale(), { hour: "numeric" }).resolvedOptions().hourCycle;
+    return cycle === "h11" || cycle === "h12" ? "h12" : "h23";
+  }
+
+  function numericOrderOf(choice) {
+    if (DATE_ORDERS.includes(String(choice || "").toLowerCase())) return String(choice).toLowerCase();
+    if (choice !== "system") return "";
+    const parts = plainFormatter(systemLocale(), { day: "2-digit", month: "2-digit", year: "numeric" }).formatToParts(new Date(2000, 11, 31));
+    return parts.filter((part) => ["day", "month", "year"].includes(part.type)).map((part) => part.type[0]).join("");
+  }
+
+  function pageLanguage() {
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    return (root && root.getAttribute("lang")) || "";
+  }
+
+  function languageTagOf(hass) {
+    return (hass && (hass.locale?.language || hass.language)) || pageLanguage() || systemLocale();
+  }
+
+  function numbersOf(hass) {
+    const choice = hass && hass.locale ? hass.locale.number_format : "";
+    if (choice === "none") return { locales: "en-US", grouping: false };
+    if (choice === "system") return { locales: undefined, grouping: true };
+    return { locales: NUMBER_LOCALES[choice] || languageTagOf(hass), grouping: true };
+  }
+
   function localeOf(hass) {
-    return (hass && (hass.locale?.language || hass.language)) || FALLBACK_LANGUAGE;
+    const language = languageTagOf(hass);
+    const settings = (hass && hass.locale) || {};
+    const cycle = hourCycleOf(settings.time_format);
+    const order = numericOrderOf(settings.date_format);
+    return language + (cycle ? `-u-hc-${cycle}` : "") + (order ? `-x-${order}` : "");
   }
 
   function languageOf(hass) {
@@ -1274,8 +1377,21 @@
       .replace(/^_+|_+$/g, "");
   }
 
+  function partsFormatter(zone, options) {
+    const key = `${zone}|${JSON.stringify(options)}`;
+    if (!PARTS_FORMATTERS.has(key)) PARTS_FORMATTERS.set(key, new Intl.DateTimeFormat("en-US", { timeZone: zone, numberingSystem: "latn", ...options }));
+    return PARTS_FORMATTERS.get(key);
+  }
+
+  function partsOf(date, zone, options) {
+    const found = {};
+    for (const part of partsFormatter(zone, options).formatToParts(date)) found[part.type] = part.value;
+    return found;
+  }
+
   function dateKey(date, zone) {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+    const parts = partsOf(date, zone, { year: "numeric", month: "2-digit", day: "2-digit" });
+    return `${parts.year.padStart(4, "0")}-${parts.month}-${parts.day}`;
   }
 
   function offsetMinutes(date, zone) {
@@ -1315,12 +1431,48 @@
     return text.replace(BIDI_MARKS, "");
   }
 
-  function dateFormatter(locale, options) {
-    try {
-      return new Intl.DateTimeFormat(locale, options);
-    } catch (error) {
-      return new Intl.DateTimeFormat(FALLBACK_LANGUAGE, options);
+  function localeChain(locale) {
+    const full = String(locale || "");
+    const base = full.split(/-[ux]-/)[0];
+    const primary = base.split(/[-_]/)[0];
+    return [...new Set([full, base, primary, FALLBACK_LANGUAGE].filter(Boolean))];
+  }
+
+  function plainFormatter(locale, options) {
+    for (const candidate of localeChain(locale)) {
+      try {
+        return new Intl.DateTimeFormat(candidate, options);
+      } catch (error) {
+        if (candidate === FALLBACK_LANGUAGE) throw error;
+      }
     }
+    return new Intl.DateTimeFormat(FALLBACK_LANGUAGE, options);
+  }
+
+  function dateOrderOf(locale) {
+    const order = /-x-(dmy|mdy|ymd)$/.exec(String(locale || ""));
+    return order ? order[1] : "";
+  }
+
+  function orderedParts(parts, order) {
+    const numeric = { d: "day", m: "month", y: "year" };
+    const wanted = [...order].map((letter) => numeric[letter]).filter((type) => parts.some((part) => part.type === type));
+    const first = parts.findIndex((part) => wanted.includes(part.type));
+    let last = -1;
+    parts.forEach((part, index) => {
+      if (wanted.includes(part.type)) last = index;
+    });
+    const separator = parts.slice(first, last).find((part) => part.type === "literal");
+    const value = (type) => parts.find((part) => part.type === type).value;
+    const middle = wanted.map(value).join(separator ? separator.value : "/");
+    return parts.slice(0, first).map((part) => part.value).join("") + middle + parts.slice(last + 1).map((part) => part.value).join("");
+  }
+
+  function dateFormatter(locale, options) {
+    const formatter = plainFormatter(locale, options);
+    const order = dateOrderOf(locale);
+    if (!order || !options.day || !options.month) return formatter;
+    return { format: (date) => orderedParts(formatter.formatToParts(date), order) };
   }
 
   function formatTime(date, locale, zone) {
@@ -1336,7 +1488,8 @@
   }
 
   function slotKey(date, zone) {
-    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+    const parts = partsOf(date, zone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    return `${parts.hour.padStart(2, "0")}:${parts.minute}`;
   }
 
   function formatShortDate(key, locale, zone) {
@@ -1363,12 +1516,18 @@
     return formatDate(zonedMidnight(key, zone), locale, zone);
   }
 
-  function formatNumber(value, locale) {
-    try {
-      return new Intl.NumberFormat(locale).format(value);
-    } catch (error) {
-      return String(value);
+  function formatNumber(value, numbers) {
+    const chosen = numbers && typeof numbers === "object" ? numbers : { locales: numbers, grouping: true };
+    const options = chosen.grouping === false ? { useGrouping: false } : {};
+    const candidates = Array.isArray(chosen.locales) || chosen.locales === undefined ? [chosen.locales] : localeChain(chosen.locales);
+    for (const candidate of candidates) {
+      try {
+        return new Intl.NumberFormat(candidate, options).format(value);
+      } catch (error) {
+        if (candidate === FALLBACK_LANGUAGE) return String(value);
+      }
     }
+    return String(value);
   }
 
   function stateOf(hass, entityId) {
@@ -1376,9 +1535,11 @@
   }
 
   function numberOf(hass, entityId) {
+    if (!entityId) return 0;
     const state = stateOf(hass, entityId);
-    const value = state ? Number(state.state) : NaN;
-    return Number.isFinite(value) ? value : 0;
+    if (isMissing(state)) return null;
+    const value = Number(state.state);
+    return Number.isFinite(value) ? value : null;
   }
 
   function isMissing(state) {
@@ -1427,9 +1588,11 @@
       }
       return school;
     };
+    const entityIds = new Set();
     for (const entry of entities || []) {
       const uniqueId = String(entry.unique_id || "");
-      if (entry.platform !== DOMAIN || !uniqueId.startsWith(`${DOMAIN}_`)) continue;
+      if (entry.platform !== DOMAIN || !uniqueId.startsWith(`${DOMAIN}_`) || entry.disabled_by) continue;
+      entityIds.add(entry.entity_id);
       const key = entry.translation_key || uniqueId.slice(uniqueId.lastIndexOf("_") + 1);
       const parts = splitUniqueId(uniqueId, key);
       if (!parts) continue;
@@ -1463,7 +1626,18 @@
       child.fullSlug = slugify(`${child.name} ${child.school}`);
     }
     const ordered = [...children.values()].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
-    return { children: ordered, schools: listed };
+    return { children: ordered, schools: listed, entityIds };
+  }
+
+  function registryOutdated(hass, registry) {
+    if (Date.now() - registryAt > REGISTRY_MAX_AGE_MS) return true;
+    const listed = hass && hass.entities && typeof hass.entities === "object" ? Object.values(hass.entities) : [];
+    const known = registry.entityIds || new Set();
+    return listed.some((entry) => entry && entry.platform === DOMAIN && entry.entity_id && !known.has(entry.entity_id));
+  }
+
+  function absentEntities(hass, plan) {
+    return plan.requests.some((request) => !request.entityId.startsWith(OWN_PREFIX) && !hass.states[request.entityId]);
   }
 
   function childlessSchools(registry) {
@@ -1522,16 +1696,33 @@
     return `${OWN_PREFIX}${child.deviceId}`;
   }
 
+  function ownRanges(firstKey, lastKey, zone) {
+    const ranges = [];
+    let from = firstKey;
+    while (shiftKey(from, OWN_ENTRIES_MAX_DAYS, zone) < lastKey) {
+      const till = shiftKey(from, OWN_ENTRIES_MAX_DAYS, zone);
+      ranges.push([from, till]);
+      from = till;
+    }
+    ranges.push([from, lastKey]);
+    return ranges;
+  }
+
+  async function loadOwnEntries(hass, deviceId, start, end, zone) {
+    const ranges = ownRanges(dateKey(start, zone), dateKey(end, zone), zone);
+    const answers = await Promise.all(ranges.map(([from, till]) => hass.callWS({ type: WS_OWN_ENTRIES, device_id: deviceId, start: from, end: till })));
+    const seen = new Set();
+    return answers.flat().filter((event) => {
+      const key = JSON.stringify([event && event.uid, event && event.start]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   function loadEvents(hass, request, zone) {
     const { entityId, start, end } = request;
-    if (entityId.startsWith(OWN_PREFIX)) {
-      return hass.callWS({
-        type: WS_OWN_ENTRIES,
-        device_id: entityId.slice(OWN_PREFIX.length),
-        start: dateKey(start, zone),
-        end: dateKey(end, zone),
-      });
-    }
+    if (entityId.startsWith(OWN_PREFIX)) return loadOwnEntries(hass, entityId.slice(OWN_PREFIX.length), start, end, zone);
     const path = `calendars/${entityId}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
     return hass.callApi("GET", path);
   }
@@ -1582,6 +1773,7 @@
       allDay,
       cancelled: !!raw.cancelled,
       substitution: typeof raw.substitution === "boolean" ? raw.substitution : null,
+      moved: moveOf(raw.moved),
       color: /^#[0-9a-fA-F]{6}$/.test(raw.color || "") ? raw.color : "",
       subjectCode: String(raw.subject_code || ""),
       subjectName: String(raw.subject || ""),
@@ -1597,6 +1789,10 @@
       .map((raw) => normaliseEvent(raw, zone))
       .filter(Boolean)
       .sort((left, right) => left.start - right.start || left.summary.localeCompare(right.summary));
+  }
+
+  function moveOf(value) {
+    return value === "away" || value === "here" ? value : "";
   }
 
   function cleanSummary(event) {
@@ -1617,7 +1813,7 @@
   }
 
   function nextDayKeyOf(events, todayKey) {
-    return events.reduce((found, event) => (event.dayKey > todayKey && (!found || event.dayKey < found) ? event.dayKey : found), null);
+    return events.reduce((found, event) => (!event.allDay && event.dayKey > todayKey && (!found || event.dayKey < found) ? event.dayKey : found), null);
   }
 
   function overlaps(left, right) {
@@ -1633,6 +1829,7 @@
         ...event,
         cancelled,
         substitution: !cancelled && (event.substitution === true || !!(change && change.substitution)),
+        moved: (change && moveOf(change.moved)) || event.moved,
         subject: (change && change.subject) || event.subjectName || cleanSummary(event),
         code: (change && change.subject_code) || event.subjectCode || "",
         teacher: (change && change.teacher) || event.teacher || "",
@@ -1658,6 +1855,10 @@
     return holidays.find((event) => event.allDay && event.firstDay <= dayKey && dayKey < event.lastDay) || null;
   }
 
+  function noticesOn(events, dayKey) {
+    return events.filter((event) => event.allDay && event.firstDay <= dayKey && dayKey < event.lastDay);
+  }
+
   function subjectDot(lesson) {
     return lesson.color ? `<i style="background: ${esc(lesson.color)}"></i>` : "<i></i>";
   }
@@ -1667,6 +1868,7 @@
   }
 
   function changeTag(lesson, t) {
+    if (lesson.moved) return `<span class="tag ${lesson.cancelled ? "no" : "open"}">${esc(t(lesson.moved === "here" ? "lesson.movedHere" : "lesson.moved"))}</span>`;
     if (lesson.cancelled) return `<span class="tag no">${esc(t("lesson.cancelled"))}</span>`;
     if (lesson.substitution) return `<span class="tag open">${esc(t("lesson.substitution"))}</span>`;
     return "";
@@ -1709,6 +1911,12 @@
     return `<div class="row row-note"><p class="dlg-text">${html}</p></div>`;
   }
 
+  function noticeRow(event, compact) {
+    const lines = compact ? [] : String(event.description || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const text = lines.length ? `<br><span dir="auto">${lines.map(esc).join("<br>")}</span>` : "";
+    return `<div class="row row-note notice" data-notice="${esc(event.uid)}"><p class="dlg-text"><b dir="auto">${esc(event.summary)}</b>${text}</p></div>`;
+  }
+
   function rowsBlock(inner, dayKey) {
     const day = dayKey ? ` data-day="${esc(dayKey)}"` : "";
     return `<div class="rows flat"${day}>${inner}</div>`;
@@ -1736,25 +1944,40 @@
     return !endsBeforeToday && !startsAfterWindow;
   }
 
-  function relativeDays(days, locale) {
-    try {
-      return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(days, "day");
-    } catch (error) {
-      return formatNumber(days, locale);
+  function relativeFormatter(locale, options) {
+    for (const candidate of localeChain(locale)) {
+      try {
+        return new Intl.RelativeTimeFormat(candidate, options);
+      } catch (error) {
+        if (candidate === FALLBACK_LANGUAGE) return null;
+      }
     }
+    return null;
+  }
+
+  function relativeDays(days, locale) {
+    const format = relativeFormatter(locale, { numeric: "auto" });
+    return format ? format.format(days, "day") : formatNumber(days, locale);
   }
 
   function relativeMinutes(minutes, locale) {
-    try {
-      const format = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
-      return minutes >= 120 ? format.format(Math.round(minutes / 60), "hour") : format.format(minutes, "minute");
-    } catch (error) {
-      return formatNumber(minutes, locale);
-    }
+    const format = relativeFormatter(locale, { numeric: "always" });
+    if (!format) return formatNumber(minutes, locale);
+    return minutes >= 120 ? format.format(Math.round(minutes / 60), "hour") : format.format(minutes, "minute");
   }
 
-  function badgeText(count, locale) {
-    return count > 9 ? `${formatNumber(9, locale)}+` : formatNumber(count, locale);
+  function badgeText(count, numbers) {
+    return count > 9 ? `${formatNumber(9, numbers)}+` : formatNumber(count, numbers);
+  }
+
+  function countBadge(count, label, plan) {
+    if (count === null) {
+      const said = `${label}: ${plan.t("count.unknown")}`;
+      return `<span class="badge unknown" title="${esc(said)}" aria-label="${esc(said)}">${UNKNOWN_MARK}</span>`;
+    }
+    if (!(count > 0)) return "";
+    const said = `${label}: ${formatNumber(count, plan.numbers)}`;
+    return `<span class="badge" title="${esc(said)}" aria-label="${esc(said)}">${esc(badgeText(count, plan.numbers))}</span>`;
   }
 
   function changesOf(hass, child) {
@@ -1787,7 +2010,7 @@
         const offered = offeredBlocks(hass, registry);
         const schoolOnly = !registry.children.length && registry.schools.length > 0;
         const blocks = (schoolOnly ? offered.filter((block) => block.scope !== "child") : offered).slice(0, 2).map((block) => block.key);
-        return registry.children.length ? { blocks, children: [registry.children[0].slug] } : { blocks };
+        return registry.children.length ? { blocks, children: [childReference(registry.children, registry.children[0])] } : { blocks };
       } catch (error) {
         return { blocks: ["today"] };
       }
@@ -1804,8 +2027,15 @@
       this._stamps = new Map();
     }
 
-    setConfig(config) {
+    setConfig(given) {
       const t = translator(this._hass);
+      const config = given ? { ...given } : given;
+      for (const key of ["blocks", "children"]) {
+        if (!config || config[key] === undefined) continue;
+        const listed = listOf(config[key]);
+        if (listed === null) throw new Error(t("format.list", { key }));
+        config[key] = listed;
+      }
       if (config && Array.isArray(config.blocks)) {
         const unknown = unknownBlockOf(config.blocks);
         if (unknown) throw new Error(t("block.unknown", { block: unknown }));
@@ -1865,18 +2095,28 @@
       let registry = await discover(hass);
       if (serial !== this._serial) return;
       let plan = this._plan(registry, hass);
-      if (plan.missing && Date.now() - registryAt > REGISTRY_TTL_MS) {
+      const stale = Date.now() - registryAt > REGISTRY_TTL_MS;
+      if (stale && (plan.missing || absentEntities(hass, plan) || registryOutdated(hass, registry))) {
         registry = await discover(hass, true);
         if (serial !== this._serial) return;
         plan = this._plan(registry, hass);
       }
-      const signature = JSON.stringify([this._config, languageOf(hass), zoneOf(hass), directionOf(), plan.minute, plan.stateKeys]);
+      const signature = JSON.stringify([this._config, languageOf(hass), plan.locale, plan.numbers, zoneOf(hass), directionOf(), plan.minute, plan.stateKeys]);
       if (signature === this._signature) return;
       this._forgetUpdatedChildren(plan.children, hass);
-      const events = await Promise.all(plan.requests.map((request) => fetchEvents(hass, request, plan.zone)));
+      const results = await Promise.allSettled(plan.requests.map((request) => fetchEvents(hass, request, plan.zone)));
       if (serial !== this._serial) return;
       const byEntity = new Map();
-      plan.requests.forEach((request, index) => byEntity.set(request.entityId, normaliseAll(events[index], plan.zone)));
+      plan.failed = new Set();
+      plan.requests.forEach((request, index) => {
+        const result = results[index];
+        if (result.status === "fulfilled") {
+          byEntity.set(request.entityId, normaliseAll(result.value, plan.zone));
+          return;
+        }
+        plan.failed.add(request.entityId);
+        if (typeof console !== "undefined" && console.warn) console.warn(`${CARD_TAG}: ${request.entityId}`, result.reason);
+      });
       this._signature = signature;
       this._render(plan, byEntity);
     }
@@ -1894,10 +2134,13 @@
         minute: Math.floor(now.getTime() / 60000),
         t,
         locale: localeOf(hass),
+        numbers: numbersOf(hass),
         registry,
         children: [],
         childless: [],
+        unknownChildren: [],
         requests: [],
+        failed: new Set(),
         stateKeys: [],
         message: null,
         missing: false,
@@ -1909,12 +2152,11 @@
       }
       if (config.view === "family") {
         const wanted = Array.isArray(config.children) ? config.children : [];
-        plan.children = wanted.length
-          ? wanted.map((reference) => findChild(registry.children, reference)).filter(Boolean)
-          : registry.children;
+        this._pickChildren(plan, registry, wanted);
         const childless = wanted.length ? [] : childlessSchools(registry);
         if (!registry.children.length) plan.message = t("children.none");
-        plan.missing = plan.children.length < (wanted.length || 1) && !childless.length;
+        else if (!plan.children.length && plan.unknownChildren.length) plan.message = t("child.unknown", { child: plan.unknownChildren[0] });
+        plan.missing = (wanted.length ? plan.unknownChildren.length > 0 : !plan.children.length) && !childless.length;
         plan.dayKeys = [todayKey];
         plan.withNextDay = config.days === 2;
         plan.start = zonedMidnight(todayKey, zone);
@@ -1958,11 +2200,9 @@
     _planBlocks(plan, registry, hass, config) {
       const { zone, todayKey } = plan;
       const wanted = Array.isArray(config.children) ? config.children : [];
-      plan.children = wanted.length
-        ? wanted.map((reference) => findChild(registry.children, reference)).filter(Boolean)
-        : registry.children;
+      this._pickChildren(plan, registry, wanted);
       plan.childless = wanted.length ? [] : childlessSchools(registry);
-      plan.missing = plan.children.length < (wanted.length || 1) && !plan.childless.length;
+      plan.missing = (wanted.length ? plan.unknownChildren.length > 0 : !plan.children.length) && !plan.childless.length;
       if (!registry.children.length && !plan.childless.length) plan.message = plan.t("children.none");
       plan.blocks = config.blocks.filter((entry) => blockOffered(hass, registry, blockOf(entry.key)));
       if (!config.blocks.length) plan.message = plan.t("block.noBlocks");
@@ -2005,6 +2245,17 @@
         }
       }
       return plan;
+    }
+
+    _pickChildren(plan, registry, wanted) {
+      if (!wanted.length) {
+        plan.children = registry.children;
+        plan.unknownChildren = [];
+        return;
+      }
+      const found = wanted.map((reference) => ({ reference, child: findChild(registry.children, reference) }));
+      plan.children = [...new Set(found.map((item) => item.child).filter(Boolean))];
+      plan.unknownChildren = found.filter((item) => !item.child).map((item) => String(item.reference));
     }
 
     _pushDayRequests(plan, child, withOwn) {
@@ -2061,11 +2312,41 @@
 
     _paint(inner) {
       const language = languageOf(this._hass);
-      this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card dir="${directionOf()}" lang="${language}">${inner}</ha-card>`;
+      const html = `<style>${STYLE}</style><ha-card dir="${directionOf()}" lang="${language}">${inner}</ha-card>`;
+      if (html === this._painted && this.shadowRoot.querySelector("ha-card")) return;
+      const root = this.shadowRoot;
+      const scrolled = [...root.querySelectorAll(".tt-multi")].map((node) => node.scrollLeft);
+      const focused = root.activeElement;
+      const focusKey = focused && focused.getAttribute ? focused.getAttribute("data-block-link") || focused.getAttribute("href") : "";
+      root.innerHTML = html;
+      this._painted = html;
+      [...root.querySelectorAll(".tt-multi")].forEach((node, index) => {
+        if (scrolled[index]) node.scrollLeft = scrolled[index];
+      });
+      if (!focusKey) return;
+      const again = [...root.querySelectorAll("a")].find((node) => node.getAttribute("data-block-link") === focusKey || node.getAttribute("href") === focusKey);
+      if (again) again.focus();
     }
 
     _hasTimetable(child) {
       return Boolean(child.entities[KEY_LESSONS]);
+    }
+
+    _failed(plan, entityId) {
+      return Boolean(entityId) && plan.failed.has(entityId);
+    }
+
+    _lessonsFailed(plan, child) {
+      return this._failed(plan, child.entities[KEY_LESSONS]);
+    }
+
+    _partialNote(plan, child, withOwn) {
+      const ids = [child.entities[KEY_EXAMS], schoolOfChild(plan.registry, child).entities[KEY_HOLIDAYS], withOwn ? ownKeyOf(child) : ""];
+      return ids.some((entityId) => this._failed(plan, entityId)) ? noteRow(esc(plan.t("block.partial"))) : "";
+    }
+
+    _failedNote(plan) {
+      return noteRow(esc(plan.t("block.failed")));
     }
 
     _holidays(plan, byEntity, child) {
@@ -2073,7 +2354,7 @@
     }
 
     _childLessons(plan, byEntity, child, dayKey, withNow) {
-      const events = (byEntity.get(child.entities[KEY_LESSONS]) || []).filter((event) => event.dayKey === dayKey);
+      const events = (byEntity.get(child.entities[KEY_LESSONS]) || []).filter((event) => event.dayKey === dayKey && !event.allDay);
       const exams = (byEntity.get(child.entities[KEY_EXAMS]) || []).filter((event) => event.dayKey === dayKey);
       const changes = dayKey === plan.todayKey ? changesOf(this._hass, child) : [];
       return buildLessons(events, exams, changes, withNow ? plan.now : null);
@@ -2086,13 +2367,20 @@
 
     _dayRows(plan, byEntity, child, dayKey, withNow, freeKey) {
       const { t, locale, zone } = plan;
+      if (this._lessonsFailed(plan, child)) return { lessons: [], rows: this._failedNote(plan), partial: "", failed: true };
       const holiday = holidayOn(this._holidays(plan, byEntity, child), dayKey);
       const lessons = this._childLessons(plan, byEntity, child, dayKey, withNow);
       const own = this._ownEvents(plan, byEntity, child, dayKey, withNow);
       const ownRows = own.map((event) => ownRow(event, t, locale, zone, false)).join("");
-      if (holiday && !lessons.length) return { lessons, rows: noteRow(`<b dir="auto">${esc(holiday.summary)}</b>`) + ownRows };
-      if (!lessons.length) return { lessons, rows: noteRow(esc(t(freeKey))) + ownRows };
-      return { lessons, rows: byStart(lessons, own).map((item) => (item.own ? ownRow(item, t, locale, zone, false) : lessonRow(item, t, locale, zone))).join("") };
+      const partial = this._partialNote(plan, child, true);
+      const notices = this._noticeRows(byEntity, child, dayKey, false);
+      if (holiday && !lessons.length) return { lessons, rows: notices + noteRow(`<b dir="auto">${esc(holiday.summary)}</b>`) + ownRows, partial };
+      if (!lessons.length) return { lessons, rows: (notices || noteRow(esc(t(freeKey)))) + ownRows, partial };
+      return { lessons, rows: notices + byStart(lessons, own).map((item) => (item.own ? ownRow(item, t, locale, zone, false) : lessonRow(item, t, locale, zone))).join(""), partial };
+    }
+
+    _noticeRows(byEntity, child, dayKey, compact) {
+      return noticesOn(byEntity.get(child.entities[KEY_LESSONS]) || [], dayKey).map((event) => noticeRow(event, compact)).join("");
     }
 
     _schoolEndNote(plan, child, lessons) {
@@ -2110,11 +2398,12 @@
       const { t, locale, zone } = plan;
       const child = plan.children[0];
       const changes = numberOf(this._hass, child.entities[KEY_CHANGES]);
-      const badge = changes > 0 ? `<span class="badge">${esc(badgeText(changes, locale))}</span>` : "";
+      const badge = countBadge(changes, t("count.changes"), plan);
       const head = panelHead(title || childLabel(plan.registry, child), formatWeekdayDay(plan.todayKey, locale, zone), badge);
       if (!this._hasTimetable(child)) return head + emptyBlock("timetable", t("timetable.none"));
+      if (this._lessonsFailed(plan, child)) return head + emptyBlock("alert", t("error.title"), t("state.unavailable"));
       const day = this._dayRows(plan, byEntity, child, plan.todayKey, true, "today.free");
-      return head + rowsBlock(day.rows + this._schoolEndNote(plan, child, day.lessons), plan.todayKey);
+      return head + rowsBlock(day.rows + this._schoolEndNote(plan, child, day.lessons) + day.partial, plan.todayKey);
     }
 
     _weekGrid(plan, byEntity, child) {
@@ -2162,7 +2451,7 @@
             return;
           }
           if (lessons.length >= COURSE_CELL_MIN) {
-            parts.push(this._coursesCell(lessons, t, dayKey, place, locale));
+            parts.push(this._coursesCell(lessons, t, dayKey, place, plan.numbers));
             return;
           }
           const inner = lessons.map((lesson) => this._lessonCell(lesson, t, dayKey, "", true)).join("");
@@ -2218,7 +2507,7 @@
         styles.push(`--subject-bar:${colour.bar}`);
       }
       const bar = lesson.substitution ? '<span class="bar"></span>' : "";
-      const roomLabel = lesson.cancelled ? t("lesson.cancelled") : lesson.substitution ? t("lesson.substitutionShort") : "";
+      const roomLabel = lesson.moved && (lesson.cancelled || lesson.substitution) ? t("lesson.movedShort") : lesson.cancelled ? t("lesson.cancelled") : lesson.substitution ? t("lesson.substitutionShort") : "";
       const paired = !compact && !lesson.cancelled && lesson.substitution && lesson.location ? [roomLabel, lesson.location].join(" · ") : "";
       const room = roomLabel ? `<span class="${paired ? "room paired" : "room"}">${esc(roomLabel)}</span>` : "";
       const lroom = paired ? `<span class="lroom paired" dir="auto">${esc(paired)}</span>` : !roomLabel && lesson.location ? `<span class="lroom" dir="auto">${esc(lesson.location)}</span>` : "";
@@ -2231,10 +2520,10 @@
       return `<div class="${classes.join(" ")}" data-uid="${esc(lesson.uid)}" data-day="${esc(dayKey)}"${style}>${bar}<span class="sub" dir="auto">${esc(code)}</span>${details}${room}${flag}</div>`;
     }
 
-    _coursesCell(lessons, t, dayKey, place, locale) {
+    _coursesCell(lessons, t, dayKey, place, numbers) {
       const classes = ["tt-cell", "courses"];
       if (lessons.some((lesson) => lesson.cancelled || lesson.substitution)) classes.push("subbed");
-      const count = formatNumber(lessons.length, locale);
+      const count = formatNumber(lessons.length, numbers);
       const label = t("lesson.coursesParallel", { count });
       const bar = classes.includes("subbed") ? '<span class="bar"></span>' : "";
       const flag = lessons.some((lesson) => lesson.exam) ? `<span class="exam-flag" title="${esc(t("lesson.exam"))}">${iconSvg("exam")}</span>` : "";
@@ -2259,31 +2548,32 @@
       const child = plan.children[0];
       const head = childHead(plan.registry, child, title || childLabel(plan.registry, child));
       if (!this._hasTimetable(child)) return head + emptyBlock("timetable", t("timetable.none"));
+      if (this._lessonsFailed(plan, child)) return head + emptyBlock("alert", t("error.title"), t("state.unavailable"));
       const week = this._weekGrid(plan, byEntity, child);
       const legend = week.fullWeek ? "" : this._legend(t);
-      return head + week.grid + legend + this._stamp(plan, child);
+      const partial = this._partialNote(plan, child, false);
+      return head + week.grid + legend + (partial ? rowsBlock(partial) : "") + this._stamp(plan, child);
     }
 
     _counts(plan, child) {
-      const { t, locale } = plan;
+      const { t } = plan;
       return [
         ["count.letters", numberOf(this._hass, child.entities[KEY_LETTERS])],
         ["count.posts", numberOf(this._hass, child.entities[KEY_POSTS])],
         ["count.changes", numberOf(this._hass, child.entities[KEY_CHANGES])],
       ]
         .map(([key, count]) => {
-          const badge = count > 0 ? `<span class="badge">${esc(badgeText(count, locale))}</span>` : "";
-          return `<span class="count" data-count="${count}">${badge}<span>${esc(t(key))}</span></span>`;
+          const shown = count === null ? "unknown" : count;
+          return `<span class="count" data-count="${shown}">${countBadge(count, t(key), plan)}<span>${esc(t(key))}</span></span>`;
         })
         .join("");
     }
 
     _nextHoliday(plan, school, schoolName) {
-      const { t, locale, zone } = plan;
       const holiday = stateOf(this._hass, school.entities[KEY_HOLIDAY]);
       if (isMissing(holiday)) return "";
       const { start, end } = holiday.attributes || {};
-      const range = start && end ? t("date.range", { from: formatShortDate(start, locale, zone), till: formatShortDate(end, locale, zone) }) : "";
+      const range = start ? this._span(plan, String(start), end ? String(end) : "") : "";
       const metaText = [schoolName || "", range].filter(Boolean).join(" · ");
       const meta = metaText ? `<span class="meta" dir="auto">${esc(metaText)}</span>` : "";
       return `<div class="tt-hol full">${icon("upcoming", 20)}<span class="tt-hol-text"><span class="name" dir="auto">${esc(holiday.state)}</span>${meta}</span></div>`;
@@ -2294,8 +2584,8 @@
       let days = emptyBlock("timetable", t("timetable.none"));
       if (this._hasTimetable(child)) {
         const today = this._dayRows(plan, byEntity, child, plan.todayKey, true, "day.free");
-        days = panelHead(t("day.today"), formatWeekdayDay(plan.todayKey, locale, zone)) + rowsBlock(today.rows, plan.todayKey);
-        if (plan.withNextDay) {
+        days = panelHead(t("day.today"), formatWeekdayDay(plan.todayKey, locale, zone)) + rowsBlock(today.rows + today.partial, plan.todayKey);
+        if (plan.withNextDay && !today.failed) {
           const dayKey = this._nextDayKey(plan, byEntity, child);
           const head = this._dayHead(plan, dayKey);
           const rows = dayKey ? this._dayRows(plan, byEntity, child, dayKey, false, "day.free").rows : this._unknownNextDay(plan, byEntity, child);
@@ -2314,9 +2604,10 @@
       const { t } = plan;
       const head = panelHead(title || t("view.family"), "");
       if (!plan.children.length) return head + emptyBlock("alert", t("children.none"));
+      const notes = plan.unknownChildren.map((reference) => `<p class="card-note" role="status">${esc(t("child.unknown", { child: reference }))}</p>`).join("");
       const columns = plan.children.length >= SCROLL_FROM_CHILDREN ? "tt-multi scrolls" : "tt-multi";
       const body = `<div class="${columns}">${plan.children.map((child) => this._familyMember(plan, byEntity, child)).join("")}</div>`;
-      return head + body + this._familyHolidays(plan);
+      return head + notes + body + this._familyHolidays(plan);
     }
 
     _blockLink(plan, key, labelKey) {
@@ -2326,26 +2617,40 @@
     }
 
     _blockHead(plan, entry, meta, count, fresh, linkKey, label, countLabel) {
-      const number = formatNumber(count, plan.locale);
-      const named = countLabel ? ` title="${esc(`${countLabel}: ${number}`)}" aria-label="${esc(`${countLabel}: ${number}`)}"` : "";
-      const countHtml = count > 0 ? `<span class="count${fresh ? " fresh" : ""}"${named}>${esc(number)}</span>` : "";
-      return panelHead(label || plan.t(`block.${entry.key}`), meta, countHtml + this._blockLink(plan, entry.key, linkKey));
+      const heading = label || plan.t(`block.${entry.key}`);
+      const unknown = count === null;
+      const number = unknown ? UNKNOWN_MARK : formatNumber(count, plan.numbers);
+      const said = `${countLabel || heading}: ${unknown ? plan.t("count.unknown") : number}`;
+      const classes = ["count"];
+      if (unknown) classes.push("unknown");
+      else if (fresh) classes.push("fresh");
+      const countHtml = unknown || count > 0 ? `<span class="${classes.join(" ")}" title="${esc(said)}" aria-label="${esc(said)}">${esc(number)}</span>` : "";
+      return panelHead(heading, meta, countHtml + this._blockLink(plan, entry.key, linkKey));
     }
 
     _blockShell(entry, inner) {
       return `<div class="block" data-block="${esc(entry.key)}" data-size="${esc(entry.size)}">${inner}</div>`;
     }
 
-    _listBlock(plan, entry, items, build, meta, fresh, linkKey) {
+    _failedBlock(plan, entry) {
+      return this._blockShell(entry, this._blockHead(plan, entry, "", 0, false) + rowsBlock(this._failedNote(plan)));
+    }
+
+    _unknownBlock(plan, entry) {
+      return this._blockShell(entry, this._blockHead(plan, entry, "", null, false) + rowsBlock(this._failedNote(plan)));
+    }
+
+    _listBlock(plan, entry, items, build, meta, fresh, linkKey, tail = "", total = items.length) {
       const block = blockOf(entry.key);
       const shown = items.slice(0, limitOf(block, entry.size));
       const compact = entry.size === SIZE_COMPACT;
       const rows = shown.map((item) => build(item, compact)).join("");
       const path = blockPath(ingressPathOf(this._hass, plan.registry), entry.key);
-      const more = items.length > shown.length && path
+      const hidden = items.length > shown.length || (total !== null && total > shown.length);
+      const more = hidden && path
         ? `<a class="row row-all" href="${esc(path)}"><span class="row-dot"></span><div class="row-main"><div class="row-title">${esc(plan.t("block.showAll"))}</div></div></a>`
         : "";
-      return this._blockShell(entry, this._blockHead(plan, entry, meta, items.length, fresh, linkKey) + rowsBlock(rows + more));
+      return this._blockShell(entry, this._blockHead(plan, entry, meta, total, fresh, linkKey) + rowsBlock(rows + more + tail));
     }
 
     _listRow(title, sub, meta, unread, compact, tags, extra) {
@@ -2365,24 +2670,38 @@
 
     _renderBlocks(plan, byEntity, title) {
       const { t } = plan;
-      if (!plan.children.length && !plan.childless.length) return (title ? `<h2 class="card-title" dir="auto">${esc(title)}</h2>` : "") + emptyBlock("alert", t("children.none"));
-      const parts = [];
-      if (title) parts.push(`<h2 class="card-title" dir="auto">${esc(title)}</h2>`);
-      const childBlocks = plan.blocks.filter((entry) => blockOf(entry.key).scope === "child");
-      const restBlocks = plan.blocks.filter((entry) => blockOf(entry.key).scope !== "child");
+      const heading = title ? `<h2 class="card-title" dir="auto">${esc(title)}</h2>` : "";
+      if (!plan.children.length && !plan.childless.length) {
+        const message = plan.unknownChildren.length && plan.registry.children.length ? t("child.unknown", { child: plan.unknownChildren[0] }) : t("children.none");
+        return heading + emptyBlock("alert", message);
+      }
+      const parts = [heading];
+      for (const reference of plan.unknownChildren) parts.push(`<p class="card-note" role="status">${esc(t("child.unknown", { child: reference }))}</p>`);
       if (plan.children.length === 1) {
         for (const entry of plan.blocks) parts.push(this._renderBlock(plan, byEntity, entry, plan.children[0]));
-      } else {
+        return parts.filter(Boolean).join("");
+      }
+      let run = [];
+      const flush = () => {
         const members = plan.children
           .map((child) => {
-            const inner = childBlocks.map((entry) => this._renderBlock(plan, byEntity, entry, child)).join("");
+            const inner = run.map((entry) => this._renderBlock(plan, byEntity, entry, child)).join("");
             if (!inner) return "";
             return `<div class="member" data-child="${esc(child.id)}">${childHead(plan.registry, child, childLabel(plan.registry, child))}${inner}</div>`;
           })
           .filter(Boolean);
         if (members.length) parts.push(`<div class="family">${members.join("")}</div>`);
-        for (const entry of restBlocks) parts.push(this._renderBlock(plan, byEntity, entry, null));
+        run = [];
+      };
+      for (const entry of plan.blocks) {
+        if (blockOf(entry.key).scope === "child") {
+          run.push(entry);
+          continue;
+        }
+        if (run.length) flush();
+        parts.push(this._renderBlock(plan, byEntity, entry, null));
       }
+      if (run.length) flush();
       return parts.filter(Boolean).join("");
     }
 
@@ -2410,30 +2729,44 @@
     _todayBlock(plan, byEntity, entry, child) {
       const { t, locale, zone } = plan;
       if (!this._hasTimetable(child)) return "";
+      if (this._lessonsFailed(plan, child)) {
+        const head = this._blockHead(plan, entry, formatWeekdayDay(plan.todayKey, locale, zone), 0, false, "block.toTimetable");
+        return this._blockShell(entry, head + rowsBlock(this._failedNote(plan), plan.todayKey));
+      }
       if (entry.switch && this._switched(plan, byEntity, child, entry.switch)) {
         return this._blockShell(entry, this._nextDayInner(plan, byEntity, entry, child));
       }
       const holiday = holidayOn(this._holidays(plan, byEntity, child), plan.todayKey);
       const all = this._childLessons(plan, byEntity, child, plan.todayKey, true);
       const own = this._ownEvents(plan, byEntity, child, plan.todayKey, true);
-      if (!all.length && !holiday && !own.length) return "";
       const compact = entry.size === SIZE_COMPACT;
+      const notices = this._noticeRows(byEntity, child, plan.todayKey, compact);
+      if (!all.length && !holiday && !own.length && !notices) return "";
       const limit = limitOf(blockOf("today"), entry.size);
       const merged = byStart(all, own);
       const shown = (compact ? merged.filter((item) => !item.done) : merged).slice(0, limit);
       const render = (item) => (item.own ? ownRow(item, t, locale, zone, compact) : lessonRow(item, t, locale, zone, compact));
-      let rows = "";
-      if (!all.length) rows = noteRow(holiday ? `<b dir="auto">${esc(holiday.summary)}</b>` : esc(t("today.free"))) + shown.map(render).join("");
-      else if (!shown.length) rows = noteRow(esc(t("school.over")));
-      else rows = shown.map(render).join("") + (compact ? "" : this._schoolEndNote(plan, child, all));
+      let rows = notices;
+      if (!all.length) rows += (holiday ? noteRow(`<b dir="auto">${esc(holiday.summary)}</b>`) : notices ? "" : noteRow(esc(t("today.free")))) + shown.map(render).join("");
+      else if (!shown.length) rows += noteRow(esc(t("school.over")));
+      else rows += shown.map(render).join("") + (compact ? "" : this._schoolEndNote(plan, child, all));
+      rows += this._partialNote(plan, child, true);
       const changes = numberOf(this._hass, child.entities[KEY_CHANGES]);
       const head = this._blockHead(plan, entry, formatWeekdayDay(plan.todayKey, locale, zone), changes, changes > 0, "block.toTimetable", "", t("count.changes"));
       return this._blockShell(entry, head + rowsBlock(rows, plan.todayKey));
     }
 
     _switched(plan, byEntity, child, mode) {
+      const held = this._childLessons(plan, byEntity, child, plan.todayKey, true).filter((lesson) => !lesson.cancelled);
+      if (!held.length) return true;
       if (mode !== SWITCH_END) return slotKey(plan.now, plan.zone) >= mode;
-      return !this._childLessons(plan, byEntity, child, plan.todayKey, true).some((lesson) => !lesson.allDay && !lesson.cancelled && lesson.end > plan.now);
+      return !held.some((lesson) => lesson.end > plan.now);
+    }
+
+    _span(plan, first, last) {
+      const { t, locale, zone } = plan;
+      if (!last || last <= first) return formatWeekdayDay(first, locale, zone);
+      return t("date.range", { from: formatShortDate(first, locale, zone), till: formatShortDate(last, locale, zone) });
     }
 
     _nextDayKey(plan, byEntity, child) {
@@ -2448,22 +2781,29 @@
     }
 
     _unknownNextDay(plan, byEntity, child) {
-      const holiday = holidayOn(this._holidays(plan, byEntity, child), shiftKey(plan.todayKey, 1, plan.zone));
-      return (holiday ? noteRow(`<b dir="auto">${esc(holiday.summary)}</b>`) : "") + noteRow(esc(plan.t("nextDay.unknown")));
+      const tomorrow = shiftKey(plan.todayKey, 1, plan.zone);
+      const ahead = this._holidays(plan, byEntity, child)
+        .filter((event) => event.allDay && event.lastDay > tomorrow)
+        .sort((left, right) => left.firstDay.localeCompare(right.firstDay));
+      const holiday = ahead.find((event) => tomorrow >= event.firstDay) || ahead[0] || null;
+      const span = holiday ? this._span(plan, holiday.firstDay, shiftKey(holiday.lastDay, -1, plan.zone)) : "";
+      const named = holiday ? noteRow(`<b dir="auto">${esc(holiday.summary)}</b> · <span dir="auto">${esc(span)}</span>`) : "";
+      return named + noteRow(esc(plan.t("nextDay.unknown")));
     }
 
     _nextDayInner(plan, byEntity, entry, child) {
       const { t, locale, zone } = plan;
+      if (this._lessonsFailed(plan, child)) return this._blockHead(plan, entry, "", 0, false, "block.toTimetable", t("block.next_day")) + rowsBlock(this._failedNote(plan));
       const dayKey = this._nextDayKey(plan, byEntity, child);
       const head = this._dayHead(plan, dayKey);
-      if (!dayKey) return this._blockHead(plan, entry, head.meta, 0, false, "block.toTimetable", head.label) + rowsBlock(this._unknownNextDay(plan, byEntity, child));
+      if (!dayKey) return this._blockHead(plan, entry, head.meta, 0, false, "block.toTimetable", head.label) + rowsBlock(this._unknownNextDay(plan, byEntity, child) + this._partialNote(plan, child, true));
       const lessons = this._childLessons(plan, byEntity, child, dayKey, false);
       const own = this._ownEvents(plan, byEntity, child, dayKey, false);
       const compact = entry.size === SIZE_COMPACT;
       const shown = byStart(lessons, own).slice(0, limitOf(blockOf(entry.key), entry.size));
-      const rows = shown.map((item) => (item.own ? ownRow(item, t, locale, zone, compact) : lessonRow(item, t, locale, zone, compact))).join("");
+      const rows = this._noticeRows(byEntity, child, dayKey, compact) + shown.map((item) => (item.own ? ownRow(item, t, locale, zone, compact) : lessonRow(item, t, locale, zone, compact))).join("");
       const changes = lessons.filter((lesson) => lesson.cancelled || lesson.substitution).length;
-      return this._blockHead(plan, entry, head.meta, changes, changes > 0, "block.toTimetable", head.label, t("count.changes")) + rowsBlock(rows, dayKey);
+      return this._blockHead(plan, entry, head.meta, changes, changes > 0, "block.toTimetable", head.label, t("count.changes")) + rowsBlock(rows + this._partialNote(plan, child, true), dayKey);
     }
 
     _nextDayBlock(plan, byEntity, entry, child) {
@@ -2479,7 +2819,7 @@
       if (Number.isNaN(start.getTime()) || start <= plan.now) return "";
       const dayKey = dateKey(start, zone);
       const day = dayKey === plan.todayKey ? t("day.today") : dayKey === shiftKey(plan.todayKey, 1, zone) ? t("day.tomorrow") : formatWeekdayDay(dayKey, locale, zone);
-      const minutes = Number(state.attributes.minutes_until) || 0;
+      const minutes = Math.round((start.getTime() - plan.now.getTime()) / 60000);
       const details = [state.attributes.room, state.attributes.teacher, minutes > 0 ? relativeMinutes(minutes, locale) : ""].filter(Boolean).join(" · ");
       const row = this._listRow(String(state.state), details, `${day} · ${formatTime(start, locale, zone)}`, false, entry.size === SIZE_COMPACT, []);
       return this._blockShell(entry, this._blockHead(plan, entry, "", 0, false, "block.toTimetable") + rowsBlock(row));
@@ -2487,11 +2827,15 @@
 
     _weekBlock(plan, byEntity, entry, child) {
       if (!this._hasTimetable(child)) return "";
-      const lessons = (byEntity.get(child.entities[KEY_LESSONS]) || []).filter((event) => plan.dayKeys.includes(event.dayKey));
-      if (!lessons.length) return "";
+      const head = this._blockHead(plan, entry, "", 0, false, "block.toTimetable");
+      if (this._lessonsFailed(plan, child)) return this._blockShell(entry, head + rowsBlock(this._failedNote(plan)));
+      const lessons = (byEntity.get(child.entities[KEY_LESSONS]) || []).filter((event) => plan.dayKeys.includes(event.dayKey) && !event.allDay);
+      const holidays = this._holidays(plan, byEntity, child);
+      if (!lessons.length && !plan.dayKeys.some((dayKey) => holidayOn(holidays, dayKey))) return "";
       const week = this._weekGrid(plan, byEntity, child);
       const grid = entry.size === SIZE_COMPACT ? week.grid.replace('class="tt"', 'class="tt compact-cells"') : week.grid;
-      return this._blockShell(entry, this._blockHead(plan, entry, "", 0, false, "block.toTimetable") + grid + (week.fullWeek ? "" : this._legend(plan.t)));
+      const partial = this._partialNote(plan, child, false);
+      return this._blockShell(entry, head + grid + (week.fullWeek ? "" : this._legend(plan.t)) + (partial ? rowsBlock(partial) : ""));
     }
 
     _noticesBlock(plan, entry, child, key, attribute) {
@@ -2499,14 +2843,21 @@
       const children = child ? [child] : plan.children;
       const items = [];
       const seen = new Set();
+      let total = 0;
       const collect = (entityId, tagOf) => {
         const state = stateOf(this._hass, entityId);
-        const listed = state && Array.isArray(state.attributes[attribute]) ? state.attributes[attribute] : [];
+        const count = numberOf(this._hass, entityId);
+        total = total === null || count === null ? null : total + count;
+        const listed = state && state.attributes && Array.isArray(state.attributes[attribute]) ? state.attributes[attribute] : [];
         for (const notice of listed) {
           const title = String((notice && notice.title) || "");
           const date = String((notice && notice.date) || "");
           const id = `${title}|${date}|${String((notice && notice.sender) || "")}`;
-          if (!title || seen.has(id)) continue;
+          if (!title) continue;
+          if (seen.has(id)) {
+            if (total !== null) total -= 1;
+            continue;
+          }
           seen.add(id);
           items.push({ title, date, sender: String((notice && notice.sender) || ""), tag: tagOf(notice) });
         }
@@ -2516,7 +2867,7 @@
       }
       const schoolTag = plan.children.length > 0 || plan.childless.length > 1;
       for (const school of plan.childless) collect(school.entities[key], () => (schoolTag ? school.name : ""));
-      if (!items.length) return "";
+      if (!items.length) return total === null ? this._unknownBlock(plan, entry) : "";
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.title,
         item.sender,
@@ -2524,7 +2875,7 @@
         true,
         compact,
         [item.tag]
-      ), "", true);
+      ), "", true, "", "", total === null ? null : Math.max(total, items.length));
     }
 
     _absencesBlock(plan, entry, child) {
@@ -2535,15 +2886,14 @@
       const items = listed
         .filter((absence) => absenceInWindow(absence, plan.todayKey, limitKey))
         .sort((left, right) => String(left.start).localeCompare(String(right.start)));
-      if (!items.length) return "";
+      if (!items.length) return numberOf(this._hass, child.entities[KEY_ABSENCES]) === null ? this._unknownBlock(plan, entry) : "";
       return this._listBlock(plan, entry, items, (item, compact) => {
         const range = item.start && item.end && item.start !== item.end
           ? t("date.range", { from: formatShortDate(item.start, locale, zone), till: formatShortDate(item.end, locale, zone) })
           : formatShortDate(item.start || item.end, locale, zone);
         const statusKey = `status.${item.status}`;
         const status = item.status && TEXTS.en[statusKey] ? t(statusKey) : "";
-        const who = this._childTag(plan, child);
-        return this._listRow(who ? `${who} · ${range}` : range, [item.summary, status].filter(Boolean).join(" · "), "", false, compact, []);
+        return this._listRow(range, [item.summary, status].filter(Boolean).join(" · "), "", false, compact, []);
       }, "", false);
     }
 
@@ -2555,8 +2905,11 @@
       const { locale, zone } = plan;
       const schools = this._schoolsOf(plan);
       const items = [];
+      let total = 0;
       for (const school of schools) {
         const state = stateOf(this._hass, school.entities[key]);
+        const count = numberOf(this._hass, school.entities[key]);
+        total = total === null || count === null ? null : total + count;
         const listed = state && state.attributes && Array.isArray(state.attributes[attribute]) ? state.attributes[attribute] : [];
         for (const item of listed) {
           const title = String((item && item.title) || "");
@@ -2564,7 +2917,8 @@
           items.push({ title, sender: String((item && item.sender) || ""), date: String((item && item.date) || ""), school: schools.length > 1 ? school.name : "" });
         }
       }
-      if (!items.length) return "";
+      if (!items.length) return total === null ? this._unknownBlock(plan, entry) : "";
+      const counted = key === KEY_FORUMS ? items.length : total === null ? null : Math.max(total, items.length);
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.title,
         item.sender,
@@ -2572,7 +2926,7 @@
         false,
         compact,
         [item.school]
-      ), "", false);
+      ), "", false, "", "", counted);
     }
 
     _conferencesBlock(plan, entry) {
@@ -2613,25 +2967,31 @@
       const { t, locale, zone } = plan;
       const schools = this._schoolsOf(plan);
       const items = [];
+      let failed = false;
       for (const school of schools) {
         if (school.entities[KEY_HOLIDAYS] && byEntity.has(school.entities[KEY_HOLIDAYS])) {
           items.push(...this._upcomingHolidays(plan, byEntity, school, schools.length > 1 ? school.name : ""));
           continue;
         }
         const state = stateOf(this._hass, school.entities[KEY_HOLIDAY]);
+        if (this._failed(plan, school.entities[KEY_HOLIDAYS]) && isMissing(state)) failed = true;
         if (isMissing(state) || !state.attributes || !state.attributes.start) continue;
         items.push({ name: String(state.state), start: String(state.attributes.start), end: String(state.attributes.end || state.attributes.start), days: Number(state.attributes.days_until) || 0, school: schools.length > 1 ? school.name : "" });
       }
       items.sort((left, right) => left.start.localeCompare(right.start));
-      if (!items.length) return "";
+      if (!items.length) return failed ? this._failedBlock(plan, entry) : "";
+      const when = (item) => {
+        if (item.start <= plan.todayKey && item.end > plan.todayKey) return t("holiday.until", { date: formatShortDate(item.end, locale, zone) });
+        return item.days > 0 ? relativeDays(item.days, locale) : t("day.today");
+      };
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.name,
-        t("date.range", { from: formatShortDate(item.start, locale, zone), till: formatShortDate(item.end, locale, zone) }),
-        item.days > 0 ? relativeDays(item.days, locale) : t("day.today"),
+        this._span(plan, item.start, item.end),
+        when(item),
         false,
         compact,
         [item.school]
-      ), "", false);
+      ), "", false, "", failed ? noteRow(esc(t("block.partial"))) : "");
     }
 
     _upcomingSchoolEvents(plan, byEntity, school, schoolName) {
@@ -2666,7 +3026,8 @@
       const items = schools
         .flatMap((school) => this._upcomingSchoolEvents(plan, byEntity, school, schools.length > 1 ? school.name : ""))
         .sort((left, right) => left.event.start - right.event.start || left.event.summary.localeCompare(right.event.summary));
-      if (!items.length) return "";
+      const failed = schools.some((school) => this._failed(plan, school.entities[KEY_SCHOOL_EVENTS]));
+      if (!items.length) return failed ? this._failedBlock(plan, entry) : "";
       return this._listBlock(plan, entry, items, (item, compact) => this._listRow(
         item.event.summary,
         [this._schoolEventWhen(plan, item.event), item.event.location].filter(Boolean).join(" · "),
@@ -2674,21 +3035,22 @@
         false,
         compact,
         [item.school]
-      ), "", false);
+      ), "", false, "", failed ? noteRow(esc(t("block.partial"))) : "");
     }
 
     _changesBlock(plan, entry, child) {
       const { t, locale, zone } = plan;
       const changes = changesOf(this._hass, child).filter((change) => change && change.start);
-      if (!changes.length) return "";
+      const total = numberOf(this._hass, child.entities[KEY_CHANGES]);
+      if (!changes.length) return total === null ? this._unknownBlock(plan, entry) : "";
       return this._listBlock(plan, entry, changes, (change, compact) => {
         const start = new Date(change.start);
-        const kind = change.cancelled ? t("lesson.cancelled") : t("lesson.substitution");
-        const detail = [change.period ? formatNumber(change.period, locale) : "", Number.isNaN(start.getTime()) ? "" : formatTime(start, locale, zone), change.cancelled ? "" : [change.teacher, change.room].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+        const kind = moveOf(change.moved) ? t(change.moved === "here" ? "lesson.movedHere" : "lesson.moved") : change.cancelled ? t("lesson.cancelled") : t("lesson.substitution");
+        const detail = [change.period ? formatNumber(change.period, plan.numbers) : "", Number.isNaN(start.getTime()) ? "" : formatTime(start, locale, zone), change.cancelled ? "" : [change.teacher, change.room].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
         const title = String(change.subject || change.subject_code || "");
         const tag = `<span class="tag ${change.cancelled ? "no" : "open"}">${esc(kind)}</span>`;
-        return this._listRow(title, detail, t("day.today"), false, compact, [this._childTag(plan, child)], tag);
-      }, "", true, "block.toTimetable");
+        return this._listRow(title, detail, t("day.today"), false, compact, [], tag);
+      }, "", true, "block.toTimetable", "", total === null ? changes.length : Math.max(total, changes.length));
     }
   }
 
@@ -2697,6 +3059,7 @@
       super();
       this.attachShadow({ mode: "open" });
       this._config = { blocks: [] };
+      this._kept = {};
       this._hass = null;
       this._registry = { children: [], schools: [] };
       this._settled = Promise.resolve();
@@ -2710,8 +3073,11 @@
 
     setConfig(config) {
       const given = { ...(config || {}) };
-      const blocks = Array.isArray(given.blocks) ? normaliseBlocks(given.blocks) : blocksOfLegacy(given);
-      const children = Array.isArray(given.children) ? given.children.slice() : given.child ? [given.child] : [];
+      const listedBlocks = listOf(given.blocks);
+      const listedChildren = listOf(given.children);
+      const blocks = Array.isArray(listedBlocks) ? normaliseBlocks(listedBlocks) : blocksOfLegacy(given);
+      const children = Array.isArray(listedChildren) ? listedChildren.slice() : given.child ? [given.child] : [];
+      this._kept = Object.fromEntries(Object.entries(given).filter(([key]) => !EDITOR_KEYS.includes(key)));
       this._config = { title: given.title || "", blocks, children };
       if (this._built) this._update();
       else this._render();
@@ -2757,7 +3123,7 @@
     }
 
     _emit() {
-      const config = { type: `custom:${CARD_TAG}` };
+      const config = { type: `custom:${CARD_TAG}`, ...this._kept };
       if (this._config.title) config.title = this._config.title;
       config.blocks = this._config.blocks.map(entryConfig);
       if (this._config.children.length) config.children = this._config.children.slice();

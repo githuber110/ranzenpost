@@ -25,17 +25,46 @@ function greetingHeadline(now, className) {
   return el("h1", { class: className || "greeting" }, children);
 }
 
+function overviewWeekMonday(weekIdx) {
+  return isoDate(startOfWeek(addDays(new Date(), 7 * weekIdx)));
+}
+
+function overviewStoredWeek(childId, weekIdx) {
+  const byChild = state.overviewWeeks[childId];
+  const stored = byChild ? byChild[weekIdx] || null : null;
+  if (!stored) return null;
+  const mondays = state.overviewWeekMondays[childId] || {};
+  if (mondays[weekIdx] && mondays[weekIdx] !== overviewWeekMonday(weekIdx)) {
+    delete byChild[weekIdx];
+    delete mondays[weekIdx];
+    return null;
+  }
+  return stored;
+}
+
+function overviewWeekFits(weekIdx) {
+  return !state.timetableMonday || state.timetableMonday === overviewWeekMonday(weekIdx);
+}
+
 function overviewWeekData(childId, week) {
   const weekIdx = week || 0;
-  const sameWeek = weekIdx === (state.weekOffset || 0);
-  if (weekIdx === 0 && sameWeek && childId === state.childId && state.timetable) return state.timetable;
-  const byChild = state.overviewWeeks[childId];
-  return byChild ? byChild[weekIdx] || null : null;
+  const stored = overviewStoredWeek(childId, weekIdx);
+  const current = weekIdx === (state.weekOffset || 0) && childId === state.childId ? state.timetable : null;
+  const shown = current && overviewWeekFits(weekIdx) ? current : null;
+  if (shown && (!shown.error || !stored || stored.error)) return shown;
+  return stored;
+}
+
+function overviewCachedWeeks(childId) {
+  const weeks = new Set([0]);
+  for (const key of Object.keys(state.overviewWeeks[childId] || {})) weeks.add(Number(key));
+  return [...weeks];
 }
 
 async function loadOverviewWeek(childId, week) {
   const weekIdx = week || 0;
   const key = `ovWeek:${childId}:${weekIdx}`;
+  const monday = overviewWeekMonday(weekIdx);
   const stored = (state.overviewWeeks[childId] || {})[weekIdx];
   const keep = !!(stored && !stored.error);
   const outcome = await reload(
@@ -46,8 +75,10 @@ async function loadOverviewWeek(childId, week) {
   );
   if (!outcome) return;
   if (!state.overviewWeeks[childId]) state.overviewWeeks[childId] = {};
+  if (!state.overviewWeekMondays[childId]) state.overviewWeekMondays[childId] = {};
   if (outcome.data) state.overviewWeeks[childId][weekIdx] = outcome.data;
   else if (outcome.error) state.overviewWeeks[childId][weekIdx] = failedWeek(outcome.error, outcome.body);
+  if (outcome.data || outcome.error) state.overviewWeekMondays[childId][weekIdx] = monday;
   if (state.view === "overview" || state.view === "timetable") rerender();
 }
 
@@ -194,17 +225,54 @@ function overviewBrackets(groups) {
   return keys;
 }
 
-function lessonSlotStatus(start, minutesNow) {
+let overviewWakeAt = null;
+let overviewBuiltOn = "";
+
+function overviewWakeAtMinute(minutes) {
+  if (minutes === null || minutes === undefined) return;
+  const at = new Date();
+  at.setHours(0, minutes, 0, 0);
+  if (at.getTime() <= new Date().getTime()) return;
+  if (!overviewWakeAt || at < overviewWakeAt) overviewWakeAt = at;
+}
+
+function overviewTick() {
+  if (state.view !== "overview" || document.hidden || hasOpenFormGuard()) return;
+  if (overviewBuiltOn && overviewBuiltOn !== isoDate(new Date())) {
+    overviewBuiltOn = "";
+    Promise.resolve(refreshActiveView()).catch(routeOrIgnoreBackgroundFailure);
+    return;
+  }
+  if (overviewWakeAt && new Date().getTime() >= overviewWakeAt.getTime()) {
+    overviewWakeAt = null;
+    rerender();
+  }
+}
+
+function lessonEndMinutes(start, period, school) {
+  if (start === null) return null;
+  const box = school ? periodsData(school) : null;
+  if (periodsReady(box)) {
+    const row = periodRules().gridRows(box.grid).find((item) => item.number === Number(period) && item.start === start);
+    if (row && row.end > start) return row.end;
+  }
+  return start + LESSON_MINUTES;
+}
+
+function lessonSlotStatus(start, end, minutesNow) {
   if (start === null) return "unknown";
-  if (minutesNow >= start + LESSON_MINUTES) return "past";
+  if (minutesNow >= end) return "past";
   return minutesNow >= start ? "now" : "future";
 }
 
 function todayTimeline(groups, times, childId, minutesNow) {
+  const school = connectionOfKey(childId);
   const starts = groups.map((group) => lessonTimeMinutes(group.lessons[0], times));
+  const ends = starts.map((start, index) => lessonEndMinutes(start, groups[index].period, school));
   const teaching = groups.map((group) =>
     group.lessons.some((lesson) => !lessonDropped(lesson, childId)));
-  const statuses = starts.map((start) => lessonSlotStatus(start, minutesNow));
+  const statuses = starts.map((start, index) => lessonSlotStatus(start, ends[index], minutesNow));
+  for (const value of starts.concat(ends)) if (value !== null && value > minutesNow) overviewWakeAtMinute(value);
   let nowIndex = -1;
   let nextIndex = -1;
   groups.forEach((group, index) => {
@@ -212,9 +280,9 @@ function todayTimeline(groups, times, childId, minutesNow) {
     if (nowIndex < 0 && statuses[index] === "now") nowIndex = index;
     if (nextIndex < 0 && statuses[index] === "future") nextIndex = index;
   });
-  const taught = starts.filter((start, index) => teaching[index]);
-  const complete = taught.length > 0 && taught.every((start) => start !== null);
-  const schoolEnd = complete ? Math.max(...taught) + LESSON_MINUTES : null;
+  const taught = ends.filter((end, index) => teaching[index]);
+  const complete = taught.length > 0 && taught.every((end) => end !== null);
+  const schoolEnd = complete ? Math.max(...taught) : null;
   const dayOver = taught.length === 0 || (schoolEnd !== null && minutesNow >= schoolEnd);
   return {
     statuses,
@@ -225,8 +293,22 @@ function todayTimeline(groups, times, childId, minutesNow) {
   };
 }
 
-function todayChapter(size) {
+function todayWithoutSchool(child, week, now) {
+  const lessons = todayLessons(week, weekdayIndex(now));
+  if (!lessons.length || holidayTodayCard(isoDate(now), lessons.length, schoolOfChild(child))) return true;
+  return lessons.every((lesson) => lessonDropped(lesson, child.key));
+}
+
+function todayDayOver(child, week, now) {
+  if (todayWithoutSchool(child, week, now)) return true;
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  const lessons = todayLessons(week, weekdayIndex(now));
+  return todayTimeline(groupTodayLessons(lessons), periodTimes(week, child.key), child.key, minutesNow).dayOver;
+}
+
+function todayChapter(size, entry) {
   const compact = size === layoutBlocks().SIZE_COMPACT;
+  const turn = entry && entry.switch ? entry.switch : "";
   const chapter = overviewChapter("today", t("overview.today"), {
     label: t("overview.toTimetable"),
     onclick: overviewOpenTimetable,
@@ -241,6 +323,10 @@ function todayChapter(size) {
   }
   if (!state.children.length && !state.childId && !state.timetable) {
     return overviewRest(chapter, "today:nochild", t("overview.noChild"));
+  }
+  if (turn && turn !== layoutBlocks().SWITCH_END) {
+    if (now.getHours() * 60 + now.getMinutes() >= timeMinutes(turn)) return nextDayChapterAs("today", size);
+    overviewWakeAtMinute(timeMinutes(turn));
   }
   const child = overviewActiveChild();
   if (state.children.length !== 1) chapter.chips = { active: child.key };
@@ -258,6 +344,9 @@ function todayChapter(size) {
     return chapter;
   }
   if (!Array.isArray(week.lessons)) return overviewRest(chapter, "today:unreachable", t("overview.timetable.unreachable"));
+  if (turn && (turn === layoutBlocks().SWITCH_END ? todayDayOver(child, week, now) : todayWithoutSchool(child, week, now))) {
+    return nextDayChapterAs("today", size);
+  }
   const index = weekdayIndex(now);
   const lessons = todayLessons(week, index);
   const holiday = holidayTodayCard(isoDate(now), lessons.length, schoolOfChild(child));
@@ -362,11 +451,22 @@ function todayFreeChapter(chapter, child, iso) {
   return chapter;
 }
 
+function absenceOfChild(entry, childId, school) {
+  const child = state.children.find((item) => item.key === childId);
+  if (!child) return false;
+  const childSchool = connectionOfKey(childId);
+  if (school && childSchool && school !== childSchool) return false;
+  if (entry.student_id === null || entry.student_id === undefined || entry.student_id === "") {
+    return state.children.filter((item) => connectionOfKey(item.key) === childSchool).length === 1;
+  }
+  return child.student_id !== null && child.student_id !== undefined && String(child.student_id) === String(entry.student_id);
+}
+
 function todayAbsences(childId, iso) {
   const box = state.absence;
   const entries = box && box.data && Array.isArray(box.data.entries) ? box.data.entries : [];
   return entries.filter((entry) => {
-    if (childId && entry.student_id && entry.student_id !== childId) return false;
+    if (!absenceOfChild(entry, childId, box.connectionId || "")) return false;
     if (entry.status && entry.status !== ABSENCE_STATUS_ACCEPTED) return false;
     const from = String(entry.from_date || "");
     const till = String(entry.till_date || from);
@@ -615,8 +715,8 @@ function schoolEventsChapter(size) {
     chapter.blocks = [overviewFailureBlock("school_events:failed", loadSchoolEvents)];
     return chapter;
   }
-  if (!rows.length) return null;
-  return chapterRows(chapter, size, block, rows, (event) => overviewBlock(
+  if (!rows.length) return listPartlyUnknown(data) ? overviewListFailure(chapter, "school_events", loadSchoolEvents) : null;
+  return withPartialNote(chapterRows(chapter, size, block, rows, (event) => overviewBlock(
     `school_event:${event.connection_id || ""}:${event.uid}`,
     sizedRow(
       size,
@@ -627,7 +727,18 @@ function schoolEventsChapter(size) {
       () => setView("calendar"),
       [schoolTag(event)]
     )
-  ), overviewAllRow("school_events:all", t("overview.all.school_events"), () => setView("calendar")));
+  ), overviewAllRow("school_events:all", t("overview.all.school_events"), () => setView("calendar"))), "school_events", data);
+}
+
+function overviewListFailure(chapter, key, load) {
+  chapter.bodyClass = "panel-rest";
+  chapter.blocks = [overviewFailureBlock(`${key}:failed`, load)];
+  return chapter;
+}
+
+function withPartialNote(chapter, key, data) {
+  if (listPartlyUnknown(data)) chapter.blocks.push(overviewNoteBlock(`${key}:partial`, t("overview.partial.school")));
+  return chapter;
 }
 
 function tasksChapter(size) {
@@ -645,8 +756,8 @@ function tasksChapter(size) {
     return chapter;
   }
   const rows = openTasks();
-  if (!rows.length) return null;
-  return chapterRows(chapter, size, block, rows, (task) => overviewBlock(
+  if (!rows.length) return listPartlyUnknown(data) ? overviewListFailure(chapter, "tasks", loadTasks) : null;
+  return withPartialNote(chapterRows(chapter, size, block, rows, (task) => overviewBlock(
     `task:${task.connection_id || ""}:${task.id}`,
     sizedRow(
       size,
@@ -657,7 +768,7 @@ function tasksChapter(size) {
       () => openTask(task),
       [schoolTag(task)]
     )
-  ), overviewAllRow("tasks:all", t("overview.all.tasks"), () => setView("tasks")));
+  ), overviewAllRow("tasks:all", t("overview.all.tasks"), () => setView("tasks"))), "tasks", data);
 }
 
 function newsChapter(size) {
@@ -675,8 +786,8 @@ function newsChapter(size) {
     return chapter;
   }
   const rows = currentNews();
-  if (!rows.length) return null;
-  return chapterRows(chapter, size, block, rows, (item) => overviewBlock(
+  if (!rows.length) return listPartlyUnknown(data) ? overviewListFailure(chapter, "news", loadNews) : null;
+  return withPartialNote(chapterRows(chapter, size, block, rows, (item) => overviewBlock(
     `news:${item.connection_id || ""}:${item.id}`,
     sizedRow(
       size,
@@ -687,7 +798,7 @@ function newsChapter(size) {
       () => openNews(item),
       [schoolTag(item)]
     )
-  ), overviewAllRow("news:all", t("overview.all.news"), () => setView("news")));
+  ), overviewAllRow("news:all", t("overview.all.news"), () => setView("news"))), "news", data);
 }
 
 function absenceEntries(todayIso, limitIso) {
@@ -773,7 +884,7 @@ function holidaysChapter(size) {
     const start = parseIsoDay(row.period.start);
     const days = start ? Math.round((start - today) / 86400000) : 0;
     const meta = days > 0 ? daysUntilLabel(days) : t("holidays.day.free");
-    const range = dateRange(showDate(row.period.start), showDate(row.period.end));
+    const range = row.period.start === row.period.end ? showDate(row.period.start) : dateRange(showDate(row.period.start), showDate(row.period.end));
     return overviewBlock(
       row.key,
       sizedRow(size, holidayName(row.period), range, meta, false, () => openSheet(holidayRegionSheet), [schoolTag(row)])
@@ -794,6 +905,7 @@ function overviewLessonsAhead(child, todayIso, limitIso) {
       const date = overviewWeekDate(weekIdx, lesson.day_of_week);
       const iso = isoDate(date);
       if (iso < todayIso || iso > limitIso) continue;
+      if (holidayQuietsLessons(holidayDay(iso, schoolOfChild(child)))) continue;
       found.push({ lesson, iso, date, child, week });
     }
   }
@@ -834,16 +946,24 @@ function nextLessonChapter(size) {
     const start = lessonTimeMinutes(entry.lesson, periodTimes(entry.week, child.key));
     return start !== null && start > minutesNow;
   });
-  if (!upcoming.length) return null;
+  const weeks = overviewWeeksState(child, [0, 1]);
+  if (upcoming.length && upcoming[0].iso === todayIso) overviewWakeAtMinute(lessonTimeMinutes(upcoming[0].lesson, periodTimes(upcoming[0].week, child.key)));
+  if (!upcoming.length && !weeks.failed && !weeks.refused) return null;
   const chapter = overviewChapter("next_lesson", t("blocks.next_lesson.title"), {
     label: t("overview.toTimetable"),
     onclick: overviewOpenTimetable,
   });
   if (state.children.length !== 1) chapter.chips = { active: child.key };
+  if (!upcoming.length) {
+    if (weeks.refused) return overviewRest(chapter, "next_lesson:refused", t(TIMETABLE_REFUSED_KEY));
+    chapter.bodyClass = "panel-rest";
+    chapter.blocks = [overviewFailureBlock("next_lesson:failed", () => loadOverviewWeek(child.key, weeks.weekIdx))];
+    return chapter;
+  }
   chapterRows(chapter, size, block, upcoming, (entry) => {
     const time = lessonTime(entry.lesson, periodTimes(entry.week, child.key));
     const start = lessonTimeMinutes(entry.lesson, periodTimes(entry.week, child.key));
-    const minutes = start === null ? null : lessonMinutesAhead(entry, start, now);
+    const minutes = start === null || entry.iso !== todayIso ? null : lessonMinutesAhead(entry, start, now);
     const details = [entry.lesson.room || "", teacherSurname(entry.lesson), minutes !== null && minutes > 0 ? minutesUntilLabel(minutes) : ""].filter(Boolean).join(" · ");
     return overviewBlock(
       `next:${child.key}:${entry.iso}:${entry.lesson.period}`,
@@ -853,11 +973,13 @@ function nextLessonChapter(size) {
         details,
         `${lessonDayLabel(entry.iso, entry.date)} · ${time || periodShort(entry.lesson.period)}`,
         false,
-        overviewOpenTimetable,
+        () => openTimetableOf(child.key, entry.iso),
         []
       )
     );
   }, null);
+  const note = holidayNoteBlock("next_lesson:holidays", schoolOfChild(child), [upcoming[0].iso]);
+  if (note) chapter.blocks.push(note);
   chapter.count = 0;
   return chapter;
 }
@@ -880,7 +1002,7 @@ function nextSchoolDay(child, todayIso) {
       const iso = isoDate(date);
       if (iso <= todayIso) continue;
       const lessons = todayLessons(week, day);
-      if (holidayTodayLines(iso, lessons.length, schoolOfChild(child))) continue;
+      if (holidayQuietsLessons(holidayDay(iso, schoolOfChild(child)))) continue;
       return { iso, date, week, lessons };
     }
   }
@@ -893,40 +1015,44 @@ function nextDayHead(found, now) {
 }
 
 function nextDayChapter(size) {
+  return nextDayChapterAs("next_day", size);
+}
+
+function nextDayChapterAs(key, size) {
   if (!moduleOn("timetable") || !state.children.length) return null;
   const child = overviewActiveChild();
   const now = new Date();
   const found = nextSchoolDay(child, isoDate(now));
   const head = found.iso ? nextDayHead(found, now) : { title: t("blocks.next_day.title"), meta: "" };
-  const chapter = overviewChapter("next_day", head.title, {
+  const chapter = overviewChapter(key, head.title, {
     label: t("overview.toTimetable"),
-    onclick: overviewOpenTimetable,
+    onclick: () => openTimetableOf(child.key, found.iso || ""),
   });
   chapter.meta = head.meta;
   if (state.children.length !== 1) chapter.chips = { active: child.key };
   if (found.pending) {
     chapter.bodyClass = "panel-rest";
-    chapter.blocks = [overviewLoadingBlock("next_day:loading")];
+    chapter.blocks = [overviewLoadingBlock(`${key}:loading`)];
     chapter.loading = true;
     return chapter;
   }
-  if (found.refused) return overviewRest(chapter, "next_day:refused", t(TIMETABLE_REFUSED_KEY));
-  if (found.unreachable) return overviewRest(chapter, "next_day:unreachable", t("overview.timetable.unreachable"));
+  if (found.refused) return overviewRest(chapter, `${key}:refused`, t(TIMETABLE_REFUSED_KEY));
+  if (found.unreachable) return overviewRest(chapter, `${key}:unreachable`, t("overview.timetable.unreachable"));
   if (found.failed) {
     chapter.bodyClass = "panel-rest";
-    chapter.blocks = [overviewFailureBlock("next_day:failed", () => loadOverviewWeek(child.key, found.weekIdx))];
+    chapter.blocks = [overviewFailureBlock(`${key}:failed`, () => loadOverviewWeek(child.key, found.weekIdx))];
     return chapter;
   }
   if (found.unknown) {
     const holiday = holidayTodayCard(isoDate(addDays(now, 1)), 0, schoolOfChild(child));
     chapter.bodyClass = "panel-rest";
-    chapter.blocks = [holiday ? overviewBlock("next_day:holiday", holiday) : null, overviewRestBlock("next_day:unknown", t("overview.nextDay.unknown"))].filter(Boolean);
+    chapter.blocks = [holiday ? overviewBlock(`${key}:holiday`, holiday) : null, overviewRestBlock(`${key}:unknown`, t("overview.nextDay.unknown"))].filter(Boolean);
     return chapter;
   }
   const times = periodTimes(found.week, child.key);
   const groups = groupTodayLessons(found.lessons);
   const brackets = overviewBrackets(groups);
-  const limit = layoutBlocks().limitOf(layoutBlocks().blockOf("next_day"), size);
+  const limit = layoutBlocks().limitOf(layoutBlocks().blockOf(key), size);
   chapter.bodyClass = "rows flat";
   chapter.size = size;
   groups.slice(0, limit).forEach((group, position) => {
@@ -944,10 +1070,12 @@ function nextDayChapter(size) {
         ? compactLessonPair(entries, false)
         : compactLesson(entries[0], false);
     const changed = group.lessons.some((lesson) => !!displayChangeKind(lesson, child.key));
-    chapter.blocks.push(Object.assign(overviewBlock(`next_day:${child.key}:${group.period}`, node, brackets[position], changed), { sortTime: entries[0].minutes }));
+    chapter.blocks.push(Object.assign(overviewBlock(`${key}:${child.key}:${group.period}`, node, brackets[position], changed), { sortTime: entries[0].minutes }));
   });
-  const own = todayOwnItems(child.key, found.iso, found.week).map((item) => Object.assign(overviewBlock(`next_day:${child.key}:own:${item.entry.id}`, todayOwnRow(item, -1)), { sortTime: item.start }));
+  const own = todayOwnItems(child.key, found.iso, found.week).map((item) => Object.assign(overviewBlock(`${key}:${child.key}:own:${item.entry.id}`, todayOwnRow(item, -1)), { sortTime: item.start }));
   if (own.length) chapter.blocks = mergeByTime(chapter.blocks, own);
+  const note = holidayNoteBlock(`${key}:holidays`, schoolOfChild(child), [found.iso]);
+  if (note) chapter.blocks.push(note);
   chapter.count = found.lessons.filter((lesson) => !!displayChangeKind(lesson, child.key)).length;
   chapter.nowKey = chapter.blocks[0] ? chapter.blocks[0].key : null;
   return chapter;
@@ -958,11 +1086,24 @@ function weekChapter(size) {
   const child = overviewActiveChild();
   ensureOverviewWeeks([child], [0]);
   const week = overviewWeekData(child.key, 0);
-  if (!week || week.error || !Array.isArray(week.lessons) || !week.lessons.length) return null;
   const chapter = overviewChapter("week", t("blocks.week.title"), {
     label: t("overview.toTimetable"),
     onclick: overviewOpenTimetable,
   });
+  if (!week) {
+    chapter.bodyClass = "panel-rest";
+    chapter.loading = true;
+    chapter.blocks = [overviewLoadingBlock("week:loading")];
+    return chapter;
+  }
+  if (timetableRefused(week)) return overviewRest(chapter, "week:refused", t(TIMETABLE_REFUSED_KEY));
+  if (week.error) {
+    chapter.bodyClass = "panel-rest";
+    chapter.blocks = [overviewFailureBlock("week:failed", () => loadOverviewWeek(child.key, 0))];
+    return chapter;
+  }
+  if (!Array.isArray(week.lessons)) return overviewRest(chapter, "week:unreachable", t("overview.timetable.unreachable"));
+  if (!week.lessons.length && !holidayFullWeek(startOfWeek(new Date()), week, schoolOfChild(child))) return null;
   if (state.children.length !== 1) chapter.chips = { active: child.key };
   chapter.size = size;
   chapter.count = 0;
@@ -971,15 +1112,50 @@ function weekChapter(size) {
   return chapter;
 }
 
-function openTimetableOf(childKey) {
+function overviewWeekIndexOf(iso) {
+  const date = parseIsoDay(iso);
+  if (!date) return 0;
+  return Math.round((startOfWeek(date).getTime() - startOfWeek(new Date()).getTime()) / (7 * 86400000));
+}
+
+function openTimetableOf(childKey, iso) {
+  const options = iso ? { week: overviewWeekIndexOf(iso) } : undefined;
   if (childKey && childKey !== state.childId) {
     state.childId = childKey;
     state.timetable = null;
-    setView("timetable");
+    setView("timetable", options);
     reloadTimetable();
     return;
   }
-  setView("timetable");
+  setView("timetable", options);
+}
+
+function holidaysUnsure(school) {
+  const boxes = state.holidays;
+  if (!boxes || typeof boxes !== "object") return false;
+  const ids = Object.keys(boxes);
+  const key = ids.includes(school) ? school : ids.length === 1 ? ids[0] : null;
+  if (key === null) return false;
+  const box = boxes[key];
+  return !box || box.status === HOLIDAY_STATUS_UNKNOWN;
+}
+
+function holidayNoteBlock(key, school, isos) {
+  if (holidaysUnsure(school)) return overviewNoteBlock(key, t("overview.holidays.unknown"));
+  const day = isos.map((iso) => (holidayIsUncertain(iso, school) ? holidayDay(iso, school) : null)).find(Boolean);
+  if (!day) return null;
+  const name = holidayName(day) || t(day.kind === HOLIDAY_KIND_PUBLIC ? "holidays.day.public" : "holidays.day.free");
+  return overviewNoteBlock(key, t("overview.holidays.maybeFree", { name }));
+}
+
+function overviewWeeksState(child, weeks) {
+  for (const weekIdx of weeks) {
+    const week = overviewWeekData(child.key, weekIdx);
+    if (!week) return { pending: true };
+    if (timetableRefused(week)) return { refused: true };
+    if (week.error) return { failed: true, weekIdx };
+  }
+  return {};
 }
 
 function changesChapter(size) {
@@ -988,25 +1164,38 @@ function changesChapter(size) {
   ensureOverviewWeeks(state.children, [0, 1]);
   const now = new Date();
   const rows = [];
+  const missing = [];
   for (const child of state.children) {
+    const weeks = overviewWeeksState(child, [0, 1]);
+    if (weeks.failed || weeks.pending) missing.push({ child, weeks });
     for (const entry of overviewLessonsAhead(child, isoDate(now), isoDate(addDays(now, OVERVIEW_UPCOMING_DAYS)))) {
       const kind = displayChangeKind(entry.lesson, child.key);
       if (kind) rows.push(Object.assign({ kind }, entry));
     }
   }
-  if (!rows.length) return null;
+  rows.sort((left, right) => left.iso.localeCompare(right.iso) || Number(left.lesson.period) - Number(right.lesson.period));
+  const failed = missing.find((entry) => entry.weeks.failed);
+  if (!rows.length && !failed) return null;
   const chapter = overviewChapter("changes", t("blocks.changes.title"), {
     label: t("overview.toTimetable"),
     onclick: overviewOpenTimetable,
   });
-  chapter.fresh = true;
-  return chapterRows(chapter, size, block, rows, (entry) => {
+  if (!rows.length) {
+    chapter.bodyClass = "panel-rest";
+    chapter.blocks = [overviewFailureBlock("changes:failed", () => loadOverviewWeek(failed.child.key, failed.weeks.weekIdx))];
+    return chapter;
+  }
+  const notes = [];
+  if (failed) notes.push(overviewNoteBlock("changes:partial", t("overview.changes.partial", { name: childShortName(failed.child) })));
+  const unsure = state.children.map(schoolOfChild).find((school) => holidaysUnsure(school));
+  if (unsure !== undefined) notes.push(holidayNoteBlock("changes:holidays", unsure, []));
+  chapterRows(chapter, size, block, rows, (entry) => {
     const lesson = entry.lesson;
     const title = lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback");
     const who = entry.kind === "cancelled" ? "" : [teacherSurname(lesson), lesson.room].filter(Boolean).join(" ");
     const moved = lessonMove(lesson, entry.kind);
     const detail = [periodShort(lesson.period), lessonTime(lesson, periodTimes(entry.week, entry.child.key)), who, moved ? moveCellLabel(moved) : ""].filter(Boolean).join(" · ");
-    const node = sizedRow(size, title, detail, lessonDayLabel(entry.iso, entry.date), false, () => openTimetableOf(entry.child.key), [
+    const node = sizedRow(size, title, detail, lessonDayLabel(entry.iso, entry.date), false, () => openTimetableOf(entry.child.key, entry.iso), [
       childTag(entry.child),
       schoolTag({ connection_id: connectionOfKey(entry.child.key) }),
     ]);
@@ -1014,6 +1203,8 @@ function changesChapter(size) {
     slot.append(changeTag(entry.kind));
     return overviewBlock(`change:${entry.child.key}:${entry.iso}:${lesson.period}`, node, null, true);
   }, null);
+  chapter.blocks.push(...notes.filter(Boolean));
+  return chapter;
 }
 
 const BLOCK_CHAPTERS = {
@@ -1038,10 +1229,12 @@ const BLOCK_CHAPTERS = {
 };
 
 function overviewChapters() {
+  overviewWakeAt = null;
+  overviewBuiltOn = isoDate(new Date());
   const chapters = [];
   for (const entry of enabledOverviewBlocks()) {
     const build = BLOCK_CHAPTERS[entry.key];
-    const chapter = build ? build(entry.size) : null;
+    const chapter = build ? build(entry.size, entry) : null;
     if (chapter) chapters.push(chapter);
   }
   if (chapters.length && moduleCardWanted()) {
@@ -1107,11 +1300,13 @@ function overviewPanelHead(chapter, pageIndex, pageCount, panelIndex) {
     head.append(el("button", {
       class: "icon-btn panel-back",
       type: "button",
-      "aria-label": t("overview.page.back", {
-        area: chapter.title,
-        current: formatNumber(Math.max(pageIndex, 1)),
-        total: formatNumber(pageCount),
-      }),
+      "aria-label": first && chapter.previousTitle
+        ? t("overview.page.backArea", { area: chapter.previousTitle })
+        : t("overview.page.back", {
+          area: chapter.title,
+          current: formatNumber(Math.max(pageIndex, 1)),
+          total: formatNumber(pageCount),
+        }),
       onclick: (event) => overviewStep(-1, event.currentTarget.closest(".panel")),
     }, [el("span", { class: "ico-slot chev-up", html: iconSvg("chevron", 18) })]));
   }
@@ -1314,6 +1509,7 @@ function overviewBuild(container, chapters, plan) {
     const pages = plan[chapterIndex];
     const byKey = new Map(chapter.blocks.map((block) => [block.key, block]));
     const following = chapters[chapterIndex + 1] || null;
+    chapter.previousTitle = chapterIndex > 0 ? chapters[chapterIndex - 1].title : "";
     const nextTitle = following
       ? { title: following.title, count: overviewNewCount(following.area) }
       : null;

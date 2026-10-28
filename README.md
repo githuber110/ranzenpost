@@ -239,7 +239,7 @@ The integration creates one device per school and one per child. Entity IDs use 
 
 In the automation editor, pick a child's device for triggers such as **Timetable changed**, **Lesson cancelled** or **New letter**, and for conditions such as **Is a school day**. No YAML needed. The integration asks the app every 60 seconds and never talks to IServ itself.
 
-The [Home Assistant reference](docs/home-assistant.md) lists every entity with its attributes, all triggers and conditions, and four automation recipes to copy.
+The [Home Assistant reference](docs/home-assistant.md) lists every entity with its attributes, all triggers and conditions, four automation recipes to copy, the options, help for common problems and how to remove Ranzenpost.
 
 ### Push messages and repairs
 

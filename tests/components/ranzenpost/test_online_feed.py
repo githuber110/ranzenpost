@@ -1,3 +1,4 @@
+import sys
 from http import HTTPStatus
 
 import pytest
@@ -447,3 +448,67 @@ async def test_setup_reports_the_access_from_outside(hass, aioclient_mock, no_cl
 
     posted = [call for call in aioclient_mock.mock_calls if call[0] == "POST"]
     assert posted and posted[0][2] == {"feeds": [], "outside": {"cloud": False, "external": False}}
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", "http://[::1", "ftp://home.example.test/cal", "https://user:secret@home.example.test/cal", "https://a b"],
+)
+def test_odd_outside_addresses_are_dropped(value):
+    assert online_feed.clean_url(value) == ""
+
+
+def test_a_clean_outside_address_is_kept():
+    assert online_feed.clean_url(" https://home.example.test/api/webhook/x ") == "https://home.example.test/api/webhook/x"
+
+
+async def test_the_cloud_is_only_used_when_home_assistant_loaded_it(hass, monkeypatch):
+    import homeassistant.components as components
+
+    fake = object()
+    assert online_feed._cloud(hass) is None
+    hass.config.components.add("cloud")
+    monkeypatch.setitem(sys.modules, "homeassistant.components.cloud", fake)
+    monkeypatch.setattr(components, "cloud", fake, raising=False)
+    assert online_feed._cloud(hass) is fake
+
+
+async def test_a_cloud_that_cannot_be_imported_counts_as_absent(hass, monkeypatch):
+    hass.config.components.add("cloud")
+    monkeypatch.setitem(sys.modules, "homeassistant.components.cloud", None)
+    assert online_feed._cloud(hass) is None
+
+
+async def test_a_webhook_without_a_feed_answers_not_found(hass, webhooks, no_cloud):
+    feeds = OnlineFeeds(hass, "entry1", FakeApi())
+
+    response = await feeds._handle(hass, "ranzenpost_unknown", None)
+
+    assert response.status == HTTPStatus.NOT_FOUND
+
+
+async def test_a_failing_cloud_keeps_the_known_address(hass, webhooks, cloud):
+    api = FakeApi()
+    feeds = OnlineFeeds(hass, "entry1", api)
+    await feeds.async_sync((feed(),))
+
+    async def failing(hass, webhook_id):
+        raise RuntimeError("cloud down")
+
+    cloud.async_get_or_create_cloudhook = failing
+    await feeds.async_sync((feed(cloud_url=f"{CLOUD_URL}/aaaa", reported=True),))
+
+    assert len(api.reports) == 1
+
+
+async def test_a_cloud_address_the_cloud_no_longer_knows_counts_as_deleted(hass, webhooks, cloud, hass_storage):
+    feeds = OnlineFeeds(hass, "entry1", FakeApi())
+    await feeds.async_sync((feed(),))
+
+    async def gone(hass, webhook_id):
+        raise ValueError("unknown webhook")
+
+    cloud.async_delete_cloudhook = gone
+    await feeds.async_sync(())
+
+    assert hass_storage[online_feed.storage_key("entry1")]["data"] == {"webhook_ids": []}

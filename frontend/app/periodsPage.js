@@ -624,6 +624,7 @@ async function periodsRequest(id, path, method, body) {
 async function refreshAfterGridChange() {
   state.timetable = null;
   state.overviewWeeks = {};
+  state.overviewWeekMondays = {};
   try {
     state.config = await getJson("api/config");
   } catch (error) {

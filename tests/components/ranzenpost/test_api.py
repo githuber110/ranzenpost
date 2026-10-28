@@ -1,6 +1,6 @@
 import pytest
 
-from custom_components.ranzenpost.api import AuthError, ConnectionError, Event, NotFoundError, RanzenpostApi
+from custom_components.ranzenpost.api import AuthError, ConnectionError, Event, Lesson, NotFoundError, RanzenpostApi
 
 
 class FakeResponse:
@@ -51,3 +51,11 @@ def test_an_event_from_an_older_app_leaves_the_substitution_unknown():
     assert Event.from_json(_event_json()).substitution is None
     assert Event.from_json(_event_json(substitution=True)).substitution is True
     assert Event.from_json(_event_json(substitution=False)).substitution is False
+
+
+def test_a_move_keeps_only_a_known_direction():
+    assert Event.from_json(_event_json()).moved == ""
+    assert Event.from_json(_event_json(moved="here")).moved == "here"
+    assert Event.from_json(_event_json(moved="sideways")).moved == ""
+    lesson = Lesson.from_json(_event_json(moved="away", cancelled=True))
+    assert lesson.as_attributes()["moved"] == "away"

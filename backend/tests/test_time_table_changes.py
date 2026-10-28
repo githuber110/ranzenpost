@@ -509,3 +509,42 @@ def test_each_cancelled_parallel_lesson_keeps_its_own_note():
     assert sorted((lesson.teacher, entry["kind"], entry["note"]) for lesson, entry in rows) == [
         ("FUC", "cancelled", "first"), ("ZZZ", "cancelled", "second"),
     ]
+
+
+def report_move_week():
+    away = change(MONDAY, 2, "MA", None, "R101", new_teacher=None, change_types=["0", "3"])
+    here = change(FRIDAY, 1, "KU", None, "R12", "MA", None, "", change_types=["7", "102"])
+    lone_here = change(TUESDAY, 1, "EN", None, "R204", "EK", None, "", change_types=["7", "102"])
+    lone_away = change(WEDNESDAY, 3, "SP", None, "GYM", new_teacher=None, change_types=["0", "3"])
+    cancelled = change(THURSDAY, 2, "MA", None, "R101", new_teacher=None, change_types=["0"])
+    return parse_time_table(without_teachers(week_with(away, here, lone_here, lone_away, cancelled)))
+
+
+def test_a_school_marking_moves_away_and_here_with_different_codes_links_the_move():
+    marks = marked(report_move_week())
+    assert marks[(MONDAY, 2, "MA")]["moved_to"] == span(FRIDAY, 1)
+    assert marks[(FRIDAY, 1, "MA")]["moved_from"] == span(MONDAY, 2)
+
+
+def test_a_move_without_a_visible_partner_still_shows_as_a_move():
+    unknown = {"date": "", "period": None, "period_end": None}
+    marks = marked(report_move_week())
+    assert marks[(TUESDAY, 1, "EK")]["moved_from"] == unknown
+    assert marks[(WEDNESDAY, 3, "SP")]["kind"] == "cancelled"
+    assert marks[(WEDNESDAY, 3, "SP")]["moved_to"] == unknown
+    assert "moved_to" not in marks[(THURSDAY, 2, "MA")]
+    assert [item["moved"] for item in shown_changes(report_move_week())].count(True) == 4
+
+
+def test_the_calendar_names_a_move_without_a_visible_partner():
+    week = report_move_week()
+    rows = rows_by_slot(week)
+    here, here_entry = rows[(TUESDAY, 1)]
+    away, away_entry = rows[(WEDNESDAY, 3)]
+    here_shown = to_display(here, {}, here_entry)
+    away_shown = to_display(away, {}, away_entry)
+    here_title = messages.text_in("de", "calendar.event.summary.noTeacher", {"period": 1, "subject": "EK", "teacher": ""})
+    away_title = messages.text_in("de", "calendar.event.summary.noTeacher", {"period": 3, "subject": "SP", "teacher": ""})
+    assert feed.lesson_summary("de", here_shown) == messages.text_in("de", "calendar.event.summary.movedHere", {"title": here_title})
+    assert feed.lesson_summary("de", away_shown) == messages.text_in("de", "calendar.event.summary.movedAway", {"title": away_title})
+    assert messages.text_in("de", "calendar.detail.movedHere") in feed.lesson_description("de", here_shown, date(2026, 10, 6), 1)

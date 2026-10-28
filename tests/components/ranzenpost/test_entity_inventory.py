@@ -120,7 +120,7 @@ async def test_every_entity_on_a_school_morning(hass, aioclient_mock, frozen_now
         {"start": "2026-10-12", "end": "2026-10-23", "days_until": 40},
     )
     assert extra(hass, f"sensor.{SCHOOL}_next_conference") == (
-        "2026-11-04T23:00:00+00:00",
+        "2026-11-05",
         {
             "date": "2026-11-05",
             "title": "Parent-teacher conference",
@@ -157,7 +157,7 @@ async def test_a_child_without_data_reads_none_zero_and_empty_lists(hass, aiocli
     assert extra(hass, f"sensor.{KIM}_unread_letters") == ("0", {"letters": []})
     assert extra(hass, f"sensor.{KIM}_unread_posts") == ("0", {"posts": []})
     assert extra(hass, f"sensor.{KIM}_open_absences") == ("0", {"absences": []})
-    assert extra(hass, f"sensor.{KIM}_next_absence") == ("none", {})
+    assert extra(hass, f"sensor.{KIM}_next_absence") == ("unknown", {})
     assert extra(hass, f"sensor.{KIM}_timetable_last_updated") == ("unknown", {"source": ""})
     assert extra(hass, f"binary_sensor.{KIM}_school_day_today") == ("off", {})
     assert extra(hass, f"binary_sensor.{KIM}_timetable_changed_today") == ("off", {})
@@ -206,7 +206,7 @@ async def test_every_entity_on_a_saturday_night(hass, aioclient_mock, frozen_sat
     )
     assert extra(hass, f"sensor.{ALEX}_unread_posts") == ("0", {"posts": []})
     assert extra(hass, f"sensor.{ALEX}_open_absences") == ("0", {"absences": []})
-    assert extra(hass, f"sensor.{ALEX}_next_absence") == ("none", {})
+    assert extra(hass, f"sensor.{ALEX}_next_absence") == ("unknown", {})
     assert extra(hass, f"sensor.{ALEX}_timetable_last_updated") == ("2026-09-04T14:05:00+00:00", {"source": "app"})
     assert extra(hass, f"binary_sensor.{ALEX}_school_day_today") == ("off", {})
     assert extra(hass, f"binary_sensor.{ALEX}_timetable_changed_today") == ("off", {})

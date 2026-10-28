@@ -1,5 +1,29 @@
+function withUnofferedBlocks(listed) {
+  const raw = state.config && Array.isArray(state.config.overview_blocks) ? state.config.overview_blocks : null;
+  const offered = new Set(offeredBlocks("overview").map((block) => block.key));
+  const after = new Map();
+  let previous = "";
+  for (const entry of layoutBlocks().normalizeOverviewBlocks(raw, null, false)) {
+    if (offered.has(entry.key)) {
+      previous = entry.key;
+      continue;
+    }
+    if (!after.has(previous)) after.set(previous, []);
+    after.get(previous).push(entry);
+  }
+  const merged = (after.get("") || []).slice();
+  after.delete("");
+  for (const entry of listed) {
+    merged.push(entry, ...(after.get(entry.key) || []));
+    after.delete(entry.key);
+  }
+  for (const rest of after.values()) merged.push(...rest);
+  return merged;
+}
+
 async function saveLayout(patch) {
   if (!state.config) state.config = {};
+  if (Array.isArray(patch.overview_blocks)) patch.overview_blocks = withUnofferedBlocks(patch.overview_blocks);
   Object.assign(state.config, patch);
   rerender();
   try {
@@ -83,15 +107,61 @@ function moveOverviewBlock(key, direction) {
   const enabled = enabledOverviewBlocks();
   const keys = enabled.map((entry) => entry.key);
   const moved = layoutBlocks().moveKey(keys, key, direction);
-  const bySize = new Map(enabled.map((entry) => [entry.key, entry.size]));
+  const byKey = new Map(enabled.map((entry) => [entry.key, entry]));
   announceMove(blockTitle(key), moved.indexOf(key) + 1);
   focusAfterRender(`.block-row[data-block="${key}"] .order-btns [data-dir="${direction < 0 ? "up" : "down"}"]`);
-  saveLayout({ overview_blocks: moved.map((item) => ({ key: item, size: bySize.get(item) })) });
+  saveLayout({ overview_blocks: moved.map((item) => byKey.get(item)) });
 }
 
 function setOverviewBlockSize(key, size) {
-  const listed = enabledOverviewBlocks().map((entry) => (entry.key === key ? { key, size } : entry));
+  const listed = enabledOverviewBlocks().map((entry) => (entry.key === key ? Object.assign({}, entry, { size }) : entry));
   saveLayout({ overview_blocks: listed });
+}
+
+function setOverviewBlockSwitch(key, turn) {
+  const listed = enabledOverviewBlocks().map((entry) => {
+    if (entry.key !== key) return entry;
+    const changed = { key: entry.key, size: entry.size };
+    if (turn) changed.switch = turn;
+    return changed;
+  });
+  saveLayout({ overview_blocks: listed });
+}
+
+function switchModeOf(turn) {
+  if (!turn) return "off";
+  return turn === layoutBlocks().SWITCH_END ? layoutBlocks().SWITCH_END : "time";
+}
+
+function blockSwitchTools(key, entry) {
+  const blocks = layoutBlocks();
+  const name = blockTitle(key);
+  const mode = switchModeOf(entry.switch);
+  const select = el("select", { class: "sel", "data-switch": key }, ["off", blocks.SWITCH_END, "time"].map((choice) =>
+    el("option", { value: choice, selected: choice === mode ? "" : null }, t(`settings.blocks.switch.${choice}`))));
+  select.addEventListener("change", () => {
+    const choice = select.value;
+    const turn = choice === "time"
+      ? (blocks.switchOf(entry.switch) && entry.switch !== blocks.SWITCH_END ? entry.switch : blocks.SWITCH_TIME_DEFAULT)
+      : choice === blocks.SWITCH_END ? blocks.SWITCH_END : "";
+    focusAfterRender(`.block-row[data-block="${key}"] [data-switch="${key}"]`);
+    setOverviewBlockSwitch(key, turn);
+  });
+  const fields = [el("label", { class: "field block-turn-pick" }, [
+    el("span", { class: "lbl" }, t("settings.blocks.switch", { name })),
+    el("div", { class: "sel-wrap" }, [select, el("span", { class: "caret", html: iconSvg("chevron", 14) })]),
+  ])];
+  if (mode === "time") {
+    const input = el("input", { class: "inp", type: "time", step: "60", dir: "ltr", value: entry.switch, "data-switch-time": key });
+    input.addEventListener("change", () => {
+      const turn = blocks.switchOf(input.value);
+      if (!turn || turn === blocks.SWITCH_END || turn === entry.switch) return;
+      focusAfterRender(`.block-row[data-block="${key}"] [data-switch-time="${key}"]`);
+      setOverviewBlockSwitch(key, turn);
+    });
+    fields.push(el("label", { class: "field block-turn-time" }, [el("span", { class: "lbl" }, t("settings.blocks.switch.at", { name })), input]));
+  }
+  return el("div", { class: "block-turn" }, fields);
 }
 
 function toggleOverviewBlock(key, on) {
@@ -106,7 +176,8 @@ function toggleOverviewBlock(key, on) {
 function blockRow(key, entry, index, total) {
   const on = !!entry;
   const name = blockTitle(key);
-  const row = el("div", { class: on ? "block-row" : "block-row off", "data-block": key }, [
+  const turns = on && layoutBlocks().SWITCH_BLOCKS.includes(key);
+  const row = el("div", { class: on ? (turns ? "block-row has-turn" : "block-row") : "block-row off", "data-block": key }, [
     el("div", { class: "block-text" }, [
       el("div", { class: "block-name" }, [
         el("span", { class: "lbl" }, name),
@@ -119,6 +190,7 @@ function blockRow(key, entry, index, total) {
       sizeSegment(key, entry.size, (size) => setOverviewBlockSize(key, size)),
       orderButtons(name, index > 0, index < total - 1, (direction) => moveOverviewBlock(key, direction), key),
     ]) : null,
+    turns ? blockSwitchTools(key, entry) : null,
   ]);
   return row;
 }

@@ -26,9 +26,11 @@ from .coordinator import (
     ENTRY_ISSUE_KEYS,
     RanzenpostConfigEntry,
     RanzenpostCoordinator,
+    async_remove_changes_store,
     child_option_keys,
     entry_issue_id,
     login_issue_id,
+    selected_children,
 )
 from .devices import entry_device
 from .entity import child_identifier, child_unique_id, panel_url, school_device_info, school_identifier, school_unique_id
@@ -69,13 +71,25 @@ def forget_entities_of_missing_modules(hass: HomeAssistant, entry: RanzenpostCon
     registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         school = info.school(_school_of_unique_id(entry.entry_id, entity.unique_id))
-        if school is None:
+        if school is None or not school.modules_known:
             continue
         stale = tuple(f"_{key}" for key, module in KEY_MODULES.items() if not school.modules.has(module))
         if not school.own_entries:
             stale += tuple(f"_{key}" for key in OPT_IN_CALENDAR_KINDS)
         if stale and entity.unique_id.endswith(stale):
             registry.async_remove(entity.entity_id)
+
+
+@callback
+def forget_devices_of_unselected_children(hass: HomeAssistant, entry: RanzenpostConfigEntry, info: Info) -> None:
+    selected = {child.key for child in selected_children(info, entry)}
+    registry = dr.async_get(hass)
+    for child in info.children:
+        if child.key in selected:
+            continue
+        device = entry_device(registry, entry.entry_id, child_identifier(entry.entry_id, child))
+        if device is not None:
+            registry.async_remove_device(device.id)
 
 
 @callback
@@ -135,6 +149,8 @@ def sync_device_names_and_links(hass: HomeAssistant, entry: RanzenpostConfigEntr
         changes = {}
         if device.name_by_user is None and device.name != wanted:
             changes["name"] = wanted
+        if device.sw_version != (info.version or None):
+            changes["sw_version"] = info.version or None
         if device.configuration_url != link:
             changes["configuration_url"] = link
         if changes:
@@ -186,6 +202,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -
             config_entry_id=entry.entry_id, **school_device_info(entry.entry_id, school, info)
         )
     forget_entities_of_missing_modules(hass, entry, info)
+    forget_devices_of_unselected_children(hass, entry, info)
     _remember_schools(hass, entry, info)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_register_card(hass)
@@ -195,6 +212,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) -
     await online.async_sync(info.online_feeds, info.outside_access)
 
     announced = coordinator.data
+    async_fire_signals(hass, entry.entry_id, announced.signals)
 
     @callback
     def _on_coordinator_update() -> None:
@@ -220,7 +238,7 @@ async def async_remove_config_entry_device(
 ) -> bool:
     info = entry.runtime_data.data.info
     current = {school_identifier(entry.entry_id, school.id) for school in info.schools}
-    current.update(child_identifier(entry.entry_id, child) for child in info.children)
+    current.update(child_identifier(entry.entry_id, child) for child in selected_children(info, entry))
     return not (device.identifiers & current)
 
 
@@ -233,6 +251,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: RanzenpostConfigEntry) 
     for key in ENTRY_ISSUE_KEYS:
         ir.async_delete_issue(hass, DOMAIN, entry_issue_id(key, entry.entry_id))
     await async_remove_cloudhooks(hass, entry.entry_id)
+    await async_remove_changes_store(hass, entry.entry_id)
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: RanzenpostConfigEntry) -> None:

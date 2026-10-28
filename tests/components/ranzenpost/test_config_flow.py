@@ -9,8 +9,10 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ranzenpost.api import HEADER_INTEGRATION
+from custom_components.ranzenpost.config_flow import manual_schema
 from custom_components.ranzenpost.const import (
     ADDON_REPOSITORY,
     CONF_CHILDREN,
@@ -613,6 +615,22 @@ async def test_options_flow_of_an_entry_not_loaded_asks_the_app_with_the_integra
     assert all(call[3].get(HEADER_INTEGRATION) == MANIFEST_VERSION for call in calls)
 
 
+async def test_options_flow_keeps_the_child_selection_while_the_app_is_unreachable(hass, aioclient_mock):
+    aioclient_mock.get(route("info"), status=500, json={"error": "down"})
+    entry = make_entry(options={CONF_SCAN_INTERVAL: 60, CONF_CHILDREN: [CHILD_2]})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fields = {key.schema for key in result["data_schema"].schema}
+    with patch("custom_components.ranzenpost.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_SCAN_INTERVAL: 90})
+        await hass.async_block_till_done()
+
+    assert CONF_CHILDREN not in fields
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_SCAN_INTERVAL: 90, CONF_CHILDREN: [CHILD_2]}
+
+
 async def test_options_flow_names_the_school_next_to_the_first_name_when_there_are_two(hass, aioclient_mock):
     entry = await setup_entry(hass, aioclient_mock, info=two_schools_info())
 
@@ -735,3 +753,159 @@ async def test_the_options_texts_name_automatic_app_updates_in_every_language(ha
         assert options[f"{prefix}.step.init.data.auto_update"], language
         assert "Ranzenpost" in options[f"{prefix}.step.init.data_description.auto_update"], language
         assert options[f"{prefix}.error.auto_update_failed"], language
+
+
+async def test_reconfigure_moves_the_entry_to_a_new_host_after_validation(hass, aioclient_mock, mock_setup):
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["description_placeholders"][CONF_HOST] == HOST
+
+    new_base = "http://ranzenpost.local:8100"
+    aioclient_mock.get(route("info", base_url=new_base), status=401, json={"error": "unauthorized"})
+    moved = {CONF_HOST: "ranzenpost.local", CONF_PORT: 8100, CONF_TOKEN: NEW_TOKEN}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], moved)
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(route("info", base_url=new_base), json=fixture("info"))
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], moved)
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert dict(entry.data) == moved
+    assert entry.unique_id == "ranzenpost.local:8100"
+    assert entry.title == "Ranzenpost (ranzenpost.local)"
+    assert mock_setup.call_count == 2
+
+
+async def test_reconfigure_refuses_a_host_another_entry_already_uses(hass, aioclient_mock, mock_setup):
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    other = make_entry(host="other-host")
+    other.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "other-host", CONF_PORT: PORT, CONF_TOKEN: TOKEN}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == HOST
+
+
+async def test_options_flow_offers_no_automatic_app_updates_when_the_supervisor_cannot_be_asked(hass, aioclient_mock):
+    entry = await setup_entry(hass, aioclient_mock)
+    client = options_supervisor()
+    client.addons.addon_info = AsyncMock(side_effect=SupervisorError("busy"))
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert "auto_update" not in option_fields(result)
+
+
+async def test_manual_setup_names_an_unexpected_answer_as_unknown(hass, mock_setup):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    with patch(f"{FLOW_MODULE}.validate_connection", AsyncMock(side_effect=RuntimeError("odd"))):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], ENTRY_DATA)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "unknown"}
+
+
+async def test_user_flow_finds_the_app_by_slug_when_the_store_lists_another_address(
+    hass, aioclient_mock, mock_setup, fast_discovery
+):
+    aioclient_mock.get(route("info"), json=fixture("info"))
+    client = supervisor_mock(installed=False, running=False, discoveries=[[], [discovery_message()]])
+    client.store.addons_list.return_value[0].url = "https://example.test/mirror"
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await settled(hass, await hass.config_entries.flow.async_configure(result["flow_id"], {}))
+
+    assert result["step_id"] == "hassio_confirm"
+    client.store.install_addon.assert_awaited_once_with(ADDON_SLUG)
+
+
+async def test_user_flow_aborts_when_the_store_has_no_ranzenpost_app(hass, mock_setup, fast_discovery):
+    client = supervisor_mock(installed=False, running=False)
+    client.store.addons_list = AsyncMock(return_value=[])
+
+    with with_hassio(hass, client):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await settled(hass, await hass.config_entries.flow.async_configure(result["flow_id"], {}))
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "addon_install_failed"
+
+
+async def test_user_flow_waits_for_a_late_discovery(hass, aioclient_mock, mock_setup):
+    aioclient_mock.get(route("info"), json=fixture("info"))
+    client = supervisor_mock(installed=True, running=True, discoveries=[[], [], [discovery_message()]])
+
+    with (
+        with_hassio(hass, client),
+        patch(f"{FLOW_MODULE}.DISCOVERY_POLL_SECONDS", 1),
+        patch(f"{FLOW_MODULE}.DISCOVERY_WAIT_SECONDS", 5),
+        patch(f"{FLOW_MODULE}.asyncio.sleep", AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await settled(hass, result)
+
+    assert result["step_id"] in ("finish_addon", "hassio_confirm")
+    assert client.discovery.list.await_count == 3
+
+
+async def test_a_discovery_with_the_same_token_leaves_a_failed_entry_failed(hass, aioclient_mock, frozen_now):
+    aioclient_mock.get(route("info"), status=401, json={"error": "unauthorized"})
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HASSIO}, data=service_info()
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_TOKEN] == TOKEN
+    assert entry.state is config_entries.ConfigEntryState.SETUP_ERROR
+
+
+async def test_reconfigure_takes_over_a_host_whose_discovery_was_ignored_and_keeps_a_custom_title(
+    hass, aioclient_mock, mock_setup
+):
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, title="Ranzenpost Familie")
+    ignored = MockConfigEntry(domain=DOMAIN, source=config_entries.SOURCE_IGNORE, unique_id="ranzenpost.local:8100", data={})
+    ignored.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    aioclient_mock.get(route("info", base_url="http://ranzenpost.local:8100"), json=fixture("info"))
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "ranzenpost.local", CONF_PORT: 8100, CONF_TOKEN: TOKEN}
+    )
+    await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.unique_id == "ranzenpost.local:8100"
+    assert entry.title == "Ranzenpost Familie"
+    assert hass.config_entries.async_get_entry(ignored.entry_id) is None
+
+
+def test_the_token_field_hides_the_token():
+    field = next(key for key in manual_schema({}).schema if key.schema == CONF_TOKEN)
+    assert manual_schema({}).schema[field].config["type"] == "password"

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from app import integration, versions
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION = REPO_ROOT / "custom_components" / "ranzenpost"
 MANIFEST = INTEGRATION / "manifest.json"
@@ -80,7 +82,7 @@ def test_manifest_is_valid_json_with_the_required_keys():
 
 def test_hacs_json_and_codeowners_exist_with_the_agreed_content():
     hacs = _json(HACS)
-    assert hacs == {"name": "Ranzenpost", "render_readme": True, "homeassistant": "2025.6.0", "zip_release": True, "filename": "ranzenpost.zip"}
+    assert hacs == {"name": "Ranzenpost", "render_readme": True, "homeassistant": "2025.6.0", "zip_release": True, "filename": "ranzenpost.zip", "hide_default_branch": True}
     assert CODEOWNERS.read_text(encoding="utf-8").strip() == "* @githuber110"
 
 
@@ -131,3 +133,8 @@ def test_changelog_top_section_names_this_version_or_a_later_public_one():
     heading = _changelog_top_heading()
     assert VERSION.match(heading), heading
     assert version_key(heading) >= version_key(_addon_version())
+
+
+def test_the_shipped_integration_gets_unknown_letter_lists():
+    shipped = versions.parse_version(_json(MANIFEST)["version"])
+    assert shipped > versions.parse_version(integration.UNKNOWN_LISTS_AFTER)

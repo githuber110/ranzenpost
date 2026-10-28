@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import CONFIRMED_ONLY_MODULES, MODULES, REQUEST_TIMEOUT
+from .const import CONFIRMED_ONLY_MODULES, MODULES, MOVE_DIRECTIONS, REQUEST_TIMEOUT
 
 ROUTE_INFO = "/api/integration/info"
 ROUTE_STATE = "/api/integration/state"
@@ -24,6 +24,7 @@ HEADER_INTEGRATION = "X-Ranzenpost-Integration"
 HEADER_INSTALLED = "X-Ranzenpost-Integration-Installed"
 KEY_SEPARATOR = ":"
 KEY_SCHOOLS = "schools"
+CHANGE_ID_SEPARATOR = "|"
 
 
 class RanzenpostError(Exception):
@@ -131,6 +132,7 @@ class SchoolInfo:
     status_reason: str = ""
     own_entries: bool = False
     mail: bool = False
+    modules_known: bool = True
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> SchoolInfo:
@@ -147,6 +149,7 @@ class SchoolInfo:
             status_reason=str(data.get("status_reason") or ""),
             own_entries=data.get("own_entries") is True,
             mail=data.get("mail") is True,
+            modules_known=data.get("modules_known") is not False,
         )
 
     @property
@@ -255,6 +258,10 @@ def _text_map(data: Any) -> dict[str, str]:
     return {str(key): str(value or "") for key, value in data.items()} if isinstance(data, dict) else {}
 
 
+def _move_direction(value: Any) -> str:
+    return value if value in MOVE_DIRECTIONS else ""
+
+
 def _isoformat(value: date | datetime | None) -> str | None:
     return value.isoformat() if value else None
 
@@ -278,6 +285,7 @@ class Lesson:
     after: dict[str, str] = field(default_factory=dict)
     minutes_until: int = 0
     minutes_left: int = 0
+    moved: str = ""
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Lesson:
@@ -299,6 +307,7 @@ class Lesson:
             after=_text_map(data.get("after")),
             minutes_until=int(data.get("minutes_until") or 0),
             minutes_left=int(data.get("minutes_left") or 0),
+            moved=_move_direction(data.get("moved")),
         )
 
     def as_attributes(self) -> dict[str, Any]:
@@ -315,6 +324,7 @@ class Lesson:
             "substitution": self.substitution,
             "cancelled": self.cancelled,
             "kind": self.kind,
+            "moved": self.moved,
             "before": dict(self.before),
             "after": dict(self.after),
             "note": self.note,
@@ -361,14 +371,17 @@ class Notices:
     count: int
     items: tuple[Notice, ...]
     fresh: tuple[Notice, ...] | None = None
+    ids: tuple[str, ...] | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Notices:
         fresh = data.get("fresh")
+        ids = data.get("ids")
         return cls(
             count=int(data.get("count") or 0),
             items=tuple(Notice.from_json(item) for item in data.get("items") or []),
             fresh=tuple(Notice.from_json(item) for item in fresh) if isinstance(fresh, list) else None,
+            ids=tuple(str(item) for item in ids if item) if isinstance(ids, list) else None,
         )
 
     def as_attributes(self) -> list[dict[str, Any]]:
@@ -492,8 +505,8 @@ class State:
     school_end_today: datetime | None
     next_school_day: SchoolDay | None
     changes_today: tuple[Lesson, ...]
-    unread_letters: Notices
-    unread_posts: Notices
+    unread_letters: Notices | None
+    unread_posts: Notices | None
     open_absences: tuple[Absence, ...]
     next_absence: Absence | None
     next_exam: Exam | None
@@ -503,6 +516,31 @@ class State:
     timetable_changed_today: bool
     timetable_last_updated: datetime | None
     timetable_last_updated_source: str
+    unknown: frozenset[str] = frozenset()
+    lessons_ahead: tuple[Lesson, ...] | None = None
+
+    def knows(self, name: str | None) -> bool:
+        return name is None or name not in self.unknown
+
+    def _timed_lessons(self) -> tuple[Lesson, ...]:
+        if self.lessons_ahead is not None:
+            listed = self.lessons_ahead
+        else:
+            listed = tuple(lesson for lesson in (self.now_lesson, self.next_lesson) if lesson is not None)
+        return tuple(lesson for lesson in listed if lesson.start is not None and lesson.end is not None)
+
+    def lesson_at(self, now: datetime) -> Lesson | None:
+        return next((lesson for lesson in self._timed_lessons() if lesson.start <= now < lesson.end), None)
+
+    def lesson_after(self, now: datetime) -> Lesson | None:
+        found = next((lesson for lesson in self._timed_lessons() if lesson.start > now), None)
+        if found is None and self.lessons_ahead is None:
+            return self.next_lesson
+        return found
+
+    def next_boundary(self, now: datetime) -> datetime | None:
+        moments = [moment for lesson in self._timed_lessons() for moment in (lesson.start, lesson.end) if moment > now]
+        return min(moments, default=None)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> State:
@@ -514,8 +552,8 @@ class State:
             school_end_today=parse_datetime(data.get("school_end_today")),
             next_school_day=SchoolDay.from_json(data["next_school_day"]) if data.get("next_school_day") else None,
             changes_today=tuple(Lesson.from_json(item) for item in data.get("changes_today") or []),
-            unread_letters=Notices.from_json(data.get("unread_letters") or {}),
-            unread_posts=Notices.from_json(data.get("unread_posts") or {}),
+            unread_letters=_notices_or_none(data.get("unread_letters")),
+            unread_posts=_notices_or_none(data.get("unread_posts")),
             open_absences=tuple(Absence.from_json(item) for item in absences.get("items") or []),
             next_absence=Absence.from_json(data["next_absence"]) if data.get("next_absence") else None,
             next_exam=Exam.from_json(data["next_exam"]) if data.get("next_exam") else None,
@@ -525,6 +563,12 @@ class State:
             timetable_changed_today=bool(data.get("timetable_changed_today")),
             timetable_last_updated=parse_datetime(data.get("timetable_last_updated")),
             timetable_last_updated_source=str(data.get("timetable_last_updated_source") or ""),
+            unknown=frozenset(str(item) for item in data.get("unknown") or [] if isinstance(item, str)),
+            lessons_ahead=(
+                tuple(Lesson.from_json(item) for item in data["lessons_ahead"])
+                if isinstance(data.get("lessons_ahead"), list)
+                else None
+            ),
         )
 
 
@@ -545,6 +589,7 @@ class Event:
     kind: str = ""
     teacher: str = ""
     substitution: bool | None = None
+    moved: str = ""
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Event:
@@ -566,6 +611,7 @@ class Event:
             kind=str(data.get("kind") or ""),
             teacher=str(data.get("teacher") or ""),
             substitution=bool(data["substitution"]) if "substitution" in data else None,
+            moved=_move_direction(data.get("moved")),
         )
 
 
@@ -613,6 +659,10 @@ class School:
     news: Notices | None = None
     unread_forum_posts: Notices | None = None
     texts: Notices | None = None
+    unknown: frozenset[str] = frozenset()
+
+    def knows(self, name: str | None) -> bool:
+        return name is None or name not in self.unknown
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> School:
@@ -638,6 +688,7 @@ class School:
             news=_notices_or_none(data.get("news")),
             unread_forum_posts=_notices_or_none(data.get("unread_forum_posts")),
             texts=_notices_or_none(data.get("texts")),
+            unknown=frozenset(str(item) for item in data.get("unknown") or [] if isinstance(item, str)),
         )
 
 
@@ -682,6 +733,10 @@ class Change:
             self.date.isoformat() if self.date else "",
             self.period,
         )
+
+    @property
+    def id(self) -> str:
+        return CHANGE_ID_SEPARATOR.join(str(part) for part in self.key)
 
 
 @dataclass

@@ -3507,6 +3507,11 @@ button.cal-add { margin-bottom: var(--s-4); }
 }
 .block-row .switch { grid-area: switch; align-self: center; }
 .block-tools { grid-area: tools; display: flex; align-items: center; justify-content: space-between; gap: var(--s-5); min-inline-size: 0; flex-wrap: wrap; }
+.block-row.has-turn { grid-template-areas: "text switch" "tools tools" "turn turn"; }
+.block-turn { grid-area: turn; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-4) var(--s-5); min-inline-size: 0; }
+.block-turn .field { margin: 0; min-inline-size: 0; }
+.block-turn-pick { flex: 1 1 14rem; }
+.block-turn-time { flex: 0 1 9rem; }
 .block-row.off .block-name .lbl { color: var(--ink-2); font-weight: 500; }
 .info-btn {
   flex: none;

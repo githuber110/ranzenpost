@@ -66,7 +66,7 @@ class CountingHolidays:
     def __init__(self):
         self.calls = 0
 
-    def range_info(self, start, end, config=None):
+    def range_info(self, start, end, config=None, partial=False):
         self.calls += 1
         return {"status": holidays.STATUS_OK, "stale": False, "days": {}, "periods": []}
 
@@ -198,7 +198,7 @@ def test_the_poller_snapshots_four_weeks_for_a_subscribed_child(tmp_path):
     weeks = store.load_calendar_snapshot()["children"][CHILD_ID]["weeks"]
     assert sorted(weeks) == ["07.09.2026", "14.09.2026", "21.09.2026", "31.08.2026"]
     assert store.load_calendar_snapshot()["children"][CHILD_ID]["last_success"] > 0
-    assert holiday_calendar.calls == 1
+    assert holiday_calendar.calls == 2
 
 
 def test_the_poller_leaves_iserv_alone_when_nobody_subscribed(tmp_path):

@@ -1,9 +1,10 @@
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.ranzenpost.const import DOMAIN
 
-from . import CHILD_1, CHILD_2, MANIFEST_VERSION, SCHOOL, setup_entry
+from . import CHILD_1, CHILD_2, MANIFEST_VERSION, SCHOOL, fixture, route, setup_entry
 
 ALEX = "sensor.ranzenpost_alex"
 KIM = "sensor.ranzenpost_kim"
@@ -111,9 +112,9 @@ async def test_school_sensors_describe_holiday_conference_and_connection(hass, a
     assert free_day.attributes["days_until"] == 31
 
     conference = hass.states.get(f"{SCHOOL}_next_conference")
-    assert conference.state == "2026-11-04T23:00:00+00:00"
+    assert conference.state == "2026-11-05"
     assert conference.attributes["title"] == "Parent-teacher conference"
-    assert conference.attributes["device_class"] == "timestamp"
+    assert conference.attributes["device_class"] == "date"
 
     connection = hass.states.get(f"{SCHOOL}_connection")
     assert connection.state == "ok"
@@ -175,5 +176,72 @@ async def test_next_absence_sensor_reads_the_earliest_open_absence(hass, aioclie
     assert absence.attributes["status"] == "pending"
     assert absence.attributes["days_until"] == 2
 
-    assert hass.states.get(f"{KIM}_next_absence").state == "none"
+    assert hass.states.get(f"{KIM}_next_absence").state == "unknown"
     assert hass.states.get(f"{KIM}_next_absence").attributes.get("days_until") is None
+
+
+async def test_lesson_fields_the_app_marks_unknown_read_unknown_not_none(hass, aioclient_mock, frozen_now):
+    state = fixture("state_child_1")
+    state["unknown"] = ["now_lesson", "next_lesson", "school_end_today", "next_school_day", "changes_today"]
+    aioclient_mock.get(route("state", child=CHILD_1), json=state)
+    await setup_entry(hass, aioclient_mock)
+
+    for key in ("current_lesson", "next_lesson", "school_end_today", "next_school_day", "changes_today"):
+        assert hass.states.get(f"{ALEX}_{key}").state == "unknown", key
+    assert "teacher" not in hass.states.get(f"{ALEX}_current_lesson").attributes
+    assert hass.states.get(f"{ALEX}_unread_letters").state == "2"
+
+
+async def test_current_and_next_lesson_follow_the_clock_between_two_polls(hass, aioclient_mock, frozen_now):
+    state = fixture("state_child_1")
+    third = dict(state["next_lesson"], period=3, subject="Biology", start="2026-09-02T10:40:00+02:00", end="2026-09-02T11:25:00+02:00")
+    state["lessons_ahead"] = [state["now_lesson"], state["next_lesson"], third]
+    aioclient_mock.get(route("state", child=CHILD_1), json=state)
+    await setup_entry(hass, aioclient_mock, options={"scan_interval": 3600})
+    requests = aioclient_mock.call_count
+
+    frozen_now.move_to("2026-09-02T07:45:00+00:00")
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(f"{ALEX}_current_lesson").state == "none"
+    assert hass.states.get(f"{ALEX}_next_lesson").state == "English"
+
+    frozen_now.move_to("2026-09-02T07:50:00+00:00")
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(f"{ALEX}_current_lesson").state == "English"
+    assert hass.states.get(f"{ALEX}_current_lesson").attributes["minutes_left"] == 45
+    assert hass.states.get(f"{ALEX}_next_lesson").state == "Biology"
+    assert aioclient_mock.call_count == requests
+
+
+async def test_date_sensors_carry_the_date_class_so_home_assistant_formats_them(hass, aioclient_mock, frozen_now):
+    await setup_entry(hass, aioclient_mock)
+
+    absence = hass.states.get(f"{ALEX}_next_absence")
+    conference = hass.states.get(f"{SCHOOL}_next_conference")
+
+    assert (absence.state, absence.attributes["device_class"]) == ("2026-09-04", "date")
+    assert (conference.state, conference.attributes["device_class"]) == ("2026-11-05", "date")
+
+
+async def test_holiday_sensors_read_unknown_while_the_app_lacks_holiday_dates(hass, aioclient_mock, frozen_now):
+    school = fixture("school")
+    school.update(next_holiday=None, next_free_day=None, unknown=["next_holiday", "next_free_day"])
+    aioclient_mock.get(route("school", id=SCHOOL_ID), json=school)
+    await setup_entry(hass, aioclient_mock)
+
+    assert hass.states.get(f"{SCHOOL}_next_holiday").state == "unknown"
+    assert hass.states.get(f"{SCHOOL}_next_free_day").state == "unknown"
+    assert hass.states.get(f"{SCHOOL}_next_conference").state == "2026-11-05"
+
+
+async def test_an_older_app_keeps_its_next_lesson_until_the_next_poll(hass, aioclient_mock, frozen_now):
+    await setup_entry(hass, aioclient_mock, options={"scan_interval": 3600})
+
+    frozen_now.move_to("2026-09-02T07:51:00+00:00")
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"{ALEX}_current_lesson").state == "English"
+    assert hass.states.get(f"{ALEX}_next_lesson").state == "English"

@@ -96,7 +96,7 @@ describe("next school day block", () => {
     const shown = block(card.shadowRoot, "next_day");
 
     expect(texts(shown, ".panel-head .section-label")).toEqual(["Nächster Schultag"]);
-    expect(texts(shown, ".row-note .dlg-text")).toEqual(["Autumn holidays", "Der nächste Schultag steht noch nicht im Stundenplan."]);
+    expect(texts(shown, ".row-note .dlg-text")).toEqual(["Autumn holidays · 12.10. – 23.10.", "Der nächste Schultag steht noch nicht im Stundenplan."]);
     expect(shown.querySelector(".row[data-uid]")).toBeNull();
   });
 
@@ -262,5 +262,42 @@ describe("parallel lessons at the same time", () => {
     const card = await mountCard(TODAY, hass);
 
     expect(texts(block(card.shadowRoot, "today"), ".row-sub")).toEqual(["A3.07"]);
+  });
+});
+
+describe("dates and times follow the format settings of Home Assistant", () => {
+  function hassWith(locale) {
+    const hass = makeHass({ events: { [LESSONS]: FRIDAY_AND_MONDAY } });
+    hass.language = locale.language;
+    hass.locale = { number_format: "language", time_format: "language", date_format: "language", ...locale };
+    return hass;
+  }
+
+  it("uses the day before the month and a 24 hour clock in English when Home Assistant says so", async () => {
+    freezeClock("2026-09-04T12:00:00Z");
+    const card = await mountCard(NEXT_DAY, hassWith({ language: "en", date_format: "DMY", time_format: "24" }));
+    const shown = block(card.shadowRoot, "next_day");
+
+    expect(texts(shown, ".panel-head .panel-meta")).toEqual(["07/09/2026"]);
+    expect(texts(shown, ".row-meta")[0]).toBe("08:00");
+  });
+
+  it("keeps the language defaults when Home Assistant follows the language", async () => {
+    freezeClock("2026-09-04T12:00:00Z");
+    const card = await mountCard(NEXT_DAY, hassWith({ language: "en" }));
+    const shown = block(card.shadowRoot, "next_day");
+
+    expect(texts(shown, ".panel-head .panel-meta")).toEqual(["09/07/2026"]);
+    expect(texts(shown, ".row-meta")[0]).toMatch(/AM$/);
+  });
+
+  it("puts the year first and keeps German labels when Home Assistant asks for it", async () => {
+    freezeClock("2026-09-04T12:00:00Z");
+    const card = await mountCard(NEXT_DAY, hassWith({ language: "de", date_format: "YMD", time_format: "12" }));
+    const shown = block(card.shadowRoot, "next_day");
+
+    expect(texts(shown, ".panel-head .section-label")).toEqual(["Montag"]);
+    expect(texts(shown, ".panel-head .panel-meta")).toEqual(["2026.09.07"]);
+    expect(texts(shown, ".row-meta")[0]).toMatch(/AM|vorm\./);
   });
 });

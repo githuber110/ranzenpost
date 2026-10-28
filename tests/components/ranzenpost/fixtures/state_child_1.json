@@ -12,6 +12,7 @@
     "substitution": false,
     "cancelled": false,
     "kind": "",
+    "moved": "",
     "before": {},
     "after": {},
     "note": "",
@@ -31,6 +32,7 @@
     "substitution": true,
     "cancelled": false,
     "kind": "substitution",
+    "moved": "",
     "before": {
       "teacher": "Mrs Example"
     },
@@ -65,6 +67,7 @@
       "substitution": true,
       "cancelled": false,
       "kind": "substitution",
+      "moved": "",
       "before": {
         "teacher": "Mrs Example"
       },
@@ -88,6 +91,7 @@
       "substitution": false,
       "cancelled": true,
       "kind": "cancellation",
+      "moved": "",
       "before": {},
       "after": {},
       "note": "Cancelled",

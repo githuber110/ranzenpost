@@ -151,10 +151,13 @@ describe("own entries", () => {
     expect(ownEntriesCalls(hass)).toEqual([]);
   });
 
-  it("that cannot be read show the card as unreachable instead of a day without entries", async () => {
+  it("that cannot be read keep the lessons and say that entries are missing instead of a day without entries", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const card = await fresh({ view: "today", child: "alex" }, makeHass({ ownEntriesError: true }));
-    expect(card.shadowRoot.querySelector(".row.own")).toBeNull();
-    expect(card.shadowRoot.querySelector(".empty b").textContent).toBe("Nicht erreichbar");
+    const root = card.shadowRoot;
+    expect(root.querySelector(".row.own")).toBeNull();
+    expect(texts(root, ".row[data-uid] .row-title")).toEqual(["Maths", "English", "Art"]);
+    expect(texts(root, ".row-note .dlg-text").at(-1)).toBe("Einige Einträge konnten gerade nicht geladen werden.");
   });
 
   it("join the time line of today by their start and read like the app", async () => {

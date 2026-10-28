@@ -10,6 +10,8 @@ from .const import ATTR_CHILD, ATTR_DATE, ATTR_PERIOD, ATTR_SUMMARY, CHANGE_KIND
 from .coordinator import RanzenpostConfigEntry, RanzenpostCoordinator, RanzenpostData, selected_children
 from .entity import RanzenpostChildEntity
 
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: RanzenpostConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
@@ -28,17 +30,26 @@ class RanzenpostTimetableEvent(RanzenpostChildEntity, EventEntity):
 
     def __init__(self, coordinator: RanzenpostCoordinator, child: Child) -> None:
         super().__init__(coordinator, EVENT_DOMAIN, child, KEY_TIMETABLE_CHANGED)
-        self._announced: RanzenpostData | None = coordinator.data
+        self._announced: RanzenpostData | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._announce(self.coordinator.data)
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        data = self.coordinator.data
-        if data is not self._announced:
-            self._announced = data
-            for change in data.new_changes:
-                if change.child_key == self.child.key and change.kind in CHANGE_KINDS:
-                    self._trigger_event(change.kind, self._attributes_of(change))
+        self._announce(self.coordinator.data)
         super()._handle_coordinator_update()
+
+    @callback
+    def _announce(self, data: RanzenpostData | None) -> None:
+        if data is None or data is self._announced:
+            return
+        self._announced = data
+        for change in data.new_changes:
+            if change.child_key == self.child.key and change.kind in CHANGE_KINDS:
+                self._trigger_event(change.kind, self._attributes_of(change))
+                self.async_write_ha_state()
 
     def _attributes_of(self, change: Change) -> dict[str, object]:
         return {

@@ -47,6 +47,20 @@
         "data": {
           "token": "Token"
         }
+      },
+      "reconfigure": {
+        "title": "Change the connection",
+        "description": "Ranzenpost runs at {host} now. Enter the new host, port or token.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token"
+        },
+        "data_description": {
+          "host": "Host name or IP address of the Ranzenpost container.",
+          "port": "Port of the integration API, 8099 by default.",
+          "token": "Access token shown in the Ranzenpost settings."
+        }
       }
     },
     "progress": {
@@ -65,7 +79,8 @@
       "addon_install_failed": "The Ranzenpost app could not be installed. Check the Supervisor log.",
       "addon_start_failed": "The Ranzenpost app could not be started. Check the app log.",
       "not_ranzenpost_addon": "This discovery message does not belong to the Ranzenpost app.",
-      "reauth_successful": "The token was renewed."
+      "reauth_successful": "The token was renewed.",
+      "reconfigure_successful": "The connection is changed."
     }
   },
   "options": {
@@ -327,6 +342,23 @@
     "no_school_yet": {
       "title": "No school signed in yet",
       "description": "Open Ranzenpost in the sidebar and sign in to your school. Devices and entities appear on their own."
+    }
+  },
+  "exceptions": {
+    "calendar_unavailable": {
+      "message": "The calendar could not be read from the Ranzenpost app. Try again later."
+    },
+    "app_unreachable": {
+      "message": "The Ranzenpost app did not answer: {error}"
+    },
+    "app_token_rejected": {
+      "message": "The Ranzenpost app rejected the access token."
+    },
+    "wrong_device_condition": {
+      "message": "{type} is not a condition of this device."
+    },
+    "wrong_device_trigger": {
+      "message": "{type} is not a trigger of this device."
     }
   }
 }

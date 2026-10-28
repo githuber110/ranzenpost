@@ -30,6 +30,7 @@ REDACTED_TEXT_KEYS = {
     "note",
     "before",
     "after",
+    "text",
 }
 
 
@@ -38,6 +39,8 @@ def _plain(value: Any) -> Any:
         return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(_plain(item) for item in value)
     if isinstance(value, date):
         return value.isoformat()
     return value
