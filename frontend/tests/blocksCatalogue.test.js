@@ -7,9 +7,9 @@ function catalogue() {
 }
 
 describe("the block catalogue is one shared list with rules", () => {
-  test("seventeen blocks, each with a module, an area, two limits and a default size", () => {
+  test("nineteen blocks, each with a module, an area, two limits and a default size", () => {
     const blocks = catalogue();
-    expect(blocks.blockKeys()).toEqual(["today", "next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
+    expect(blocks.blockKeys()).toEqual(["today", "next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "chat", "school_events", "tasks", "news", "forums", "texts", "todos", "infodisplay", "whiteboards"]);
     for (const block of blocks.BLOCK_CATALOGUE) {
       expect(blocks.AREA_MODULES[block.area]).toContain(block.module);
       expect(block.compact).toBeGreaterThanOrEqual(1);
@@ -49,7 +49,7 @@ describe("the block catalogue is one shared list with rules", () => {
     }
     const childless = blocks.offeredBlocks(() => true, null, true).map((block) => block.key);
     expect(childless).toEqual(blocks.BLOCK_CATALOGUE.filter((block) => block.scope !== "child").map((block) => block.key));
-    expect(childless).toEqual(["letters", "noticeboard", "conferences", "holidays", "chat", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
+    expect(childless).toEqual(["letters", "noticeboard", "conferences", "holidays", "chat", "school_events", "tasks", "news", "forums", "texts", "todos", "infodisplay", "whiteboards"]);
     expect(blocks.offeredBlocks(() => false, null, true).map((block) => block.key)).toEqual(["holidays"]);
   });
 
@@ -84,7 +84,7 @@ describe("the block catalogue is one shared list with rules", () => {
     const blocks = catalogue();
     const offered = blocks.offeredBlocks(() => true);
     const hidden = blocks.hiddenBlocks([{ key: "today", size: "normal" }, { key: "chat", size: "compact" }], offered);
-    expect(hidden.map((block) => block.key)).toEqual(["next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "school_events", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"]);
+    expect(hidden.map((block) => block.key)).toEqual(["next_day", "next_lesson", "week", "letters", "noticeboard", "absences", "conferences", "holidays", "changes", "school_events", "tasks", "news", "forums", "texts", "todos", "infodisplay", "whiteboards"]);
   });
 
   test("navigation keeps known areas in order and appends the missing ones", () => {

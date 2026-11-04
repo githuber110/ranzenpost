@@ -659,6 +659,11 @@ class School:
     news: Notices | None = None
     unread_forum_posts: Notices | None = None
     texts: Notices | None = None
+    open_todos: Notices | None = None
+    print_jobs: Notices | None = None
+    course_selections: Notices | None = None
+    video_rooms: Notices | None = None
+    polls: Notices | None = None
     unknown: frozenset[str] = frozenset()
 
     def knows(self, name: str | None) -> bool:
@@ -688,6 +693,11 @@ class School:
             news=_notices_or_none(data.get("news")),
             unread_forum_posts=_notices_or_none(data.get("unread_forum_posts")),
             texts=_notices_or_none(data.get("texts")),
+            open_todos=_notices_or_none(data.get("open_todos")),
+            print_jobs=_notices_or_none(data.get("print_jobs")),
+            course_selections=_notices_or_none(data.get("course_selections")),
+            video_rooms=_notices_or_none(data.get("video_rooms")),
+            polls=_notices_or_none(data.get("polls")),
             unknown=frozenset(str(item) for item in data.get("unknown") or [] if isinstance(item, str)),
         )
 

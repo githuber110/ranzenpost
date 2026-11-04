@@ -129,6 +129,8 @@ def test_the_mail_module_reads_folder_and_list_shapes_but_never_a_message():
     assert [url.split("?", 1)[0] for url in reads] == [
         SCHOOL_ONE_URL + "/iserv/mail/api/folder/list",
         SCHOOL_ONE_URL + "/iserv/mail/api/message/list",
+        SCHOOL_ONE_URL + "/iserv/mail/api/v2/setting/tag",
+        SCHOOL_ONE_URL + "/iserv/mail/api/v2/setting/signature",
     ]
 
 

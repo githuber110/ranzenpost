@@ -174,7 +174,7 @@ From 900 pixels wide, a navigation rail replaces the tab bar. From 1280 pixels, 
 
 ### Dashboard card
 
-The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_day`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` and `texts`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link. With several children the day blocks sit side by side and the family blocks come once. An account without a linked profile still gets letters, noticeboard, conferences, holidays, school events, tasks, news, forums and texts of its school.
+The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the visual editor: a title, the children, the blocks and a size per block. The card follows the dashboard's language and theme. It is built from the same blocks as the app's overview: `today`, `next_day`, `next_lesson`, `week`, `changes`, `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`, `forums` and `texts`. The card also has `todos`. Only blocks of modules your school has are offered. A block without content is not drawn, and most blocks open the app with "Show all"; the holidays block has no such link. With several children the day blocks sit side by side and the family blocks come once. An account without a linked profile still gets letters, noticeboard, conferences, holidays, school events, tasks, news, forums, texts and to-dos of its school.
 
 ```yaml
 type: custom:ranzenpost-card
@@ -235,7 +235,7 @@ blocks:
 The integration creates one device per school and one per child. Entity IDs use the first name, for example `sensor.ranzenpost_mia_next_lesson`. Entities exist only for the modules your school has.
 
 - **Per child:** calendars for lessons, exams, absences and own entries. Sensors for the current and next lesson, the end of school, the next school day, changes today, the next exam, unread letters and posts, and open absences. Two binary sensors, `school_day_today` and `timetable_changed_today`. One event that fires on a substitution, cancellation or room change.
-- **Per school:** calendars for holidays and school events. Sensors for the next holiday, the next free day, the next parent-teacher conference, unread letters, posts and emails, open tasks, news, unread forum posts, texts and the connection.
+- **Per school:** calendars for holidays and school events. Sensors for the next holiday, the next free day, the next parent-teacher conference, unread letters, posts and emails, open tasks, news, unread forum posts, texts and the connection. Open to-dos, print jobs, course selections, video rooms and polls when your school offers them.
 
 In the automation editor, pick a child's device for triggers such as **Timetable changed**, **Lesson cancelled** or **New letter**, and for conditions such as **Is a school day**. No YAML needed. The integration asks the app every 60 seconds and never talks to IServ itself.
 

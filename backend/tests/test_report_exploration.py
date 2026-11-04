@@ -281,6 +281,52 @@ def test_a_framed_app_page_with_a_web_ending_is_read():
     assert any(line.startswith("- Own frame:") and line.endswith("status 200") for line in lines)
 
 
+@pytest.mark.parametrize("slug", ["edupool", "eduplacesconnector"])
+def test_a_sign_in_service_is_not_followed_to_the_other_host(slug):
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/" + slug),
+        SCHOOL_ONE_URL + "/iserv/" + slug: (302, {"Location": "https://pay.other.example/sso?code=synthetic"}, b""),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = diagnostics.page_structure(fetcher, guessed_row(slug, slug, "/iserv/%s/" % slug), TODAY, {}, nav_paths=menu_of(fetcher))
+    assert "- Redirect: to a sign-in service on another host, not followed" in lines
+    assert not any("Redirect chain" in line for line in lines)
+
+
+@pytest.mark.parametrize("markup", [
+    "<meta http-equiv='refresh' content='0; url=/login_iserv'>",
+    "<script>window.location.href = '/login_iserv';</script>",
+    "<script>location.replace(\"\\/login_iserv\");</script>",
+])
+def test_a_client_redirect_on_the_same_host_is_named_and_not_followed(markup):
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/klassengeld"),
+        SCHOOL_ONE_URL + "/iserv/klassengeld": html_answer("<html><head>%s</head><body><p>x</p></body></html>" % markup),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = diagnostics.page_structure(fetcher, guessed_row("klassengeld", "klassengeld", "/iserv/klassengeld/"), TODAY, {}, nav_paths=menu_of(fetcher))
+    found = [line for line in lines if line.startswith("- Client redirect:")]
+    assert len(found) == 1
+    assert found[0].endswith(", not followed")
+
+
+def test_a_client_redirect_to_another_host_is_read_once():
+    other = "https://pay.other.example"
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/klassengeld"),
+        SCHOOL_ONE_URL + "/iserv/klassengeld": html_answer("<html><head><meta http-equiv='refresh' content='0;url=%s/start'></head><body><p>x</p></body></html>" % other),
+        other + "/start": html_answer("<html><head><meta http-equiv='refresh' content='0;url=%s/again'></head><body><p>y</p></body></html>" % other),
+    }
+    client, adapter = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = diagnostics.page_structure(fetcher, guessed_row("klassengeld", "klassengeld", "/iserv/klassengeld/"), TODAY, {}, nav_paths=menu_of(fetcher))
+    assert any(line.startswith("- Client redirect chain:") for line in lines)
+    assert sum(line.startswith("- Client redirect:") for line in lines) == 2
+    assert not [url for url in adapter.cookies if url.endswith("/again")]
+
+
 def test_a_same_host_frame_that_would_write_or_sign_in_is_not_read():
     answers = {
         SCHOOL_ONE_URL + "/iserv/": nav("/iserv/ausleihe"),
@@ -324,66 +370,66 @@ def test_a_frame_line_names_missing_rules():
     assert reportexplore.frame_line(Answer()) == "- Framing: x-frame-options not set, frame-ancestors not set"
 
 
-EDUPOOL_AUTH = SCHOOL_ONE_URL + "/iserv/edupool/auth"
+MEDIENPORTAL_AUTH = SCHOOL_ONE_URL + "/iserv/medienportal/auth"
 
 
-def edupool_answers(back=EDUPOOL_AUTH + "?state=synthetic-state-1"):
+def medienportal_answers(back=MEDIENPORTAL_AUTH + "?state=synthetic-state-1"):
     def iserv_auth(request):
         if "IServSession=synthetic-iserv-cookie" in request.headers.get("Cookie", ""):
-            return 302, {"Location": OTHER + "/edupool/home"}, b""
+            return 302, {"Location": OTHER + "/medienportal/home"}, b""
         return 302, {"Location": "/iserv/auth/login"}, b""
 
     return {
-        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/edupool"),
-        SCHOOL_ONE_URL + "/iserv/edupool": (302, {"Location": OTHER + "/edupool/sso?code=synthetic-code-1", "Content-Type": "text/html"}, b""),
-        OTHER + "/edupool/sso": (302, {"Location": back}, b""),
-        EDUPOOL_AUTH: iserv_auth,
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/medienportal"),
+        SCHOOL_ONE_URL + "/iserv/medienportal": (302, {"Location": OTHER + "/medienportal/sso?code=synthetic-code-1", "Content-Type": "text/html"}, b""),
+        OTHER + "/medienportal/sso": (302, {"Location": back}, b""),
+        MEDIENPORTAL_AUTH: iserv_auth,
         SCHOOL_ONE_URL + "/iserv/klassengeld/auth": iserv_auth,
-        OTHER + "/edupool/home": html_answer("<html><head><title>Mediathek</title></head><body><main>Mia</main></body></html>"),
+        OTHER + "/medienportal/home": html_answer("<html><head><title>Mediathek</title></head><body><main>Mia</main></body></html>"),
     }
 
 
-def edupool_structure(answers):
+def medienportal_structure(answers):
     client, adapter = recording_client(answers)
     client.session.cookies.set("IServSession", "synthetic-iserv-cookie", domain="gymnasium-nord.example")
     client.session.headers["X-Synthetic-Session"] = "synthetic-session-header"
     record_headers(adapter)
     fetcher = diagnostics.ReportFetcher(client)
-    row = guessed_row("edupool", "edupool", "/iserv/edupool/")
+    row = guessed_row("medienportal", "medienportal", "/iserv/medienportal/")
     return diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher)), adapter
 
 
 def test_an_external_service_signs_in_through_its_own_module_step_and_records_the_landing_page():
-    lines, adapter = edupool_structure(edupool_answers())
+    lines, adapter = medienportal_structure(medienportal_answers())
     assert "- Redirect chain: 302 same host -> 302 other host -> 302 same host -> 200 other host" in lines
     assert "- Title: <word>" in lines
-    assert "synthetic-iserv-cookie" in adapter.cookies[EDUPOOL_AUTH + "?state=synthetic-state-1"]
-    assert adapter.headers[EDUPOOL_AUTH + "?state=synthetic-state-1"]["X-Synthetic-Session"] == "synthetic-session-header"
+    assert "synthetic-iserv-cookie" in adapter.cookies[MEDIENPORTAL_AUTH + "?state=synthetic-state-1"]
+    assert adapter.headers[MEDIENPORTAL_AUTH + "?state=synthetic-state-1"]["X-Synthetic-Session"] == "synthetic-session-header"
     assert [url for url in adapter.headers if "pay.other.example" in url]
     assert foreign_session_headers(adapter) == []
     assert_private(lines, ("synthetic-state", "synthetic-code", "Mediathek", "pay.other"))
 
 
 def test_the_sign_in_step_of_another_module_is_not_taken():
-    lines, adapter = edupool_structure(edupool_answers(back=SCHOOL_ONE_URL + "/iserv/klassengeld/auth"))
+    lines, adapter = medienportal_structure(medienportal_answers(back=SCHOOL_ONE_URL + "/iserv/klassengeld/auth"))
     assert "- Landing page: not read, chain stopped at an IServ page" in lines
     assert not [url for url in adapter.sent if "/iserv/klassengeld/" in url]
 
 
 def test_only_plain_module_sign_in_steps_are_accepted():
-    assert module_sign_in_steps(["/iserv/edupool/auth", "/iserv/edupool/logout", "/iserv/a/b/auth", "/iserv/Edupool/auth", 7]) == ("/iserv/edupool/auth",)
-    steps = ("/iserv/edupool/auth",)
-    assert iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/edupool/auth?x=1", steps)
-    assert not iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/edupool/auth/../logout", steps)
-    assert not iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/edupool/auth")
-    assert reportcrawl.chain_home_steps(type("A", (), {"url": SCHOOL_ONE_URL + "/iserv/edupool"})()) == steps
+    assert module_sign_in_steps(["/iserv/medienportal/auth", "/iserv/medienportal/logout", "/iserv/a/b/auth", "/iserv/Medienportal/auth", 7]) == ("/iserv/medienportal/auth",)
+    steps = ("/iserv/medienportal/auth",)
+    assert iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/medienportal/auth?x=1", steps)
+    assert not iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/medienportal/auth/../logout", steps)
+    assert not iserv_sign_in_step(SCHOOL_ONE_URL + "/iserv/medienportal/auth")
+    assert reportcrawl.chain_home_steps(type("A", (), {"url": SCHOOL_ONE_URL + "/iserv/medienportal"})()) == steps
 
 
 def test_a_long_sign_in_chain_reaches_its_landing_page():
     hops = ["/a", "/b", "/c", "/d", "/e"]
     answers = {
-        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/eduplacesconnector/"),
-        SCHOOL_ONE_URL + "/iserv/eduplacesconnector/": (302, {"Location": OTHER + hops[0], "Content-Type": "text/html"}, b""),
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/medienportal/"),
+        SCHOOL_ONE_URL + "/iserv/medienportal/": (302, {"Location": OTHER + hops[0], "Content-Type": "text/html"}, b""),
         SCHOOL_ONE_URL + "/iserv/auth/auth": (302, {"Location": OTHER + "/launchpad"}, b""),
         OTHER + "/launchpad": html_answer("<html><head><title>Launchpad</title></head><body></body></html>"),
     }
@@ -392,7 +438,7 @@ def test_a_long_sign_in_chain_reaches_its_landing_page():
         answers[OTHER + hop] = (307 if index < 2 else 302, {"Location": target}, b"")
     client, _ = recording_client(answers)
     fetcher = diagnostics.ReportFetcher(client)
-    row = guessed_row("eduplacesconnector", "eduplacesconnector", "/iserv/eduplacesconnector/")
+    row = guessed_row("medienportal", "medienportal", "/iserv/medienportal/")
     lines = diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher))
     assert any(line.startswith("- Landing page: 200 text/html") for line in lines)
     assert reportcrawl.MAX_CHAIN_HOPS == 10
@@ -593,8 +639,8 @@ def test_endpoints_without_a_method_are_read_only_when_they_name_a_listing():
 
 def chain_answers(steps):
     answers = {
-        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/edupool"),
-        SCHOOL_ONE_URL + "/iserv/edupool": (302, {"Location": OTHER + "/hop/0", "Content-Type": "text/html"}, b""),
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/medienportal"),
+        SCHOOL_ONE_URL + "/iserv/medienportal": (302, {"Location": OTHER + "/hop/0", "Content-Type": "text/html"}, b""),
     }
     for number, target in enumerate(steps):
         answers[OTHER + "/hop/%d" % number] = (302, {"Location": target}, b"")
@@ -605,17 +651,17 @@ def chain_structure(answers):
     client, adapter = recording_client(answers)
     client.session.cookies.set("IServSession", "synthetic-iserv-cookie", domain="gymnasium-nord.example")
     fetcher = diagnostics.ReportFetcher(client)
-    lines = diagnostics.page_structure(fetcher, guessed_row("edupool", "edupool", "/iserv/edupool/"), TODAY, {}, nav_paths=menu_of(fetcher))
+    lines = diagnostics.page_structure(fetcher, guessed_row("medienportal", "medienportal", "/iserv/medienportal/"), TODAY, {}, nav_paths=menu_of(fetcher))
     return lines, adapter
 
 
 def test_the_module_sign_in_step_is_taken_only_once_per_chain():
-    answers = chain_answers([EDUPOOL_AUTH + "?round=1"])
-    answers[EDUPOOL_AUTH] = (302, {"Location": OTHER + "/hop/1"}, b"")
-    answers[OTHER + "/hop/1"] = (302, {"Location": EDUPOOL_AUTH + "?round=2"}, b"")
+    answers = chain_answers([MEDIENPORTAL_AUTH + "?round=1"])
+    answers[MEDIENPORTAL_AUTH] = (302, {"Location": OTHER + "/hop/1"}, b"")
+    answers[OTHER + "/hop/1"] = (302, {"Location": MEDIENPORTAL_AUTH + "?round=2"}, b"")
     lines, adapter = chain_structure(answers)
     assert "- Landing page: not read, chain stopped at a repeated IServ sign-in step" in lines
-    assert len([url for url in adapter.sent if url.startswith(EDUPOOL_AUTH)]) == 1
+    assert len([url for url in adapter.sent if url.startswith(MEDIENPORTAL_AUTH)]) == 1
 
 
 @pytest.mark.parametrize("target", (OTHER + "/room/join", OTHER + "/session/logout", OTHER + "/api/delete-account", OTHER + "/sign/leave"))
@@ -633,9 +679,9 @@ def test_a_chain_longer_than_ten_hops_stops():
 
 def test_a_foreign_url_carrying_the_step_path_never_gets_the_iserv_session():
     client, _ = recording_client({})
-    router = client.chain_sessions(requests.Session(), ("/iserv/edupool/auth",))
-    assert router.session_for(OTHER + "/iserv/edupool/auth") is not client.session
-    assert router.session_for(SCHOOL_ONE_URL + "/iserv/edupool/auth") is client.session
+    router = client.chain_sessions(requests.Session(), ("/iserv/medienportal/auth",))
+    assert router.session_for(OTHER + "/iserv/medienportal/auth") is not client.session
+    assert router.session_for(SCHOOL_ONE_URL + "/iserv/medienportal/auth") is client.session
 
 
 @pytest.mark.parametrize("path", (

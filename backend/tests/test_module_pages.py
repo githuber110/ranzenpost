@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app import blocks, modules
 from app.file_service import AccountModuleNotOffered
+from app.iserv.client import server_failure
 from app.iserv.conferences import module_path, parse_conference_page
 from app.iserv.errors import DataError
 from app.iserv.module_pages import PAGE_MODULES, TASK_LIST, page_allowed, read_module_page, read_todo
@@ -13,6 +14,7 @@ from app.store import Store
 from tests.account_fakes import page as school_page
 from tests.module_pages_school import COURSE_PAGE, PAGES, PRINT_PAGE, ROOMS_PAGE, SCHOOL, ModuleConnection, ModuleSchool
 from tests.support import add_school
+from tests.test_diagnostics import SCHOOL_ONE_URL, recording_client
 
 ENTRIES = [
     {"segment": "print", "slug": "print", "label": "Drucken"},
@@ -213,6 +215,21 @@ def test_a_form_in_a_table_row_counts_as_hidden():
 
 def test_a_logout_form_does_not_count_as_hidden():
     assert pages().read("poll")["hidden_forms"] == 0
+
+
+def test_an_action_link_in_a_notice_or_a_fact_leaves_no_label():
+    body = (
+        '<div class="alert alert-info">Offen <a href="/iserv/poll/5/delete">Entfernen</a></div>'
+        '<dl><dt>Stand</dt><dd>Laufend <a href="/iserv/poll/5/delete">Entfernen</a></dd></dl>'
+    )
+    result = pages(ModuleSchool(pages={"/iserv/poll": school_page("Wahl", body)})).read("poll")
+    assert "Entfernen" not in str(result)
+    assert "Offen" in str(result) and "Laufend" in str(result)
+
+
+def test_a_rate_limit_on_a_module_page_keeps_its_retry_time():
+    client, _ = recording_client({SCHOOL_ONE_URL + "/iserv/print": (429, {"Retry-After": "120"}, b"")})
+    assert server_failure(client.fetch_unfollowed("/iserv/print", 1024, 5)).retry_after == 120
 
 
 def test_a_school_that_refuses_the_page_gets_its_own_message():

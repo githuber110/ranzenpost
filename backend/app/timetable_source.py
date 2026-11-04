@@ -341,7 +341,10 @@ class TimetableSources:
             raise
 
     def _read_week(self, client, chosen, target):
-        refusal = self._remembered_refusal(chosen) or self._recent_server_failure(chosen, target)
+        refusal = (
+            self._still_known(self._data_refusals, chosen, RECHECK_SECONDS)
+            or self._still_known(self._server_failures, (chosen, str(target)), SERVER_FAILURE_PAUSE_SECONDS)
+        )
         if refusal is not None:
             raise fresh_error(refusal)
         try:
@@ -377,19 +380,11 @@ class TimetableSources:
                 raise
             raise DataError(str(error), message_key=TIMETABLE_SHAPE_KEY, detail=dict(error.detail)) from error
 
-    def _remembered_refusal(self, chosen):
+    def _still_known(self, table, key, seconds):
         now = self.connection.clock()
         with self._lock:
-            known = self._data_refusals.get(chosen)
-        if known is None or now - known[0] >= RECHECK_SECONDS:
-            return None
-        return known[1]
-
-    def _recent_server_failure(self, chosen, target):
-        now = self.connection.clock()
-        with self._lock:
-            known = self._server_failures.get((chosen, str(target)))
-        if known is None or now - known[0] >= SERVER_FAILURE_PAUSE_SECONDS:
+            known = table.get(key)
+        if known is None or now - known[0] >= seconds:
             return None
         return known[1]
 

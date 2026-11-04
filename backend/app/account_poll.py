@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 FORUMS_EVENT = "forums"
 FORUMS_KEY = "notify.forums.new"
 FORUM_STATE_KEY = "forum_unread"
+MODULE_LISTS_KEY = "module_lists"
+MODULE_LIST_SECONDS = 3600
+MODULE_LIST_STALE_SECONDS = 24 * 3600
 PLAIN_LISTS = ((modules.INFODISPLAY, account_lists.SCREENS_FIELD), (modules.WHITEBOARDS, account_lists.WHITEBOARDS_FIELD))
 
 
@@ -162,8 +165,55 @@ def poll_plain_list(poller, connection, connection_id, offered, field):
     return {"module": field, "items": len(entries)}
 
 
+def _within(stamp, now, seconds):
+    return isinstance(stamp, int) and 0 <= now - stamp < seconds
+
+
+def _forget_old_list(poller, connection_id, field, entry, now):
+    if not _within(entry.get("read"), now, MODULE_LIST_STALE_SECONDS):
+        integration.record_school_list(poller.store, connection_id, field, None)
+
+
+def poll_module_lists(poller, connection, connection_id, poll_state):
+    offers = getattr(connection, "account_modules", None)
+    reader = getattr(connection, "module_notices", None)
+    now = int(poller.clock())
+    if poller.store is None or not callable(offers) or not callable(reader) or not integration.is_active(poller.store, now):
+        return
+    offered = offers()
+    earlier = poll_state.get(MODULE_LISTS_KEY)
+    stamps = dict(earlier) if isinstance(earlier, dict) else {}
+    for slug, field in integration.SCHOOL_MODULE_LISTS:
+        if not offered.get(slug):
+            stamps.pop(slug, None)
+            integration.record_school_list(poller.store, connection_id, field, None)
+            continue
+        entry = stamps.get(slug) if isinstance(stamps.get(slug), dict) else {}
+        if _within(entry.get("tried"), now, MODULE_LIST_SECONDS):
+            continue
+        stamps[slug] = dict(entry, tried=now)
+        try:
+            listed, failure = _read(connection_id, slug, lambda: reader(slug))
+        except OutageError as error:
+            logger.info("poll school#%s %s not read, the school is out of reach: %s", connection_id, slug, error_kind(error))
+            _forget_old_list(poller, connection_id, field, entry, now)
+            break
+        if failure is not None:
+            _forget_old_list(poller, connection_id, field, entry, now)
+            if failure.get("kind"):
+                break
+            continue
+        stamps[slug]["read"] = now
+        if listed is None:
+            integration.record_school_list(poller.store, connection_id, field, None)
+        else:
+            integration.record_school_list(poller.store, connection_id, field, listed["items"], count=listed["count"])
+    poll_state[MODULE_LISTS_KEY] = stamps
+
+
 def poll_account_lists(poller, connection, connection_id, flags, poll_state, language=None, school=""):
     events = [poll_forums(poller, connection, connection_id, flags.get(modules.FORUMS, False), poll_state, language, school)]
     for module, field in PLAIN_LISTS:
         events.append(poll_plain_list(poller, connection, connection_id, flags.get(module, False), field))
+    poll_module_lists(poller, connection, connection_id, poll_state)
     return [event for event in events if event is not None]

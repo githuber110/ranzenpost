@@ -69,28 +69,9 @@ function modulePageChild(entry, link) {
   return { slug: entry.slug, connection_id: entry.connection_id, page: link.page, title: link.label || entry.title };
 }
 
-function modulePageChevron() {
-  return el("div", { class: "row-side" }, [el("span", { class: "ico-slot chev-next", html: iconSvg("chevron", 16) })]);
-}
-
-function modulePageLinkRow(entry, link) {
-  return el("button", { class: "row read conference-link", type: "button", onclick: () => openModulePage(modulePageChild(entry, link)) }, [
-    el("span", { class: "row-dot" }),
-    el("div", { class: "row-main" }, [iservText("div", { class: "row-title" }, link.label || t("conferences.page.open"))]),
-    modulePageChevron(),
-  ]);
-}
-
 function modulePageTableRow(entry, table, row) {
-  const cells = row.cells.map((cell) => String(cell || "").trim());
-  const first = cells.findIndex(Boolean);
-  const lines = cells.map((cell, index) => {
-    if (!cell || index === first) return "";
-    const header = String((table.headers || [])[index] || "").trim();
-    return header ? t("modulepages.cell", { header, value: cell }) : cell;
-  }).filter(Boolean);
+  const { title, lines } = pageRowParts(table, row, (header, value) => t("modulepages.cell", { header, value }));
   const link = row.links[0];
-  const title = first >= 0 ? cells[first] : link ? link.label : "";
   const parts = [
     el("span", { class: "row-dot" }),
     el("div", { class: "row-main" }, [
@@ -99,7 +80,7 @@ function modulePageTableRow(entry, table, row) {
     ]),
   ];
   if (!link) return el("div", { class: "row read conference-row module-page-row" }, parts);
-  parts.push(modulePageChevron());
+  parts.push(pageChevron());
   return el("button", { class: "row read conference-row module-page-row", type: "button", onclick: () => openModulePage(modulePageChild(entry, link)) }, parts);
 }
 
@@ -142,17 +123,11 @@ function moduleTaskNodes(block) {
 }
 
 function modulePageBlockNodes(entry, block) {
+  const fixed = pageStaticBlock(block);
+  if (fixed) return fixed;
   switch (block.kind) {
-    case "notice":
-      return [conferenceNotice(block.tone, block.text)];
-    case "heading":
-      return [el("div", { class: "section-head conference-head" }, [iservText("span", { class: "overline" }, block.text)])];
-    case "text":
-      return [iservText("p", { class: "conference-text" }, block.text)];
-    case "facts":
-      return [factList(block.facts.map((fact) => [fact.label, fact.value]))];
     case "links":
-      return [el("div", { class: "rows" }, block.links.map((link) => modulePageLinkRow(entry, link)))];
+      return [el("div", { class: "rows" }, block.links.map((link) => pageLinkRow(link, () => openModulePage(modulePageChild(entry, link)))))];
     case "table":
       return modulePageTable(entry, block);
     case "tasks":
@@ -205,7 +180,7 @@ function modulePageOfferRow(offer) {
       tag ? el("div", { class: "row-tags" }, [tag]) : null,
       el("div", { class: "row-title" }, title),
     ]),
-    modulePageChevron(),
+    pageChevron(),
   ]);
 }
 

@@ -39,6 +39,7 @@ from .const import (
     STATUS_AUTH_FAILED,
     UNKNOWN_VERSION,
 )
+from .hacs import waiting_for_hacs
 from .panels import PANELS_KEY, app_panel_path
 from .signals import Signal, signals_between
 from .version import (
@@ -62,7 +63,19 @@ PLACEHOLDER_REQUIRED_VERSION = "required_version"
 PLACEHOLDER_LOADED_VERSION = "loaded_version"
 PLACEHOLDER_INSTALLED_VERSION = "installed_version"
 MANIFEST_FILE = Path(__file__).parent / "manifest.json"
-NOTICE_FIELDS = ("unread_letters", "unread_posts", "open_tasks", "news", "unread_forum_posts", "texts")
+NOTICE_FIELDS = (
+    "unread_letters",
+    "unread_posts",
+    "open_tasks",
+    "news",
+    "unread_forum_posts",
+    "texts",
+    "open_todos",
+    "print_jobs",
+    "course_selections",
+    "video_rooms",
+    "polls",
+)
 SCOPE_CHILD = "child"
 SCOPE_SCHOOL = "school"
 CHANGES_STORE_VERSION = 1
@@ -283,6 +296,8 @@ class RanzenpostCoordinator(DataUpdateCoordinator[RanzenpostData]):
         entry_id = self.config_entry.entry_id
         target = self.target_version
         mismatch = version_mismatch(info.version, target, info.legacy)
+        if mismatch == INTEGRATION_TOO_OLD and waiting_for_hacs(self.hass):
+            mismatch = None
         for key in VERSION_ISSUE_KEYS:
             if key != mismatch:
                 ir.async_delete_issue(self.hass, DOMAIN, entry_issue_id(key, entry_id))

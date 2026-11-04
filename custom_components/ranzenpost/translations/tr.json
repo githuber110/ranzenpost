@@ -191,6 +191,21 @@
       "texts": {
         "name": "Metinler"
       },
+      "open_todos": {
+        "name": "Açık yapılacaklar"
+      },
+      "print_jobs": {
+        "name": "Yazdırma işleri"
+      },
+      "course_selections": {
+        "name": "Ders seçimleri"
+      },
+      "video_rooms": {
+        "name": "Video odaları"
+      },
+      "polls": {
+        "name": "Anketler"
+      },
       "open_absences": {
         "name": "Açık devamsızlıklar"
       },

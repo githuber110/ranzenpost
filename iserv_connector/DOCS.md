@@ -119,7 +119,8 @@ Keep the app and the integration on the same release.
 - App: **Settings → Apps → App store** (the **Install app** button) **→ ⋮ → Check for updates**, then
   **Ranzenpost (IServ) → Update**.
 - Integration: open **Ranzenpost** in HACS and install the update, then restart Home Assistant and
-  reload the browser page.
+  reload the browser page. HACS can take hours to show a new update, and up to two days for a custom
+  repository. The repair for the integration appears once HACS offers the update.
 
 The integration sends its version with every call, so both sides can tell when the other one is
 behind. Home Assistant then shows a repair with the steps above: the app is behind, the integration
@@ -172,7 +173,8 @@ attributes, so an automation or a template can read them without a second call.
   `timetable_changed_today`. The event `timetable_changed`.
 - **Per school:** calendars for holidays and school events. Sensors for the next holiday, the next
   free day, the next parent-teacher conference, unread letters, posts and emails, open tasks, news,
-  unread forum posts, texts and the connection.
+  unread forum posts, texts and the connection. Open to-dos, print jobs, course selections, video rooms
+  and polls when your school offers them.
 
 Every entity with its attributes, the values and units, the triggers, four automation recipes, the
 options, help for common problems and how to remove Ranzenpost are
@@ -192,10 +194,10 @@ school's login needs you, a repair names the school and clears once the login wo
 The integration registers `custom:ranzenpost-card`. Add it from the card picker and set it up in the
 visual editor: a title, the children, the blocks (`today`, `next_day`, `next_lesson`, `week`, `changes`,
 `letters`, `noticeboard`, `absences`, `conferences`, `holidays`, `school_events`, `tasks`, `news`,
-`forums`, `texts`) and a size per block, `compact` or `normal`. The `today` block also takes `switch`:
+`forums`, `texts`, `todos`) and a size per block, `compact` or `normal`. The `today` block also takes `switch`:
 `end` shows the next school day after the last lesson, a time such as `"15:00"` from that time on. Only blocks of modules your school has are offered, and a block without
 content is not drawn. An account without a linked profile still gets letters, noticeboard, conferences,
-holidays, school events, tasks, news, forums and texts of its school. After installing or updating the integration, restart
+holidays, school events, tasks, news, forums, texts and to-dos of its school. After installing or updating the integration, restart
 Home Assistant and reload the page so the browser loads the new card.
 
 ## Desktop and tablet

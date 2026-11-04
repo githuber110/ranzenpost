@@ -8,6 +8,7 @@ from app.iserv.errors import DataError
 from app.server import create_app
 from app.service import IServService
 from app.store import Store
+from tests import mail_web_fakes
 from tests.mail_fakes import FakeImap
 from tests.mail_web_fakes import SCHOOL, TOKEN, FakeMailWeb, mail_page
 from tests.support import add_school
@@ -22,6 +23,15 @@ def service_with_web(tmp_path, web=None):
     store.connection_store(school).save_modules({"unsupported": [MAIL_ENTRY]})
     service = IServService(store, client_factory=lambda url: web)
     return service, school, web
+
+
+def test_the_settings_say_when_the_out_of_office_reply_is_on(tmp_path, monkeypatch):
+    service, school, _web = service_with_web(tmp_path)
+    assert service.mail_web_call(school, "settings")["vacation_active"] is False
+    original = mail_web_fakes.php_data
+    monkeypatch.setattr(mail_web_fakes, "php_data", lambda addresses: dict(original(addresses), hasActiveVacation=True))
+    other, other_school, _other_web = service_with_web(tmp_path / "other")
+    assert other.mail_web_call(other_school, "settings")["vacation_active"] is True
 
 
 def page_of(service, school, kind):

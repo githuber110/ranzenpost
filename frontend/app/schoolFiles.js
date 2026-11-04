@@ -27,6 +27,9 @@ async function loadAccountModules() {
   if (outcome.data) {
     state.accountModules = Array.isArray(outcome.data.schools) ? outcome.data.schools : [];
     state.accountModulesError = null;
+    const waited = state.startLinkWaits;
+    state.startLinkWaits = "";
+    if (waited && waited === state.view) followStartLink(startLink());
   } else if (outcome.error) {
     state.accountModulesError = outcome;
   }

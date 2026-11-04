@@ -75,7 +75,7 @@ def test_the_block_keys_are_unique_and_every_module_is_known():
     keys = [block["key"] for block in blocks.BLOCKS]
     assert len(keys) == len(set(keys))
     for block in blocks.BLOCKS:
-        assert block["module"] in modules.MODULES, block["key"]
+        assert block["module"] in (*modules.MODULES, *modules.READ_PAGE_MODULES), block["key"]
 
 
 @pytest.mark.parametrize("module", modules.MODULES)
@@ -126,6 +126,7 @@ BLOCK_EMPTY_MARKER = {
     "news": 'module_emptied(modules.NEWS)',
     "forums": 'module_emptied(modules.FORUMS)',
     "texts": 'module_emptied(modules.TEXTS)',
+    "todos": 'module_emptied("todo")',
     "infodisplay": 'module_emptied(modules.INFODISPLAY)',
     "whiteboards": 'module_emptied(modules.WHITEBOARDS)',
 }

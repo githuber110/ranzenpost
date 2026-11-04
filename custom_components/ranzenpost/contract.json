@@ -378,6 +378,21 @@
         "infodisplay": {
           "type": "boolean"
         },
+        "todo": {
+          "type": "boolean"
+        },
+        "print": {
+          "type": "boolean"
+        },
+        "course-selection": {
+          "type": "boolean"
+        },
+        "videoconference": {
+          "type": "boolean"
+        },
+        "poll": {
+          "type": "boolean"
+        },
         "whiteboards": {
           "type": "boolean"
         }
@@ -933,6 +948,11 @@
         "open_tasks",
         "news",
         "unread_forum_posts",
+        "open_todos",
+        "print_jobs",
+        "course_selections",
+        "video_rooms",
+        "polls",
         "texts"
       ],
       "properties": {
@@ -1093,6 +1113,61 @@
             }
           ],
           "description": "Every news item of the IServ news list in IServ order; date is the publication date when IServ shows one, sender is the category. Null until the first poll read the list or when the school has no news module."
+        },
+        "open_todos": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Open to-dos of the IServ to-do module, null while unknown."
+        },
+        "print_jobs": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows of the IServ print module, null while unknown."
+        },
+        "course_selections": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows of the IServ course selection module, null while unknown."
+        },
+        "video_rooms": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows of the IServ video conference module, null while unknown."
+        },
+        "polls": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows of the IServ poll module, null while unknown."
         },
         "unread_forum_posts": {
           "oneOf": [

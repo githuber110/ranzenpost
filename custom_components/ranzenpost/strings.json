@@ -191,6 +191,21 @@
       "texts": {
         "name": "Texts"
       },
+      "open_todos": {
+        "name": "Open to-dos"
+      },
+      "print_jobs": {
+        "name": "Print jobs"
+      },
+      "course_selections": {
+        "name": "Course selections"
+      },
+      "video_rooms": {
+        "name": "Video rooms"
+      },
+      "polls": {
+        "name": "Polls"
+      },
       "open_absences": {
         "name": "Open absences"
       },

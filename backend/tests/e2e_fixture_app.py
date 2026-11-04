@@ -2118,6 +2118,8 @@ class FixtureService:
         return {"schools": [tag(SCHOOL_ONE, offered)]}
 
     def module_page(self, connection_id, slug, page=""):
+        if slug == "todo" and module_emptied("todo"):
+            return tag(SCHOOL_ONE, {"title": "", "hidden_forms": 0, "blocks": [{"kind": "tasks", "open": [], "done": []}]})
         return tag(SCHOOL_ONE, self._account_box(connection_id)["pages"].read(slug, page))
 
     def _account_box(self, connection_id):

@@ -117,6 +117,13 @@ SCHOOL_TASKS = "tasks"
 SCHOOL_NEWS = "news"
 SCHOOL_FORUMS = "forum_posts"
 SCHOOL_TEXTS = "texts"
+SCHOOL_MODULE_LISTS = (
+    ("todo", "open_todos"),
+    ("print", "print_jobs"),
+    ("course-selection", "course_selections"),
+    ("videoconference", "video_rooms"),
+    ("poll", "polls"),
+)
 STAMP_SOURCE_ISERV = "iserv"
 STAMP_SOURCE_APP = "app"
 CHANGE_FIELDS = ("subject", "teacher", "room")
@@ -674,7 +681,7 @@ def build_schools(service, store):
                 "id": entry["id"],
                 "name": school_name_of(store, entry),
                 "url_host": supervisor.sanitize_host(entry.get("school_url")),
-                "modules": registry["modules"],
+                "modules": dict(registry["modules"], **{slug: modules.lists_module(registry, slug) for slug, _field in SCHOOL_MODULE_LISTS}),
                 "modules_known": modules_known,
                 "disabled": dict(disabled),
                 "status": _school_status(connection, slot),
@@ -1130,6 +1137,7 @@ def build_school(store, holiday_calendar, now_epoch, school_id="", unknown_lists
         "news": school_list(state, SCHOOL_NEWS),
         "unread_forum_posts": school_list(state, SCHOOL_FORUMS),
         "texts": school_list(state, SCHOOL_TEXTS),
+        **{field: school_list(state, field) for _slug, field in SCHOOL_MODULE_LISTS},
         "unknown": unknown,
     }
 

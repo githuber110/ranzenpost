@@ -218,12 +218,20 @@ function conferenceTarget(entry, link) {
   return { page: link.page, connection_id: entry.connection_id, title: link.label || "" };
 }
 
-function conferenceLinkRow(entry, link) {
-  return el("button", { class: "row read conference-link", type: "button", onclick: () => pushConferencePage(conferenceTarget(entry, link)) }, [
+function pageChevron() {
+  return el("div", { class: "row-side" }, [el("span", { class: "ico-slot chev-next", html: iconSvg("chevron", 16) })]);
+}
+
+function pageLinkRow(link, open) {
+  return el("button", { class: "row read conference-link", type: "button", onclick: open }, [
     el("span", { class: "row-dot" }),
     el("div", { class: "row-main" }, [iservText("div", { class: "row-title" }, link.label || t("conferences.page.open"))]),
-    el("div", { class: "row-side" }, [el("span", { class: "ico-slot chev-next", html: iconSvg("chevron", 16) })]),
+    pageChevron(),
   ]);
+}
+
+function conferenceLinkRow(entry, link) {
+  return pageLinkRow(link, () => pushConferencePage(conferenceTarget(entry, link)));
 }
 
 function conferenceNotice(tone, text) {
@@ -234,18 +242,20 @@ function conferenceNotice(tone, text) {
   ]);
 }
 
-function conferenceTableRow(entry, table, row) {
+function pageRowParts(table, row, labelled) {
   const cells = row.cells.map((cell) => String(cell || "").trim());
-  const firstIndex = cells.findIndex(Boolean);
-  const title = firstIndex >= 0 ? cells[firstIndex] : (row.links[0] && row.links[0].label) || "";
-  const sub = cells
-    .map((cell, index) => {
-      if (!cell || index === firstIndex) return "";
-      const header = String((table.headers || [])[index] || "").trim();
-      return header ? `${header}: ${cell}` : cell;
-    })
-    .filter(Boolean)
-    .join(" · ");
+  const first = cells.findIndex(Boolean);
+  const lines = cells.map((cell, index) => {
+    if (!cell || index === first) return "";
+    const header = String((table.headers || [])[index] || "").trim();
+    return header ? labelled(header, cell) : cell;
+  }).filter(Boolean);
+  return { title: first >= 0 ? cells[first] : (row.links[0] && row.links[0].label) || "", lines };
+}
+
+function conferenceTableRow(entry, table, row) {
+  const { title, lines } = pageRowParts(table, row, (header, cell) => `${header}: ${cell}`);
+  const sub = lines.join(" · ");
   const main = el("div", { class: "row-main" }, [
     title ? iservText("div", { class: "row-title" }, title) : null,
     sub ? iservText("div", { class: "row-sub" }, sub) : null,
@@ -257,7 +267,7 @@ function conferenceTableRow(entry, table, row) {
     return el("button", { class: "row read conference-row", type: "button", onclick: () => pushConferencePage(conferenceTarget(entry, link)) }, [
       el("span", { class: "row-dot" }),
       main,
-      el("div", { class: "row-side" }, [el("span", { class: "ico-slot chev-next", html: iconSvg("chevron", 16) })]),
+      pageChevron(),
     ]);
   }
   const node = el("div", { class: "row read conference-row" }, [el("span", { class: "row-dot" }), main]);
@@ -289,7 +299,7 @@ function conferenceTableView(entry, block) {
   return nodes;
 }
 
-function conferenceBlockNodes(entry, block) {
+function pageStaticBlock(block) {
   switch (block.kind) {
     case "notice":
       return [conferenceNotice(block.tone, block.text)];
@@ -299,6 +309,15 @@ function conferenceBlockNodes(entry, block) {
       return [iservText("p", { class: "conference-text" }, block.text)];
     case "facts":
       return [factList(block.facts.map((fact) => [fact.label, fact.value]))];
+    default:
+      return null;
+  }
+}
+
+function conferenceBlockNodes(entry, block) {
+  const fixed = pageStaticBlock(block);
+  if (fixed) return fixed;
+  switch (block.kind) {
     case "links":
       return [el("div", { class: "rows" }, block.links.map((link) => conferenceLinkRow(entry, link)))];
     case "table":
@@ -324,15 +343,11 @@ function conferencePageView() {
     view.append(noteBlock(t(CONFERENCE_PAGE_UNKNOWN_KEY)));
     return view;
   }
-  if (entry.error && !entry.data) {
+  if (entry.error && (!entry.data || entry.data.booking)) {
     view.append(emptyBlock("alert", t("conferences.page.error.title"), t("conferences.page.error.text"), retryButton(() => loadConferencePage(entry))));
     return view;
   }
   if (entry.data && entry.data.booking) {
-    if (entry.error) {
-      view.append(emptyBlock("alert", t("conferences.page.error.title"), t("conferences.page.error.text"), retryButton(() => loadConferencePage(entry))));
-      return view;
-    }
     view.append(...conferenceBookingNodes(entry));
     return view;
   }

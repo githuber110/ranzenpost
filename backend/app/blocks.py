@@ -60,6 +60,7 @@ BLOCKS = (
     {"key": "news", "module": modules.NEWS, "area": AREA_NEWS, "compact": 3, "normal": 5, "size": SIZE_COMPACT},
     {"key": "forums", "module": modules.FORUMS, "area": AREA_FORUMS, "compact": 3, "normal": 6, "size": SIZE_COMPACT},
     {"key": "texts", "module": modules.TEXTS, "area": AREA_TEXTS, "compact": 3, "normal": 6, "size": SIZE_COMPACT},
+    {"key": "todos", "module": "todo", "area": AREA_MODULE_PAGES, "compact": 3, "normal": 6, "size": SIZE_COMPACT},
     {"key": "infodisplay", "module": modules.INFODISPLAY, "area": AREA_INFODISPLAY, "compact": 2, "normal": 5, "size": SIZE_COMPACT},
     {"key": "whiteboards", "module": modules.WHITEBOARDS, "area": AREA_WHITEBOARDS, "compact": 2, "normal": 5, "size": SIZE_COMPACT},
 )

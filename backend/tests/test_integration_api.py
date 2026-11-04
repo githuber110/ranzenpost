@@ -762,6 +762,11 @@ def test_school_admits_when_nothing_is_ahead(tmp_path):
         "news": None,
         "unread_forum_posts": None,
         "texts": None,
+        "open_todos": None,
+        "print_jobs": None,
+        "course_selections": None,
+        "video_rooms": None,
+        "polls": None,
     }
 
 
@@ -979,15 +984,20 @@ def test_info_carries_the_module_registry_of_each_school(tmp_path):
         "texts": False,
         "infodisplay": False,
         "whiteboards": False,
+        "todo": False,
+        "print": False,
+        "course-selection": False,
+        "videoconference": False,
+        "poll": False,
     }
-    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False}
+    assert schools[1]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False} | {"todo": False, "print": False, "course-selection": False, "videoconference": False, "poll": False}
     assert "unknown" not in schools[0]
 
 
 def test_info_shows_every_module_for_a_school_without_a_registry(tmp_path):
     client, store, _ = _app(tmp_path)
     body = client.get(PREFIX + "/info", headers=_auth(store)).json()
-    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False}
+    assert body["schools"][0]["modules"] == {name: True for name in ("timetable", "letters", "pinboard", "absences", "conferences", "messenger")} | {"calendar": False, "tasks": False, "news": False, "forums": False, "texts": False, "infodisplay": False, "whiteboards": False} | {"todo": False, "print": False, "course-selection": False, "videoconference": False, "poll": False}
 
 
 def test_state_reads_unread_counts_from_the_school_of_the_child(tmp_path):

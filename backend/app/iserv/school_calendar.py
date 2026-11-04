@@ -11,6 +11,7 @@ from .errors import REASON_RATE_LIMITED, DataError, LoginError, OutageError, Sch
 
 CALENDAR_SOURCES_PATH = "/iserv/calendar/api/eventsources"
 CALENDAR_EVENTS_PATH = "/iserv/calendar/feed/calendar-multi"
+INVITATION_OPEN = "NEEDS-ACTION"
 TITLE_LIMIT = 200
 TEXT_LIMIT = 2000
 NAME_LIMIT = 120
@@ -197,10 +198,14 @@ def _event_items(payload):
     raise CalendarShapeError("calendar events are neither a list nor an object")
 
 
+def _refusal(status):
+    return SchoolCalendarRefusedError("school calendar refused: %d" % status, detail={"status": status})
+
+
 def _checked(response, path, server_failure):
     status = status_of(response)
     if status in CALENDAR_REFUSED_STATUSES:
-        raise SchoolCalendarRefusedError("school calendar refused: %d" % status, detail={"status": status})
+        raise _refusal(status)
     failure = server_failure(response)
     if failure is not None:
         raise failure
@@ -243,7 +248,7 @@ def _read_source(client, source, request, server_failure):
         raise DataError("calendar source answered no readable events", detail={"path": path}) from error
 
 
-def read_calendar(client, first, last, server_failure, resting=None):
+def read_calendar(client, first, last, server_failure, resting_status=lambda source: 0):
     sources = _listed_sources(client, server_failure)
     if sources is None:
         return SchoolCalendarRead(read_multi(client, first, last, server_failure), (), ())
@@ -260,9 +265,10 @@ def read_calendar(client, first, last, server_failure, resting=None):
             skipped += 1
             problems.append(SourceProblem(source["id"], source["type"], source["url"].split("?", 1)[0], URL_REFUSED))
             continue
-        if source["id"] in (resting or {}):
+        resting = resting_status(source["id"])
+        if resting:
             refused += 1
-            problems.append(SourceProblem(source["id"], source["type"], request[0], resting[source["id"]]))
+            problems.append(SourceProblem(source["id"], source["type"], request[0], _refusal(resting)))
             continue
         try:
             groups.append(_read_source(client, source, request, server_failure))
@@ -320,6 +326,7 @@ def parse_event(item):
         "calendar": _text(item.get("calendarName"), NAME_LIMIT),
         "category": _text(item.get("category"), NAME_LIMIT),
         "description": _plain(item.get("description"), TEXT_LIMIT),
+        "invitation_open": str(item.get("currentUserPartstat") or "").upper() == INVITATION_OPEN,
     }
 
 

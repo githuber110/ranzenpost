@@ -223,6 +223,7 @@ HOP_WORD = re.compile(r"[^a-z]+")
 ISERV_SIGN_IN_PATHS = ("/iserv/auth/auth",)
 MODULE_SIGN_IN_STEP = re.compile(r"^/iserv/[a-z0-9-]{1,40}/auth$")
 FRAME_HEADERS = ("X-Frame-Options", "Content-Security-Policy")
+KEPT_HEADERS = FRAME_HEADERS + ("Retry-After",)
 ISERV_LOGIN_PREFIX = "/iserv/auth/login"
 CHAIN_BLOCKED_HOSTS = ("localhost",)
 CHAIN_BLOCKED_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa")
@@ -380,7 +381,7 @@ def unfollowed_get(session, url, limit, timeout, home_url, expired=None, headers
         text, truncated = ("", False) if next_url else _read_capped(response, limit, expired)
     finally:
         response.close()
-    kept = {name: str(response.headers.get(name)) for name in FRAME_HEADERS if response.headers.get(name)}
+    kept = {name: str(response.headers.get(name)) for name in KEPT_HEADERS if response.headers.get(name)}
     return UnfollowedAnswer(status, url, str(response.headers.get("Content-Type") or ""), text, truncated, redirect, next_url, kept)
 
 
@@ -400,7 +401,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2611.1.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2611.2.0")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""

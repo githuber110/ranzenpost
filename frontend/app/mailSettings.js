@@ -79,7 +79,7 @@ async function openMailSettings() {
   render();
   try {
     const answer = await getJson(`api/mail/settings?${connectionQuery(mailSchool())}`);
-    state.mailSettings = { pages: Array.isArray(answer.pages) ? answer.pages : [], unknown: answer.unknown === true };
+    state.mailSettings = { pages: Array.isArray(answer.pages) ? answer.pages : [], unknown: answer.unknown === true, vacationActive: answer.vacation_active === true };
   } catch (error) {
     if (handleApiFailure(error, mailSchool())) return;
     state.mailSettings = { error: errorCode(error), body: (error && error.body) || null };
@@ -115,6 +115,7 @@ function mailSettingsView() {
     view.append(mailFailureBlock(current, openMailSettings));
     return view;
   }
+  if (current.vacationActive) view.append(noteBlock(t("mail.settings.vacationActive")));
   if (!current.pages.length) {
     view.append(current.unknown
       ? mailFailureBlock({ body: null }, openMailSettings)

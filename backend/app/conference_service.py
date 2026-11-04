@@ -50,10 +50,11 @@ from .iserv.conferences import (
     page_problems,
     page_successes,
     parse_conference_page,
+    public_blocks,
     parse_conferences,
     write_link,
 )
-from .iserv.dsa import name_words
+from .iserv.dsa import name_words, names_one_child
 from .iserv.errors import DataError
 from .iserv.forms import browser_headers, find_login_form, parse_forms
 from .iserv.pages import path_of, status_of
@@ -297,9 +298,7 @@ class ConferenceService:
                     if not str(option["value"]).strip():
                         kept.append(option)
                         continue
-                    words = name_words(option["label"])
-                    owners = {child_id for child_id, child_words in known if words and (words <= child_words or child_words <= words)}
-                    if len(owners) == 1:
+                    if names_one_child(option["label"], known):
                         kept.append(option)
                         matched += 1
                     else:
@@ -318,23 +317,10 @@ class ConferenceService:
 
     def _publish(self, path, model):
         model = self._authorise(model)
-        blocks = []
-        for block in model["blocks"]:
-            kind = block["kind"]
-            if kind == "links":
-                blocks.append({"kind": kind, "links": [self._public_link(link) for link in block["links"]]})
-            elif kind == "table":
-                rows = [
-                    {"cells": row["cells"], "links": [self._public_link(link) for link in row["links"]], "forms": row["forms"]}
-                    for row in block["rows"]
-                ]
-                blocks.append(dict(block, rows=rows))
-            else:
-                blocks.append(dict(block))
         return {
             "page": self.token(path),
             "title": model["title"],
-            "blocks": blocks,
+            "blocks": public_blocks(model["blocks"], self._public_link),
             "forms": [self._public_form(form) for form in model["forms"]],
             "notices": list(model["notices"]),
         }

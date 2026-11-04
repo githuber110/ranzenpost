@@ -2,9 +2,9 @@ from app import blocks, modules
 
 
 def test_the_catalogue_names_every_block_once_with_a_known_module():
-    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 18
+    assert len(blocks.BLOCK_KEYS) == len(set(blocks.BLOCK_KEYS)) == 19
     for block in blocks.BLOCKS:
-        assert block["module"] in modules.MODULES
+        assert block["module"] in (*modules.MODULES, *modules.READ_PAGE_MODULES)
         assert block["area"] in blocks.AREA_MODULES
         assert block["module"] in blocks.AREA_MODULES[block["area"]]
         assert block["size"] in blocks.SIZES

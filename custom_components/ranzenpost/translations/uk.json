@@ -191,6 +191,21 @@
       "texts": {
         "name": "Тексти"
       },
+      "open_todos": {
+        "name": "Відкриті справи"
+      },
+      "print_jobs": {
+        "name": "Завдання друку"
+      },
+      "course_selections": {
+        "name": "Вибір курсів"
+      },
+      "video_rooms": {
+        "name": "Відеокімнати"
+      },
+      "polls": {
+        "name": "Опитування"
+      },
       "open_absences": {
         "name": "Відкриті пропуски"
       },

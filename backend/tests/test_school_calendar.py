@@ -52,6 +52,7 @@ def test_a_timed_event_keeps_its_times_with_offset_and_its_calendar():
         "calendar": "Parents 5a",
         "category": "Meeting",
         "description": "Room 12, please come on time",
+        "invitation_open": False,
     }
 
 
@@ -287,3 +288,8 @@ def test_the_status_and_source_helpers_have_one_origin():
     assert not hasattr(school_calendar, "_status")
     assert not hasattr(school_calendar, "_source_entries")
     assert modules.feed_sources is reportcrawl.feed_sources is school_calendar.feed_sources
+
+
+@pytest.mark.parametrize("value, expected", [("NEEDS-ACTION", True), ("needs-action", True), ("ACCEPTED", False), (None, False), ("OTHER", False)])
+def test_only_an_unanswered_invitation_counts_as_open(value, expected):
+    assert parse_event(dict(TIMED, currentUserPartstat=value))["invitation_open"] is expected

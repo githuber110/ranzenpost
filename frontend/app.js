@@ -1617,7 +1617,9 @@ async function bootOnce() {
     }
     render();
     loadRest();
-    followStartLink(startLink());
+    const link = startLink();
+    followStartLink(link);
+    state.startLinkWaits = link ? "" : state.view;
     setupVisibilityRefresh();
     resumeCalendarPage();
   } catch (error) {

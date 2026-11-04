@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 
+from .iserv.conference_booking import booking_cells
 from .iserv.conferences import booking_heading, booking_key, booking_window, dates_in, event_day, first_time, same_booking
 
 STATE_KEY = "conference_notices"
@@ -57,9 +58,7 @@ def _booked_at_school(page, conference):
     for entry in (page.get("booking") or {}).get("mine") or []:
         if not entry.get("date") or not entry.get("begin"):
             continue
-        day = date.fromisoformat(entry["date"])
-        cells = [day.strftime("%d.%m.%Y"), "%s - %s" % (entry["begin"], entry["end"]), entry.get("teacher") or ""]
-        cells = [cell for cell in cells if cell]
+        cells = booking_cells(dict(entry, moment=date.fromisoformat(entry["date"])))
         key = booking_key(cells, entry["date"])
         found.append({
             "id": "%s|%s" % (conference["id"], key),

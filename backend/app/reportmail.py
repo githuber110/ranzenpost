@@ -13,6 +13,7 @@ from .scriptscan import script_endpoints, script_sources
 logger = logging.getLogger(__name__)
 
 MAIL_HEAD = "### Mail interface"
+DATA_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,30}$")
 PATH_WORD = re.compile(r"^(?:[A-Za-z][A-Za-z0-9_-]{0,39}|<expr>|\{[a-z][A-Za-z0-9_]{0,30}\})$")
 FOLDER_TYPE = re.compile(r"^[a-z]{2,12}$")
 PROTOCOL_WORD = re.compile(r"^[A-Za-z0-9=+_./:-]{1,40}$")
@@ -82,7 +83,7 @@ def php_data_lines(html):
         return ["- #php-data: not on the page"]
     if data is None:
         return ["- #php-data: unreadable"]
-    lines = []
+    lines = ["- #php-data keys: " + (", ".join(sorted(key for key in data if DATA_KEY.match(str(key)))[:MAX_PATHS]) or "-")]
     config = data.get(mail_web.SERVER_CONFIG)
     paths = config_paths(config if isinstance(config, (dict, list)) else {}, mail_web.SERVER_CONFIG)
     lines.append("- #php-data serverConfig paths: %d" % len(paths))

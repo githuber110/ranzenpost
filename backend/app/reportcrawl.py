@@ -45,6 +45,7 @@ from .reportexplore import (
     app_bases,
     app_root_line,
     as_prefixes,
+    client_redirect,
     embedded_sources,
     first_foreign_frame,
     first_own_frame,
@@ -165,6 +166,9 @@ ACCOUNT_API_HEAD = "### Account APIs"
 UPCOMING_PATH = "/iserv/calendar/api/upcoming"
 MAIL_FOLDERS_PATH = "/iserv/mail/api/folder/list"
 MAIL_LIST_PATH = "/iserv/mail/api/message/list"
+MAIL_TAGS_PATH = "/iserv/mail/api/v2/setting/tag"
+MAIL_SIGNATURE_PATH = "/iserv/mail/api/v2/setting/signature"
+SIGN_IN_ONLY_MODULES = frozenset({"edupool", "eduplacesconnector"})
 PLAN_RAW_PATH = "/iserv/plan/show/raw"
 SCHOOL_ACCOUNT_PATH = modules.DSA_API + "/users/me"
 
@@ -187,7 +191,7 @@ def mail_list_params(_today):
 
 KNOWN_APIS = {
     "calendar": ((CALENDAR_SOURCES_PATH, None), (UPCOMING_PATH, upcoming_params), (CALENDAR_EVENTS_PATH, calendar_window)),
-    "mail": ((MAIL_FOLDERS_PATH, None), (MAIL_LIST_PATH, mail_list_params)),
+    "mail": ((MAIL_FOLDERS_PATH, None), (MAIL_LIST_PATH, mail_list_params), (MAIL_TAGS_PATH, None), (MAIL_SIGNATURE_PATH, None)),
     "plan": ((PLAN_RAW_PATH, None),),
 }
 ACCOUNT_APIS = ((BADGES_PATH, None), (SCHOOL_ACCOUNT_PATH, school_account_params))
@@ -519,10 +523,13 @@ def module_link_structure(client, row, nav_paths, cache, today):
             lines.extend(script_facts(client, answer, cache, SCRIPT_ROOT, None, limit)[0])
             lines.extend(module_crawl(client, answer, module_prefix(path), menu_shape, cache, SCRIPT_ROOT))
             lines.extend(own_frame_lines(client, answer))
+            lines.extend(client_redirect_lines(client, answer))
             if rule is not None and rule.frames:
                 lines.extend(frame_chain_lines(client, answer))
     elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and followed:
         lines.append("- Redirect: to another host after a same-host redirect, not followed")
+    elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and row["slug"] in SIGN_IN_ONLY_MODULES:
+        lines.append("- Redirect: to a sign-in service on another host, not followed")
     elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and callable(getattr(client, "continue_chain", None)):
         lines.extend(external_chain_lines(client, answer))
         return capped_module(lines, MAX_PROVIDER_LINES)
@@ -917,7 +924,21 @@ def chain_stop_words(answer):
     return WRITE_WORDS | CHAIN_STOP_WORDS | (rule.never if rule is not None else frozenset())
 
 
-def external_chain_lines(client, answer, label="Redirect chain", framing=False):
+def client_redirect_lines(client, answer, follow=True):
+    url = str(getattr(answer, "url", "") or "")
+    kind, target = client_redirect(getattr(answer, "text", "") or "", url)
+    if not kind:
+        return []
+    line = "- Client redirect: %s to %s" % (kind, valueshape.link_shape(target))
+    parts = urlsplit(target)
+    foreign = parts.scheme == "https" and parts.netloc and parts.netloc.lower() != urlsplit(url).netloc.lower()
+    if not foreign or not follow or not callable(getattr(client, "continue_chain", None)):
+        return [line + ", not followed"]
+    start = SimpleNamespace(status_code=200, url=url, redirect=REDIRECT_OTHER_HOST, next_url=target)
+    return [line] + external_chain_lines(client, start, "Client redirect chain", follow=False)
+
+
+def external_chain_lines(client, answer, label="Redirect chain", framing=False, follow=True):
     try:
         budget = budget_of(client)
         chain = client.continue_chain(
@@ -939,6 +960,8 @@ def external_chain_lines(client, answer, label="Redirect chain", framing=False):
         lines.append(frame_line(landing))
     if status_of(landing) == 200:
         lines.extend(response_skeleton(landing, valueshape.link_shape))
+        if body_kind(landing) == "html":
+            lines.extend(client_redirect_lines(client, landing, follow))
         if body_kind(landing) == "html" and chain.reader is not None:
             chain.reader.budget = provider_budget(budget)
             cache = {}

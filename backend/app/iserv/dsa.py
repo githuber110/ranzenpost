@@ -113,6 +113,12 @@ def name_words(name):
     return frozenset(spaced.split())
 
 
+def names_one_child(name, known):
+    words = name_words(name)
+    owners = {child_id for child_id, child_words in known if words and (words <= child_words or child_words <= words)}
+    return len(owners) == 1
+
+
 def parse_students(payload):
     students = []
     for entry in payload or []:

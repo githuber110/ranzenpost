@@ -3,6 +3,33 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2611.2.0
+
+### New
+
+- Home Assistant gets sensors for open to-dos, print jobs, course selections, video rooms and polls when your school offers
+  them. The counts are read once an hour while Home Assistant is connected. A count the app cannot read safely, for example
+  a list with several pages, stays unknown. A failed read keeps the last count for up to a day, then it turns unknown.
+- The card has a to-do block. It opens the More modules area in the app.
+- The school calendar marks an invitation you have not answered yet.
+- The mail settings say when your out-of-office note is on.
+
+### Changed
+
+- The repair that asks you to update the integration appears once HACS offers the update, so its button works. HACS can take
+  hours to show a new update.
+
+### Fixed
+
+- A notice or fact on a module page no longer shows the label of an action the app leaves out.
+- A rate limit on a module page keeps the waiting time the school asked for.
+
+### Report
+
+- The problem report names redirects that only happen in the browser and reads one that leads to another host.
+- It no longer follows Edupool and the Eduplaces connector to their sign-in on another host.
+- It reads two more mail paths and lists the data names on the mail page.
+
 ## 2611.1.0
 
 ### New

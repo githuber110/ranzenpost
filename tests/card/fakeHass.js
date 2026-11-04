@@ -185,6 +185,7 @@ export const OPEN_TASKS = [
 ];
 export const NEWS_ITEMS = [{ title: "Library opens later", sender: "General", date: "2026-09-01", child: "" }];
 export const TEXT_ITEMS = [{ title: "Minutes of the class council", sender: "Class teacher", date: "2026-09-01", child: "" }];
+export const TODO_ITEMS = [{ title: "Sportzeug", sender: "", date: "2026-09-04", child: "" }];
 export const FORUM_ITEMS = [{ title: "School yard", sender: "General forums", date: "2026-09-01", child: "", text: "Lunch break games" }];
 
 function schoolListStates(prefix) {
@@ -193,6 +194,7 @@ function schoolListStates(prefix) {
     [`sensor.${prefix}_news`]: { state: String(NEWS_ITEMS.length), attributes: { news: NEWS_ITEMS } },
     [`sensor.${prefix}_unread_forum_posts`]: { state: "4", attributes: { forums: FORUM_ITEMS } },
     [`sensor.${prefix}_texts`]: { state: String(TEXT_ITEMS.length), attributes: { texts: TEXT_ITEMS } },
+    [`sensor.${prefix}_open_todos`]: { state: String(TODO_ITEMS.length), attributes: { todos: TODO_ITEMS } },
   };
 }
 
@@ -220,7 +222,7 @@ function schoolStates(school, listed, many, schoolEvents, schoolLists) {
     [`sensor.${prefix}_connection`]: {
       state: "ok",
       attributes: {
-        modules: { timetable: true, letters: true, pinboard: true, absences: true, conferences: true, messenger: true, calendar: schoolEvents, tasks: schoolLists, news: schoolLists, forums: schoolLists, texts: schoolLists },
+        modules: { timetable: true, letters: true, pinboard: true, absences: true, conferences: true, messenger: true, calendar: schoolEvents, tasks: schoolLists, news: schoolLists, forums: schoolLists, todo: schoolLists, texts: schoolLists },
         modules_disabled: [],
         ingress_path: INGRESS_PATH,
       },
@@ -250,7 +252,7 @@ function registryEntries(children, schools, without = [], ownEntries = false, sc
     }
   }
   const withEvents = schoolEvents ? { ...SCHOOL_KEYS, calendar: [...SCHOOL_KEYS.calendar, "school_events"] } : SCHOOL_KEYS;
-  const schoolKeys = schoolLists ? { ...withEvents, sensor: [...withEvents.sensor, "open_tasks", "news", "unread_forum_posts", "texts"] } : withEvents;
+  const schoolKeys = schoolLists ? { ...withEvents, sensor: [...withEvents.sensor, "open_tasks", "news", "unread_forum_posts", "texts", "open_todos"] } : withEvents;
   for (const school of schools) {
     for (const [platform, keys] of Object.entries(schoolKeys)) {
       for (const key of keys) {

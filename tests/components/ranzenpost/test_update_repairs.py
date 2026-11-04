@@ -10,7 +10,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.ranzenpost.addon import entry_addon
 from custom_components.ranzenpost.const import DOMAIN
-from custom_components.ranzenpost.repairs import hacs_update_entity
+from custom_components.ranzenpost.hacs import hacs_update_entity
 from custom_components.ranzenpost.version import parse_version
 
 from . import MANIFEST_VERSION, fixture, setup_entry
@@ -291,6 +291,60 @@ async def test_the_integration_update_says_so_when_hacs_has_no_newer_version(
     assert flow["type"] == "abort"
     assert flow["reason"] == "no_newer_version"
     assert installs == []
+
+
+async def test_no_repair_appears_until_hacs_offers_the_update(hass, aioclient_mock, frozen_now):
+    entity_id = ranzenpost_hacs_entity(hass, state="off")
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(NEXT_FEATURE))
+    assert issue(hass, entry, "integration_too_old") is None
+
+    hass.states.async_set(entity_id, "on", hass.states.get(entity_id).attributes)
+    await entry.runtime_data.async_refresh()
+
+    assert issue(hass, entry, "integration_too_old") is not None
+
+
+async def test_a_repair_shown_earlier_goes_away_while_hacs_offers_nothing(hass, aioclient_mock, frozen_now):
+    entry, _ = await integration_behind(hass, aioclient_mock)
+
+    ranzenpost_hacs_entity(hass, state="off")
+    await entry.runtime_data.async_refresh()
+
+    assert issue(hass, entry, "integration_too_old") is None
+
+
+async def test_no_repair_appears_while_hacs_is_still_starting(hass, aioclient_mock, frozen_now):
+    entries = er.async_get(hass)
+    loading = entries.async_get_or_create("update", "hacs", "112233", suggested_object_id="ranzenpost_update")
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(NEXT_FEATURE))
+    assert issue(hass, entry, "integration_too_old") is None
+
+    hass.states.async_set(loading.entity_id, "unavailable", {})
+    await entry.runtime_data.async_refresh()
+    assert issue(hass, entry, "integration_too_old") is None
+
+
+async def test_the_repair_stays_for_someone_without_the_ranzenpost_update_in_hacs(hass, aioclient_mock, frozen_now):
+    hacs_entity(hass, "998877", "other_update", state="off", release_url="https://github.com/someone/other/releases/1")
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(NEXT_FEATURE))
+
+    assert issue(hass, entry, "integration_too_old") is not None
+
+
+async def test_a_disabled_hacs_entity_does_not_hide_the_repair(hass, aioclient_mock, frozen_now):
+    er.async_get(hass).async_get_or_create(
+        "update", "hacs", "112233", suggested_object_id="ranzenpost_update", disabled_by=er.RegistryEntryDisabler.USER
+    )
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(NEXT_FEATURE))
+
+    assert issue(hass, entry, "integration_too_old") is not None
+
+
+async def test_waiting_for_hacs_leaves_the_app_side_alone(hass, aioclient_mock, frozen_now):
+    ranzenpost_hacs_entity(hass, state="off")
+    entry = await setup_entry(hass, aioclient_mock, info=info_of(PREVIOUS_FEATURE))
+
+    assert issue(hass, entry, "app_update_needed") is not None
 
 
 async def test_a_failed_hacs_install_is_never_reported_as_done(hass, aioclient_mock, frozen_now, hass_client):

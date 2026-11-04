@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any
 
 import voluptuous as vol
@@ -11,22 +10,20 @@ from homeassistant import data_entry_flow
 from homeassistant.components.hassio import get_supervisor_client
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.const import STATE_ON
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.hassio import is_hassio
 
 from .addon import entry_addon
-from .const import ADDON_REPOSITORY, BRAND, CONF_HOST, DOMAIN, ISSUE_ENTRY
+from .const import CONF_HOST, DOMAIN, ISSUE_ENTRY
+from .hacs import UPDATE_DOMAIN, hacs_update_entity
 from .version import ADDON_TOO_OLD, APP_UPDATE_NEEDED, INTEGRATION_TOO_OLD, RESTART_REQUIRED
 
 _LOGGER = logging.getLogger(__name__)
 
 HOMEASSISTANT_DOMAIN = "homeassistant"
 RESTART_SERVICE = "restart"
-HACS_DOMAIN = "hacs"
-UPDATE_DOMAIN = "update"
 INSTALL_SERVICE = "install"
 STEP_CONFIRM = "confirm"
 STEP_UPDATE_APP = "update_app"
@@ -39,9 +36,6 @@ ABORT_NO_ADDON = "no_addon"
 ABORT_NO_HACS = "no_hacs"
 ABORT_NO_NEWER_VERSION = "no_newer_version"
 ABORT_UPDATE_FAILED = "update_failed"
-REPOSITORY_URL = re.compile(rf"^{re.escape(ADDON_REPOSITORY.lower())}(/|$)")
-HACS_NAMES = {BRAND.lower(), f"{BRAND.lower()} update"}
-HACS_PICTURE = f"/_/{DOMAIN}/"
 RUNNING_UPDATES = f"{DOMAIN}_running_updates"
 
 
@@ -166,29 +160,6 @@ class AppUpdateRepairFlow(UpdateRepairFlow):
             raise NoNewerVersion(f"{self._slug} {info.version} is the newest in the store")
         await client.store.update_addon(self._slug)
         _LOGGER.info("the supervisor updated %s from %s to %s", self._slug, info.version, info.version_latest)
-
-
-def hacs_match(state: State | None) -> int:
-    if state is None:
-        return 0
-    attributes = state.attributes
-    if REPOSITORY_URL.match(str(attributes.get("release_url") or "").lower()):
-        return 2
-    names = {str(attributes.get(key) or "").strip().lower() for key in ("title", "friendly_name")}
-    if names & HACS_NAMES or HACS_PICTURE in str(attributes.get("entity_picture") or "").lower():
-        return 1
-    return 0
-
-
-def hacs_update_entity(hass: HomeAssistant) -> str | None:
-    scored = [
-        (hacs_match(hass.states.get(entry.entity_id)), entry.entity_id)
-        for entry in er.async_get(hass).entities.values()
-        if entry.platform == HACS_DOMAIN and entry.domain == UPDATE_DOMAIN
-    ]
-    best = max((score for score, _ in scored), default=0)
-    found = [entity_id for score, entity_id in scored if score == best]
-    return found[0] if best and len(found) == 1 else None
 
 
 class IntegrationUpdateRepairFlow(UpdateRepairFlow):

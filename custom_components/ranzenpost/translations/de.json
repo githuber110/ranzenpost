@@ -191,6 +191,21 @@
       "texts": {
         "name": "Texte"
       },
+      "open_todos": {
+        "name": "Offene To-dos"
+      },
+      "print_jobs": {
+        "name": "Druckaufträge"
+      },
+      "course_selections": {
+        "name": "Kurswahlen"
+      },
+      "video_rooms": {
+        "name": "Videoräume"
+      },
+      "polls": {
+        "name": "Umfragen"
+      },
       "open_absences": {
         "name": "Offene Abwesenheiten"
       },

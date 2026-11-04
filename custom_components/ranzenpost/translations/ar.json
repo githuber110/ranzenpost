@@ -191,6 +191,21 @@
       "texts": {
         "name": "النصوص"
       },
+      "open_todos": {
+        "name": "قائمة المهام المفتوحة"
+      },
+      "print_jobs": {
+        "name": "مهام الطباعة"
+      },
+      "course_selections": {
+        "name": "اختيارات المقررات"
+      },
+      "video_rooms": {
+        "name": "غرف الفيديو"
+      },
+      "polls": {
+        "name": "الاستطلاعات"
+      },
       "open_absences": {
         "name": "غيابات مفتوحة"
       },

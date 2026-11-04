@@ -108,5 +108,5 @@ function schoolEventTimeText(event) {
 }
 
 function schoolEventSub(event) {
-  return [event.location, event.calendar].map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
+  return [event.invitation_open ? t("schoolEvents.invitationOpen") : "", event.location, event.calendar].map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
 }

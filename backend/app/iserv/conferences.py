@@ -58,8 +58,8 @@ AUTH_PATH = "/iserv/auth/"
 LINK_PAGE = "page"
 LINK_ACTION = "action"
 LINK_PLAIN = "plain"
-LATER_WORDS = ("ajax", "url", "source", "src")
-LATER_DEPTH = 3
+SCRIPT_FILL_WORDS = ("ajax", "url", "source", "src")
+SCRIPT_FILL_DEPTH = 3
 SPACE = re.compile(r"\s+")
 
 
@@ -306,6 +306,9 @@ class PageReader:
             return LINK_ACTION
         return LINK_PLAIN
 
+    def _node_text(self, node):
+        return " ".join(_visible_strings(node, (), self._dropped_anchor)) if self.read_only else node.get_text(" ")
+
     def _dropped_anchor(self, node):
         if node.name != "a":
             return False
@@ -330,7 +333,7 @@ class PageReader:
             return
         tone = _notice_tone(node)
         if tone:
-            text = _clean(node.get_text(" "))
+            text = _clean(self._node_text(node))
             if text:
                 notice = {"tone": tone, "text": text}
                 self.notices.append(notice)
@@ -375,7 +378,7 @@ class PageReader:
         return any(isinstance(child, Tag) and (child.name in BLOCK_TAGS or child.name in SKIPPED_TAGS or _notice_tone(child)) for child in node.descendants)
 
     def _inline(self, node):
-        text = _clean(" ".join(_visible_strings(node, (), self._dropped_anchor))) if self.read_only else _clean(node.get_text(" "))
+        text = _clean(self._node_text(node))
         links, writes = self._links_in(node)
         own = " ".join(link["label"] for link in links + writes)
         if text and text != own:
@@ -462,9 +465,9 @@ class PageReader:
         label = ""
         for child in node.find_all(["dt", "dd"]):
             if child.name == "dt":
-                label = _clean(child.get_text(" "), MAX_CELL)
+                label = _clean(self._node_text(child), MAX_CELL)
             else:
-                value = _clean(child.get_text(" "))
+                value = _clean(self._node_text(child))
                 if label or value:
                     facts.append({"label": label, "value": value})
                 label = ""
@@ -499,7 +502,7 @@ class PageReader:
                 forms.extend(self._link_form(link, cells) for link in writes)
             if any(cells) or forms or links:
                 rows.append({"cells": cells, "links": links, "forms": forms})
-        if self.read_only and not rows and _loads_later(table):
+        if self.read_only and not rows and _filled_by_script(table):
             self.deferred = True
         caption = table.find("caption")
         return {
@@ -532,9 +535,22 @@ class PageReader:
         return form["index"]
 
 
-def _loads_later(table):
-    nodes = [table] + list(table.parents)[:LATER_DEPTH]
-    return any(name.startswith("data-") and any(word in name for word in LATER_WORDS) for node in nodes for name in node.attrs)
+def _filled_by_script(table):
+    nodes = [table] + list(table.parents)[:SCRIPT_FILL_DEPTH]
+    return any(name.startswith("data-") and any(word in name for word in SCRIPT_FILL_WORDS) for node in nodes for name in node.attrs)
+
+
+def public_blocks(blocks, public_link):
+    published = []
+    for block in blocks:
+        if block["kind"] == "links":
+            published.append({"kind": "links", "links": [public_link(link) for link in block["links"]]})
+        elif block["kind"] == "table":
+            rows = [dict(row, links=[public_link(link) for link in row["links"]]) for row in block["rows"]]
+            published.append(dict(block, rows=rows))
+        else:
+            published.append(dict(block))
+    return published
 
 
 def parse_conference_page(html, base_url):

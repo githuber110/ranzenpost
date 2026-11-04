@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2611.1.0";
+  const CARD_VERSION = "2611.2.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -39,6 +39,7 @@
   const KEY_NEWS = "news";
   const KEY_FORUMS = "unread_forum_posts";
   const KEY_TEXTS = "texts";
+  const KEY_TODOS = "open_todos";
   const CHILD_CALENDARS = [KEY_LESSONS, KEY_EXAMS, "absences"];
   const SIZE_COMPACT = "compact";
   const SIZE_NORMAL = "normal";
@@ -71,12 +72,13 @@
     { key: "news", module: "news", area: "news", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "todos", module: "todo", area: "modulepages", compact: 3, normal: 6, size: "compact", surfaces: ["card"], scope: "school" },
     { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
     { key: "whiteboards", module: "whiteboards", area: "whiteboards", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];
   const BLOCK_BY_KEY = new Map(BLOCK_CATALOGUE.map((block) => [block.key, block]));
   const CARD_BLOCKS = BLOCK_CATALOGUE.filter((block) => block.surfaces.includes("card"));
-  const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards"];
+  const CONFIRMED_ONLY_MODULES = ["calendar", "tasks", "news", "forums", "texts", "infodisplay", "whiteboards", "todo"];
   const LEGACY_BLOCKS = { today: ["today"], week: ["week"], family: ["today", "letters", "noticeboard", "holidays"] };
   const DAY_BLOCKS = ["today", "next_day", "next_lesson", "week"];
   const EDITOR_KEYS = ["type", "title", "blocks", "children", "child"];
@@ -98,6 +100,7 @@
     news: "view=news",
     forums: "view=forums",
     texts: "view=texts",
+    todos: "view=modulepages",
   };
   const MISSING_STATES = new Set(["unknown", "unavailable", "none", ""]);
   const BIDI_MARKS = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x061c)}]`, "g");
@@ -334,6 +337,8 @@
       "block.forums.explain": "Foren mit ungelesenen Beiträgen.",
       "block.texts": "Texte",
       "block.texts.explain": "Die zuletzt geänderten Texte.",
+      "block.todos": "To-dos",
+      "block.todos.explain": "Offene To-dos aus IServ.",
       "block.infodisplay": "Infobildschirme",
       "block.infodisplay.explain": "Die Infobildschirme aus IServ.",
       "block.whiteboards": "Tafeln",
@@ -435,6 +440,8 @@
       "block.forums.explain": "Forums with unread posts.",
       "block.texts": "Texts",
       "block.texts.explain": "The texts changed last.",
+      "block.todos": "To-dos",
+      "block.todos.explain": "Open to-dos from IServ.",
       "block.infodisplay": "Info screens",
       "block.infodisplay.explain": "The info screens from IServ.",
       "block.whiteboards": "Whiteboards",
@@ -536,6 +543,8 @@
       "block.forums.explain": "منتديات فيها مشاركات غير مقروءة.",
       "block.texts": "النصوص",
       "block.texts.explain": "آخر النصوص التي تغيّرت.",
+      "block.todos": "قائمة المهام",
+      "block.todos.explain": "قائمة المهام المفتوحة من IServ.",
       "block.infodisplay": "شاشات المعلومات",
       "block.infodisplay.explain": "شاشات المعلومات من IServ.",
       "block.whiteboards": "السبورات",
@@ -637,6 +646,8 @@
       "block.forums.explain": "Okunmamış gönderisi olan forumlar.",
       "block.texts": "Metinler",
       "block.texts.explain": "Son değişen metinler.",
+      "block.todos": "Yapılacaklar",
+      "block.todos.explain": "IServ'deki açık yapılacaklar.",
       "block.infodisplay": "Bilgi ekranları",
       "block.infodisplay.explain": "IServ'deki bilgi ekranları.",
       "block.whiteboards": "Tahtalar",
@@ -738,6 +749,8 @@
       "block.forums.explain": "Форумы с непрочитанными сообщениями.",
       "block.texts": "Тексты",
       "block.texts.explain": "Недавно изменённые тексты.",
+      "block.todos": "Задачи",
+      "block.todos.explain": "Открытые задачи из IServ.",
       "block.infodisplay": "Инфоэкраны",
       "block.infodisplay.explain": "Инфоэкраны из IServ.",
       "block.whiteboards": "Доски",
@@ -839,6 +852,8 @@
       "block.forums.explain": "Форуми з непрочитаними дописами.",
       "block.texts": "Тексти",
       "block.texts.explain": "Нещодавно змінені тексти.",
+      "block.todos": "Список справ",
+      "block.todos.explain": "Відкриті справи з IServ.",
       "block.infodisplay": "Інфоекрани",
       "block.infodisplay.explain": "Інфоекрани з IServ.",
       "block.whiteboards": "Дошки",
@@ -2240,7 +2255,7 @@
         } else if (holidayCalendar && wantedSchool && needsDays) {
           plan.requests.push({ entityId: holidayCalendar, start: plan.start, end: plan.end });
         }
-        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION, KEY_LETTERS, KEY_POSTS, KEY_TASKS, KEY_NEWS, KEY_FORUMS, KEY_TEXTS]) {
+        for (const key of [KEY_HOLIDAY, KEY_CONFERENCE, KEY_CONNECTION, KEY_LETTERS, KEY_POSTS, KEY_TASKS, KEY_NEWS, KEY_FORUMS, KEY_TEXTS, KEY_TODOS]) {
           plan.stateKeys.push(stateKeyOf(stateOf(hass, school.entities[key])));
         }
       }
@@ -2722,6 +2737,7 @@
         case "news": return this._schoolListBlock(plan, entry, KEY_NEWS, "news");
         case "forums": return this._schoolListBlock(plan, entry, KEY_FORUMS, "forums");
         case "texts": return this._schoolListBlock(plan, entry, KEY_TEXTS, "texts");
+        case "todos": return this._schoolListBlock(plan, entry, KEY_TODOS, "todos");
         default: return "";
       }
     }

@@ -78,6 +78,17 @@
       }
     ]
   },
+  "open_todos": {
+    "count": 2,
+    "items": [
+      { "title": "Sportzeug", "sender": "", "date": "2026-09-04", "child": "" },
+      { "title": "Buch abgeben", "sender": "", "date": "", "child": "" }
+    ]
+  },
+  "print_jobs": null,
+  "course_selections": null,
+  "video_rooms": null,
+  "polls": null,
   "unread_forum_posts": {
     "count": 4,
     "items": [

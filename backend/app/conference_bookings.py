@@ -35,7 +35,7 @@ from .iserv.conference_booking import (
     read_conference,
     school_messages,
 )
-from .iserv.dsa import name_words
+from .iserv.dsa import names_one_child
 from .iserv.forms import browser_headers, find_login_form, parse_forms
 from .iserv.pages import path_of, status_of
 
@@ -78,9 +78,7 @@ class ConferenceBookings:
         known = self.conferences._known_profiles()
         kept = []
         for child in listed:
-            words = name_words(child["name"])
-            owners = {child_id for child_id, child_words in known if words and (words <= child_words or child_words <= words)}
-            if len(owners) == 1:
+            if names_one_child(child["name"], known):
                 kept.append(child)
         withheld = len(listed) - len(kept)
         if withheld:

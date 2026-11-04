@@ -191,6 +191,21 @@
       "texts": {
         "name": "Тексты"
       },
+      "open_todos": {
+        "name": "Открытые задачи"
+      },
+      "print_jobs": {
+        "name": "Задания печати"
+      },
+      "course_selections": {
+        "name": "Выбор курсов"
+      },
+      "video_rooms": {
+        "name": "Видеокомнаты"
+      },
+      "polls": {
+        "name": "Опросы"
+      },
       "open_absences": {
         "name": "Открытые пропуски"
       },

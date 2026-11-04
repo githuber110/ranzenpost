@@ -39,16 +39,12 @@ function conferenceBookingWindowNote(booking) {
   return windowState === CONFERENCE_BOOKING_AFTER ? t("conferences.booking.window.after") : "";
 }
 
-function conferenceSlotTaken(booking, host, slot) {
-  return booking.taken.some((entry) => entry.slot === slot.id && entry.host === host.id);
-}
-
-function conferenceSlotMine(booking, host, slot) {
-  return booking.mine.some((entry) => entry.slot === slot.id && entry.host === host.id);
+function conferenceSlotListed(entries, host, slot) {
+  return entries.some((entry) => entry.slot === slot.id && entry.host === host.id);
 }
 
 function conferenceHostFree(booking, host) {
-  return booking.days.reduce((count, day) => count + day.slots.filter((slot) => !slot.closed && !conferenceSlotTaken(booking, host, slot)).length, 0);
+  return booking.days.reduce((count, day) => count + day.slots.filter((slot) => !slot.closed && !conferenceSlotListed(booking.taken, host, slot)).length, 0);
 }
 
 function conferenceBookedRow(entry, item) {
@@ -91,8 +87,8 @@ function conferenceBookedActions(entry, item, when) {
 
 function conferenceSlotButton(entry, host, day, slot) {
   const booking = entry.data.booking;
-  const mine = conferenceSlotMine(booking, host, slot);
-  const taken = !mine && conferenceSlotTaken(booking, host, slot);
+  const mine = conferenceSlotListed(booking.mine, host, slot);
+  const taken = !mine && conferenceSlotListed(booking.taken, host, slot);
   const free = !mine && !taken && !slot.closed && conferenceBookingOpen(booking) && entry.sending === null;
   const status = mine ? t("conferences.booking.booked") : taken ? t("conferences.booking.taken") : slot.closed ? t("conferences.booking.closed") : "";
   const classes = ["conference-slot"];

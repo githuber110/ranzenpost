@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FORUM_ITEMS, INGRESS_PATH, OPEN_TASKS, TEXT_ITEMS, makeHass } from "./fakeHass.js";
+import { FORUM_ITEMS, INGRESS_PATH, OPEN_TASKS, TEXT_ITEMS, TODO_ITEMS, makeHass } from "./fakeHass.js";
 import { freezeClock, loadCard, mountCard, texts } from "./loadCard.js";
 
 let CardClass;
@@ -59,6 +59,21 @@ describe("the tasks and news blocks", () => {
     expect(shownBlocks(card)).toEqual([]);
     expect(await offeredInEditor(makeHass())).not.toContain("tasks");
     expect(await offeredInEditor(makeHass({ schoolLists: true }))).toEqual(expect.arrayContaining(["tasks", "news"]));
+  });
+});
+
+describe("the to-do block", () => {
+  it("lists the open to-dos and opens the area of the other modules", async () => {
+    const hass = makeHass({ schoolLists: true });
+    const card = await mountCard({ blocks: [{ key: "todos", size: "normal" }], children: ["alex"] }, hass);
+    expect(shownBlocks(card)).toEqual(["todos"]);
+    expect(texts(card.shadowRoot, '.block[data-block="todos"] .row-title')).toEqual(TODO_ITEMS.map((item) => item.title));
+    expect(card.shadowRoot.querySelector('.block[data-block="todos"] .panel-link').getAttribute("href")).toBe(`${INGRESS_PATH}?view=modulepages`);
+  });
+
+  it("is offered only while the school lists the to-do module", async () => {
+    expect(await offeredInEditor(makeHass())).not.toContain("todos");
+    expect(await offeredInEditor(makeHass({ schoolLists: true }))).toContain("todos");
   });
 });
 

@@ -12,6 +12,10 @@ from .scriptscan import EXPR
 from .vocabulary import known_header_word
 
 ROOT = "/iserv/"
+META_REFRESH_TARGET = re.compile(r"url\s*=\s*['\"]?([^'\";\s]+)", re.IGNORECASE)
+SCRIPT_REDIRECT = re.compile(
+    r"""location(?:\.href)?\s*=\s*['"]([^'"]+)['"]|location\.(?:replace|assign)\(\s*['"]([^'"]+)['"]"""
+)
 ModuleRule = namedtuple(
     "ModuleRule",
     "routes details depth free_after first_free never max_ids forms scripts apis join rows media frames",
@@ -301,24 +305,41 @@ def embedded_sources(html, page_url, link_shape):
     return ["- Embedded sources: " + " | ".join(shown[:MAX_SOURCES])], own
 
 
-def first_foreign_frame(html, page_url):
-    page = urlsplit(page_url or "")
+def _frame_targets(html, page_url):
     for node in BeautifulSoup(html or "", "html.parser").find_all(("iframe", "frame")):
         value = _source_value(node)
-        target = urlsplit(urljoin(page_url or "", value)) if value else None
-        if target is not None and target.scheme == "https" and target.netloc and target.netloc.lower() != page.netloc.lower():
+        if value:
+            yield urlsplit(urljoin(page_url or "", value))
+
+
+def first_foreign_frame(html, page_url):
+    page = urlsplit(page_url or "")
+    for target in _frame_targets(html, page_url):
+        if target.scheme == "https" and target.netloc and target.netloc.lower() != page.netloc.lower():
             return target.geturl().split("#", 1)[0]
     return ""
 
 
 def first_own_frame(html, page_url):
     page = urlsplit(page_url or "")
-    for node in BeautifulSoup(html or "", "html.parser").find_all(("iframe", "frame")):
-        value = _source_value(node)
-        target = urlsplit(urljoin(page_url or "", value)) if value else None
-        if target is not None and target.netloc.lower() == page.netloc.lower() and target.path.startswith(ROOT):
+    for target in _frame_targets(html, page_url):
+        if target.netloc.lower() == page.netloc.lower() and target.path.startswith(ROOT):
             return target.path
     return ""
+
+
+def client_redirect(html, page_url):
+    soup = BeautifulSoup(html or "", "html.parser")
+    for node in soup.find_all("meta"):
+        if str(node.get("http-equiv") or "").strip().lower() == "refresh":
+            found = META_REFRESH_TARGET.search(str(node.get("content") or ""))
+            if found:
+                return "meta refresh", urljoin(page_url or "", found.group(1))
+    for node in soup.find_all("script", src=False):
+        found = SCRIPT_REDIRECT.search(node.string or "")
+        if found:
+            return "script", urljoin(page_url or "", (found.group(1) or found.group(2)).replace("\\/", "/"))
+    return "", ""
 
 
 def _frame_option(value):

@@ -306,6 +306,18 @@ const SETTINGS_PAGE = {
 };
 
 describe("mail settings through the IServ forms", () => {
+  test("says when the out-of-office reply is on and stays quiet otherwise", async () => {
+    for (const active of [true, false]) {
+      const { window } = loadApp();
+      await openMailView(window, DEFAULT_ANSWERS.concat([
+        ["api/mail/settings", { pages: [], unknown: false, vacation_active: active }],
+      ]));
+      window.eval("openMailSettings()");
+      await settle(window);
+      expect(app(window).textContent.includes("Abwesenheitsnotiz ist gerade eingeschaltet")).toBe(active);
+    }
+  });
+
   test("lists the settings pages, renders a form and saves only after a confirmation", async () => {
     const { window } = loadApp();
     const asked = await openMailView(window, DEFAULT_ANSWERS.concat([

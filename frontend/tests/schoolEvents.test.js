@@ -262,3 +262,11 @@ describe("a school whose calendar could not be read", () => {
     expect(window.eval("schoolEventsChapter('normal').blocks.map((block) => block.key)")).toEqual(["school_events:failed"]);
   });
 });
+
+describe("an invitation", () => {
+  test("an unanswered invitation says so before the place", () => {
+    const { window } = loadApp();
+    expect(evalWith(window, "schoolEventSub(testArgs[0])", { invitation_open: true, location: "Aula" })).toBe(`Einladung offen · Aula`);
+    expect(evalWith(window, "schoolEventSub(testArgs[0])", { invitation_open: false, location: "Aula" })).toBe("Aula");
+  });
+});

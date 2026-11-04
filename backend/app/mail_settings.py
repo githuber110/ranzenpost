@@ -24,6 +24,7 @@ from .pathpattern import path_pattern
 
 logger = logging.getLogger(__name__)
 
+VACATION_FLAG = "hasActiveVacation"
 PAGE_CACHE_SECONDS = 5 * 60
 DISCOVERY_SECONDS = 10 * 60
 WEB_UNKNOWN_KEY = "api.mail.webUnknown"
@@ -193,7 +194,14 @@ class MailWebService:
     def settings(self):
         with self._lock:
             pages = self._discover()
-        return {"pages": pages["pages"], "unknown": not pages["pages"] and pages["failed"] > 0}
+        return {"pages": pages["pages"], "unknown": not pages["pages"] and pages["failed"] > 0, "vacation_active": self._vacation_active()}
+
+    def _vacation_active(self):
+        try:
+            data = mail_web.php_data(self._mail_page())
+        except DataError:
+            return False
+        return mail_web.account_flags(data or {}).get(VACATION_FLAG) is True
 
     def _known_path(self, path):
         with self._lock:

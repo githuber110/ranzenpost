@@ -47,6 +47,7 @@
     { key: "news", module: "news", area: "news", compact: 3, normal: 5, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "forums", module: "forums", area: "forums", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
     { key: "texts", module: "texts", area: "texts", compact: 3, normal: 6, size: "compact", surfaces: ["overview", "card"], scope: "school" },
+    { key: "todos", module: "todo", area: "modulepages", compact: 3, normal: 6, size: "compact", surfaces: ["card"], scope: "school" },
     { key: "infodisplay", module: "infodisplay", area: "infodisplay", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
     { key: "whiteboards", module: "whiteboards", area: "whiteboards", compact: 2, normal: 5, size: "compact", surfaces: ["overview"], scope: "school" },
   ];

@@ -31,6 +31,30 @@ describe("the app opens where a link from the card points", () => {
     expect(linkFor("")).toBeNull();
   });
 
+  async function waitingLink(moved) {
+    const { window } = loadApp({ url: "http://localhost/?view=modulepages" });
+    window.fetch = () => Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: () => Promise.resolve({ schools: [{ connection_id: "a1", todo: true }] }),
+    });
+    window.eval("state.modules = applyModules({ modules: {} }); state.accountModules = null; state.view = 'overview';");
+    expect(window.eval("startLink()")).toBeNull();
+    window.eval("state.startLinkWaits = 'overview';");
+    if (moved) window.eval("state.view = 'timetable';");
+    await window.eval("loadAccountModules()");
+    return window.eval("state.view");
+  }
+
+  test("a link to the other modules opens once the school's modules are known", async () => {
+    expect(await waitingLink(false)).toBe("modulepages");
+  });
+
+  test("the waiting link does not pull someone away who already moved on", async () => {
+    expect(await waitingLink(true)).toBe("timetable");
+  });
+
   test("following a timetable link switches the view", () => {
     const { window } = loadApp({ url: "http://localhost/?view=timetable" });
     window.eval("state.modules = applyModules({ modules: {} }); followStartLink(startLink());");

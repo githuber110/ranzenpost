@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from app import feed, integration, modules
+from app import service as service_module
 from app.iserv.errors import DataError, OutageError, SchoolCalendarRefusedError
 from app.iserv.school_calendar import SchoolCalendarRead
 from app.poller import Poller
@@ -558,6 +559,26 @@ def test_a_module_recheck_asks_a_resting_source_again(tmp_path):
     service, client = feed_service(tmp_path, answers)
     service.read_school_calendar(*WINDOW)
     service.recheck_modules()
+    asked = len(client.asked)
+    service.read_school_calendar(*WINDOW)
+    assert any("holiday" in str(params) for _, params in client.asked[asked:])
+
+
+def test_a_recheck_during_a_read_is_not_undone_by_a_resting_source(tmp_path, monkeypatch):
+    answers = dict(FEED_ANSWERS)
+    answers[HOLIDAY_FEED] = Answer(403, None)
+    service, client = feed_service(tmp_path, answers)
+    service.read_school_calendar(*WINDOW)
+    original = service_module.read_calendar
+
+    def read_then_recheck(*args):
+        read = original(*args)
+        service._calendar_refusals.clear()
+        return read
+
+    monkeypatch.setattr(service_module, "read_calendar", read_then_recheck)
+    service.read_school_calendar(*WINDOW)
+    monkeypatch.undo()
     asked = len(client.asked)
     service.read_school_calendar(*WINDOW)
     assert any("holiday" in str(params) for _, params in client.asked[asked:])

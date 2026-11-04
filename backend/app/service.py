@@ -99,7 +99,6 @@ MAIL_RECOUNT_ACTIONS = frozenset({"mark_seen", "set_flag", "move", "archive", "t
 SCHOOL_EVENTS_DAYS = 60
 START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
-CALENDAR_REFUSAL_RECHECK_SECONDS = 24 * 3600
 SETTINGS_ABSENT_STATUSES = (403, 404)
 RESTING_CALENDAR_STATUSES = (403, 404)
 MODULES_RECHECKED_KEY = "api.modules.rechecked"
@@ -194,8 +193,7 @@ class ConnectionService:
         self._modules_recheck_at = 0.0
         self._refusals = Refusals(lambda: self.clock())
         self._calendar_source_notes = {}
-        self._calendar_refusals = {}
-        self._calendar_refusals_lock = threading.Lock()
+        self._calendar_refusals = Refusals(lambda: self.clock())
         self._letter_service = LetterService(self)
         self._conference_service = ConferenceService(self)
         self._module_pages = ModulePages(self)
@@ -349,8 +347,7 @@ class ConnectionService:
             return messages.result(False, MODULES_TOO_SOON_KEY, error="rate_limited", modules=self.modules())
         self._modules_recheck_at = now
         self._refusals.clear()
-        with self._calendar_refusals_lock:
-            self._calendar_refusals.clear()
+        self._calendar_refusals.clear()
         registry = self.refresh_modules()
         return messages.result(True, MODULES_RECHECKED_KEY, modules=registry)
 
@@ -924,9 +921,16 @@ class ConnectionService:
         }
 
     def read_school_calendar(self, first, last):
-        resting = self._resting_calendar_sources()
+        resting = set()
+
+        def resting_status(source):
+            status = self._calendar_refusals.status_of(source)
+            if status:
+                resting.add(source)
+            return status
+
         try:
-            read = read_calendar(self._session(), first, last, server_failure, resting)
+            read = read_calendar(self._session(), first, last, server_failure, resting_status)
         except SchoolCalendarRefusedError as error:
             self._remember_calendar_refusals(error.problems, (), resting)
             raise
@@ -934,25 +938,13 @@ class ConnectionService:
         self._note_calendar_sources(read.problems)
         return read
 
-    def _resting_calendar_sources(self):
-        now = self.clock()
-        with self._calendar_refusals_lock:
-            remembered = list(self._calendar_refusals.items())
-        return {
-            source: SchoolCalendarRefusedError("school calendar refused: %d" % status, detail={"status": status})
-            for source, (at, status) in remembered
-            if now - at < CALENDAR_REFUSAL_RECHECK_SECONDS
-        }
-
     def _remember_calendar_refusals(self, problems, answered, resting):
-        now = self.clock()
-        with self._calendar_refusals_lock:
-            for problem in problems:
-                status = problem.reason.detail.get("status") if isinstance(problem.reason, SchoolCalendarRefusedError) else None
-                if status in RESTING_CALENDAR_STATUSES and problem.source not in resting:
-                    self._calendar_refusals[problem.source] = (now, status)
-            for source in answered:
-                self._calendar_refusals.pop(source, None)
+        for problem in problems:
+            status = problem.reason.detail.get("status") if isinstance(problem.reason, SchoolCalendarRefusedError) else None
+            if status in RESTING_CALENDAR_STATUSES and problem.source not in resting:
+                self._calendar_refusals.note(problem.source, status)
+        for source in answered:
+            self._calendar_refusals.forget(source)
 
     def school_events(self, first, last):
         return self.read_school_calendar(first, last).events
@@ -1052,6 +1044,9 @@ class ConnectionService:
         if slug not in modules.READ_PAGE_MODULES or not self.account_modules().get(slug):
             raise AccountModuleNotOffered()
         return self._module_pages.read(slug, page)
+
+    def module_notices(self, slug):
+        return self._module_pages.notices(slug)
 
     def files(self):
         if not self.account_modules()[modules.FILES]:

@@ -61,6 +61,7 @@ def test_server_config_paths_are_shown_as_path_words_and_ids_stay_masked():
     lines = reportmail.php_data_lines(mail_page().text)
     text = "\n".join(lines)
     assert "- #php-data serverConfig paths: 2" in lines
+    assert any(line.startswith("- #php-data keys: ") and "serverConfig" in line for line in lines)
     assert "serverConfig.autoCompleteUrls.users: /iserv/core/api/autocomplete/users" in text
     assert "c0ffee12345" not in text
     assert "- #php-data folders: 2 (types: inbox, sent)" in lines
