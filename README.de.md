@@ -128,7 +128,7 @@ Elternbriefe, aktuell und archiviert, mit Anlagen. Verlangt ein Brief eine Leseb
 
 ### Sprechtage
 
-Aktuelle und archivierte Sprechtage, deine eigenen Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt. Termin buchen, ändern und absagen läuft in der App über die Formulare der Schule, jeweils nach einer Bestätigung. Danach liest Ranzenpost die Seite neu und zeigt das Ergebnis. Push-Nachrichten melden, wann die Buchung öffnet, wenn ein Termin abgesagt wird, drei Tage vor einem Sprechtag und kurz vor einem Termin.
+Aktuelle und archivierte Sprechtage, deine eigenen Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt. Termin buchen, ändern und absagen läuft in der App über die Buchung der Schule, jeweils nach einer Bestätigung. Danach liest Ranzenpost die Seite neu und zeigt das Ergebnis. Push-Nachrichten melden, wann die Buchung öffnet, wenn ein Termin abgesagt wird, drei Tage vor einem Sprechtag und kurz vor einem Termin.
 
 ### Aufgaben und News
 
@@ -256,7 +256,7 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 | Elternbriefe (`parentletter`) | Elternbriefe | Aktuelle und archivierte Briefe, Anlagen | Archivieren, Lesebestätigung mit optionaler Nachricht, Nachricht an die Schule bei Briefen mit Antwortmöglichkeit, die Antwort auf einen Brief mit Auswahl |
 | Pinnwände (`dieschulapp`) | Pinnwände (Schul-App) | Alle Pinnwände, Beiträge, Anlagen | Nichts. Der Lesestatus bleibt in der App |
 | Chat (`messenger`) | Messenger, wo die Schule ihn für Eltern freigibt | Räume und Nachrichten | Nachricht senden, als gelesen markieren, Raum mit einer Lehrkraft öffnen |
-| Elternsprechtage (`parentconference`) | Elternsprechtage | Aktuelle und archivierte Sprechtage, eigene Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt | Termin buchen, ändern und absagen über die Formulare der Schule, jeweils nach einer Bestätigung |
+| Elternsprechtage (`parentconference`) | Elternsprechtage | Aktuelle und archivierte Sprechtage, eigene Termine, Lehrkräfte, Räume, freie Zeiten und Hinweise, so wie IServ sie zeigt | Termin buchen, ändern und absagen über die Buchung der Schule, jeweils nach einer Bestätigung |
 | Schultermine (`calendar`) | Kalender, wo das Konto ihn sieht | Termine aller Kalender, die das Konto sieht, auch seines persönlichen Kalenders, für die nächsten Wochen | Ein Termin aus einer E-Mail, nach einer Bestätigung |
 | Aufgaben (`exercise`) | Aufgaben | Aktuelle und vergangene Aufgaben, so wie IServ sie listet; beim Öffnen die Seite der Aufgabe: Text, Termine, Schlagwörter, Dateien, eigene Abgabe, Rückmeldung, Musterlösungen | Dateien und Text abgeben, abgegebene Dateien entfernen, als erledigt oder nicht erledigt markieren, jeweils nach einer Bestätigung |
 | News (`news`) | News | Jede News der Liste mit Titel, Datum und Kategorie, dazu Text, Dateien und Links jeder News; Archiv und Paketnews, wenn du sie im Filter wählst | Nichts. Filter und Suche arbeiten in der App |
@@ -268,8 +268,11 @@ IServ liefert manche Module in einer alten und einer neuen Ausgabe. Ranzenpost l
 | Dateien (`file`) | Dateien | Eigene Dateien und Gruppenordner mit Name, Größe, Typ und Datum, die Suche, die Dateien selbst | Hochladen in die eigenen Dateien und Gruppenordner, nach einer Bestätigung |
 | Adressbuch (`addressbook`) | Adressbuch | Personen aus einer Suche mit Adresse und Klasse, auch als E-Mail-Empfänger | Nichts |
 | Verteilerlisten (`mailinglist`) | Verteilerlisten | Listen und ihre Adressen | Import aus einer Text- oder CSV-Datei, Löschen, jeweils nach einer Bestätigung |
+| Weitere Module (`print`, `course-selection`, `videoconference`, `poll`, `todo`) | Drucken, Kurswahlen, Videokonferenzen, Umfragen, To-do | Was diese Seiten der Schule zeigen: Druckaufträge und ihr Status, Wahlen und ihre Seiten, Räume mit Teilnehmenden, Umfragen, deine To-dos | Nichts. Hochladen, Wählen, einem Raum beitreten, Abstimmen und Abhaken gibt es in der App noch nicht |
 
 Klassengeld erkennt Ranzenpost, unterstützt es aber noch nicht. Es läuft als eigener Dienst hinter einer Zustimmung in IServ, und die Unterstützung steht jemandem offen, dessen Schule Klassengeld nutzt und der sie selbst bauen möchte. Siehe [Issue #5](https://github.com/githuber110/ranzenpost/issues/5).
+
+Office, MethodenGuide, edupool und der Eduplaces-Connector bleiben bewusst draußen. Office legt nur Dateien in einem Editor an, die anderen drei leiten zu fremden Diensten weiter, die die Inhalte selbst halten. Dort gibt es nichts aus deiner Familie zu lesen.
 
 Bietet eine Schule nur das ältere Stundenplan-Modul unter `/iserv/timetable/` an, zeigt die Einstellungsseite es als vorhanden, aber noch nicht unterstützt, statt den Stundenplan als fehlend zu melden. Module, die Ranzenpost noch nicht kennt, erscheinen in den Einstellungen unter ihrem IServ-Namen, mit einem Knopf, der ein vorausgefülltes Issue öffnet.
 

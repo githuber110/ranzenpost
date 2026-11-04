@@ -592,6 +592,29 @@ def test_a_refused_or_unknown_answer_is_logged_with_its_diagnosis(tmp_path, capl
     assert_private_free(source_lines(caplog))
 
 
+def test_a_server_error_pauses_the_time_table_reads_for_ten_minutes(tmp_path):
+    school = TimeTableSchool(time_table=BROKEN)
+    service = make(tmp_path, school)
+    for _ in range(3):
+        with pytest.raises(DataError):
+            service.timetable(CHILD, reference=WEDNESDAY)
+    paused = len(school.paths("/iserv/time-table/data"))
+    service.clock.now += 600
+    with pytest.raises(DataError):
+        service.timetable(CHILD, reference=WEDNESDAY)
+    assert (paused, len(school.paths("/iserv/time-table/data"))) == (1, 2)
+
+
+def test_a_server_error_names_its_heading_without_the_school(tmp_path, caplog):
+    service = make(tmp_path, TimeTableSchool(time_table=BROKEN))
+    with caplog.at_level(logging.INFO, logger="app.timetable_source"):
+        with pytest.raises(DataError):
+            service.timetable(CHILD, reference=WEDNESDAY)
+    failure = next(line for line in source_lines(caplog) if "time-table module unreadable" in line)
+    assert "Interner Fehler" in failure
+    assert "Riverside" not in failure
+
+
 def test_an_unmatched_child_select_is_logged_without_names(tmp_path, caplog):
     school = TimeTableSchool(options=(OTHER_CHILD, ("44444444-4444-4444-8444-444444444444", "Sam Anders")))
     service = make(tmp_path, school)

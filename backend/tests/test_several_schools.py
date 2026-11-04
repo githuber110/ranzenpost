@@ -118,6 +118,9 @@ class ReportSchoolApp:
     def school_settings(self):
         return {}
 
+    def school_settings_or_raise(self):
+        return {}
+
 
 def recorder(calls, name, answer):
     def call(*args, **kwargs):

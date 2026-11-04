@@ -28,7 +28,9 @@ from tests import account_fakes, mail_fakes, mail_web_fakes
 from app.server import create_app
 from app.service import SchoolRequiredError
 from app.wizard import Wizard
-from tests import conference_school
+from tests import conference_booking_school, conference_school
+from tests.module_pages_school import ModuleConnection
+from app.module_pages import ModulePages
 from app.sorting import child_sort_key
 from app.store import CONNECTION_DEFAULTS, DEFAULT_CONFIG, INTEGRATION_SCHOOLS_KEY, LAYOUT_KEYS, Store, connection_short_name, normalize_layout
 
@@ -292,6 +294,20 @@ def conference_rig():
     return rig
 
 
+def conference_booking_rig():
+    key = CONFERENCE_RUN.get("")
+    rig = CONFERENCE_BOOKING_RIGS.get(key)
+    if rig is None:
+        school = conference_booking_school.BookingSchool()
+        school.booked_by_other("slot-1", "host-1")
+        connection = conference_booking_school.Connection(school)
+        rig = (school, ConferenceService(connection, clock=lambda: CONFERENCE_BOOKING_NOW))
+        if len(CONFERENCE_BOOKING_RIGS) >= CONFERENCE_RIG_LIMIT:
+            CONFERENCE_BOOKING_RIGS.pop(next(iter(CONFERENCE_BOOKING_RIGS)))
+        CONFERENCE_BOOKING_RIGS[key] = rig
+    return rig
+
+
 FIXTURE_LETTER_CLIENT = FixtureLetterClient()
 FIXTURE_LETTERS = LetterService(
     SimpleNamespace(id="fixture", store=FixtureReplyStore(), _session=lambda: FIXTURE_LETTER_CLIENT)
@@ -438,6 +454,9 @@ CONFERENCE_RUN = contextvars.ContextVar("e2e_conference", default="")
 CONFERENCE_RIGS = {}
 CONFERENCE_RIG_LIMIT = 50
 CONFERENCE_UNMATCHED_PREFIX = "unmatched-"
+CONFERENCE_BOOKING_PREFIX = "booking-"
+CONFERENCE_BOOKING_RIGS = {}
+CONFERENCE_BOOKING_NOW = 1_793_880_000
 OUTAGE_COOKIE = "e2e_outage"
 OUTAGE = contextvars.ContextVar("e2e_outage", default="")
 OUTAGE_SINCE_EPOCH = 1_789_777_080
@@ -1259,7 +1278,12 @@ def fixture_account():
                 school.own = {"": []}
                 school.lists = []
             connection = FixtureAccountConnection(school)
-            box = {"school": school, "files": FileService(connection), "contacts": ContactsService(connection)}
+            box = {
+                "school": school,
+                "files": FileService(connection),
+                "contacts": ContactsService(connection),
+                "pages": ModulePages(ModuleConnection()),
+            }
             ACCOUNT_BOXES[raw] = box
         return box
 
@@ -2025,18 +2049,29 @@ class FixtureService:
         today = fixture_today()
         first = (today + timedelta(days=CONFERENCE_FIRST_OFFSET)).strftime("%d.%m.%Y")
         second = (today + timedelta(days=CONFERENCE_SECOND_OFFSET)).strftime("%d.%m.%Y")
-        return {
-            "empty": False,
-            "items": [
-                tag(SCHOOL_ONE, {"cells": [text("conference_class"), f"{first}, 16:00"], "headers": [], "page": detail}),
-                tag(SCHOOL_ONE, {"cells": [text("conference_individual"), f"{second}, 17:30"], "headers": [], "page": ""}),
-            ],
-            "unavailable": [],
-        }
+        items = [
+            tag(SCHOOL_ONE, {"cells": [text("conference_class"), f"{first}, 16:00"], "headers": [], "page": detail}),
+            tag(SCHOOL_ONE, {"cells": [text("conference_individual"), f"{second}, 17:30"], "headers": [], "page": ""}),
+        ]
+        if CONFERENCE_RUN.get("").startswith(CONFERENCE_BOOKING_PREFIX):
+            booking = conference_booking_rig()[1].token(conference_booking_school.WIZARD_PATH)
+            items.insert(0, tag(SCHOOL_ONE, {"cells": ["Elternsprechtag", "17.11.2026 - 19.11.2026"], "headers": [], "page": booking}))
+        return {"empty": False, "items": items, "unavailable": []}
 
     def conference_page(self, connection_id, page):
         self.known_connection(connection_id)
-        return dict(conference_rig()[1].page(page), connection_id=connection_id)
+        service = conference_rig()[1]
+        if CONFERENCE_RUN.get("").startswith(CONFERENCE_BOOKING_PREFIX):
+            booking = conference_booking_rig()[1]
+            service = booking if booking._known(page) else service
+        return dict(service.page(page), connection_id=connection_id)
+
+    def submit_conference_booking(self, connection_id, page, action, values, request_id="", confirmed=False):
+        self.known_connection(connection_id)
+        result = conference_booking_rig()[1].submit_booking(page, action, values, request_id, confirmed)
+        if isinstance(result.get("page"), dict):
+            result["page"] = dict(result["page"], connection_id=connection_id)
+        return result
 
     def submit_conference_form(self, connection_id, page, form, check, submit, values, request_id="", confirmed=False):
         self.known_connection(connection_id)
@@ -2077,7 +2112,13 @@ class FixtureService:
         if fixture_account() is None:
             return {"schools": []}
         contacts = not ACCOUNT.get("").startswith("files:")
-        return {"schools": [tag(SCHOOL_ONE, {"file": True, "addressbook": contacts, "mailinglist": contacts})]}
+        offered = {"file": True, "addressbook": contacts, "mailinglist": contacts}
+        pages = ACCOUNT.get("").startswith("pages:")
+        offered.update({slug: pages for slug in modules.READ_PAGE_MODULES})
+        return {"schools": [tag(SCHOOL_ONE, offered)]}
+
+    def module_page(self, connection_id, slug, page=""):
+        return tag(SCHOOL_ONE, self._account_box(connection_id)["pages"].read(slug, page))
 
     def _account_box(self, connection_id):
         self.pick_school(connection_id)

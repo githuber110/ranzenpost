@@ -42,6 +42,10 @@ PART_PAST = "past"
 
 def module_answer(client, path, within, params=None):
     response = client.fetch(path, params) if params else client.fetch(path)
+    return checked_answer(response, path, within)
+
+
+def checked_answer(response, path, within):
     status = int(getattr(response, "status_code", 0) or 0)
     if status in REFUSED_STATUSES:
         raise ModulePageRefusedError("%s refused: %d" % (path_pattern(path), status))

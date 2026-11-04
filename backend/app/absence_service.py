@@ -329,6 +329,7 @@ class AbsenceService:
             "leave_min_days": _min_days(settings),
             "entries": self._absence_entries(dsa, targets, settings),
             "phones": config.get("phones", []),
+            "sick_note_term": str(settings.get("sickNotes_replaceTerm") or "").strip(),
         }
 
     def _absence_entries(self, dsa, targets, settings):

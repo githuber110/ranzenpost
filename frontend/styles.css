@@ -3970,6 +3970,17 @@ button.tt-cell.free { cursor: pointer; }
 .event-row .row-title, .event-row .row-sub { overflow-wrap: anywhere; }
 .event-row .event-time { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .list-row .row-title, .list-row .row-sub { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }
+.conference-row .row-title, .conference-row .row-sub { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }
+.conference-line { display: block; }
+.module-page-row { min-block-size: 0; }
+.module-page-note { margin-block-start: var(--s-5); }
+.conference-search { margin-block-end: var(--s-4); }
+.conference-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--s-3); margin-block-end: var(--s-5); }
+.conference-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-block-size: 3rem; padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent; color: var(--ink-3); font: inherit; font-size: 0.875rem; }
+.conference-slot.is-free { color: var(--ink); cursor: pointer; }
+.conference-slot.is-free:hover { border-color: var(--accent); }
+.conference-slot.is-mine { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.conference-slot-state { font-size: 0.75rem; font-weight: 400; color: var(--ink-3); }
 .list-row .row-sub { white-space: pre-line; }
 .list-section + .list-section { margin-block-start: var(--s-5); }
 .list-past > summary { cursor: pointer; min-block-size: 44px; justify-content: flex-start; gap: var(--s-3); list-style: none; }

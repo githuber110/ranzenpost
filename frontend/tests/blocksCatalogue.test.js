@@ -89,8 +89,8 @@ describe("the block catalogue is one shared list with rules", () => {
 
   test("navigation keeps known areas in order and appends the missing ones", () => {
     const blocks = catalogue();
-    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
-    expect(blocks.normalizeNavigation(undefined)).toEqual([...blocks.DEFAULT_NAVIGATION, "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]);
+    expect(blocks.normalizeNavigation(["conferences", "nope", "post", "conferences"])).toEqual(["conferences", "post", "timetable", "absence", "messenger", "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards", "modulepages"]);
+    expect(blocks.normalizeNavigation(undefined)).toEqual([...blocks.DEFAULT_NAVIGATION, "calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards", "modulepages"]);
   });
 
   test("moving a key swaps it with its neighbour and stops at the ends", () => {

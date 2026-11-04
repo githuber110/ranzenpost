@@ -58,8 +58,9 @@ def test_navigation_keeps_known_areas_in_order_and_appends_the_missing_ones():
         "texts",
         "infodisplay",
         "whiteboards",
+        "modulepages",
     ]
-    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards"]
+    assert blocks.normalize_navigation(None) == list(blocks.DEFAULT_NAVIGATION) + ["calendar", "tasks", "news", "mail", "files", "contacts", "forums", "texts", "infodisplay", "whiteboards", "modulepages"]
 
 
 def test_modules_disabled_keeps_only_known_module_names():

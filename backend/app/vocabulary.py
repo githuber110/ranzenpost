@@ -23,6 +23,7 @@ state states version versions config configuration module modules group groups c
 subjects teacher teachers student students child children lesson lessons period periods substitution substitutions
 change changes cancelled cancellation event events appointment appointments json html text plain xml http https www
 feed upcoming eventsources navigation badges raw multi plugin plugins add
+booking bookings timeslot timeslots hosts begin blocked abbreviation location
 """.split()
 
 UI_WORDS = """
@@ -123,6 +124,14 @@ def fold_variants(token):
     return variants
 
 
+ERROR_PAGE_WORDS = """
+fehler interner interne serverfehler server error internal zugriff verweigert gesperrt forbidden seite gefunden found
+not nicht wartung wartungsarbeiten service unavailable gateway timeout bad request anfrage ungueltig ungültig problem
+aufgetreten ist ein leider später spaeter erneut versuchen sie es oops ups something went wrong unbekannter unknown
+""".split()
+ERROR_PAGE_VARIANTS = frozenset(variant for word in ERROR_PAGE_WORDS for variant in fold_variants(word))
+
+
 def _catalogue_words():
     words = set()
     for slug, entry in CATALOGUE.items():
@@ -164,6 +173,10 @@ IDENTIFIER_WORDS = _build_identifiers()
 
 def known_word(token):
     return any(variant in WORDS for variant in fold_variants(token))
+
+
+def known_error_word(token):
+    return known_word(token) or any(variant in ERROR_PAGE_VARIANTS for variant in fold_variants(token))
 
 
 def known_identifier(token):

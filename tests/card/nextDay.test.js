@@ -81,13 +81,16 @@ describe("next school day block", () => {
     expect(count.getAttribute("aria-label")).toBe("Änderungen: 2");
   });
 
-  it("counts a fully cancelled day as the next school day", async () => {
-    const lessons = [lesson("thu-1", "D", "2026-09-03T08:00:00+02:00", "2026-09-03T08:45:00+02:00", { cancelled: true })];
+  it("skips a fully cancelled day like the next school day sensor", async () => {
+    const lessons = [
+      lesson("thu-1", "D", "2026-09-03T08:00:00+02:00", "2026-09-03T08:45:00+02:00", { cancelled: true }),
+      lesson("fri-1", "MA", "2026-09-04T08:00:00+02:00", "2026-09-04T08:45:00+02:00"),
+    ];
     const card = await mountCard(NEXT_DAY, makeHass({ events: { [LESSONS]: lessons } }));
     const shown = block(card.shadowRoot, "next_day");
 
-    expect(texts(shown, ".panel-head .section-label")).toEqual(["Morgen"]);
-    expect(shown.querySelector(".row .tag.no")).not.toBeNull();
+    expect(texts(shown, ".panel-head .section-label")).toEqual(["Freitag"]);
+    expect(texts(shown, ".row-title")).toEqual(["MA"]);
   });
 
   it("says honestly that the next school day is unknown and names the holiday that starts tomorrow", async () => {

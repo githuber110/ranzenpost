@@ -134,6 +134,9 @@ class SchoolApp:
     def school_settings(self):
         return self.settings
 
+    def school_settings_or_raise(self):
+        return self.settings
+
     def me_with_children(self):
         return None
 

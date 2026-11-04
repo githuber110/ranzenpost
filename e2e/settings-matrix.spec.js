@@ -828,6 +828,7 @@ const SETTINGS = [
       await page.locator(".setting-row.courses-setting").first().click();
       await settled(page);
       const boxes = page.locator(".course-check input");
+      await expect(boxes.first()).toBeVisible();
       expect(await boxes.count()).toBeGreaterThan(COURSE_CHOICE.length);
       expect(await boxes.evaluateAll((inputs) => inputs.every((input) => input.checked))).toBe(true);
       for (const box of await boxes.all()) await box.uncheck();

@@ -626,7 +626,6 @@
         },
         "lessons_ahead": {
           "type": "array",
-          "maxItems": 20,
           "items": {
             "$ref": "#/$defs/lesson"
           },

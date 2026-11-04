@@ -9,6 +9,8 @@ from .iserv.dsa_substitutions import NOT_ASKED, describe
 from .iserv.errors import DataError, OutageError
 from .refusals import REFUSAL_SECONDS
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows, time_table_refusal
+from .pageshape import visible_text
+from .vocabulary import known_error_word
 from .store import edit_config
 
 logger = logging.getLogger(__name__)
@@ -16,8 +18,9 @@ logger = logging.getLogger(__name__)
 SOURCE_KEY = "timetable_source"
 SCHOOL_APP_SOURCE = "school-app"
 RECHECK_SECONDS = 3600
+SERVER_FAILURE_PAUSE_SECONDS = 600
 MATCH_SECONDS = 600
-LOGGED_DETAIL_LEFT_OUT = ("refusal",)
+ERROR_PAGE_DETAIL = "refusal"
 WITHHELD_WHY = "the school app does not release the timetable"
 REFUSED_WHY = "the school app refuses the timetable"
 
@@ -84,12 +87,15 @@ def unmatched_child(page, listed_count):
 
 
 def diagnosis_text(error):
-    detail = {
-        key: value
-        for key, value in (getattr(error, "detail", None) or {}).items()
-        if key not in LOGGED_DETAIL_LEFT_OUT
-    }
+    detail = dict(getattr(error, "detail", None) or {})
+    if detail.get(ERROR_PAGE_DETAIL):
+        detail[ERROR_PAGE_DETAIL] = visible_text(str(detail[ERROR_PAGE_DETAIL]), known=known_error_word)
     return json.dumps(detail, sort_keys=True, ensure_ascii=True)
+
+
+def _server_failure(error):
+    status = (getattr(error, "detail", None) or {}).get("status")
+    return isinstance(status, int) and status >= 500
 
 
 def _yes_no(value):
@@ -112,6 +118,7 @@ class TimetableSources:
         self._announced = False
         self._refused = False
         self._data_refusals = {}
+        self._server_failures = {}
         self._delivered = set()
 
     def reset(self):
@@ -123,6 +130,7 @@ class TimetableSources:
             self._announced = False
             self._refused = False
             self._data_refusals = {}
+            self._server_failures = {}
             self._delivered = set()
 
     def _note(self, key, message, *args, level=logging.INFO):
@@ -211,8 +219,12 @@ class TimetableSources:
     def read(self, child_id, child, target):
         course_ids = (child or {}).get("course_ids")
         if not course_ids:
-            page_id = self.connection._child_service.timetable_page_id(child_id)
-            return Reading(self._read_week(self.connection._session(), page_id, target), TIME_TABLE_SOURCE, None)
+            client = self.connection._session()
+            chosen = self.connection._child_service.timetable_page_id(child_id)
+            if self.connection._child_service.ids_from_school_account():
+                matched = self._reported(client, lambda: self._time_table_id(client, str(child_id), child))
+                chosen = chosen if matched is None else matched
+            return Reading(self._read_week(client, chosen, target), TIME_TABLE_SOURCE, None)
         marker = self._marker()
         raw_slots = self._slots()
         slots = parse_period_slots(raw_slots) if raw_slots is not None else None
@@ -329,18 +341,21 @@ class TimetableSources:
             raise
 
     def _read_week(self, client, chosen, target):
-        refusal = self._remembered_refusal(chosen)
+        refusal = self._remembered_refusal(chosen) or self._recent_server_failure(chosen, target)
         if refusal is not None:
             raise fresh_error(refusal)
         try:
             week = self._reported(client, lambda: self._week_answer(client, chosen, target))
         except DataError as error:
-            if time_table_refusal(error):
-                with self._lock:
+            with self._lock:
+                if time_table_refusal(error):
                     self._data_refusals[chosen] = (self.connection.clock(), error)
+                elif _server_failure(error):
+                    self._server_failures[(chosen, str(target))] = (self.connection.clock(), error)
             raise
         with self._lock:
             self._data_refusals.pop(chosen, None)
+            self._server_failures.pop((chosen, str(target)), None)
             self._delivered.add(chosen)
         answer = getattr(week, "answer", None) or {}
         self._note(
@@ -367,6 +382,14 @@ class TimetableSources:
         with self._lock:
             known = self._data_refusals.get(chosen)
         if known is None or now - known[0] >= RECHECK_SECONDS:
+            return None
+        return known[1]
+
+    def _recent_server_failure(self, chosen, target):
+        now = self.connection.clock()
+        with self._lock:
+            known = self._server_failures.get((chosen, str(target)))
+        if known is None or now - known[0] >= SERVER_FAILURE_PAUSE_SECONDS:
             return None
         return known[1]
 

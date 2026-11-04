@@ -221,14 +221,22 @@ def form_fields(soup, form):
     return fields
 
 
+TABLE_SECTIONS = ("thead", "tfoot")
+
+
+def _row_section(row):
+    parent = row.parent.name if row.parent is not None else ""
+    return " in " + parent if parent in TABLE_SECTIONS else ""
+
+
 def table_rows(table):
     rows = table.find_all("tr")
     shapes = {}
     for row in rows:
-        cells = len(row.find_all(("td", "th"), recursive=False))
-        shapes[cells] = shapes.get(cells, 0) + 1
+        shape = (len(row.find_all(("td", "th"), recursive=False)), _row_section(row))
+        shapes[shape] = shapes.get(shape, 0) + 1
     label = "#" + code_text(placeholders(str(table.get("id")))) if table.get("id") else "(no id)"
-    parts = ", ".join("%d cells x%d" % (cells, count) for cells, count in sorted(shapes.items()))
+    parts = ", ".join("%d cells x%d%s" % (cells, count, section) for (cells, section), count in sorted(shapes.items()))
     return "- Table rows %s: %d%s" % (label, len(rows), " (" + parts + ")" if parts else "")
 
 

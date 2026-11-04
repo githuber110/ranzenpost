@@ -476,6 +476,8 @@ def test_changes_cleared_pushes_cleared_key_then_stays_silent():
         changes=[],
     )
     poller.poll_once()
+    assert len(notifier.calls) == 1
+    poller.poll_once()
     assert len(notifier.calls) == 2
     assert notifier.calls[1]["message"] == messages.text_in("de", "notify.timetable.cleared", {"name": "Alice"})
 
@@ -707,6 +709,8 @@ def test_withdrawn_changes_back_to_the_known_regular_plan_still_say_cleared():
         "2026-08-31T12:00", lessons=[_display_lesson()], changes=[]
     )
     poller.poll_once()
+    assert len(notifier.calls) == 1
+    poller.poll_once()
     assert len(notifier.calls) == 2
     assert notifier.calls[1]["message"] == messages.text_in(
         "de", "notify.timetable.cleared", {"name": "Alice"}
@@ -731,6 +735,8 @@ def test_a_plan_rebuild_alongside_withdrawn_changes_never_claims_the_plan_is_reg
     timetables["c1"] = _timetable(
         "2026-08-31T12:00", lessons=[_display_lesson(room="R9")], changes=[]
     )
+    poller.poll_once()
+    assert len(notifier.calls) == 1
     poller.poll_once()
     assert len(notifier.calls) == 2
     assert notifier.calls[1]["message"] == messages.text_in(
@@ -847,6 +853,36 @@ def test_choosing_courses_rebases_the_timetable_without_a_push():
     timetables["c1"] = _filtered(_timetable("2026-08-31T12:00", lessons=[dict(both[0], room="R9")] + changed, changes=[{"subject": "E2"}]), "def")
     poller.poll_once()
     assert len(notifier.calls) == 1
+
+
+def test_changes_missing_from_one_answer_are_neither_withdrawn_nor_pushed_again():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    with_changes = _timetable("2026-08-31T10:00", lessons=[_display_lesson()], changes=[{"lesson": 3, "note": "Entfall"}])
+    timetables = {"c1": with_changes}
+    notifier = NotifierRecorder()
+    poller = _poller(children, timetables, notifier)
+    poller.poll_once()
+    timetables["c1"] = _timetable("2026-08-31T10:30", lessons=[_display_lesson()], changes=[])
+    poller.poll_once()
+    timetables["c1"] = with_changes
+    poller.poll_once()
+    assert len(notifier.calls) == 1
+
+
+def test_the_course_hint_without_a_notification_target_is_tried_once_a_day():
+    children = [{"child_id": "c1", "name": "Alice"}]
+    both = [_display_lesson(subject_code="E1"), _display_lesson(subject_code="E2", teacher_code="DDD")]
+    timetables = {"c1": _filtered(_timetable("2026-08-31T10:00", lessons=both), "")}
+    notifier = NotifierRecorder(delivers=False)
+    now = [1_800_000_000.0]
+    poller = _poller(children, timetables, notifier)
+    poller.clock = lambda: now[0]
+    poller.poll_once()
+    poller.poll_once()
+    tried_once = len(notifier.calls)
+    now[0] += 24 * 3600
+    poller.poll_once()
+    assert (tried_once, len(notifier.calls)) == (1, 2)
 
 
 def test_a_poll_state_without_course_signature_is_not_a_rebase():

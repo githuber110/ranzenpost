@@ -78,7 +78,9 @@ function conferenceRowNode(item) {
   const main = el("div", { class: "row-main" }, [
     tag ? el("div", { class: "row-tags" }, [tag]) : null,
     iservText("div", { class: "row-title" }, cells[0]),
-    cells.length > 1 ? iservText("div", { class: "row-sub" }, cells.slice(1).join(" · ")) : null,
+    cells.length > 1
+      ? el("div", { class: "row-sub conference-lines" }, cells.slice(1).map((cell) => iservText("span", { class: "conference-line" }, cell)))
+      : null,
   ]);
   const parts = [el("span", { class: "row-dot" }), main];
   if (!openable) return el("div", { class: "row read conference-row" }, parts);
@@ -173,12 +175,16 @@ function pushConferencePage(target, data) {
 
 async function loadConferencePage(entry) {
   entry.loading = true;
+  const ticket = (entry.loadTicket || 0) + 1;
+  entry.loadTicket = ticket;
   try {
     const data = await getJson(`api/conferences/page?page=${encodeURIComponent(entry.page)}&connection=${encodeURIComponent(entry.connection_id)}`);
+    if (ticket !== entry.loadTicket) return;
     entry.data = data;
     entry.error = "";
     entry.refused = false;
   } catch (error) {
+    if (ticket !== entry.loadTicket) return;
     if (handleApiFailure(error, entry.connection_id)) return;
     entry.error = errorCode(error) || "unknown";
     entry.refused = !!(error && error.body && error.body.message_key === CONFERENCE_PAGE_UNKNOWN_KEY);
@@ -320,6 +326,14 @@ function conferencePageView() {
   }
   if (entry.error && !entry.data) {
     view.append(emptyBlock("alert", t("conferences.page.error.title"), t("conferences.page.error.text"), retryButton(() => loadConferencePage(entry))));
+    return view;
+  }
+  if (entry.data && entry.data.booking) {
+    if (entry.error) {
+      view.append(emptyBlock("alert", t("conferences.page.error.title"), t("conferences.page.error.text"), retryButton(() => loadConferencePage(entry))));
+      return view;
+    }
+    view.append(...conferenceBookingNodes(entry));
     return view;
   }
   const blocks = (entry.data && entry.data.blocks) || [];

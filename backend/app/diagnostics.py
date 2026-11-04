@@ -16,9 +16,10 @@ from .iserv.children import (
     time_table_session_lost,
 )
 from .iserv.timetable import change_record_facts, change_type_texts, data_params, with_time_table_changes
-from .module_catalogue import edition_of, official_name
+from .module_catalogue import CATALOGUE, edition_of, official_name
 from .iserv.pages import status_of
 from .pageshape import body_kind, json_of, response_skeleton, shape_block, visible_text
+from .vocabulary import IDENTIFIER_EXCLUDED, TOKEN, known_word
 from .pathpattern import MATRIX_ROOM, ROOM_MARK
 from .reportmail import mail_lines
 from .reportcrawl import (
@@ -81,7 +82,7 @@ KNOWN_ROWS = (
     (modules.TIMETABLE, "dsa-timetable", "/iserv/dsa-timetable/"),
     (modules.LETTERS, "parentletter", modules.PROBES[modules.LETTERS][0]),
     (modules.PINBOARD, "dsa-pinboard", "/iserv/dsa-pinboard/"),
-    (modules.ABSENCES, "absence", "/iserv/dsa-absences/"),
+    (modules.ABSENCES, "absence", "/iserv/dsa-absences/absence-parents"),
     (modules.CONFERENCES, "parentconference", modules.PROBES[modules.CONFERENCES][0]),
     (modules.MESSENGER, "messenger", modules.PROBES[modules.MESSENGER][0]),
     (modules.CALENDAR, "calendar", "/iserv/calendar/"),
@@ -184,6 +185,13 @@ def _substrings(words, minimum):
     return [word for word in words if len(word) >= minimum]
 
 
+MODULE_NAMES = re.compile(
+    r"(?<![\w])(?:"
+    + "|".join(re.escape(name) for name in sorted({text for entry in CATALOGUE.values() for text in entry[:2] if text}, key=len, reverse=True))
+    + r")(?![\w])"
+)
+
+
 class Redactor:
     def __init__(self, words=None):
         words = words or RedactionWords()
@@ -205,14 +213,40 @@ class Redactor:
         line = _swap(self.hosts, "<host>", line)
         line = URL_HOST.sub(lambda match: match.group(0).split("://", 1)[0] + "://<host>", line)
         line = BARE_HOST.sub("<host>", line)
-        line = _swap(self.children, "<child>", line)
-        line = _swap(self.teachers, "<teacher>", line)
-        line = _swap(self.schools, "<school>", line)
-        return _swap(self.users, "<user>", line)
+        line = _swap_name(self.children, "<child>", line)
+        line = _swap_name(self.teachers, "<teacher>", line, headers=True)
+        line = _swap_name(self.schools, "<school>", line)
+        return _swap_name(self.users, "<user>", line)
 
 
 def _swap(pattern, marker, text):
     return pattern.sub(marker, text) if pattern is not None else text
+
+
+HEADER_LINE = "- Table headers:"
+
+
+def _header_word(token):
+    return known_word(token) and token.lower() not in IDENTIFIER_EXCLUDED
+
+
+def _kept_spans(text, headers):
+    spans = [match.span() for match in MODULE_NAMES.finditer(text)]
+    if headers and text.startswith(HEADER_LINE):
+        spans.extend(match.span() for match in TOKEN.finditer(text) if _header_word(match.group(0)))
+    return spans
+
+
+def _swap_name(pattern, marker, text, headers=False):
+    if pattern is None:
+        return text
+    names = _kept_spans(text, headers)
+
+    def replaced(match):
+        inside = any(start <= match.start() and match.end() <= end for start, end in names)
+        return match.group(0) if inside else marker
+
+    return pattern.sub(replaced, text)
 
 
 def redact(text, words):

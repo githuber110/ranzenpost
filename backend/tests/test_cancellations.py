@@ -1,11 +1,12 @@
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import cancellations, messages
+from app import cancellations, marks, messages
 from app.cancellations import CancellationError, CancellationRegistry
 from app.poller import Poller
 from app.server import create_app
@@ -112,6 +113,10 @@ class _Service:
         self.store = store
 
 
+def _today_iso():
+    return marks.today_for(time.time).isoformat()
+
+
 def _client(store):
     return TestClient(create_app(_Service(store)))
 
@@ -121,7 +126,7 @@ def test_the_routes_create_list_and_delete_a_marker(tmp_path):
     client = _client(store)
     created = client.post(
         "/api/cancellations",
-        json={"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3},
+        json={"child_key": CHILD_ID, "date": _today_iso(), "period": 3},
     )
     assert created.status_code == 200
     marker = created.json()
@@ -275,7 +280,7 @@ def test_the_route_keeps_the_subject_of_a_marker(tmp_path):
     client = _client(store)
     created = client.post(
         "/api/cancellations",
-        json={"child_key": CHILD_ID, "date": WEDNESDAY_ISO, "period": 3, "subject_code": "MA"},
+        json={"child_key": CHILD_ID, "date": _today_iso(), "period": 3, "subject_code": "MA"},
     ).json()
     assert created["subject_code"] == "MA"
     assert [entry["subject_code"] for entry in cancellations.entries_of(store.load_cancellations())] == ["MA"]

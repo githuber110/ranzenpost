@@ -9,7 +9,34 @@ from urllib.parse import urlencode, urljoin
 from requests import RequestException
 
 from . import messages
+from .conference_bookings import ConferenceBookings
+from .conference_outcomes import (
+    REQUEST_ID,
+    STATE_DONE,
+    STATE_INVALID,
+    STATE_OPENED,
+    STATE_PENDING,
+    STATE_REFUSED,
+    STATE_REJECTED,
+    STATE_UNCERTAIN,
+    SUBMIT_ALREADY_KEY,
+    SUBMIT_BUSY_KEY,
+    SUBMIT_CHOICE_KEY,
+    SUBMIT_INVALID_KEY,
+    SUBMIT_INVALID_REQUEST_KEY,
+    SUBMIT_NO_PROFILE_KEY,
+    SUBMIT_OK_KEY,
+    SUBMIT_OPENED_KEY,
+    SUBMIT_REJECTED_KEY,
+    SUBMIT_REQUIRED_KEY,
+    SUBMIT_SIGNED_OUT_KEY,
+    SUBMIT_STALE_KEY,
+    SUBMIT_UNCERTAIN_KEY,
+    SUBMIT_UNCONFIRMED_KEY,
+    SUBMIT_UNSUPPORTED_KEY,
+)
 from .failure import failure_cause
+from .iserv.conference_booking import conference_id_of, is_booking_page
 from .iserv.conferences import (
     ARCHIVE_PATH,
     LIST_PATH,
@@ -38,35 +65,12 @@ TAB_CURRENT = "current"
 TAB_ARCHIVE = "archive"
 CONFERENCE_UNKNOWN_KEY = "api.conferences.page.unknown"
 CONFERENCE_GONE_KEY = "api.conferences.page.gone"
-SUBMIT_OK_KEY = "api.conferences.submit.ok"
-SUBMIT_OPENED_KEY = "api.conferences.submit.opened"
-SUBMIT_ALREADY_KEY = "api.conferences.submit.alreadySent"
-SUBMIT_BUSY_KEY = "api.conferences.submit.busy"
-SUBMIT_UNCONFIRMED_KEY = "api.conferences.submit.unconfirmed"
-SUBMIT_INVALID_REQUEST_KEY = "api.conferences.submit.invalidRequest"
-SUBMIT_STALE_KEY = "api.conferences.submit.stale"
-SUBMIT_REQUIRED_KEY = "api.conferences.submit.required"
-SUBMIT_CHOICE_KEY = "api.conferences.submit.choice"
-SUBMIT_UNSUPPORTED_KEY = "api.conferences.submit.unsupported"
-SUBMIT_INVALID_KEY = "api.conferences.submit.invalid"
-SUBMIT_REJECTED_KEY = "api.conferences.submit.rejected"
-SUBMIT_SIGNED_OUT_KEY = "api.conferences.submit.signedOut"
-SUBMIT_UNCERTAIN_KEY = "api.conferences.submit.uncertain"
-SUBMIT_NO_PROFILE_KEY = "api.conferences.submit.noProfile"
 OWN_CHANGE_KEY = "conference_own_change"
 OWN_CANCELLATIONS_KEY = "conference_own_cancellations"
 OWN_CANCELLATIONS_SECONDS = 14 * 24 * 60 * 60
 OWN_CANCELLATIONS_LIMIT = 50
-STATE_DONE = "done"
-STATE_OPENED = "opened"
-STATE_INVALID = "invalid"
-STATE_REJECTED = "rejected"
-STATE_UNCERTAIN = "uncertain"
-STATE_REFUSED = "refused"
-STATE_PENDING = "pending"
 WRITE_OK_STATUSES = (200, 201, 204, 302, 303)
 VALIDATION_STATUSES = (400, 422)
-REQUEST_ID = re.compile(r"^[0-9A-Za-z-]{16,64}$")
 TOKEN = re.compile(r"^[0-9a-f]{24}$")
 TOKEN_LIMIT = 4000
 REQUEST_LIMIT = 200
@@ -173,6 +177,7 @@ class ConferenceService:
         self._pages = OrderedDict()
         self._busy = set()
         self._requests = OrderedDict()
+        self._bookings = ConferenceBookings(self)
 
     def forget(self):
         with self._lock:
@@ -236,7 +241,10 @@ class ConferenceService:
             raise DataError("the conference page names a change", message_key=CONFERENCE_UNKNOWN_KEY)
         client = self.connection._session()
         response = client.fetch_or_raise(path)
-        return self._public_page(path, response.text, response.url)
+        if is_booking_page(response.text):
+            return self._bookings.page(client, path, response)
+        public = self._public_page(path, response.text, response.url)
+        return dict(public, booking_unread=True) if conference_id_of(path) is not None else public
 
     @staticmethod
     def _landing_path(url):
@@ -361,6 +369,13 @@ class ConferenceService:
 
     def submit(self, token, form_id, check, submit_id, values, request_id="", confirmed=False):
         request_id = request_id if isinstance(request_id, str) else ""
+        return self._once(token, request_id, lambda: self._submit(token, form_id, check, submit_id, values, request_id, confirmed))
+
+    def submit_booking(self, token, action, values, request_id="", confirmed=False):
+        request_id = request_id if isinstance(request_id, str) else ""
+        return self._once(token, request_id, lambda: self._bookings.submit(token, action, values, request_id, confirmed))
+
+    def _once(self, token, request_id, send):
         reserved = False
         if request_id and REQUEST_ID.match(request_id):
             with self._lock:
@@ -371,7 +386,7 @@ class ConferenceService:
             if record is not None:
                 return self._request_answer(record, token)
         try:
-            return self._submit(token, form_id, check, submit_id, values, request_id, confirmed)
+            return send()
         finally:
             if reserved:
                 with self._lock:
@@ -411,12 +426,15 @@ class ConferenceService:
             return messages.result(False, SUBMIT_UNCONFIRMED_KEY, state=STATE_REFUSED)
         if not REQUEST_ID.match(request_id):
             return messages.result(False, SUBMIT_INVALID_REQUEST_KEY, state=STATE_REFUSED)
+        return self._exclusive(token, lambda: self._send(client, path, token, request_id, form, pairs, response, model))
+
+    def _exclusive(self, token, send):
         with self._lock:
             if token in self._busy:
                 return messages.result(False, SUBMIT_BUSY_KEY, state=STATE_REFUSED)
             self._busy.add(token)
         try:
-            return self._send(client, path, token, request_id, form, pairs, response, model)
+            return send()
         finally:
             with self._lock:
                 self._busy.discard(token)

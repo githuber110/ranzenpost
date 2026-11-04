@@ -400,7 +400,7 @@ class IServClient:
     def __init__(self, base_url, session=None, timeout=30):
         self.base_url = base_url.rstrip("/")
         self.session = requestlog.install(session or requests.Session(), urlparse(self.base_url).hostname or "")
-        self.session.headers.setdefault("User-Agent", "ranzenpost/2610.6.0")
+        self.session.headers.setdefault("User-Agent", "ranzenpost/2611.1.0")
         self.timeout = timeout
         self.username = ""
         self.login_page = ""
@@ -967,6 +967,15 @@ class IServClient:
         if files:
             extra["files"] = files
         return self.session.post(url, data=data, timeout=timeout, **extra)
+
+    def send_json(self, method, url, payload=None, headers=None):
+        if not self._is_same_origin(url):
+            raise DataError("cross-origin request blocked")
+        self.forget_kept()
+        body = json.dumps(payload) if payload is not None else None
+        return self.session.request(
+            method, url, data=body, headers={"Content-Type": "application/json", **(headers or {})}, timeout=self.timeout
+        )
 
     def post_absolute(self, url, data, timeout=30, follow_redirects=True, headers=None):
         if not self._is_same_origin(url):

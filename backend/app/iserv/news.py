@@ -26,6 +26,8 @@ SECTIONS = tuple(SECTION_WORDS)
 TITLE_LIMIT = 300
 TEXT_LIMIT = 1000
 LABEL_LIMIT = 120
+BARE_DATE = re.compile(r"^\d{1,2}\.\d{1,2}\.\d{4}(?:,?\s+\d{1,2}:\d{2}(?:\s*Uhr)?)?$")
+META_SEPARATOR = "|"
 
 
 def _item_paths(anchor):
@@ -83,6 +85,18 @@ def _date(container):
         found = parse_moment(text)
         if found:
             return found, text
+    return _bare_date(container)
+
+
+def _bare_date(container):
+    for holder in container.find_all(["div", "span", "p"]):
+        if holder.find(list(HEADINGS)):
+            continue
+        for part in squeezed(holder.get_text(" "), LABEL_LIMIT).split(META_SEPARATOR):
+            text = part.strip()
+            found = parse_moment(text) if BARE_DATE.match(text) else ""
+            if found:
+                return found, text
     return "", ""
 
 

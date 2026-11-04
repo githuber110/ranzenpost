@@ -179,7 +179,7 @@ def test_a_long_outage_pushes_once_after_twelve_hours_and_once_when_it_is_back(t
         clock.advance(INTERVAL)
     assert len(notifier.calls) == 1
     assert notifier.calls[0]["message"] == messages.text_in(
-        "de", OUTAGE_SINCE_KEY, {"school": "Testschule", "since": integration.berlin_stamp(NOW_EPOCH)}
+        "de", OUTAGE_SINCE_KEY, {"school": "Testschule", "since": integration.berlin_stamp(NOW_EPOCH, "de")}
     )
     service.outcomes = ["ok"]
     _poller(store, service, clock, notifier).poll_once(connection_id=SCHOOL)
@@ -207,7 +207,7 @@ def test_the_long_outage_push_rides_the_outage_channel_not_auth(tmp_path):
     assert auth_notifier.calls == []
     assert len(outage_notifier.calls) == 1
     assert outage_notifier.calls[0]["message"] == messages.text_in(
-        "de", OUTAGE_SINCE_KEY, {"school": "Testschule", "since": integration.berlin_stamp(NOW_EPOCH)}
+        "de", OUTAGE_SINCE_KEY, {"school": "Testschule", "since": integration.berlin_stamp(NOW_EPOCH, "de")}
     )
     service.outcomes = ["ok"]
     Poller(
@@ -291,3 +291,16 @@ def test_a_school_in_backoff_leaves_the_other_school_polled(tmp_path):
         clock.advance(INTERVAL)
     assert down.attempts == 3
     assert len(up.calls) == 4
+
+
+def test_every_school_down_with_network_errors_names_the_local_network(caplog):
+    outage = [
+        {"connection_id": "a", "error": integration.ERROR_OUTAGE, "reason": "dns"},
+        {"connection_id": "b", "error": integration.ERROR_OUTAGE, "reason": "connection"},
+    ]
+    with caplog.at_level(logging.WARNING, logger="app.poller"):
+        Poller._note_shared_outage(outage, 2)
+        Poller._note_shared_outage(outage[:1], 2)
+        Poller._note_shared_outage([dict(outage[0], reason="status:503"), outage[1]], 2)
+    lines = [record.getMessage() for record in caplog.records]
+    assert lines == ["all 2 schools unreachable at the same time (connection, dns), the network of this Home Assistant is the likely cause"]

@@ -386,6 +386,20 @@ def test_the_documented_form_with_one_period_field_and_a_whole_day_box():
     assert ("absence[allDay]", "1") not in form_pairs(form, unchecked)
 
 
+def test_a_one_line_comment_field_stays_the_reason_whatever_its_label_says():
+    page = """<form method="post" action="/iserv/absence/add" name="absence">
+<label for="absence_person">Schüler/in</label><select id="absence_person" name="absence[person]"><option value="11">Muster, Mia</option></select>
+<label><input type="checkbox" name="absence[fullDay]" value="1"> Ganztägig</label>
+<label for="s">Von</label><input type="date" id="s" name="absence[startDate]" required>
+<label for="e">Bis</label><input type="date" id="e" name="absence[endDate]" required>
+<label for="c">Zeitraum und Grund</label><input type="text" id="c" name="absence[comment]">
+<input type="hidden" name="absence[_token]" value="tok-5"><button type="submit" name="save">Speichern</button></form>"""
+    form = parse_create_form(page, SCHOOL + "/iserv/absence/add", CHILDREN)
+    assert form.roles[ROLE_REASON].name == "absence[comment]"
+    assert ROLE_PERIOD not in form.roles
+    assert (form.roles[ROLE_FROM].name, form.roles[ROLE_TILL].name) == ("absence[startDate]", "absence[endDate]")
+
+
 def test_a_profile_field_whose_options_match_no_known_profile_offers_nobody():
     form = parse_create_form(FORM_GERMAN_SELECT.replace("Muster, Mia", "Anders, Anna").replace("Beispiel, Tom", "Weiter, Willi"), SCHOOL + "/iserv/absence/add", CHILDREN)
     assert form.roles[ROLE_PROFILE].name == "absence[student]"

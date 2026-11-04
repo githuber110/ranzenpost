@@ -19,6 +19,7 @@
     texts: ["texts"],
     infodisplay: ["infodisplay"],
     whiteboards: ["whiteboards"],
+    modulepages: ["print", "course-selection", "videoconference", "poll", "todo"],
   };
   const DEFAULT_NAVIGATION = ["timetable", "absence", "post", "messenger", "conferences"];
   const BAR_LIMIT = 5;

@@ -78,3 +78,21 @@ def test_a_date_in_the_item_metadata_beside_the_summary_is_read():
       <small class="text-muted">01.10.2026</small></li></ul>""" + TAIL
     item = parse_news(html)["items"][0]
     assert (item["date"], item["date_text"]) == ("2026-10-01", "01.10.2026")
+
+
+def test_an_item_row_names_its_date_in_a_plain_meta_line_beside_the_heading():
+    html = (
+        '<html><body><div class="row"><a href="/iserv/news/allgemein/12">Mehr</a>'
+        "<div>02.11.2026 08:15 | Frau Beispiel | Allgemein</div><h3>Laternenfest</h3>"
+        "<strong>Am 12.11.2026 ab 17 Uhr auf dem Schulhof</strong></div></body></html>"
+    )
+    item = parse_news(html)["items"][0]
+    assert (item["title"], item["date"], item["date_text"]) == ("Laternenfest", "2026-11-02T08:15", "02.11.2026 08:15")
+
+
+def test_a_date_inside_the_running_text_is_not_taken_for_the_item_date():
+    html = (
+        '<html><body><div class="row"><a href="/iserv/news/allgemein/13">Mehr</a>'
+        "<h3>Laternenfest</h3><div>Wir feiern am 12.11.2026 auf dem Schulhof.</div></div></body></html>"
+    )
+    assert parse_news(html)["items"][0]["date"] == ""

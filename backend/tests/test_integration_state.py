@@ -594,6 +594,20 @@ def test_the_lessons_ahead_run_to_the_end_of_the_next_day_with_lessons(tmp_path)
     assert [(item["date"], item["period"]) for item in weekend["lessons_ahead"]] == [("2026-09-07", 1), ("2026-09-07", 2)]
 
 
+def test_a_day_with_many_parallel_courses_keeps_every_lesson_ahead(tmp_path):
+    def crowded(store):
+        _today_snapshot(store)
+        snapshot = store.load_calendar_snapshot()
+        lessons = [_lesson(day=THURSDAY, period=period, subject_code=f"K{period}{course}") for period in range(1, 7) for course in range(5)]
+        next(iter(snapshot["children"][CHILD_ID]["weeks"].values()))["lessons"].extend(lessons)
+        store.save_calendar_snapshot(snapshot)
+
+    body = _state(tmp_path, crowded, NOW_EPOCH)
+
+    thursday = [item for item in body["lessons_ahead"] if item["date"] == "2026-09-03"]
+    assert len(thursday) == 31
+
+
 def test_no_lesson_ahead_is_named_behind_a_day_without_holiday_dates(tmp_path):
     body = _state(tmp_path, _today_snapshot, NOW_EPOCH, calendar=FakeHolidayCalendar(status=holidays.STATUS_UNKNOWN))
 

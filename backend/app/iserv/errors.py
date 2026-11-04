@@ -98,7 +98,9 @@ RATE_LIMIT_CAP_SECONDS = 2 * 60 * 60
 
 
 class SchoolCalendarRefusedError(DataError):
-    pass
+    def __init__(self, note="", message_key="", detail=None, problems=()):
+        super().__init__(note, message_key, detail)
+        self.problems = tuple(problems)
 
 
 class ModulePageRefusedError(DataError):

@@ -39,9 +39,44 @@ def conference_facts(item, today):
     }
 
 
+def page_read(page):
+    return not page.get("booking_unread") and bool(page.get("booking") or page.get("blocks"))
+
+
+def _place(conference, slot, host):
+    return "%s|%s|%s" % (conference, slot, host)
+
+
+def occupied_of(page, conference):
+    taken = (page.get("booking") or {}).get("taken") or []
+    return {_place(conference["id"], entry.get("slot"), entry.get("host")) for entry in taken}
+
+
+def _booked_at_school(page, conference):
+    found = []
+    for entry in (page.get("booking") or {}).get("mine") or []:
+        if not entry.get("date") or not entry.get("begin"):
+            continue
+        day = date.fromisoformat(entry["date"])
+        cells = [day.strftime("%d.%m.%Y"), "%s - %s" % (entry["begin"], entry["end"]), entry.get("teacher") or ""]
+        cells = [cell for cell in cells if cell]
+        key = booking_key(cells, entry["date"])
+        found.append({
+            "id": "%s|%s" % (conference["id"], key),
+            "key": key,
+            "conference": conference["id"],
+            "summary": " · ".join(cells),
+            "title": conference["title"],
+            "day": entry["date"],
+            "time": entry["begin"],
+            "place": _place(conference["id"], entry.get("slot"), entry.get("host")),
+        })
+    return found
+
+
 def bookings_of(page, conference):
     forms = {form.get("id"): form for form in page.get("forms") or []}
-    found = []
+    found = _booked_at_school(page, conference)
     heading = ""
     for block in page.get("blocks") or []:
         if block.get("kind") == "heading":
@@ -99,7 +134,7 @@ def _own(record, own_keys):
     return any(same_booking(key, own) for own in own_keys)
 
 
-def plan(state, conferences, pages, now, own_keys=(), own_change_since=False, gap_seconds=1800):
+def plan(state, conferences, pages, now, own_keys=(), own_change_since=False, gap_seconds=1800, occupied=()):
     state = state if isinstance(state, dict) else {}
     initialised = isinstance(state.get("seen"), list)
     seen = set(state.get("seen") or [])
@@ -126,6 +161,9 @@ def plan(state, conferences, pages, now, own_keys=(), own_change_since=False, ga
         if booking_id in current or not isinstance(record, dict):
             continue
         if record.get("conference") not in read:
+            current[booking_id] = record
+            continue
+        if record.get("place") in occupied:
             current[booking_id] = record
             continue
         if not initialised or not record.get("key") or not _upcoming(record, now):
@@ -173,4 +211,4 @@ def not_delivered(state, push):
 
 
 def _stored(record):
-    return {key: record.get(key) or "" for key in ("conference", "key", "summary", "title", "day", "time")}
+    return {key: record.get(key) or "" for key in ("conference", "key", "summary", "title", "day", "time", "place")}

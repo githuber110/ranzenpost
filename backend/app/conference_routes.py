@@ -43,3 +43,17 @@ def register_routes(app, service):
     @app.post("/api/conferences/submit")
     def conference_submit(body: dict = Body(...)):
         return write_endpoint(_logged("submit", lambda: _submit(body)), fallback="submit_failed")
+
+    def _booking(body):
+        return service.submit_conference_booking(
+            body.get("connection_id", ""),
+            body.get("page", ""),
+            body.get("action", ""),
+            {key: body.get(key) for key in ("slot", "host", "booking", "children")},
+            body.get("request_id", ""),
+            body.get("confirmed") is True,
+        )
+
+    @app.post("/api/conferences/booking")
+    def conference_booking(body: dict = Body(...)):
+        return write_endpoint(_logged("booking", lambda: _booking(body)), fallback="submit_failed")

@@ -103,6 +103,12 @@ def _board(row, fields):
     }
 
 
+def _footer_notices(table):
+    footer = table.find("tfoot")
+    rows = footer.find_all("tr", recursive=False) if footer is not None else []
+    return sum(1 for row in rows if len(row.find_all(["td", "th"], recursive=False)) == 1)
+
+
 def parse_whiteboards(html, list_path=WHITEBOARDS_PATH):
     soup = BeautifulSoup(html or "", "html.parser")
     table = _board_table(soup)
@@ -135,6 +141,8 @@ def parse_whiteboards(html, list_path=WHITEBOARDS_PATH):
         raise WhiteboardShapeError("whiteboard page carries list data outside the table")
     if duplicates:
         note_once("excalidraw", list_path, "dropped %d whiteboard rows with a repeated id" % duplicates)
+    if not boards and not messages and not skipped:
+        messages = _footer_notices(table)
     if not boards and (skipped or not messages):
         note_once("excalidraw", list_path, "%d whiteboard rows unreadable" % skipped if skipped else "no rows and no empty notice")
         raise WhiteboardShapeError("whiteboard table carries no readable row")

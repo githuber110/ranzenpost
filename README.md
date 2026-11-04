@@ -128,7 +128,7 @@ Parent letters, current and archived, with attachments. When a letter asks for a
 
 ### Parent-teacher days
 
-Current and archived days, your own bookings, teachers, rooms, free slots and notes, as IServ shows them. Booking, changing and cancelling a slot go through the school's own forms in the app, each after a confirmation. Ranzenpost then reads the page again and shows the result. Push messages tell you when booking opens, when a booking is cancelled, three days before a day and shortly before an appointment.
+Current and archived days, your own bookings, teachers, rooms, free slots and notes, as IServ shows them. Booking, changing and cancelling a slot go through the school's own booking in the app, each after a confirmation. Ranzenpost then reads the page again and shows the result. Push messages tell you when booking opens, when a booking is cancelled, three days before a day and shortly before an appointment.
 
 ### Tasks and news
 
@@ -256,7 +256,7 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message, a message to the school on a letter that offers a reply, the answer to a letter that asks for a choice |
 | Noticeboards (`dieschulapp`) | Pinboards (Schul-App) | All boards, posts, attachments | Nothing. Read state stays in the app |
 | Chat (`messenger`) | Messenger, where the school opens it to parents | Rooms and messages | Send a message, mark as read, open a room with a teacher |
-| Parent-teacher conferences (`parentconference`) | Parent conferences | Current and archived conference days, own bookings, teachers, rooms, free slots and notes as IServ shows them | Booking, changing and cancelling a slot through the school's own forms, each after a confirmation |
+| Parent-teacher conferences (`parentconference`) | Parent conferences | Current and archived conference days, own bookings, teachers, rooms, free slots and notes as IServ shows them | Booking, changing and cancelling a slot through the school's own booking, each after a confirmation |
 | School events (`calendar`) | Calendar, where the account sees it | Events of every calendar the account sees, its personal calendar included, for the next weeks | An event made from an email, after a confirmation |
 | Tasks (`exercise`) | Tasks | Current and past tasks as IServ lists them; the page of a task when you open it: text, dates, tags, files, own hand-in, feedback, model solutions | Hand in files and text, remove handed-in files, mark as done or not done, each after a confirmation |
 | News (`news`) | News | Every news item of the list with title, date and category, and the text, files and links of each item; the archive and the package news when you pick them in the filter | Nothing. Filter and search work in the app |
@@ -268,8 +268,11 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 | Files (`file`) | Files | Own files and group folders with name, size, type and date, the search, the files themselves | Upload into the own files and group folders, after a confirmation |
 | Address book (`addressbook`) | Address book | People found by a search, with address and class, also as email recipients | Nothing |
 | Mailing lists (`mailinglist`) | Mailing lists | Lists and their addresses | Import from a text or CSV file, delete, each after a confirmation |
+| More modules (`print`, `course-selection`, `videoconference`, `poll`, `todo`) | Printing, course selection, video conferences, polls, to-do | What these pages of the school show: print jobs and their status, selections and their pages, rooms with their participants, polls, your to-dos | Nothing. Uploading, choosing, joining a room, voting and ticking off are not in the app yet |
 
 Klassengeld is recognised but not supported yet. It runs as a separate service behind an IServ consent step, and it is open for a contributor whose school uses Klassengeld and who would like to build the support. See [issue #5](https://github.com/githuber110/ranzenpost/issues/5).
+
+Office, MethodenGuide, edupool and the Eduplaces connector stay out on purpose. Office only creates files in an editor, and the other three pass you on to outside services that hold the content themselves, so there is nothing of your family's to read.
 
 A school that only offers the older timetable module, at `/iserv/timetable/`, shows it in the settings as present, not supported yet, instead of showing the timetable as missing. Modules Ranzenpost does not know yet appear in the settings by their IServ name, with a button that opens a prefilled issue.
 

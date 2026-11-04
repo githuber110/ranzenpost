@@ -31,6 +31,7 @@ from .child_service import LETTERS_CHILD_PREFIX, SCHOOL_CACHE_SECONDS, ChildServ
 from .letter_service import LetterService
 from .mail_service import MailFile, MailNotOffered, MailService
 from .file_service import AccountModuleNotOffered, FileService
+from .module_pages import ModulePages
 from .contacts_service import ContactsService
 from .mail_settings import MailWebService
 from .conference_service import TAB_CURRENT as CONFERENCE_TAB_CURRENT, ConferenceService
@@ -98,6 +99,9 @@ MAIL_RECOUNT_ACTIONS = frozenset({"mark_seen", "set_flag", "move", "archive", "t
 SCHOOL_EVENTS_DAYS = 60
 START_PAGE_PATH = "/iserv/"
 MODULES_RECHECK_SECONDS = 60
+CALENDAR_REFUSAL_RECHECK_SECONDS = 24 * 3600
+SETTINGS_ABSENT_STATUSES = (403, 404)
+RESTING_CALENDAR_STATUSES = (403, 404)
 MODULES_RECHECKED_KEY = "api.modules.rechecked"
 MODULES_TOO_SOON_KEY = "api.modules.tooSoon"
 DSA_API_PATH = "/iserv/dieschulapp/api/1.0"
@@ -190,8 +194,11 @@ class ConnectionService:
         self._modules_recheck_at = 0.0
         self._refusals = Refusals(lambda: self.clock())
         self._calendar_source_notes = {}
+        self._calendar_refusals = {}
+        self._calendar_refusals_lock = threading.Lock()
         self._letter_service = LetterService(self)
         self._conference_service = ConferenceService(self)
+        self._module_pages = ModulePages(self)
         self._task_service = TaskService(self)
         self._news_sections = NewsSections(self)
         self._forum_service = ForumService(self)
@@ -342,6 +349,8 @@ class ConnectionService:
             return messages.result(False, MODULES_TOO_SOON_KEY, error="rate_limited", modules=self.modules())
         self._modules_recheck_at = now
         self._refusals.clear()
+        with self._calendar_refusals_lock:
+            self._calendar_refusals.clear()
         registry = self.refresh_modules()
         return messages.result(True, MODULES_RECHECKED_KEY, modules=registry)
 
@@ -647,6 +656,7 @@ class ConnectionService:
             self._child_service.retire()
             self._letter_service.forget_listed()
             self._conference_service.forget()
+            self._module_pages.forget()
             self.store.reset_config()
             self.store.delete_secrets()
             self._sign_in.drop_session()
@@ -690,7 +700,16 @@ class ConnectionService:
         stamp, cached = self._settings_cache
         if cached is not None and time.time() - stamp <= SCHOOL_CACHE_SECONDS:
             return cached
-        settings = self._dsa().school_settings()
+        school_app = self._dsa()
+        try:
+            settings = school_app.school_settings_or_raise()
+        except (DataError, OutageError, LoginError):
+            if getattr(school_app, "last_status", 0) in SETTINGS_ABSENT_STATUSES:
+                settings = {}
+            elif cached is not None:
+                return cached
+            else:
+                raise
         self._settings_cache = (time.time(), settings)
         return settings
 
@@ -905,9 +924,35 @@ class ConnectionService:
         }
 
     def read_school_calendar(self, first, last):
-        read = read_calendar(self._session(), first, last, server_failure)
+        resting = self._resting_calendar_sources()
+        try:
+            read = read_calendar(self._session(), first, last, server_failure, resting)
+        except SchoolCalendarRefusedError as error:
+            self._remember_calendar_refusals(error.problems, (), resting)
+            raise
+        self._remember_calendar_refusals(read.problems, read.answered, resting)
         self._note_calendar_sources(read.problems)
         return read
+
+    def _resting_calendar_sources(self):
+        now = self.clock()
+        with self._calendar_refusals_lock:
+            remembered = list(self._calendar_refusals.items())
+        return {
+            source: SchoolCalendarRefusedError("school calendar refused: %d" % status, detail={"status": status})
+            for source, (at, status) in remembered
+            if now - at < CALENDAR_REFUSAL_RECHECK_SECONDS
+        }
+
+    def _remember_calendar_refusals(self, problems, answered, resting):
+        now = self.clock()
+        with self._calendar_refusals_lock:
+            for problem in problems:
+                status = problem.reason.detail.get("status") if isinstance(problem.reason, SchoolCalendarRefusedError) else None
+                if status in RESTING_CALENDAR_STATUSES and problem.source not in resting:
+                    self._calendar_refusals[problem.source] = (now, status)
+            for source in answered:
+                self._calendar_refusals.pop(source, None)
 
     def school_events(self, first, last):
         return self.read_school_calendar(first, last).events
@@ -1003,6 +1048,11 @@ class ConnectionService:
         registry = self.stored_modules()
         return {slug: modules.lists_module(registry, slug) for slug in modules.LISTED_MODULES}
 
+    def module_page(self, slug, page=""):
+        if slug not in modules.READ_PAGE_MODULES or not self.account_modules().get(slug):
+            raise AccountModuleNotOffered()
+        return self._module_pages.read(slug, page)
+
     def files(self):
         if not self.account_modules()[modules.FILES]:
             raise AccountModuleNotOffered()
@@ -1034,6 +1084,9 @@ class ConnectionService:
 
     def submit_conference_form(self, page, form, check, submit, values, request_id="", confirmed=False):
         return self._conference_service.submit(page, form, check, submit, values, request_id, confirmed)
+
+    def submit_conference_booking(self, page, action, values, request_id="", confirmed=False):
+        return self._conference_service.submit_booking(page, action, values, request_id, confirmed)
 
     def timetable_available(self):
         return self.module_available(modules.TIMETABLE)
@@ -1491,6 +1544,10 @@ class IServService:
                 schools.append(self.annotate(connection, offered))
         return {"schools": schools}
 
+    def module_page(self, connection_id, slug, page=""):
+        connection = self.pick_school(connection_id)
+        return self.annotate(connection, connection.module_page(slug, page))
+
     def file_listing(self, connection_id, path=""):
         connection = self.pick_school(connection_id)
         return self.annotate(connection, connection.files().listing(path))
@@ -1782,6 +1839,13 @@ class IServService:
     def submit_conference_form(self, connection_id, page, form, check, submit, values, request_id="", confirmed=False):
         connection = self.known_connection(connection_id)
         result = connection.submit_conference_form(page, form, check, submit, values, request_id, confirmed)
+        if isinstance(result.get("page"), dict):
+            result["page"] = dict(result["page"], connection_id=connection.id)
+        return result
+
+    def submit_conference_booking(self, connection_id, page, action, values, request_id="", confirmed=False):
+        connection = self.known_connection(connection_id)
+        result = connection.submit_conference_booking(page, action, values, request_id, confirmed)
         if isinstance(result.get("page"), dict):
             result["page"] = dict(result["page"], connection_id=connection.id)
         return result

@@ -56,6 +56,23 @@ describe("holiday notes in the look-ahead blocks", () => {
     expect(texts(chapter).some((text) => text.includes(unknown))).toBe(true);
   });
 
+  test("holiday data that covers only this year keeps its days and leaves next year unknown", () => {
+    const { window } = loadApp();
+    seed(window, `state.holidays = { s1: { status: "partial", missing_years: [2027], weeks: [], periods: [], days: {
+      "2026-12-28": { free: true, overrides_lessons: true, kind: "school" },
+      "2027-01-04": { free: false, overrides_lessons: false },
+    } } };`);
+    const result = at(window, "2026-12-20T10:00:00", `function () {
+      return {
+        known: holidayBlocksLessons("2026-12-28", "s1"),
+        later: holidayDay("2027-01-04", "s1"),
+        thisYear: holidaysUnsure("s1", ["2026-12-21"]),
+        nextYear: holidaysUnsure("s1", ["2027-01-04"]),
+      };
+    }`);
+    expect(result).toEqual({ known: true, later: null, thisYear: false, nextYear: true });
+  });
+
   test("a failed holiday load counts as unknown too", () => {
     const { window } = loadApp();
     seed(window, "state.holidays = { s1: null };");

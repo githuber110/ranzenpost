@@ -200,7 +200,7 @@ def _event_items(payload):
 def _checked(response, path, server_failure):
     status = status_of(response)
     if status in CALENDAR_REFUSED_STATUSES:
-        raise SchoolCalendarRefusedError("school calendar refused: %d" % status)
+        raise SchoolCalendarRefusedError("school calendar refused: %d" % status, detail={"status": status})
     failure = server_failure(response)
     if failure is not None:
         raise failure
@@ -243,7 +243,7 @@ def _read_source(client, source, request, server_failure):
         raise DataError("calendar source answered no readable events", detail={"path": path}) from error
 
 
-def read_calendar(client, first, last, server_failure):
+def read_calendar(client, first, last, server_failure, resting=None):
     sources = _listed_sources(client, server_failure)
     if sources is None:
         return SchoolCalendarRead(read_multi(client, first, last, server_failure), (), ())
@@ -259,6 +259,10 @@ def read_calendar(client, first, last, server_failure):
         if request is None:
             skipped += 1
             problems.append(SourceProblem(source["id"], source["type"], source["url"].split("?", 1)[0], URL_REFUSED))
+            continue
+        if source["id"] in (resting or {}):
+            refused += 1
+            problems.append(SourceProblem(source["id"], source["type"], request[0], resting[source["id"]]))
             continue
         try:
             groups.append(_read_source(client, source, request, server_failure))
@@ -276,7 +280,7 @@ def read_calendar(client, first, last, server_failure):
         if errors:
             raise errors[0]
         if refused:
-            raise SchoolCalendarRefusedError("every school calendar source refused")
+            raise SchoolCalendarRefusedError("every school calendar source refused", problems=problems)
         if skipped:
             return SchoolCalendarRead(read_multi(client, first, last, server_failure), (), tuple(problems))
     return SchoolCalendarRead(merge_events(groups), tuple(failed), tuple(problems), tuple(answered))

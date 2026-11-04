@@ -57,6 +57,10 @@ def register_routes(app, service):
     def account_modules():
         return read_endpoint(service.account_modules)
 
+    @app.get("/api/module-pages/page")
+    def module_page(connection: str = "", module: str = "", page: str = ""):
+        return read_endpoint(lambda: service.module_page(connection, module, page))
+
     @app.get("/api/files")
     def file_listing(connection: str = "", path: str = ""):
         return read_endpoint(lambda: service.file_listing(connection, path))

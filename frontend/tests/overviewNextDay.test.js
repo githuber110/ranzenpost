@@ -44,6 +44,14 @@ describe("the next school day block of the overview", () => {
     expect(titles).toEqual(["MA", "EN"]);
   });
 
+  test("skips a day whose lessons are all cancelled like the next school day sensor", () => {
+    const { window } = loadApp();
+    const week = { lessons: [lesson(3, 1, "MA", { change_kind: "cancelled" }), lesson(4, 1, "D")], period_times: {} };
+    const { chapter } = renderNextDayAt(window, "2026-09-01T10:00:00", { 0: week });
+
+    expect(chapter.title).toBe("Donnerstag");
+  });
+
   test("on a Friday it finds Monday in the next week and names weekday and date", () => {
     const { window } = loadApp();
     const thisWeek = { lessons: [lesson(5, 1, "D")], period_times: {} };

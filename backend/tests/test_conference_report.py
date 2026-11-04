@@ -37,8 +37,8 @@ def test_the_report_follows_a_conference_to_its_teacher_page_and_records_the_boo
     assert not [path for path in client.read if path.endswith(("/book", "/delete"))]
     text = "\n".join(lines)
     assert "- Crawl from this page: 1 more linked pages" in text
-    assert "  - <word>[<word>] (radio, choices 3, disabled 2)" in text
-    assert "  - <word>[child] (select, required, options 2, values <n>, label 'Kind')" in text
+    assert "  - booking[<word>] (radio, choices 3, disabled 2)" in text
+    assert "  - booking[child] (select, required, options 2, values <n>, label 'Kind')" in text
     assert "- App form 1: POST /iserv/parentconference/attendee/conference/<n>/teacher/<n>/book; fields hidden 1, radio 1, select 1, textarea 1; open choices radio 1/3, select 2/2; required 2; submits 1 (destructive 0); errors 0" in text
     assert "- App table 1: columns 5, rows 1, rows with page link 0, rows with form 1" in text
     assert "POST /iserv/parentconference/attendee/booking/<n>/delete" in text

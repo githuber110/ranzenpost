@@ -1,5 +1,6 @@
 const HOLIDAY_STATUS_OK = "ok";
 const HOLIDAY_STATUS_UNKNOWN = "unknown";
+const HOLIDAY_STATUS_PARTIAL = "partial";
 const HOLIDAY_COVERAGE_FULL = "full";
 const HOLIDAY_KIND_PUBLIC = "public";
 const HOLIDAY_CONFIDENCE_HIGH = "high";
@@ -20,19 +21,27 @@ function holidayBox(id) {
   return ids.length === 1 ? boxes[ids[0]] : null;
 }
 
+function holidayMissingYear(data, iso) {
+  if (!data || data.status !== HOLIDAY_STATUS_PARTIAL || !Array.isArray(data.missing_years)) return false;
+  return data.missing_years.includes(Number(String(iso || "").slice(0, 4)));
+}
+
 function holidayData(id) {
   const data = holidayBox(id);
-  return data && data.status === HOLIDAY_STATUS_OK ? data : null;
+  return data && (data.status === HOLIDAY_STATUS_OK || data.status === HOLIDAY_STATUS_PARTIAL) ? data : null;
 }
 
 function holidayDay(iso, id) {
   const data = holidayData(id);
-  return (data && data.days && data.days[iso]) || null;
+  if (!data || holidayMissingYear(data, iso)) return null;
+  return (data.days && data.days[iso]) || null;
 }
 
 function holidayWeek(mondayIso, id) {
   const data = holidayData(id);
   if (!data || !Array.isArray(data.weeks)) return null;
+  const monday = parseIsoDay(mondayIso);
+  if (!monday || holidayMissingYear(data, mondayIso) || holidayMissingYear(data, isoDate(addDays(monday, 6)))) return null;
   return data.weeks.find((week) => week.start === mondayIso) || null;
 }
 
@@ -88,7 +97,7 @@ function holidayResumeDate(from, id) {
   if (!data || !data.days) return null;
   for (let offset = 0; offset < HOLIDAY_RESUME_SEARCH_DAYS; offset += 1) {
     const date = addDays(from, offset);
-    const day = data.days[isoDate(date)];
+    const day = holidayDay(isoDate(date), id);
     if (!day) return null;
     if (!day.free && !day.weekend) return date;
   }

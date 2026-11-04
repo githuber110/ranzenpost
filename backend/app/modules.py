@@ -142,7 +142,8 @@ MAIL = "mail"
 FILES = "file"
 ADDRESSBOOK = "addressbook"
 MAILING_LISTS = "mailinglist"
-LISTED_MODULES = (FILES, ADDRESSBOOK, MAILING_LISTS)
+READ_PAGE_MODULES = ("print", "course-selection", "videoconference", "poll", "todo")
+LISTED_MODULES = (FILES, ADDRESSBOOK, MAILING_LISTS) + READ_PAGE_MODULES
 READ_BY_APP = frozenset({MAIL}) | frozenset(LISTED_MODULES)
 HISTORY_LIMIT = 30
 

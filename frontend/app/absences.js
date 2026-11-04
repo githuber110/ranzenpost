@@ -197,7 +197,7 @@ function absenceChildName(entry, full) {
 
 function absenceEntryLabel(entry) {
   if (entry.label_key) {
-    const base = t(entry.label_key);
+    const base = (entry.kind === "sick" && absenceSchoolWord("sick")) || t(entry.label_key);
     return entry.target_key ? t("absence.label.withTarget", { label: base, target: t(entry.target_key) }) : base;
   }
   return entry.label || t("absence.entry.fallback");
@@ -737,7 +737,7 @@ const ABSENCE_STEP_BUILDERS = {
       hint: ABSENCE_TYPES[form.type] ? t(ABSENCE_TYPES[form.type].hint) : "",
       body: [
         el("div", { class: "sw-list" }, absenceTypeList(data).map((key) =>
-          absenceChoice(t(ABSENCE_TYPES[key].label), form.type === key, () => absenceChooseType(key))
+          absenceChoice(absenceTypeLabel(key), form.type === key, () => absenceChooseType(key))
         )),
       ],
     };

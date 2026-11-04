@@ -522,6 +522,58 @@ def test_a_refused_source_is_left_out_and_not_kept_from_before(tmp_path):
     assert len(read.events) == 4
 
 
+def test_a_refused_source_rests_for_a_day_and_is_asked_again_after(tmp_path):
+    answers = dict(FEED_ANSWERS)
+    answers[HOLIDAY_FEED] = Answer(403, None)
+    service, client = feed_service(tmp_path, answers)
+    now = [1_800_000_000.0]
+    service.clock = lambda: now[0]
+
+    service.read_school_calendar(*WINDOW)
+    asked = len(client.asked)
+    later = service.read_school_calendar(*WINDOW)
+    rested = client.asked[asked:]
+    now[0] += 24 * 3600
+    asked = len(client.asked)
+    service.read_school_calendar(*WINDOW)
+
+    assert all("holiday" not in str(params) for _, params in rested)
+    assert len(later.events) == 4
+    assert any("holiday" in str(params) for _, params in client.asked[asked:])
+
+
+def test_a_source_that_answers_401_is_asked_again_at_the_next_read(tmp_path):
+    answers = dict(FEED_ANSWERS)
+    answers[HOLIDAY_FEED] = Answer(401, None)
+    service, client = feed_service(tmp_path, answers)
+    service.read_school_calendar(*WINDOW)
+    asked = len(client.asked)
+    service.read_school_calendar(*WINDOW)
+    assert any("holiday" in str(params) for _, params in client.asked[asked:])
+
+
+def test_a_module_recheck_asks_a_resting_source_again(tmp_path):
+    answers = dict(FEED_ANSWERS)
+    answers[HOLIDAY_FEED] = Answer(403, None)
+    service, client = feed_service(tmp_path, answers)
+    service.read_school_calendar(*WINDOW)
+    service.recheck_modules()
+    asked = len(client.asked)
+    service.read_school_calendar(*WINDOW)
+    assert any("holiday" in str(params) for _, params in client.asked[asked:])
+
+
+def test_a_school_whose_every_source_refuses_rests_until_the_next_day(tmp_path):
+    answers = {key: Answer(403, None) for key in FEED_ANSWERS}
+    answers[SOURCES_PATH] = Answer(200, SOURCES)
+    service, client = feed_service(tmp_path, answers)
+    for _ in range(2):
+        with pytest.raises(SchoolCalendarRefusedError):
+            service.read_school_calendar(*WINDOW)
+    assert [path for path, _ in client.asked].count(SOURCES_PATH) == 2
+    assert len(client.asked) == 1 + len(SOURCES) + 1
+
+
 def test_an_unreadable_source_is_a_failed_source(tmp_path):
     answers = dict(FEED_ANSWERS)
     answers[HOLIDAY_FEED] = Answer(200, {"error": "denied"})

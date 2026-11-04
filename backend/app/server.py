@@ -283,7 +283,7 @@ def create_app(
             return JSONResponse(
                 status_code=400, content=messages.payload("api.holidays.error.range")
             )
-        return read_endpoint(lambda: holiday_source.range_info(first, last, _connection_config(connection)))
+        return read_endpoint(lambda: holiday_source.range_info(first, last, _connection_config(connection), partial=True))
 
     register_pinboard_routes(app, service)
 

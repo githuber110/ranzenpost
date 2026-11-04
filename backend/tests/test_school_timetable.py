@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 
+from app.iserv.client import TimeTablePage
 from app.iserv.errors import REASON_RATE_LIMITED, REASON_TIMEOUT, DataError, OutageError
 from app.iserv.models import Child, Lesson, TimetableWeek
 from app.service import TIMETABLE_UNREADABLE_KEY, IServService
@@ -48,6 +49,9 @@ class LegacyClient:
     def get_children(self):
         return [Child("uuid-old", "Kim Muster")]
 
+    def read_time_table_page(self):
+        return TimeTablePage("", True, self.get_children())
+
     def read_time_table_week(self, child_id, reference=None):
         self.timetable_calls.append((child_id, reference))
         lesson = Lesson("07.09.2026", 1, 1, "D", "BEI", "R1", "1a")
@@ -79,6 +83,9 @@ class SchoolApp:
     def school_settings(self):
         self.settings_calls += 1
         return self.settings
+
+    def school_settings_or_raise(self):
+        return self.school_settings()
 
     def period_times(self):
         return {"1": "08:00"}

@@ -138,6 +138,7 @@ const VIEWS = [
   { key: "texts", label: "nav.texts", icon: "texts" },
   { key: "infodisplay", label: "nav.infodisplay", icon: "screen" },
   { key: "whiteboards", label: "nav.whiteboards", icon: "board" },
+  { key: "modulepages", label: "nav.modulepages", icon: "more" },
 ];
 const VIEW_BY_KEY = Object.fromEntries(VIEWS.map((item) => [item.key, item]));
 const MORE_VIEW = { key: "more", label: "nav.more", icon: "more" };
@@ -162,6 +163,7 @@ const VIEW_MODULES = {
   texts: ["texts"],
   infodisplay: ["infodisplay"],
   whiteboards: ["whiteboards"],
+  modulepages: MODULE_PAGE_NAMES,
   settings: [],
 };
 const MODULE_ISSUE_URL = "https://github.com/githuber110/ranzenpost/issues/new";
@@ -397,8 +399,13 @@ function changeLabel(kind) {
   return CHANGE_KEYS[kind] ? t(CHANGE_KEYS[kind]) : t("timetable.change.generic");
 }
 
+function absenceSchoolWord(type) {
+  const term = type === "sick" && state.absence && state.absence.data ? state.absence.data.sick_note_term : "";
+  return term && currentLanguage() === "de" ? term : "";
+}
+
 function absenceTypeLabel(type) {
-  return ABSENCE_TYPES[type] ? t(ABSENCE_TYPES[type].label) : "";
+  return absenceSchoolWord(type) || (ABSENCE_TYPES[type] ? t(ABSENCE_TYPES[type].label) : "");
 }
 
 function targetLabel(target) {
@@ -486,6 +493,7 @@ const state = {
   textsFilter: "",
   infodisplay: null,
   whiteboards: null,
+  modulePageStack: [],
   mail: null,
   mailCountsError: null,
   mailAccount: null,
@@ -577,7 +585,7 @@ const stateStore = createStore(state, {
   reportError: (error) => (window.reportError ? window.reportError(error) : window.console.error(error)),
 });
 
-const OUTAGE_VIEWS = ["overview", "timetable", "absence", "post", "messenger", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", ...ACCOUNT_MODULES];
+const OUTAGE_VIEWS = ["overview", "timetable", "absence", "post", "messenger", "conferences", "calendar", "tasks", "news", "mail", "files", "contacts", "modulepages", ...ACCOUNT_MODULES];
 const BOOT_TIMEOUT_MS = 25000;
 
 function hashIndex(text, length) {
@@ -909,6 +917,7 @@ const VIEW_ENTRY_DEFAULTS = {
   texts: { textsSearch: "", textsFilter: "" },
   infodisplay: {},
   whiteboards: {},
+  modulepages: { modulePageStack: [] },
   settings: { helpPage: false, settingsPage: null, blocksSearch: "" },
 };
 
@@ -1128,6 +1137,7 @@ function headerTitleFor(view) {
   }
   if (view === "files") return filesHeader();
   if (view === "contacts") return { text: t("contacts.title") };
+  if (view === "modulepages") return modulePagesHeader();
   if (view === "settings") {
     if (settingsPaneActive()) return { text: t("settings.title"), onBack: () => setView(state.settingsReturn || "overview") };
     if (state.helpPage) return { text: t("help.title"), onBack: closeHelpPage };
@@ -1697,7 +1707,7 @@ function loadRest() {
   loadMailCounts();
   loadAccountModules();
   loadHolidays().then(rerender).catch(routeOrIgnoreBackgroundFailure);
-  if (moduleOn("letters")) loadLetters("current");
+  if (moduleOn("letters")) autoLoad(lettersLoadKey("current"), () => loadLetters("current"));
   if (moduleOn("pinboard")) loadPinboard();
   if (moduleOn("conferences")) loadConferences();
   if (moduleOn("calendar")) loadSchoolEvents();
@@ -1708,7 +1718,7 @@ function loadRest() {
     loadMarks();
     loadCancellations();
   }
-  if (moduleOn("absences")) loadAbsences();
+  if (moduleOn("absences")) autoLoad("absence", loadAbsences);
   if (moduleOn("messenger")) loadMessengerRooms();
 }
 
@@ -1748,6 +1758,8 @@ function activeViewLoadKeys() {
       return ["filesListing"];
     case "contacts":
       return ["mailingLists"];
+    case "modulepages":
+      return ["accountModules"];
     case "absence":
       return ["absence"];
     case "timetable":
@@ -1869,6 +1881,9 @@ async function refreshActiveView() {
       break;
     case "contacts":
       await Promise.all([loadAccountModules(), refreshContacts()]);
+      break;
+    case "modulepages":
+      await refreshModulePage();
       break;
     default:
       rerender();
@@ -2143,6 +2158,7 @@ function viewFor(view) {
     case "mail": return state.mailCompose ? mailComposeView() : state.mailSettings ? mailSettingsView() : state.mailDetail && !paneOpen() ? mailDetailView() : mailView();
     case "files": return filesView();
     case "contacts": return contactsView();
+    case "modulepages": return modulePagesView();
 
     case "settings": return settingsPaneActive() ? settingsView() : state.helpPage ? helpPageView() : state.settingsPage ? settingsPageView() : state.settingsSchoolId && !paneOpen() ? schoolPageView() : settingsView();
     default: return overviewView();

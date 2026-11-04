@@ -300,6 +300,8 @@ def _role_of(control, found, children):
         return ROLE_WHOLE_DAY if _whole_day(found) else ""
     if control.kind == "textarea":
         return ROLE_REASON
+    if control.kind == "text" and words(control.name.replace("[", " ").replace("]", " ")) & REASON_WORDS:
+        return ROLE_REASON
     if control.kind in TEXT_DATE_KINDS or control.kind == "time":
         role = _date_role(control, found)
         if role:

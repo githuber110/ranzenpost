@@ -22,9 +22,12 @@ from .iserv.errors import (
     LOGIN_TWOFACTOR_KEY,
     REASON_BAD_CREDENTIALS,
     REASON_CODE_STEP_FAILED,
+    REASON_CONNECTION,
     REASON_DEFAULT_PASSWORD,
+    REASON_DNS,
     REASON_LOCKED,
     REASON_SESSION_NOT_OPENED,
+    REASON_TIMEOUT,
     REASON_TWOFACTOR_SETUP,
     REASON_UNKNOWN_ACCOUNT,
     DataError,
@@ -89,6 +92,9 @@ TIMETABLE_PLAN_KEY = "notify.timetable.plan"
 TIMETABLE_COURSES_KEY = "notify.timetable.courses"
 PUSH_VIEW_KEY = "push_view"
 COURSE_HINT_KEY = "course_hint_sent"
+COURSE_HINT_TRIED_KEY = "course_hint_tried"
+COURSE_HINT_RETRY_SECONDS = 24 * 3600
+CLEAR_PENDING_KEY = "clear_pending"
 PARALLEL_PENDING = "parallel_pending"
 MESSENGER_KEY = "notify.messenger.unread"
 TASKS_KEY = "notify.tasks.new"
@@ -109,6 +115,7 @@ OWNED_CONFIG_KEYS = ("poll_state", AUTH_NOTIFIED_FLAG, AUTH_NOTIFIED_REASON, LEG
 OUTAGE_SINCE_KEY = "notify.outage.since"
 OUTAGE_BACK_KEY = "notify.outage.back"
 OUTAGE_PUSH_AFTER_SECONDS = 12 * 60 * 60
+NETWORK_REASONS = (REASON_DNS, REASON_CONNECTION, REASON_TIMEOUT)
 REMEMBER_SECONDS = 180 * 24 * 60 * 60
 DETAIL_FIELD = "detail"
 DETAIL_KEY = "detail_key"
@@ -270,6 +277,26 @@ class Poller:
         if callable(listed):
             return [(connection, connection.store) for connection in listed()]
         return [(self.service, self._scoped_store(self.service))]
+
+    @staticmethod
+    def _note_shared_outage(events, polled):
+        reasons = [
+            event.get("reason")
+            for event in events
+            if event.get("error") == integration.ERROR_OUTAGE and event.get("connection_id")
+        ]
+        if polled >= 2 and len(reasons) == polled and all(reason in NETWORK_REASONS for reason in reasons):
+            logger.warning(
+                "all %d schools unreachable at the same time (%s), the network of this Home Assistant is the likely cause",
+                polled,
+                ", ".join(sorted(set(reasons))),
+            )
+
+    @staticmethod
+    def _changes_vanished(previous, rebased, week_anchor, changes_count):
+        if previous is None or rebased or changes_count or previous.get(CLEAR_PENDING_KEY):
+            return False
+        return previous.get("week_anchor") == week_anchor and int(previous.get("changes_count") or 0) > 0
 
     def _notify(self, event, name, message, trigger):
         target = self.notifiers.get(event)
@@ -526,6 +553,7 @@ class Poller:
             if outcome["error"]:
                 errors.append(outcome["error"])
                 details.extend(self._error_details(outcome))
+        self._note_shared_outage(events, len(targets))
         integration.record_poll(self.store, now_epoch, not errors, errors[0] if errors else "", changes=changes)
         elapsed = int((time.monotonic() - started) * 1000)
         named = f" ({', '.join(details)})" if details else ""
@@ -587,7 +615,7 @@ class Poller:
         logger.warning("poll school#%s outage: %s", connection_id, error_kind(error))
         since = int(slot.get(integration.OUTAGE_SINCE) or now_epoch)
         if not slot.get(integration.OUTAGE_NOTIFIED) and now_epoch - since >= OUTAGE_PUSH_AFTER_SECONDS:
-            variables = {"school": self._school_tag(connection, True), "since": integration.berlin_stamp(since)}
+            variables = {"school": self._school_tag(connection, True), "since": integration.berlin_stamp(since, language)}
             trigger = f"school#{connection_id}: unreachable for {(now_epoch - since) // 3600} hours"
             if self._notify("outage", "", messages.text_in(language, OUTAGE_SINCE_KEY, variables), trigger):
                 integration.mark_outage_notified(self.store, connection_id)
@@ -786,6 +814,15 @@ class Poller:
                 previous_plan_signature = previous.get("plan_signature") if previous else None
                 previous_anchor = previous.get("week_anchor") if previous else None
                 regular_plan_signature = previous.get("regular_plan_signature") if previous else None
+                if self._changes_vanished(previous, rebased, week_anchor, changes_count):
+                    logger.info(
+                        "poll school#%s child#%s: changes vanished in one answer, kept until the next poll confirms it",
+                        connection_id,
+                        child_id,
+                    )
+                    poll_state[key] = dict(previous, **{CLEAR_PENDING_KEY: True})
+                    events.append({"child_key": key, "changed": False, "has_changes": True})
+                    continue
                 if change_filter is None:
                     change_filter = self._change_filter(config)
                 fresh_changes, change_keys = integration.detect_changes(
@@ -844,7 +881,9 @@ class Poller:
                         plan_trigger,
                     )
                 hint_sent = bool(previous and previous.get(COURSE_HINT_KEY))
-                if courses_pending and not hint_sent:
+                hint_tried = float((previous or {}).get(COURSE_HINT_TRIED_KEY) or 0)
+                if courses_pending and not hint_sent and now_epoch - hint_tried >= COURSE_HINT_RETRY_SECONDS:
+                    hint_tried = now_epoch
                     hint_sent = self._notify(
                         "timetable",
                         name,
@@ -871,6 +910,7 @@ class Poller:
                     COURSE_SIGNATURE: course_signature,
                     PUSH_VIEW_KEY: view_kind,
                     COURSE_HINT_KEY: bool(hint_sent),
+                    COURSE_HINT_TRIED_KEY: hint_tried,
                     SOURCE_STATE_KEY: source,
                     CHANGES_FORMAT_KEY: changes_format,
                     integration.CHANGE_KEYS: change_keys,
@@ -1009,6 +1049,8 @@ class Poller:
         conferences = [facts for facts in (conference_notices.conference_facts(item, today) for item in items) if facts]
         reader = getattr(connection, "conference_page", None)
         pages = {}
+        unread = set()
+        occupied = set()
         wanted = [facts for facts in conferences if facts["page"] and (facts["day"] is None or facts["day"] >= today)]
         for facts in wanted[: conference_notices.MAX_PAGES] if callable(reader) else []:
             try:
@@ -1017,8 +1059,15 @@ class Poller:
                 raise
             except Exception as error:
                 logger.info("poll school#%s conference page not read: %s", connection_id, error_kind(error))
+                unread.add(facts["id"])
                 continue
-            pages[facts["id"]] = conference_notices.bookings_of(page, facts)
+            if not conference_notices.page_read(page):
+                logger.info("poll school#%s conference page shows nothing readable, its bookings stay as known", connection_id)
+                unread.add(facts["id"])
+                continue
+            pages.setdefault(facts["id"], []).extend(conference_notices.bookings_of(page, facts))
+            occupied |= conference_notices.occupied_of(page, facts)
+        pages = {key: value for key, value in pages.items() if key not in unread}
         previous = poll_state.get(conference_notices.STATE_KEY)
         checked = int(previous.get("checked_at") or 0) if isinstance(previous, dict) else 0
         fresh_config = store.load_config() if store is not None else {}
@@ -1031,7 +1080,7 @@ class Poller:
         gap = started - checked if checked else self.poll_interval
         pushes, fresh = conference_notices.plan(
             previous, conferences, pages, now, own_keys=own_keys,
-            own_change_since=bool(own_change) and own_change >= checked, gap_seconds=gap,
+            own_change_since=bool(own_change) and own_change >= checked, gap_seconds=gap, occupied=occupied,
         )
         fresh["checked_at"] = started
         delivered = 0

@@ -74,6 +74,7 @@ for (const width of [320, 390, 1024]) {
         const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const due = [yesterday.getDate(), yesterday.getMonth() + 1].map((part) => String(part).padStart(2, "0")).join(".") + "." + yesterday.getFullYear();
         await expect(page.locator(".sheet .row-meta")).toContainText(due);
+        await expect(page.locator(".sheet .news-text p").first()).toHaveText("Follow the instructions in class.");
         expect(await page.locator(".sheet [href], .sheet [target]").count()).toBe(0);
         await expectInside(page, page.locator(".sheet .row-meta"), width);
       });

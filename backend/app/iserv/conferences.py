@@ -1,11 +1,11 @@
 import re
 from datetime import date
-from urllib.parse import parse_qsl, urljoin, urlsplit
+from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from .html import is_safe_url
-from .pages import WRITE_WORDS, action_link
+from .pages import SEGMENT_WORD, WRITE_WORDS, action_link
 
 EMPTY_PHRASE = "keine elternsprechtage"
 MODULE_PREFIX = "/iserv/parentconference/"
@@ -54,6 +54,12 @@ MAX_TEXT = 2000
 MAX_CELL = 400
 MAX_BLOCKS = 400
 MAX_OPTIONS = 500
+AUTH_PATH = "/iserv/auth/"
+LINK_PAGE = "page"
+LINK_ACTION = "action"
+LINK_PLAIN = "plain"
+LATER_WORDS = ("ajax", "url", "source", "src")
+LATER_DEPTH = 3
 SPACE = re.compile(r"\s+")
 
 
@@ -74,7 +80,7 @@ def _classes(node):
     return {str(value).lower() for value in node.get("class") or []}
 
 
-def module_path(href, base_url):
+def module_path(href, base_url, prefix=MODULE_PREFIX, root=False):
     if not isinstance(href, str):
         return None
     raw = href.strip()
@@ -87,7 +93,7 @@ def module_path(href, base_url):
     if target.scheme not in ("http", "https") or (base.netloc and target.netloc.lower() != base.netloc.lower()):
         return None
     path = target.path or "/"
-    if not path.startswith(MODULE_PREFIX) or ".." in path.split("/"):
+    if not (path.startswith(prefix) or (root and path == prefix.rstrip("/"))) or ".." in path.split("/"):
         return None
     return path + ("?" + target.query if target.query else "")
 
@@ -241,9 +247,15 @@ def _table_headers(table):
 
 
 class PageReader:
-    def __init__(self, base_url):
+    def __init__(self, base_url, prefix=MODULE_PREFIX, read_only=False, never=frozenset(), allowed=None):
         self.base_url = base_url
-        self.own_path = (module_path(base_url, base_url) or "").split("?", 1)[0]
+        self.prefix = prefix
+        self.read_only = read_only
+        self.never = never
+        self.allowed = allowed
+        self.own_path = (module_path(base_url, base_url, prefix, read_only) or "").split("?", 1)[0]
+        self.hidden_forms = 0
+        self.deferred = False
         self.blocks = []
         self.forms = []
         self.notices = []
@@ -258,12 +270,15 @@ class PageReader:
         if not title and soup.title is not None:
             title = _clean(soup.title.get_text(" ").split(" - ")[0], MAX_CELL)
         self._walk(root, {heading} if heading is not None else set())
-        return {
+        page = {
             "title": title,
             "blocks": self.blocks[:MAX_BLOCKS],
             "forms": self.forms,
             "notices": self.notices,
         }
+        if self.read_only:
+            page.update(hidden_forms=self.hidden_forms, deferred=self.deferred)
+        return page
 
     def _add(self, block):
         if block.get("kind") == "text":
@@ -274,6 +289,28 @@ class PageReader:
             self.blocks[-1]["links"].extend(block["links"])
             return
         self.blocks.append(block)
+
+    def _path(self, href):
+        return module_path(href, self.base_url, self.prefix, self.read_only)
+
+    def _action_path(self, path):
+        words = {word.casefold() for word in SEGMENT_WORD.findall(unquote(str(path or "")))}
+        return write_link(path) or bool(words & (self.never | WRITE_WORDS))
+
+    def _link_kind(self, path, anchor=None):
+        if not self.read_only:
+            return LINK_ACTION if write_link(path) else LINK_PAGE
+        if self.allowed is not None and self.allowed(path):
+            return LINK_PAGE
+        if self._action_path(path) or (anchor is not None and _action_link(anchor)):
+            return LINK_ACTION
+        return LINK_PLAIN
+
+    def _dropped_anchor(self, node):
+        if node.name != "a":
+            return False
+        path = self._path(node.get("href"))
+        return _action_link(node) or (path is not None and self._link_kind(path, node) == LINK_ACTION)
 
     def _walk(self, node, skip):
         for child in list(node.children):
@@ -300,6 +337,10 @@ class PageReader:
                 self._add(dict(notice, kind="notice"))
             return
         if name == "form":
+            if self.read_only:
+                if self._note_hidden_form(node):
+                    self._walk(node, skip)
+                return
             index = self._form(node)
             if index is not None:
                 self._add({"kind": "form", "form": index})
@@ -334,7 +375,7 @@ class PageReader:
         return any(isinstance(child, Tag) and (child.name in BLOCK_TAGS or child.name in SKIPPED_TAGS or _notice_tone(child)) for child in node.descendants)
 
     def _inline(self, node):
-        text = _clean(node.get_text(" "))
+        text = _clean(" ".join(_visible_strings(node, (), self._dropped_anchor))) if self.read_only else _clean(node.get_text(" "))
         links, writes = self._links_in(node)
         own = " ".join(link["label"] for link in links + writes)
         if text and text != own:
@@ -344,6 +385,8 @@ class PageReader:
         self._add_link_forms(writes)
 
     def _add_link_forms(self, writes):
+        if self.read_only:
+            return
         for link in writes:
             self._add({"kind": "form", "form": self._link_form(link)})
 
@@ -372,7 +415,9 @@ class PageReader:
         return form["index"]
 
     def _anchor(self, node):
-        path = module_path(node.get("href"), self.base_url)
+        if self.read_only and self._dropped_anchor(node) and not self._links_in(node)[0]:
+            return
+        path = self._path(node.get("href"))
         if path and (is_tab_path(path) or self._upward(path)):
             return
         links, writes = self._links_in(node)
@@ -390,11 +435,13 @@ class PageReader:
         writes = []
         anchors = [node] if node.name == "a" else node.find_all("a", href=True)
         for anchor in anchors:
-            path = module_path(anchor.get("href"), self.base_url)
+            path = self._path(anchor.get("href"))
             if not path or is_tab_path(path) or self._upward(path):
                 continue
             label = _clean(anchor.get_text(" "), MAX_CELL) or _clean(anchor.get("title") or anchor.get("aria-label"), MAX_CELL)
-            (writes if write_link(path) else found).append({"label": label, "path": path})
+            kind = self._link_kind(path, anchor)
+            if kind != LINK_PLAIN:
+                (writes if kind == LINK_ACTION else found).append({"label": label, "path": path})
         return found, writes
 
     def _upward(self, path):
@@ -443,13 +490,17 @@ class PageReader:
                     self.forms[index]["row"] = list(cells)
             links, writes = self._links_in(row)
             for href in _data_links(row):
-                path = module_path(href, self.base_url)
+                path = self._path(href)
                 if path and not is_tab_path(path) and all(link["path"] != path for link in links + writes):
-                    (writes if write_link(path) else links).append({"label": "", "path": path})
-            for link in writes:
-                forms.append(self._link_form(link, cells))
+                    kind = self._link_kind(path)
+                    if kind != LINK_PLAIN:
+                        (writes if kind == LINK_ACTION else links).append({"label": "", "path": path})
+            if not self.read_only:
+                forms.extend(self._link_form(link, cells) for link in writes)
             if any(cells) or forms or links:
                 rows.append({"cells": cells, "links": links, "forms": forms})
+        if self.read_only and not rows and _loads_later(table):
+            self.deferred = True
         caption = table.find("caption")
         return {
             "kind": "table",
@@ -459,15 +510,31 @@ class PageReader:
         }
 
     def _cell_text(self, cell):
-        return " ".join(_visible_strings(cell, CELL_EXCLUDED_TAGS))
+        return " ".join(_visible_strings(cell, CELL_EXCLUDED_TAGS, self._dropped_anchor if self.read_only else None))
+
+    def _note_hidden_form(self, node):
+        if AUTH_PATH in str(node.get("action") or ""):
+            return False
+        controls = node.find_all(["input", "select", "textarea", "button"])
+        if any(control.name != "input" or str(control.get("type") or "").lower() != "hidden" for control in controls):
+            self.hidden_forms += 1
+        return True
 
     def _form(self, node):
+        if self.read_only:
+            self._note_hidden_form(node)
+            return None
         form = parse_form(node, self.base_url)
         if form is None:
             return None
         form["index"] = len(self.forms)
         self.forms.append(form)
         return form["index"]
+
+
+def _loads_later(table):
+    nodes = [table] + list(table.parents)[:LATER_DEPTH]
+    return any(name.startswith("data-") and any(word in name for word in LATER_WORDS) for node in nodes for name in node.attrs)
 
 
 def parse_conference_page(html, base_url):

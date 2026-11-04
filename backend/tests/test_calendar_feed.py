@@ -817,7 +817,7 @@ def test_the_feed_speaks_the_language_the_app_is_set_to(tmp_path):
     ics = _build(store, _subscription(store))
 
     assert "Lesson 1 Deutsch (Behrens)" in ics
-    assert "Date: 02.09.2026" in ics
+    assert "Date: 09/02/2026" in ics
     assert "Datum:" not in ics
 
 

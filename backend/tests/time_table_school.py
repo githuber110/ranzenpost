@@ -336,13 +336,17 @@ class TimeTableSchool:
             return Answer(url, text="<html><body><p>Wartung</p></body></html>")
         return Answer(url, text=child_page(self.options))
 
+    def _unknown_child(self, params):
+        wanted = (params or {}).get("childId")
+        return bool(wanted) and bool(self.options) and wanted not in {value for value, _ in self.options}
+
     def _data(self, url, params):
         if self.on_data is not None:
             self.on_data()
         if self.time_table == FORBIDDEN:
             return Answer(url, 403, "<html><head><title>Riverside Primary</title></head><body><h1>Zugriff verweigert</h1></body></html>")
-        if self.time_table == BROKEN:
-            return Answer(url, 500, "<html><body>Fehler</body></html>")
+        if self.time_table == BROKEN or self._unknown_child(params):
+            return Answer(url, 500, "<html><head><title>Riverside Primary</title></head><body><h1>Interner Fehler</h1></body></html>")
         if self.time_table == ODD:
             return Answer(url, payload={"rows": [{"cells": 3}]}, content_type="application/json")
         week_filter = json.loads(params.get("filter") or "{}")

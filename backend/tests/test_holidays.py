@@ -669,6 +669,16 @@ def test_the_holiday_endpoint_falls_back_to_a_week_offset(client):
     ).days == 6
 
 
+def test_the_holiday_endpoint_keeps_the_covered_year_when_the_next_one_is_missing(client):
+    http, _, fetcher = client
+    http.get("/api/holidays?start=2026-12-21&end=2026-12-27")
+    fetcher.offline = True
+    body = http.get("/api/holidays?start=2026-12-28&end=2027-01-03").json()
+    assert body["status"] == "partial"
+    assert body["missing_years"] == [2027]
+    assert body["days"]["2026-12-28"]["free"] is True
+
+
 def test_the_holiday_endpoint_refuses_an_oversized_range(client):
     http, _, _ = client
     response = http.get("/api/holidays?start=2026-01-01&end=2027-12-31")

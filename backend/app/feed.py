@@ -156,8 +156,8 @@ def _optional_text(language, key):
     return _translated(language, key)
 
 
-def _german_date(value):
-    return value.strftime("%d.%m.%Y")
+def _date(language, value):
+    return messages.date_in(language, value)
 
 
 def _detail_line(language, label_key, value):
@@ -252,7 +252,7 @@ def move_direction(lesson):
 
 def move_target(language, moved, origin=False):
     day = holidays.parse_day(moved.get("date"))
-    shown = day.strftime("%d.%m.") if day else str(moved.get("date") or "")
+    shown = messages.date_in(language, day, short=True) if day else str(moved.get("date") or "")
     period = moved.get("period")
     end = moved.get("period_end") or period
     base = "calendar.move.fromTarget" if origin else "calendar.move.target"
@@ -299,7 +299,7 @@ def lesson_summary(language, lesson, exam=None):
 
 def lesson_description(language, lesson, day, parallel_count, start_time=None, exam=None, minutes=LESSON_MINUTES):
     none_text = _text(language, "common.none")
-    rows = [_detail_line(language, "calendar.detail.date", _german_date(day))]
+    rows = [_detail_line(language, "calendar.detail.date", _date(language, day))]
     if start_time is None:
         start_time = lesson.get("start_time")
     if start_time:
@@ -644,7 +644,7 @@ def mark_summary(language, config, entry):
 
 def mark_description(language, config, entry, day, start_time, lesson):
     none_text = _text(language, "common.none")
-    rows = [_detail_line(language, "calendar.detail.date", _german_date(day))]
+    rows = [_detail_line(language, "calendar.detail.date", _date(language, day))]
     if start_time:
         opening, closing = _lesson_time_range(start_time)
         rows.append(
@@ -780,12 +780,12 @@ def absence_description(language, config, entry, first, last):
         _detail_line(
             language,
             "absence.fact.range",
-            _german_date(first)
+            _date(language, first)
             if first == last
             else _text(
                 language,
                 "calendar.detail.dateRange",
-                {"start": _german_date(first), "end": _german_date(last)},
+                {"start": _date(language, first), "end": _date(language, last)},
             ),
         )
     ]
@@ -930,10 +930,10 @@ def holiday_events(language, tag, day_map, start, end, kind, split_days):
                         _text(
                             language,
                             "calendar.detail.dateRange",
-                            {"start": _german_date(first), "end": _german_date(last)},
+                            {"start": _date(language, first), "end": _date(language, last)},
                         )
                         if last != first
-                        else _german_date(first),
+                        else _date(language, first),
                     ),
                     location="",
                     start=first,
@@ -1034,7 +1034,7 @@ def notice_events(language, tag, today, blocked, window, last_success, now_epoch
                 "holidays",
                 "calendar.notice.holidays.summary",
                 "calendar.notice.holidays.description",
-                {"start": _german_date(span[0]), "end": _german_date(span[1])},
+                {"start": _date(language, span[0]), "end": _date(language, span[1])},
             )
         )
     if not last_success:
@@ -1057,7 +1057,7 @@ def notice_events(language, tag, today, blocked, window, last_success, now_epoch
                 "stale",
                 "calendar.notice.stale.summary",
                 "calendar.notice.stale.description",
-                {"time": berlin.local_from_epoch(last_success).strftime("%d.%m.%Y %H:%M")},
+                {"time": messages.stamp_in(language, berlin.local_from_epoch(last_success))},
             )
         )
     return events
@@ -1117,7 +1117,7 @@ def own_entry_events(language, tag, config, snapshot, child_id, day_map, blocked
         finish = datetime(day.year, day.month, day.day) + timedelta(minutes=item["end"])
         kind = _text(language, OWN_KIND_KEYS.get(entry.get("type"), OWN_KIND_KEYS[own_entries.TYPE_APPOINTMENT]))
         rows_text = [
-            _detail_line(language, "calendar.detail.date", _german_date(day)),
+            _detail_line(language, "calendar.detail.date", _date(language, day)),
             _detail_line(
                 language,
                 "calendar.detail.time",

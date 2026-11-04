@@ -1003,6 +1003,7 @@ function nextSchoolDay(child, todayIso) {
       if (iso <= todayIso) continue;
       const lessons = todayLessons(week, day);
       if (holidayQuietsLessons(holidayDay(iso, schoolOfChild(child)))) continue;
+      if (lessons.every((lesson) => lessonDropped(lesson, child.key))) continue;
       return { iso, date, week, lessons };
     }
   }
@@ -1130,18 +1131,19 @@ function openTimetableOf(childKey, iso) {
   setView("timetable", options);
 }
 
-function holidaysUnsure(school) {
+function holidaysUnsure(school, isos) {
   const boxes = state.holidays;
   if (!boxes || typeof boxes !== "object") return false;
   const ids = Object.keys(boxes);
   const key = ids.includes(school) ? school : ids.length === 1 ? ids[0] : null;
   if (key === null) return false;
   const box = boxes[key];
-  return !box || box.status === HOLIDAY_STATUS_UNKNOWN;
+  if (!box || box.status === HOLIDAY_STATUS_UNKNOWN) return true;
+  return (isos || []).some((iso) => holidayMissingYear(box, iso));
 }
 
 function holidayNoteBlock(key, school, isos) {
-  if (holidaysUnsure(school)) return overviewNoteBlock(key, t("overview.holidays.unknown"));
+  if (holidaysUnsure(school, isos)) return overviewNoteBlock(key, t("overview.holidays.unknown"));
   const day = isos.map((iso) => (holidayIsUncertain(iso, school) ? holidayDay(iso, school) : null)).find(Boolean);
   if (!day) return null;
   const name = holidayName(day) || t(day.kind === HOLIDAY_KIND_PUBLIC ? "holidays.day.public" : "holidays.day.free");
@@ -1187,8 +1189,9 @@ function changesChapter(size) {
   }
   const notes = [];
   if (failed) notes.push(overviewNoteBlock("changes:partial", t("overview.changes.partial", { name: childShortName(failed.child) })));
-  const unsure = state.children.map(schoolOfChild).find((school) => holidaysUnsure(school));
-  if (unsure !== undefined) notes.push(holidayNoteBlock("changes:holidays", unsure, []));
+  const isos = rows.map((entry) => entry.iso);
+  const unsure = state.children.map(schoolOfChild).find((school) => holidaysUnsure(school, isos));
+  if (unsure !== undefined) notes.push(holidayNoteBlock("changes:holidays", unsure, isos));
   chapterRows(chapter, size, block, rows, (entry) => {
     const lesson = entry.lesson;
     const title = lesson.subject_label || lesson.subject_code || t("timetable.lesson.fallback");

@@ -82,6 +82,7 @@ class ChildService:
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
         self._page_ids = None
+        self._account_ids = False
         self._page_refusal = (0.0, None, None)
         self._retired = False
 
@@ -90,6 +91,7 @@ class ChildService:
         self._children_cache = (0.0, {})
         self._listed_ids = (0.0, set())
         self._page_ids = None
+        self._account_ids = False
         self._page_refusal = (0.0, None, None)
 
     def _remembered_page_refusal(self, client):
@@ -141,7 +143,7 @@ class ChildService:
         self.connection._timetable_page_denied = False
         listed = self._children_from_school_account()
         if listed:
-            self._remember_page_ids({})
+            self._remember_page_ids({}, from_account=True)
             self._migrate_stored_children(listed, marker)
             return self._keep(listed, marker, remember=True)
         if not self.connection.module_available(modules.TIMETABLE):
@@ -209,9 +211,13 @@ class ChildService:
     def _as_stored(self, children, source):
         return [child for child, _ in self._identities(children, source)]
 
-    def _remember_page_ids(self, page_ids):
+    def _remember_page_ids(self, page_ids, from_account=False):
         if not self._retired:
             self._page_ids = page_ids
+            self._account_ids = from_account
+
+    def ids_from_school_account(self):
+        return self._account_ids
 
     def timetable_page_id(self, child_id):
         child_id = str(child_id or "")

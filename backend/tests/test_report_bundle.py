@@ -504,7 +504,7 @@ def test_a_school_without_the_timetable_we_read_lists_the_old_module_as_present_
     assert entry["name"] == "Stundenplan (veraltet)"
     assert registry["probes"][modules.LEGACY_TIMETABLE]["status"] == 200
     assert modules.normalize(registry)["probes"][modules.LEGACY_TIMETABLE]["verdict"] == modules.AVAILABLE
-    assert "not supported: 2 (todo, timetable)" in modules.summary(registry)
+    assert "not supported: 1 (timetable)" in modules.summary(registry)
     rows = diagnostics.module_rows(modules.normalize(registry))
     legacy = next(row for row in rows if row["slug"] == diagnostics.LEGACY_TIMETABLE)
     assert legacy["status"] == diagnostics.STATUS_UNSUPPORTED
@@ -746,7 +746,7 @@ def test_option_values_appear_only_in_write_forms_and_hide_ids_and_names():
     <input type="checkbox" name="rows[]" value="77" form="edit">
     """
     lines = pageshape.html_skeleton(html)
-    assert "  - <word>[child] (select, options 2, values <n>)" in lines
+    assert "  - booking[child] (select, options 2, values <n>)" in lines
     assert "  - settings[limit] (select, options 2, values 10 / 50)" in lines
     assert "  - owner (select, options 2, values <word>.<word>)" in lines
     assert "  - filter[group] (select, options 1)" in lines

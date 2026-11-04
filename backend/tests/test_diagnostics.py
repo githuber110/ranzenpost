@@ -350,7 +350,7 @@ def test_the_report_lists_every_module_row_with_probe_facts(tmp_path):
     assert "| /iserv/parentletter/parent/index |" in letters
     texts = next(line for line in rows if "| todo |" in line)
     assert "| To-do |" in texts
-    assert "| present, not supported |" in texts
+    assert "| present, read by the app |" in texts
     mystery = next(line for line in rows if "| mystery |" in line)
     assert "| unknown |" in mystery
     native = next(line for line in rows if "| timetable |" in line)
@@ -637,6 +637,18 @@ def test_redact_replaces_names_hosts_mails_and_tokens_but_keeps_plain_words():
     assert diagnostics.redact("a b", diagnostics.RedactionWords(children=["a"])) == "a b"
 
 
+def test_iserv_module_names_survive_a_teacher_with_the_same_short_name():
+    words = diagnostics.RedactionWords(teachers=["NEU"])
+    assert diagnostics.redact("| Stunden- und Vertretungsplan (neu) | dsa-timetable |", words) == "| Stunden- und Vertretungsplan (neu) | dsa-timetable |"
+    assert diagnostics.redact("Vertretung durch Neu", words) == "Vertretung durch <teacher>"
+    assert diagnostics.redact("Kalender-Gymnasium", diagnostics.RedactionWords(schools=["Kalender-Gymnasium"])) == "<school>"
+    headers = diagnostics.RedactionWords(teachers=["NEU", "Klein"])
+    assert diagnostics.redact("- Table headers: Titel | Neu | Klein", headers) == "- Table headers: Titel | Neu | <teacher>"
+    assert diagnostics.redact("- Main text: Neu", headers) == "- Main text: <teacher>"
+    assert diagnostics.redact("- Table headers: Mai | Sonntag", diagnostics.RedactionWords(children=["Mai"], teachers=["Sonntag"])) == "- Table headers: <child> | <teacher>"
+    assert diagnostics.redact("odd " + chr(0) + "7" + chr(0) + " Neu", words) == "odd " + chr(0) + "7" + chr(0) + " <teacher>"
+
+
 def test_redact_stays_linear_on_pathological_long_lines():
     words = diagnostics.RedactionWords(hosts=["gymnasium-nord.example"], secrets=["SuperSecretPass1"])
     pathological_lines = (
@@ -772,7 +784,7 @@ def test_the_endpoint_returns_the_report_and_honours_the_structure_flag(tmp_path
     body = answer.json()
     assert body["report"].startswith("# Ranzenpost report")
     assert "### Page structure" in body["report"]
-    assert body["segments"] == ["todo", "mystery"]
+    assert body["segments"] == ["mystery"]
     plain = client.get("/api/diagnostics?structure=0").json()["report"]
     assert "### Page structure" not in plain
 

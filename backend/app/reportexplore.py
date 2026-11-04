@@ -72,6 +72,10 @@ RULES = {
     ),
     "infodisplay": ModuleRule(routes=_words("show view display"), details=True, media=True),
     "methodenguide": ModuleRule(media=True, frames=True),
+    "althaus-fm": ModuleRule(
+        routes=_words(DETAIL_ROUTES + " request participate"), details=True, depth=2,
+        never=_words("submit send delete export download"), max_ids=1, scripts=16, apis=True,
+    ),
 }
 APP_API_WORDS = _words(
     "lists list tasks todos boards rooms polls jobs printers credit balance slides screens displays contacts choices "
@@ -304,6 +308,16 @@ def first_foreign_frame(html, page_url):
         target = urlsplit(urljoin(page_url or "", value)) if value else None
         if target is not None and target.scheme == "https" and target.netloc and target.netloc.lower() != page.netloc.lower():
             return target.geturl().split("#", 1)[0]
+    return ""
+
+
+def first_own_frame(html, page_url):
+    page = urlsplit(page_url or "")
+    for node in BeautifulSoup(html or "", "html.parser").find_all(("iframe", "frame")):
+        value = _source_value(node)
+        target = urlsplit(urljoin(page_url or "", value)) if value else None
+        if target is not None and target.netloc.lower() == page.netloc.lower() and target.path.startswith(ROOT):
+            return target.path
     return ""
 
 

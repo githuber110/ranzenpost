@@ -1,5 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { evalWith, loadApp } from "./loadApp.js";
+
+const STYLES = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "styles.css"), "utf8");
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -107,6 +112,24 @@ describe("parent-teacher conferences stay inside the app", () => {
     expect(rows[0].tagName).toBe("BUTTON");
     expect(rows[1].tagName).toBe("DIV");
     expect(view.querySelectorAll(".chipbar.segmented [role=tab]").length).toBe(2);
+  });
+
+  test("a notice before the booking period shows every line in full", () => {
+    const { window } = loadApp();
+    const cells = [
+      "Elternsprechtag am 17.11 und 19.11.2026 Termine",
+      "17.11.2026 - 19.11.2026",
+      "Bitte tragen Sie sich an einem Termin ein.",
+      "Der Buchungszeitraum hat noch nicht begonnen.",
+      "Buchungszeitraum: 04.11.2026 - 12.11.2026",
+    ];
+    evalWith(window, "state.view = 'conferences'; state.conferences = testArgs[0]", {
+      empty: false,
+      items: [{ cells, headers: [], page: "", connection_id: "s1" }],
+    });
+    const row = pageNode(window).querySelector(".conference-row");
+    expect([...row.querySelectorAll(".conference-line")].map((line) => line.textContent)).toEqual(cells.slice(1));
+    expect(STYLES).toContain(".conference-row .row-title, .conference-row .row-sub { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }");
   });
 
   test("a page shows facts, labelled table rows and the booking form with one primary button", () => {

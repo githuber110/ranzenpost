@@ -3,6 +3,44 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2611.1.0
+
+### New
+
+- Parent-teacher appointments can be booked in the app when the school uses the booking in IServ. Pick a teacher and a
+  free time, change who comes along, or cancel. Booking, changing and cancelling each ask for a confirmation first. The
+  app then reads the booking page again and shows the result.
+- A new area, More modules, shows print jobs, course selections, video rooms, polls and to-dos when your school offers
+  them. These pages are read only for now. A page the app cannot read says so instead of looking empty.
+- The sick note carries the name your school uses for it in the German app.
+
+### Changed
+
+- Module names no longer carry the words obsolete or new from the IServ documentation.
+- Calendar texts, notifications and the outage notice write dates and times in your language.
+- The list of lessons ahead in Home Assistant is no longer cut at 20.
+
+### Fixed
+
+- A parent-teacher conference notice shows every line.
+- A notice about a booked appointment no longer reports a cancellation when the booking page could not be read.
+- When the school's answer suddenly lists no timetable changes at all, the app keeps the last ones until the next read
+  confirms it. This ends withdrawal notifications that the school took back at the next read.
+- Schools that list children without course ids get the older timetable of the right child.
+- After a server error the older timetable module waits ten minutes before it asks again. Without a notification target
+  the course hint is tried once a day instead of on every read.
+- A calendar the school refuses rests for a day, and school settings that could not be read no longer count as empty.
+- An empty whiteboard list with its notice in the table footer reads as empty instead of as an error.
+- The app and the card handle holidays and the next school day like the Home Assistant sensor. A fully cancelled day is
+  no longer shown as the next school day.
+- News items with a plain date line keep their date.
+- The app asks for letters and absences once when it starts.
+
+### Report
+
+- The problem report follows frames on the school's own server and reads more of the forms module and the parent absence
+  page.
+
 ## 2610.6.0
 
 ### New

@@ -62,10 +62,13 @@ def test_without_a_course_choice_a_lesson_outside_parallel_courses_still_pushes(
 def test_the_hint_comes_once_and_waits_for_a_device():
     timetables = {"c1": week()}
     poller, notifier, store = poller_for(timetables)
+    now = [1_800_000_000.0]
+    poller.clock = lambda: now[0]
     notifier.delivers = False
     poller.poll_once()
     assert store.load_config()["poll_state"][KEY][COURSE_HINT_KEY] is False
     notifier.delivers = True
+    now[0] += 24 * 3600
     poller.poll_once()
     poller.poll_once()
     assert pushes(notifier).count(HINT_PUSH) == 2

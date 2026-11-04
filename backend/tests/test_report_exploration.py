@@ -238,6 +238,61 @@ METHODS_PAGE = """
 """
 
 
+def test_the_lending_page_follows_its_frame_on_the_same_host():
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/ausleihe"),
+        SCHOOL_ONE_URL + "/iserv/ausleihe": html_answer("<html><body><iframe src='/iserv/ausleihe/app/start?kim=1'></iframe></body></html>"),
+        SCHOOL_ONE_URL + "/iserv/ausleihe/app/start": html_answer("<html><body><table><thead><tr><th>Titel</th><th>Status</th></tr></thead></table></body></html>"),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    row = guessed_row("ausleihe", "ausleihe", "/iserv/ausleihe/")
+    lines = diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher))
+    assert "- Own frame: path /iserv/<seg>/app/<seg>, status 200" in lines
+    assert any("Titel" in line for line in lines)
+    assert_private(lines, ("kim=1",))
+
+
+def test_a_same_host_frame_outside_the_module_or_with_a_file_is_not_read():
+    for frame in ("/iserv/file/-/Files/Report.pdf", "/iserv/ausleihe/Report.pdf"):
+        answers = {
+            SCHOOL_ONE_URL + "/iserv/": nav("/iserv/ausleihe"),
+            SCHOOL_ONE_URL + "/iserv/ausleihe": html_answer("<html><body><iframe src='%s'></iframe></body></html>" % frame),
+        }
+        client, adapter = recording_client(answers)
+        record_headers(adapter)
+        fetcher = diagnostics.ReportFetcher(client)
+        row = guessed_row("ausleihe", "ausleihe", "/iserv/ausleihe/")
+        lines = diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher))
+        assert any(line.startswith("- Own frame:") and line.endswith("not read") for line in lines)
+        assert not any(frame in url for url in adapter.headers)
+
+
+def test_a_framed_app_page_with_a_web_ending_is_read():
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/ausleihe"),
+        SCHOOL_ONE_URL + "/iserv/ausleihe": html_answer("<html><body><iframe src='/iserv/ausleihe/app/index.html'></iframe></body></html>"),
+        SCHOOL_ONE_URL + "/iserv/ausleihe/app/index.html": html_answer("<html><body><p>x</p></body></html>"),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    row = guessed_row("ausleihe", "ausleihe", "/iserv/ausleihe/")
+    lines = diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher))
+    assert any(line.startswith("- Own frame:") and line.endswith("status 200") for line in lines)
+
+
+def test_a_same_host_frame_that_would_write_or_sign_in_is_not_read():
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": nav("/iserv/ausleihe"),
+        SCHOOL_ONE_URL + "/iserv/ausleihe": html_answer("<html><body><iframe src='/iserv/ausleihe/reserve/start'></iframe></body></html>"),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    row = guessed_row("ausleihe", "ausleihe", "/iserv/ausleihe/")
+    lines = diagnostics.page_structure(fetcher, row, TODAY, {}, nav_paths=menu_of(fetcher))
+    assert any(line.startswith("- Own frame:") and line.endswith("not read") for line in lines)
+
+
 def test_the_methods_guide_follows_its_frame_to_the_other_host_and_records_the_framing_rules():
     answers = {
         SCHOOL_ONE_URL + "/iserv/": nav("/iserv/methodenguide"),

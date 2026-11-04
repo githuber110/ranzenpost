@@ -109,7 +109,6 @@ MAX_NOTICES = 10
 MAX_NOTICE_IDS = 200
 UNKNOWN_SUFFIX = "_unknown"
 UNKNOWN_LISTS_AFTER = "2610.5.0"
-MAX_LESSONS_AHEAD = 20
 LIST_COUNT_SUFFIX = "_count"
 FRESH_SUFFIX = "_fresh"
 FRESH_STAMP = "seen"
@@ -259,8 +258,8 @@ def berlin_iso(epoch):
     return berlin.iso_from_epoch(epoch)
 
 
-def berlin_stamp(epoch):
-    return berlin.local_from_epoch(epoch).strftime("%d.%m. %H:%M")
+def berlin_stamp(epoch, language):
+    return messages.stamp_in(language, berlin.local_from_epoch(epoch), short=True)
 
 
 def change_key(lesson):
@@ -790,7 +789,7 @@ def _lessons_ahead(days, today, now_iso):
         ahead.extend(held)
         if day != today and held:
             break
-    return ahead[:MAX_LESSONS_AHEAD]
+    return ahead
 
 
 def _next_school_day(days, today, now_iso):

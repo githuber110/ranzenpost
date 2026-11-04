@@ -87,6 +87,11 @@ def test_a_page_without_the_whiteboard_table_stays_unknown_whatever_it_says(body
         parse_whiteboards(f"<html><body>{MENU}<main>{body}</main></body></html>")
 
 
+def test_a_notice_row_in_the_table_footer_is_a_confirmed_empty_list():
+    head = HEAD + "<tfoot>" + EMPTY_ROW + "</tfoot>"
+    assert parse_whiteboards(page("", head=head)) == {"whiteboards": []}
+
+
 def test_a_table_without_rows_and_without_the_empty_notice_stays_unknown():
     with pytest.raises(WhiteboardShapeError):
         parse_whiteboards(page(""))

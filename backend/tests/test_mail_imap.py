@@ -335,13 +335,13 @@ def test_a_refused_sign_in_reaches_the_app_as_an_unknown_state_with_its_reason(t
 
 
 def test_mail_moves_from_unsupported_to_read_by_the_app():
-    registry = modules.normalize({"unsupported": [MAIL_ENTRY, {"segment": "print", "slug": "print", "label": "Drucken"}], "checked_at": 1})
-    assert [entry["slug"] for entry in registry["unsupported"]] == ["print"]
+    registry = modules.normalize({"unsupported": [MAIL_ENTRY, {"segment": "booking", "slug": "booking", "label": "Buchungen"}], "checked_at": 1})
+    assert [entry["slug"] for entry in registry["unsupported"]] == ["booking"]
     assert [entry["slug"] for entry in registry["covered"]] == ["mail"]
     assert modules.lists_module(registry, "mail") is True
     assert modules.lists_module(modules.normalize({"unsupported": [MAIL_ENTRY]}), "mail") is True
     assert modules.lists_module(modules.normalize({}), "mail") is False
-    assert re.search(r"not supported: 1 \(print\).*read by the app: 1 \(mail\)", modules.summary(registry))
+    assert re.search(r"not supported: 1 \(booking\).*read by the app: 1 \(mail\)", modules.summary(registry))
 
 
 def test_the_mail_connections_refuse_anything_older_than_tls_1_2():

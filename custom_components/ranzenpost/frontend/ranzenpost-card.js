@@ -1,6 +1,6 @@
 (() => {
   const CARD_TAG = "ranzenpost-card";
-  const CARD_VERSION = "2610.6.0";
+  const CARD_VERSION = "2611.1.0";
   const VERSION_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:b(\d{1,3}))?$/;
   const FINAL_RELEASE = 1e6;
   const EDITOR_TAG = "ranzenpost-card-editor";
@@ -1813,7 +1813,7 @@
   }
 
   function nextDayKeyOf(events, todayKey) {
-    return events.reduce((found, event) => (!event.allDay && event.dayKey > todayKey && (!found || event.dayKey < found) ? event.dayKey : found), null);
+    return events.reduce((found, event) => (!event.allDay && !event.cancelled && event.dayKey > todayKey && (!found || event.dayKey < found) ? event.dayKey : found), null);
   }
 
   function overlaps(left, right) {

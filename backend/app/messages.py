@@ -116,6 +116,15 @@ def text_count(language, key, count, variables=None):
     return text_in(tag, candidate, merged)
 
 
+def date_in(language, value, short=False):
+    key = "calendar.date.numericShort" if short else "calendar.date.numeric"
+    return text_in(language, key, {"day": f"{value.day:02d}", "month": f"{value.month:02d}", "year": str(value.year)})
+
+
+def stamp_in(language, value, short=False):
+    return f"{date_in(language, value, short)} {value.strftime('%H:%M')}"
+
+
 def payload(key, variables=None):
     body = {"message_key": key, "message": text(key, variables)}
     if variables:

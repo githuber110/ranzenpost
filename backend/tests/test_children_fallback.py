@@ -64,6 +64,9 @@ class SchoolApp:
     def school_settings(self):
         return self.settings
 
+    def school_settings_or_raise(self):
+        return self.settings
+
 
 def make(tmp_path, client_class=RefusingClient, school_app=None, **client_kwargs):
     store = Store(tmp_path / "data")

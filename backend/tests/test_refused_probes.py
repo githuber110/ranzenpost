@@ -2,8 +2,11 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from app import modules
 from app.iserv.client import IServClient
+from app.iserv.errors import DataError
 from app.iserv.school_calendar import CALENDAR_EVENTS_PATH, CALENDAR_SOURCES_PATH, window_params
 from app.refusals import REFUSAL_SECONDS, Refusals
 from app.store import Store
@@ -261,7 +264,8 @@ def test_an_expired_school_app_session_is_not_remembered_as_refused(tmp_path):
     rig.service.check_connection()
     before = rig.hits(SETTINGS_PATH)
     rig.service._settings_cache = (0.0, None)
-    rig.service._school_settings()
+    with pytest.raises(DataError):
+        rig.service._school_settings()
     assert rig.hits(SETTINGS_PATH) == before + 1
 
 

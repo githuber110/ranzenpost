@@ -1664,6 +1664,14 @@ def test_sick_note_pdf_uses_school_replace_term_in_title(tmp_path):
     assert filename.startswith("Schriftliche Bestätigung der Fehlzeitenmeldung [Mia Müller]")
 
 
+def test_the_absence_overview_names_the_schools_word_for_a_sick_note(tmp_path):
+    dsa = FakeAbsenceDsa()
+    service, _ = with_absences(tmp_path, dsa)
+    assert service.absences_overview()["sick_note_term"] == ""
+    dsa._settings = dict(dsa._settings, sickNotes_replaceTerm=" Fehlzeitenmeldung ")
+    assert service.absences_overview()["sick_note_term"] == "Fehlzeitenmeldung"
+
+
 def test_folder_order_sorts_alphabetically_and_folds_umlauts():
     from app.sorting import _folder_order
 

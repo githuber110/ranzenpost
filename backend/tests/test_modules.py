@@ -465,7 +465,7 @@ def test_summary_line_names_available_missing_unsupported_and_unknown_segments_w
     line = modules.summary(registry)
     assert line == (
         "modules available: timetable, letters, pinboard, conferences, messenger, tasks, news, forums, texts, infodisplay, whiteboards; "
-        "missing: absences, calendar; not supported: 1 (videoconference); unknown: 1 (mystery); read by the app: 2 (mail, file)"
+        "missing: absences, calendar; not supported: 0; unknown: 1 (mystery); read by the app: 3 (mail, file, videoconference)"
     )
     assert "E-Mail" not in line
     assert "Aufgaben" not in line

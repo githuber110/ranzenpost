@@ -26,6 +26,8 @@ in the sidebar, a dashboard card and entities for automations.
 - **Parent-teacher conferences**: current and archived days, your bookings, teachers, rooms and free
   slots. Book, change and cancel a slot after a confirmation. Push messages tell you when booking
   opens, when a booking is cancelled, three days before and shortly before an appointment.
+- **More modules**: print jobs, course selections, video rooms, polls and to-dos when your school offers
+  them, read only.
 - **Tasks and news**: open and past tasks, and every news item with its text, files and links. News can
   be filtered by category and searched. The archive and the package news are read when you pick them in
   the filter. A task opens with what its IServ page shows, read only when you open it: text, files, the
@@ -62,7 +64,8 @@ in the sidebar, a dashboard card and entities for automations.
 
 Ranzenpost reads the timetable ("Stunden- und Vertretungsplan"), parent letters, noticeboards,
 absences, parent-teacher conferences, the messenger, the school calendar, tasks, news, forums, texts,
-info screens, the mailbox, files, the address book and mailing lists. If the Schul-App timetable lists no
+info screens, the mailbox, files, the address book and mailing lists. It also shows print jobs, course
+selections, video rooms, polls and to-dos in a read-only area called More modules. If the Schul-App timetable lists no
 lessons and the school has no lesson slots there, Ranzenpost reads the older timetable module at
 `/iserv/time-table/` instead and remembers that for the school. A week in which IServ lists no
 lessons shows a short note instead of an empty grid. A school with only the older

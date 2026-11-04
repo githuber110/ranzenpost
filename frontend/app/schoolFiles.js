@@ -1,4 +1,5 @@
-const ACCOUNT_MODULE_NAMES = ["file", "addressbook", "mailinglist"];
+const MODULE_PAGE_NAMES = ["print", "course-selection", "videoconference", "poll", "todo"];
+const ACCOUNT_MODULE_NAMES = ["file", "addressbook", "mailinglist", ...MODULE_PAGE_NAMES];
 const FILES_ROOTS = ["own", "groups"];
 const FILES_MAX_BYTES = 50 * 1024 * 1024;
 const FILES_TOTAL_MAX_BYTES = 100 * 1024 * 1024;
@@ -14,6 +15,7 @@ function accountSchools(name) {
 function accountModuleOffered(name) {
   if (state.accountModules === null) {
     if (name === "file") return state.view === "files";
+    if (MODULE_PAGE_NAMES.includes(name)) return state.view === "modulepages";
     return state.view === "contacts";
   }
   return accountSchools(name).length > 0;
@@ -28,7 +30,7 @@ async function loadAccountModules() {
   } else if (outcome.error) {
     state.accountModulesError = outcome;
   }
-  if (state.view === "files" || state.view === "contacts" || state.view === "settings") rerender();
+  if (["files", "contacts", "modulepages", "settings"].includes(state.view)) rerender();
 }
 
 function accountSchoolChips(name, active, onPick, className) {

@@ -337,7 +337,7 @@ def register_integration_routes(app, service, store, holiday_calendar, access, r
             "calendar feed access through Home Assistant token=%s",
             token_log_prefix(subscription.get("token", "")),
         )
-        return {"calendar": feed.build_feed(subscription, store, holiday_calendar)}
+        return {"calendar": feed.build_feed(subscription, store, holiday_calendar, integration.utc_moment(access.now()))}
 
     @app.post(ROUTE_FEEDS)
     def online_feed_reports(request: Request, body: Any = Body(default=None)):

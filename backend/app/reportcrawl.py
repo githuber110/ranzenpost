@@ -9,9 +9,19 @@ from bs4 import BeautifulSoup
 
 from . import modules, valueshape
 from .iserv.badges import BADGES_PATH
+from .iserv.conference_booking import (
+    HOSTS_PARAM,
+    HOSTS_PER_REQUEST,
+    appointments_path,
+    children_of,
+    conference_id_of,
+    conference_path,
+    is_booking_page,
+)
 from .iserv.client import REDIRECT_NONE, REDIRECT_OTHER_HOST, REDIRECT_SAME_HOST
 from .iserv.forms import find_login_form, parse_forms
 from .iserv.pages import FORM_PAGE_WORDS, WRITE_WORDS as SHARED_WRITE_WORDS
+from .iserv.pages import action_link
 from .iserv.pages import path_of, status_of
 from .iserv.dsa import CHILDREN_FIELDS
 from .iserv.school_calendar import (
@@ -37,6 +47,7 @@ from .reportexplore import (
     as_prefixes,
     embedded_sources,
     first_foreign_frame,
+    first_own_frame,
     frame_line,
     free_part,
     free_shape,
@@ -46,6 +57,7 @@ from .reportexplore import (
     prefix_rest,
     resolved_paths,
     row_text_lines,
+    part_words,
     rule_for,
 )
 from .reportlists import crawl_page_lines
@@ -108,6 +120,7 @@ MAX_SCRIPTS_PER_MODULE = 8
 MAX_SCRIPT_BYTES = 2 * 1024 * 1024
 SCRIPT_TIMEOUT = REQUEST_SECONDS
 MAX_PROBE_BYTES = 1024 * 1024
+FRAME_FILE = re.compile(r"\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|zip|png|jpe?g|gif|csv)$", re.IGNORECASE)
 PROBE_TIMEOUT = REQUEST_SECONDS
 MAX_CHAIN_HOPS = 10
 CrawlScope = namedtuple("CrawlScope", "pages scripts apis routes api_routes external details any_text depth rule", defaults=(False, False, 1, None))
@@ -119,7 +132,7 @@ MODULE_ROUTES = {
     "parentconference": frozenset(
         """
         conference conferences teacher teachers slot slots timeslot timeslots show view detail details day days
-        event events
+        event events appointments
         """.split()
     ),
 }
@@ -505,6 +518,7 @@ def module_link_structure(client, row, nav_paths, cache, today):
             limit = rule.scripts if rule is not None and rule.scripts else MAX_SCRIPTS_PER_MODULE
             lines.extend(script_facts(client, answer, cache, SCRIPT_ROOT, None, limit)[0])
             lines.extend(module_crawl(client, answer, module_prefix(path), menu_shape, cache, SCRIPT_ROOT))
+            lines.extend(own_frame_lines(client, answer))
             if rule is not None and rule.frames:
                 lines.extend(frame_chain_lines(client, answer))
     elif answer is not None and redirect_of(answer) == REDIRECT_OTHER_HOST and followed:
@@ -835,6 +849,7 @@ def module_crawl(client, landing, prefix, link_shape, cache, root, scope=MODULE_
         lines.extend(response_skeleton(answer, link_shape))
         if body_kind(answer) == "html":
             lines.extend(crawl_page_lines(primary, answer))
+            lines.extend(conference_booking_lines(client, answer))
             lines.extend(rule_page_lines(client, scope.rule, answer, link_shape, prefix))
             script_lines, scripts_found = script_facts(client, answer, cache, root, link_shape, scope.scripts, scope.external)
             lines.extend(script_lines)
@@ -930,6 +945,28 @@ def external_chain_lines(client, answer, label="Redirect chain", framing=False):
             lines.extend(script_facts(chain.reader, landing, cache, "/", valueshape.link_shape, PROVIDER_SCOPE.scripts, True)[0])
             lines.extend(module_crawl(chain.reader, landing, "/", valueshape.link_shape, cache, "/", PROVIDER_SCOPE))
     return lines
+
+
+def own_frame_lines(client, answer):
+    url = str(getattr(answer, "url", "") or "")
+    path = first_own_frame(getattr(answer, "text", "") or "", url)
+    if not path:
+        return []
+    shape = valueshape.link_shape(path)
+    prefix = module_prefix(path_of(url))
+    rule = rule_for(prefix)
+    never = rule.never if rule is not None else frozenset()
+    if not path.startswith(prefix) or sign_in_path(path) or action_link(path) or part_words(path) & never or FRAME_FILE.search(path):
+        return ["- Own frame: path %s, not read" % shape]
+    if not budget_of(client).take():
+        return ["- Own frame: path %s, not read, budget used" % shape]
+    frame, problem = read_unfollowed(client, path)
+    if frame is None:
+        return ["- Own frame: path %s, %s" % (shape, problem)]
+    if redirect_of(frame) != REDIRECT_NONE or sign_in_page(frame):
+        return ["- Own frame: path %s, status %d, not followed" % (shape, status_of(frame))]
+    lines = ["- Own frame: path %s, status %d" % (shape, status_of(frame))]
+    return lines + response_skeleton(frame) if status_of(frame) == 200 else lines
 
 
 def frame_chain_lines(client, answer):
@@ -1088,6 +1125,36 @@ def menu_paths_by_segment(links):
         if segment and (segment not in mapping or len(path) < len(mapping[segment])):
             mapping[segment] = path
     return mapping
+
+
+def _booking_reply(client, path, label):
+    answer, problem = read_unfollowed(client, path)
+    if answer is None:
+        return None, ["- Conference %s: %s" % (label, problem)]
+    try:
+        data = json_of(answer)
+    except (ValueError, TypeError):
+        return None, ["- Conference %s: status %d, not JSON" % (label, status_of(answer))]
+    if not isinstance(data, dict):
+        return None, ["- Conference %s: status %d, unknown shape" % (label, status_of(answer))]
+    shapes = valueshape.shape_lines(data, SOURCE_SHAPE_LINES)
+    return data, ["- Conference %s: status %d" % (label, status_of(answer))] + ["  - " + line for line in shapes]
+
+
+def conference_booking_lines(client, answer):
+    conference_id = conference_id_of(path_of(str(getattr(answer, "url", "") or "")))
+    html = getattr(answer, "text", "") or ""
+    if conference_id is None or not is_booking_page(html):
+        return []
+    children = children_of(html)
+    lines = ["- Conference booking page: children %s" % ("unreadable" if children is None else len(children))]
+    data, shapes = _booking_reply(client, conference_path(conference_id), "data")
+    lines.extend(shapes)
+    hosts = [host.get("id") for host in (data or {}).get("hosts") or [] if isinstance(host, dict) and host.get("id")]
+    if hosts:
+        query = urlencode([(HOSTS_PARAM, host) for host in hosts[:HOSTS_PER_REQUEST]])
+        lines.extend(_booking_reply(client, "%s?%s" % (appointments_path(conference_id), query), "appointments")[1])
+    return lines
 
 
 def read_unfollowed(client, path, headers=None):
