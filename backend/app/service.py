@@ -92,7 +92,7 @@ from .mapping import (
 )
 from .messenger import MessengerService
 from .sign_in import SignInService, next_totp_code, sign_in_failure_reason
-from .timetable_source import TimetableSources, has_lessons
+from .timetable_source import TimetableSources, has_lessons, stored_choice
 from .wizard import TOKEN_NAME
 
 MAIL_RECOUNT_ACTIONS = frozenset({"mark_seen", "set_flag", "move", "archive", "trash", "spam"})
@@ -1180,7 +1180,7 @@ class ConnectionService:
         offset = holidays.clamp_week_offset(week_offset)
         target = (reference or date.today()) + timedelta(days=7 * offset)
         child = self._cached_child(str(child_id))
-        reading = self._timetable_sources.read(child_id, child, target)
+        reading = self._timetable_sources.read(child_id, child, target, compare=offset == 0)
         week = reading.week
         school_slots = reading.slots if reading.slots is not None else self._school_period_slots()
         school_times = {key: slot["start"] for key, slot in period_grid.normalize_slots(school_slots).items()}
@@ -1208,6 +1208,10 @@ class ConnectionService:
             "substitutions_released": self._substitutions_released(),
             "vacations": list(getattr(week, "vacations", None) or []),
             "source": reading.source,
+            "source_choice": stored_choice(config),
+            "source_choice_missing": bool(reading.choice_missing),
+            "source_choice_failure": reading.choice_missing,
+            "sources": reading.sources,
             "no_lessons": not has_lessons(week),
         }
         return payload, config

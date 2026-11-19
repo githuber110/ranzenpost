@@ -251,7 +251,7 @@ IServ ships some modules in an old and a new edition. Ranzenpost reads the editi
 
 | Module | IServ edition Ranzenpost reads | Reads | Writes |
 | --- | --- | --- | --- |
-| Timetable (`dsa-timetable`, `time-table`) | The Schul-App timetable. If it lists no lessons, the older `time-table` module | Lessons, substitutions, cancellations, lesson times | Nothing. Exam marks stay in the app |
+| Timetable (`dsa-timetable`, `time-table`) | The Schul-App timetable. If it lists no lessons, or you choose it for a school with both, the older `time-table` module | Lessons, substitutions, cancellations, lesson times | Nothing. Exam marks stay in the app |
 | Absences (`dieschulapp`, `absence`) | Absences (Schul-App), or the older absences page | Reported absences and their status, the school's rules; on the older page also the change log | Sick note, leave request with attachments, deregistration, day-care deregistration; on the older page a report with attachments and withdrawing it |
 | Parent letters (`parentletter`) | Parent letters | Current and archived letters, attachments | Archive, read confirmation with optional message, a message to the school on a letter that offers a reply, the answer to a letter that asks for a choice |
 | Noticeboards (`dieschulapp`) | Pinboards (Schul-App) | All boards, posts, attachments | Nothing. Read state stays in the app |

@@ -7,7 +7,7 @@ from . import integration, messages, modules
 from .iserv.errors import DataError
 from .poller import school_lock
 from .scheduler import make_poller, poll_interval_from_env
-from .store import CONNECTION_SETTING_KEYS, edit_config
+from .store import CONNECTION_SETTING_KEYS, TIMETABLE_CHOICES, edit_config
 from .upstream import NETWORK, read_endpoint, upstream_error, upstream_write_error, write_endpoint
 
 CONNECTION_ALLOWED_KEYS = set(CONNECTION_SETTING_KEYS)
@@ -25,6 +25,8 @@ CONNECTION_VIEW_KEYS = (
     "phones",
     "holiday_region",
     "own_entries_ha",
+    "timetable_choice",
+    "timetable_both",
 )
 BOOLEAN_CONNECTION_KEYS = ("own_entries_ha",)
 
@@ -115,6 +117,10 @@ def register_routes(app, service, wizard, subscription_registry, holiday_source,
         if wrong:
             body = {"error": "invalid_value", "keys": wrong}
             body.update(messages.payload("api.config.invalidValue", {"keys": ", ".join(wrong)}))
+            return JSONResponse(status_code=400, content=body)
+        if "timetable_choice" in config and config["timetable_choice"] not in TIMETABLE_CHOICES:
+            body = {"error": "invalid_value", "keys": ["timetable_choice"]}
+            body.update(messages.payload("api.config.invalidValue", {"keys": "timetable_choice"}))
             return JSONResponse(status_code=400, content=body)
         if "phones" in config:
             cleaned_phones = _sanitize_phones(config["phones"])

@@ -714,3 +714,37 @@ def test_an_old_snapshot_without_source_stamps_still_ages_its_carried_events(tmp
     now[0] += 24 * 3600
     poller._poll_school_calendar(failing, connection_id, True)
     assert store.load_calendar_snapshot()["schools"][connection_id]["events"] == []
+
+
+def test_calendar_sources_served_over_calendar_appointments_are_read_next_to_the_plugins(tmp_path):
+    own = dict(OWN_HOME, url="/iserv/calendar/api/calendar-appointments?cal=/f.parent/home")
+    school = dict(SCHOOL_CAL, url="/iserv/calendar/api/calendar-appointments?cal=/school.all/calendar")
+    answers = {
+        SOURCES_PATH: Answer(200, [own, school, EXAMS]),
+        "/iserv/calendar/api/calendar-appointments?cal=/f.parent/home": Answer(200, {"events": [], "errors": []}),
+        "/iserv/calendar/api/calendar-appointments?cal=/school.all/calendar": Answer(200, {"events": [CONCERT], "errors": []}),
+        EXAM_FEED: Answer(200, [EXAM]),
+    }
+    service, client = feed_service(tmp_path, answers)
+    read = service.read_school_calendar(*WINDOW)
+    assert titles(read.events) == ["Concert", "Maths exam"]
+    assert read.problems == ()
+    assert read.answered == ("/f.parent/home", "/school.all/calendar", "exam")
+    window = [("start", "2026-10-01"), ("end", "2026-11-30")]
+    assert client.asked[1:3] == [
+        ("/iserv/calendar/api/calendar-appointments", [("cal", "/f.parent/home")] + window),
+        ("/iserv/calendar/api/calendar-appointments", [("cal", "/school.all/calendar")] + window),
+    ]
+
+
+def test_an_unreadable_calendar_appointments_answer_is_a_failed_source_and_not_an_empty_one(tmp_path):
+    school = dict(SCHOOL_CAL, url="/iserv/calendar/api/calendar-appointments?cal=/school.all/calendar")
+    answers = {
+        SOURCES_PATH: Answer(200, [school, EXAMS]),
+        "/iserv/calendar/api/calendar-appointments?cal=/school.all/calendar": Answer(200, "not a calendar"),
+        EXAM_FEED: Answer(200, [EXAM]),
+    }
+    service, _ = feed_service(tmp_path, answers)
+    read = service.read_school_calendar(*WINDOW)
+    assert titles(read.events) == ["Maths exam"]
+    assert read.failed == ("/school.all/calendar",)

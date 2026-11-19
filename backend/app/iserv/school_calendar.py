@@ -23,6 +23,9 @@ FEED_PATH = re.compile(r"^/iserv/calendar/feed(?:/[A-Za-z0-9_-]+){1,3}$")
 PLUGIN_PATH = re.compile(r"^/iserv/calendar/api/plugin/?$")
 PLUGIN_NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 PLUGIN_KEY = "plugin"
+APPOINTMENTS_PATH = re.compile(r"^/iserv/calendar/api/calendar-appointments/?$")
+APPOINTMENTS_KEY = "cal"
+CALENDAR_ID = re.compile(r"^/[A-Za-z0-9._+-]{1,80}/[A-Za-z0-9._-]{1,40}/?$")
 WRITING_SEGMENTS = frozenset({"delete", "remove", "edit", "update", "create", "new", "action", "actions", "upload", "save"})
 WINDOW_KEYS = frozenset({"start", "end"})
 SOURCE_KIND = re.compile(r"^[a-z]{1,12}$")
@@ -85,9 +88,9 @@ def problem_text(reason):
     return reason if isinstance(reason, str) else "%s: %s" % (type(reason).__name__, reason)
 
 
-def _plugin_query(query):
-    names = [value for key, value in query if key == PLUGIN_KEY]
-    return len(names) == 1 and bool(PLUGIN_NAME.match(names[0]))
+def _single(query, key, pattern):
+    values = [value for name, value in query if name == key]
+    return len(values) == 1 and bool(pattern.match(values[0]))
 
 
 def feed_request(url, first, last):
@@ -96,9 +99,13 @@ def feed_request(url, first, last):
         return None
     query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key not in WINDOW_KEYS]
     if PLUGIN_PATH.match(parts.path):
-        if not _plugin_query(query):
+        if not _single(query, PLUGIN_KEY, PLUGIN_NAME):
             return None
         query = [(key, value) for key, value in query if key == PLUGIN_KEY]
+    elif APPOINTMENTS_PATH.match(parts.path):
+        if not _single(query, APPOINTMENTS_KEY, CALENDAR_ID):
+            return None
+        query = [(key, value) for key, value in query if key == APPOINTMENTS_KEY]
     elif not FEED_PATH.match(parts.path) or WRITING_SEGMENTS.intersection(segment.casefold() for segment in parts.path.split("/")):
         return None
     return parts.path, query + list(events_params(first, last).items())

@@ -211,6 +211,8 @@ def _entry_count(entries):
 
 
 def _entries_fact(payload):
+    if not isinstance(payload.get("students"), list) and "entries" in payload:
+        return "no student blocks, entries at the top %d" % _entry_count(payload.get("entries"))
     blocks = payload.get("students") if isinstance(payload.get("students"), list) else []
     counts = [_entry_count(block.get("entries")) for block in blocks if isinstance(block, dict)]
     return "students %d, entries per student %s" % (len(counts), ", ".join(str(count) for count in counts) or "-")

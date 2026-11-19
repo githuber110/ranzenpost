@@ -197,6 +197,8 @@ function timetableView() {
       : emptyBlock("alert", t("timetable.error.title"), t("timetable.error.text"), retryButton(() => { state.timetable = null; rerender(); reloadTimetable(); })));
     return view;
   }
+  const sourceHint = sourceNotice(data);
+  if (sourceHint) view.append(sourceHint);
   const monday = weekMonday();
   const fullWeek = holidayFullWeek(monday, data);
   if (noLessonsListed(data, monday) && !ownEntriesKept(state.childId)) {

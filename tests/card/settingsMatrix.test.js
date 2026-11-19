@@ -538,6 +538,7 @@ const EXEMPT_KEYS = {
   reported_modules: "bookkeeping of the app's unknown-module card, never passed to Home Assistant",
   modules_card_hidden: "bookkeeping of the app's unknown-module card, never passed to Home Assistant",
   course_filters: "applied in the backend before the lessons calendar is built (backend matrix row course_filter); the card renders that calendar as the subject rows show",
+  timetable_choice: "decides in the backend which timetable the lessons come from (backend matrix row timetable_choice, test_timetable_choice.py); the card renders those lessons",
 };
 
 describe("settings and actions propagation matrix", () => {

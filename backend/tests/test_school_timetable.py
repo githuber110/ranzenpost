@@ -190,7 +190,10 @@ def test_the_timetable_is_read_from_the_school_app_with_the_childs_courses(tmp_p
     service, _, app, clients = make(tmp_path)
     result = service.timetable("500001", reference=date(2026, 9, 9))
     assert app.timetable_calls == [(date(2026, 9, 9), [7001, 7002], False)]
-    assert all(client.timetable_calls == [] for client in clients), "the old timetable page was consulted"
+    assert result["source"] == "school-app"
+    compared = sum(len(client.timetable_calls) for client in clients)
+    service.timetable("500001", reference=date(2026, 9, 9))
+    assert sum(len(client.timetable_calls) for client in clients) == compared, "the old timetable page was asked more than once an hour"
     assert result["start_date"] == "07.09.2026"
     assert result["end_date"] == "13.09.2026"
     assert len(result["lessons"]) == 4

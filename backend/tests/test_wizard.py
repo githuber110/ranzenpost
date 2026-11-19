@@ -1259,6 +1259,26 @@ def test_signing_in_with_another_account_forgets_the_timetable_source(tmp_path):
     assert store.base.connection(connection_id)["timetable_source"] == ""
 
 
+def test_signing_in_with_another_account_forgets_the_chosen_timetable_and_the_two_plans(tmp_path):
+    wizard, store, connection_id = finished_connection(tmp_path)
+    store.base.update_connection(connection_id, timetable_choice="time-table", timetable_both=True)
+    wizard.reset(connection_id)
+    wizard.set_url("school-one.example")
+    wizard.set_login("other.parent", "s")
+    entry = store.base.connection(connection_id)
+    assert (entry["timetable_choice"], entry["timetable_both"]) == ("", False)
+
+
+def test_signing_in_again_with_the_same_account_keeps_the_chosen_timetable(tmp_path):
+    wizard, store, connection_id = finished_connection(tmp_path)
+    store.base.update_connection(connection_id, timetable_choice="time-table", timetable_both=True)
+    wizard.reset(connection_id)
+    wizard.set_url("school-one.example")
+    wizard.set_login("parent", "s")
+    entry = store.base.connection(connection_id)
+    assert (entry["timetable_choice"], entry["timetable_both"]) == ("time-table", True)
+
+
 def test_signing_in_again_with_the_same_account_keeps_the_timetable_source(tmp_path):
     wizard, store, connection_id = finished_connection(tmp_path)
     store.base.update_connection(connection_id, timetable_source="time-table")

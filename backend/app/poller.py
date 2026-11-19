@@ -15,6 +15,7 @@ from .failure import error_kind
 from .iserv.dsa import student_for_name
 from .iserv.messenger import STAGE_NO_CREDENTIALS, MessengerStageError
 from .iserv.timetable import time_table_refusal
+from .timetable_source import UNREADABLE as CHOSEN_UNREADABLE
 from .iserv.badges import MAIL_BADGE
 from .iserv.school_calendar import answered_at, carried_events, merge_events, poll_window
 from .iserv.errors import (
@@ -108,6 +109,7 @@ COURSE_SIGNATURE = "course_signature"
 SOURCE_STATE_KEY = "timetable_source"
 CHANGES_FORMAT_KEY = "changes_format"
 DEFAULT_SOURCE = "school-app"
+CHOSEN_SOURCE_MISSING = "chosen timetable source not readable"
 AUTH_NOTIFIED_FLAG = "auth_incident_sent"
 AUTH_NOTIFIED_REASON = "auth_incident_reason"
 LEGACY_AUTH_FLAG = "auth_incident"
@@ -786,6 +788,14 @@ class Poller:
                         "poll school#%s timetable child#%s failed: %s", connection_id, child_id, error_kind(error)
                     )
                     events.append({"child_key": key, "error": str(error), "kind": error_kind(error)})
+                    continue
+                if timetable.get("source_choice_failure") == CHOSEN_UNREADABLE:
+                    logger.info(
+                        "poll school#%s timetable child#%s: the chosen time-table module was not readable, last state kept",
+                        connection_id,
+                        child_id,
+                    )
+                    events.append({"child_key": key, "error": CHOSEN_SOURCE_MISSING, "kind": CHOSEN_SOURCE_MISSING})
                     continue
                 push_view, courses_pending = push_view_of(timetable)
                 lessons = push_view.get("lessons") or []

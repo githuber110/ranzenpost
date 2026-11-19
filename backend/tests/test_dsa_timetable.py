@@ -172,3 +172,20 @@ def test_a_slot_number_zero_is_period_zero_and_a_missing_number_stays_unknown():
     assert zero.period == 0
     assert missing.period is None
     assert no_slot.period is None
+
+
+def test_entries_at_the_top_of_an_answer_without_student_blocks_are_read():
+    entries = FIXTURE["students"][0]["entries"]
+    own = {"entries": entries, "vacations": FIXTURE["vacations"], "schoolEvents": []}
+    assert parse_current_timetable(own, MONDAY).combined == parse_current_timetable(FIXTURE, MONDAY).combined
+    assert parse_current_timetable(own, MONDAY).combined
+
+
+def test_student_blocks_win_over_entries_at_the_top():
+    mixed = dict(FIXTURE, entries=FIXTURE["students"][0]["entries"][:1])
+    assert parse_current_timetable(mixed, MONDAY).combined == parse_current_timetable(FIXTURE, MONDAY).combined
+
+
+def test_an_answer_with_empty_entries_at_the_top_is_an_empty_week():
+    week = parse_current_timetable({"entries": [], "vacations": [], "schoolEvents": []}, MONDAY)
+    assert week.combined == []

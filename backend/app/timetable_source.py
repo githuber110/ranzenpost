@@ -5,8 +5,8 @@ from collections import namedtuple
 
 from .child_service import connection_marker
 from .iserv.dsa import REFUSED_STATUSES, SCHOOL_APP_EXPIRED_KEY, name_words, parse_period_slots
-from .iserv.dsa_substitutions import NOT_ASKED, describe
-from .iserv.errors import DataError, OutageError
+from .iserv.dsa_substitutions import NOT_ASKED, NOT_UNDERSTOOD, REGULAR_UNREAD, TOO_DIFFERENT, describe
+from .iserv.errors import DataError, LoginError, OutageError, TwoFactorError
 from .refusals import REFUSAL_SECONDS
 from .iserv.timetable import TIME_TABLE_SOURCE, TIMETABLE_SHAPE_KEY, display_rows, time_table_refusal
 from .pageshape import visible_text
@@ -16,6 +16,7 @@ from .store import edit_config
 logger = logging.getLogger(__name__)
 
 SOURCE_KEY = "timetable_source"
+CHOICE_KEY = "timetable_choice"
 SCHOOL_APP_SOURCE = "school-app"
 RECHECK_SECONDS = 3600
 SERVER_FAILURE_PAUSE_SECONDS = 600
@@ -23,8 +24,15 @@ MATCH_SECONDS = 600
 ERROR_PAGE_DETAIL = "refusal"
 WITHHELD_WHY = "the school app does not release the timetable"
 REFUSED_WHY = "the school app refuses the timetable"
+CHOSEN = "chosen"
+COMPARED = "compared"
+BOTH_KEY = "timetable_both"
+ABSENT_OR_REFUSED = "refused"
+MODULE_ABSENT = "absent"
+UNREADABLE = "not readable"
+UNKNOWN_OUTCOMES = (REGULAR_UNREAD, TOO_DIFFERENT, NOT_UNDERSTOOD)
 
-Reading = namedtuple("Reading", "week source slots")
+Reading = namedtuple("Reading", "week source slots sources choice_missing", defaults=(None, ""))
 WeekRequest = namedtuple("WeekRequest", "child_id child target marker raw_slots slots")
 
 
@@ -102,6 +110,28 @@ def _yes_no(value):
     return "yes" if value else "no"
 
 
+def change_total(week):
+    return sum(1 for _, change in display_rows(week) if change and change.get("kind"))
+
+
+def source_facts(week):
+    facts = {"changes": change_total(week)}
+    if getattr(week, "last_updated", None):
+        facts["last_updated"] = str(week.last_updated)
+    return facts
+
+
+def school_facts(week):
+    comparison = getattr(week, "substitutions", None)
+    if comparison is not None and comparison.outcome in UNKNOWN_OUTCOMES:
+        return {"changes": None}
+    return source_facts(week)
+
+
+def stored_choice(config):
+    return TIME_TABLE_SOURCE if config.get(CHOICE_KEY) == TIME_TABLE_SOURCE else SCHOOL_APP_SOURCE
+
+
 def school_app_refusal(error):
     detail = getattr(error, "detail", None) or {}
     return detail.get("source") == SCHOOL_APP_SOURCE and detail.get("status") in REFUSED_STATUSES
@@ -120,6 +150,8 @@ class TimetableSources:
         self._data_refusals = {}
         self._server_failures = {}
         self._delivered = set()
+        self._alternatives = {}
+        self._compare_paused = {}
 
     def reset(self):
         with self._lock:
@@ -132,6 +164,8 @@ class TimetableSources:
             self._data_refusals = {}
             self._server_failures = {}
             self._delivered = set()
+            self._alternatives = {}
+            self._compare_paused = {}
 
     def _note(self, key, message, *args, level=logging.INFO):
         now = self.connection.clock()
@@ -216,7 +250,7 @@ class TimetableSources:
         week.vacations = vacations
         return Reading(week, TIME_TABLE_SOURCE, slots)
 
-    def read(self, child_id, child, target):
+    def read(self, child_id, child, target, compare=False):
         course_ids = (child or {}).get("course_ids")
         if not course_ids:
             client = self.connection._session()
@@ -252,7 +286,86 @@ class TimetableSources:
             if reading is None:
                 raise error
             return reading
-        return self._after_school_week(request, school, remembered)
+        reading = self._after_school_week(request, school, remembered)
+        if reading.source != SCHOOL_APP_SOURCE:
+            return reading
+        if stored_choice(self.connection.store.load_config()) == TIME_TABLE_SOURCE:
+            return self._chosen_time_table(request, reading, school)
+        if not compare or not has_lessons(school):
+            return reading
+        other = self._alternative(request, school)
+        if other is None:
+            return reading
+        return reading._replace(sources={SCHOOL_APP_SOURCE: school_facts(school), TIME_TABLE_SOURCE: other})
+
+    def _chosen_time_table(self, request, reading, school):
+        week, failure = self._attempt(request, CHOSEN)
+        if week is None:
+            self._note("choice-missing", "chosen timetable source time-table %s, showing the school app", failure)
+            return reading._replace(choice_missing=failure)
+        self._remember_both(request.marker, True)
+        week.vacations = list(getattr(school, "vacations", None) or [])
+        sources = {SCHOOL_APP_SOURCE: school_facts(school), TIME_TABLE_SOURCE: source_facts(week)}
+        return Reading(week, TIME_TABLE_SOURCE, request.slots, sources, "")
+
+    def _alternative(self, request, school):
+        key = (request.marker, str(request.child_id), str(school.start_date))
+        now = self.connection.clock()
+        child_pause = (request.marker, str(request.child_id))
+        with self._lock:
+            known = self._alternatives.get(key)
+            paused = [self._compare_paused.get(entry) for entry in ((request.marker, ""), child_pause)]
+        if known is not None and now - known[0] < RECHECK_SECONDS:
+            return known[1]
+        if any(stamp is not None and now - stamp < REFUSAL_SECONDS for stamp in paused):
+            return None
+        week, failure = self._attempt(request, COMPARED)
+        facts = source_facts(week) if week is not None and has_lessons(week) else None
+        with self._lock:
+            self._alternatives[key] = (now, facts)
+            if failure == MODULE_ABSENT:
+                self._compare_paused[(request.marker, "")] = now
+            elif failure == ABSENT_OR_REFUSED:
+                self._compare_paused[child_pause] = now
+        if facts is not None:
+            self._remember_both(request.marker, True)
+        elif failure == MODULE_ABSENT:
+            self._remember_both(request.marker, False)
+        return facts
+
+    def _attempt(self, request, purpose):
+        try:
+            week = self._time_table_week(request)
+        except (LoginError, TwoFactorError):
+            raise
+        except OutageError as error:
+            if purpose == CHOSEN:
+                raise
+            self._note("optional", "time-table module %s, outage: %s", purpose, type(error).__name__)
+            return None, UNREADABLE
+        except DataError as error:
+            if time_table_refusal(error):
+                return None, ABSENT_OR_REFUSED
+            self._note("optional", "time-table module %s, not readable: %s", purpose, error.message_key or type(error).__name__)
+            return None, UNREADABLE
+        except Exception as error:
+            self._note("optional", "time-table module %s, not understood: %s", purpose, type(error).__name__, level=logging.WARNING)
+            return None, UNREADABLE
+        if week is None:
+            return None, MODULE_ABSENT if self._module_absent(request.child_id) else ABSENT_OR_REFUSED
+        return week, ""
+
+    def _module_absent(self, child_id):
+        known = self._cached_match(str(child_id), self.connection.clock())
+        return known is not None and isinstance(known[1], Absent)
+
+    def _remember_both(self, marker, value):
+        def change(config):
+            if connection_marker(config) == marker and bool(config.get(BOTH_KEY)) != value:
+                config[BOTH_KEY] = value
+
+        if bool(self.connection.store.load_config().get(BOTH_KEY)) != value:
+            edit_config(self.connection.store, change)
 
     def _after_school_week(self, request, school, remembered):
         if remembered and request.raw_slots:

@@ -91,10 +91,21 @@ def parse_vacations(items):
     return vacations
 
 
+def entry_lists(payload):
+    if not isinstance(payload, dict):
+        return []
+    blocks = payload.get("students")
+    if isinstance(blocks, list):
+        lists = [block.get("entries") for block in blocks if isinstance(block, dict)]
+    else:
+        lists = [payload.get("entries")]
+    return [entries for entries in lists if isinstance(entries, list)]
+
+
 def entry_lessons(payload, monday):
     pairs = []
-    for block in (payload or {}).get("students") or []:
-        for entry in block.get("entries") or []:
+    for entries in entry_lists(payload):
+        for entry in entries:
             if not isinstance(entry, dict):
                 continue
             pairs.append((entry_to_lesson(entry, monday), entry))

@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import date, datetime
 from typing import NamedTuple
 
-from .dsa_timetable import entry_lessons, parse_vacations
+from .dsa_timetable import entry_lessons, entry_lists, parse_vacations
 from .timetable import (
     CANCEL_TOKENS,
     DATE_FORMAT,
@@ -90,12 +90,8 @@ def _value_kind(value):
 
 def marker_fields(payload):
     counts = {}
-    if not isinstance(payload, dict):
-        return counts
-    students = payload.get("students")
-    for block in students if isinstance(students, list) else []:
-        entries = block.get("entries") if isinstance(block, dict) else None
-        for entry in entries if isinstance(entries, list) else []:
+    for entries in entry_lists(payload):
+        for entry in entries:
             if not isinstance(entry, dict):
                 continue
             kind = entry_marker(entry) or NO_MARK

@@ -67,7 +67,8 @@ absences, parent-teacher conferences, the messenger, the school calendar, tasks,
 info screens, the mailbox, files, the address book and mailing lists. It also shows print jobs, course
 selections, video rooms, polls and to-dos in a read-only area called More modules. If the Schul-App timetable lists no
 lessons and the school has no lesson slots there, Ranzenpost reads the older timetable module at
-`/iserv/time-table/` instead and remembers that for the school. A week in which IServ lists no
+`/iserv/time-table/` instead and remembers that for the school. A school that offers both timetables gets a setting
+"Timetable from" to read the outdated one, for schools that enter substitutions only there. A week in which IServ lists no
 lessons shows a short note instead of an empty grid. A school with only the older
 "Stundenplan" module at `/iserv/timetable/` sees it listed as present but not supported yet.
 

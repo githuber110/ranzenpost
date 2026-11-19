@@ -4089,3 +4089,6 @@ a.btn { text-decoration: none; }
 .mail-confirm-block { margin-block-start: var(--s-4); }
 .mail-confirm-list { margin: var(--s-2) 0 0; padding-inline-start: var(--s-6); overflow-wrap: anywhere; }
 .mail-confirm-list li + li { margin-block-start: var(--s-1); }
+
+.source-note { flex-wrap: wrap; align-items: center; }
+.source-note > span { flex: 1 1 12rem; }

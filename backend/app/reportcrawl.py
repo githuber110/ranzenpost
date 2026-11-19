@@ -23,8 +23,9 @@ from .iserv.forms import find_login_form, parse_forms
 from .iserv.pages import FORM_PAGE_WORDS, WRITE_WORDS as SHARED_WRITE_WORDS
 from .iserv.pages import action_link
 from .iserv.pages import path_of, status_of
-from .iserv.dsa import CHILDREN_FIELDS
+from .iserv.dsa import CHILDREN_FIELDS, timetable_params
 from .iserv.school_calendar import (
+    APPOINTMENTS_PATH,
     CALENDAR_EVENTS_PATH,
     CALENDAR_SOURCES_PATH,
     URL_REFUSED,
@@ -171,6 +172,9 @@ MAIL_SIGNATURE_PATH = "/iserv/mail/api/v2/setting/signature"
 SIGN_IN_ONLY_MODULES = frozenset({"edupool", "eduplacesconnector"})
 PLAN_RAW_PATH = "/iserv/plan/show/raw"
 SCHOOL_ACCOUNT_PATH = modules.DSA_API + "/users/me"
+OWN_COURSE_FIELDS = "id,roles,mainCourse,mainCourse.id,mainCourse.name,courses,courses.id,courses.name,courses.type"
+OWN_COURSES_HEAD = "##### Own courses of the account (users/me with course fields)"
+OWN_TIMETABLE_HEAD = "##### Own timetable with the account's courses"
 
 
 def upcoming_params(_today):
@@ -617,7 +621,9 @@ def _source_answer(answer, source):
 
 
 def _source_shape_lines(reply, source):
-    if reply is None or status_of(reply) != 200 or source_kind(source["type"]) == "cal":
+    if reply is None or status_of(reply) != 200:
+        return []
+    if source_kind(source["type"]) == "cal" and not APPOINTMENTS_PATH.match(urlsplit(source["url"]).path):
         return []
     try:
         data = json_of(reply)
@@ -659,7 +665,61 @@ def calendar_source_lines(client, answer, today):
 def account_api_lines(client, today):
     if client is None:
         return []
-    return [ACCOUNT_API_HEAD] + api_probe_lines(client, ACCOUNT_APIS, today)
+    return [ACCOUNT_API_HEAD] + api_probe_lines(client, ACCOUNT_APIS, today) + own_timetable_lines(client, today)
+
+
+def own_course_ids(payload):
+    if not isinstance(payload, dict):
+        return []
+    courses = payload.get("courses") if isinstance(payload.get("courses"), list) else []
+    return sorted({course["id"] for course in courses if isinstance(course, dict) and type(course.get("id")) is int})
+
+
+def own_entries_fact(payload):
+    if not isinstance(payload, dict):
+        return "- Entries: answer is not an object"
+    blocks = payload.get("students")
+    if isinstance(blocks, list):
+        counts = [len(block["entries"]) if isinstance(block, dict) and isinstance(block.get("entries"), list) else 0 for block in blocks]
+        return "- Entries: student blocks %d, entries per block %s" % (len(counts), ", ".join(str(count) for count in counts) or "-")
+    entries = payload.get("entries")
+    return "- Entries: no student blocks, entries at the top %d" % (len(entries) if isinstance(entries, list) else 0)
+
+
+def own_timetable_lines(client, today):
+    budget = budget_of(client)
+    lines = [OWN_COURSES_HEAD]
+    if not budget.take():
+        return lines + [budget.stop_line("Own course reads")]
+    answer, problem = read_unfollowed(client, SCHOOL_ACCOUNT_PATH + "?" + urlencode({"fields": OWN_COURSE_FIELDS}))
+    if answer is None:
+        return lines + ["- Answer: %s" % problem]
+    lines.append(page_answer_line(SCHOOL_ACCOUNT_PATH + " +course fields", answer))
+    if status_of(answer) != 200:
+        return lines
+    lines.extend(response_skeleton(answer, menu_shape))
+    try:
+        ids = own_course_ids(json_of(answer))
+    except (ValueError, TypeError):
+        return lines + ["- Own courses: unreadable"]
+    lines.append("- Own courses: %d" % len(ids))
+    if not ids:
+        return lines + ["- Own timetable: not asked, the account lists no own courses"]
+    lines.append(OWN_TIMETABLE_HEAD)
+    if not budget.take():
+        return lines + [budget.stop_line("Own timetable reads")]
+    params = timetable_params(today, ids, False)
+    reply, problem = read_unfollowed(client, modules.DSA_TIMETABLE_PATH + "?" + urlencode(params))
+    if reply is None:
+        return lines + ["- Answer: %s" % problem]
+    lines.append(page_answer_line(modules.DSA_TIMETABLE_PATH + " +own course filter (%d)" % len(ids), reply))
+    if status_of(reply) != 200:
+        return lines
+    try:
+        lines.append(own_entries_fact(json_of(reply)))
+    except (ValueError, TypeError):
+        return lines + ["- Entries: unreadable"]
+    return lines + response_skeleton(reply, menu_shape)
 
 
 def api_probe_lines(client, targets, today, answers=None, retry_json=False):

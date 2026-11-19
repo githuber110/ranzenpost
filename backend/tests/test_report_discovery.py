@@ -363,3 +363,64 @@ def test_a_plugin_source_shows_the_shape_of_its_answer_so_one_report_settles_its
     assert shapes[0] == "  - JSON value shapes:"
     assert any("title: string" in line for line in shapes)
     assert not any("Mathe Musterkind" in line for line in shapes)
+
+
+ME = SCHOOL_ONE_URL + "/iserv/dieschulapp/api/1.0/users/me"
+OWN_PLAN = SCHOOL_ONE_URL + "/iserv/dieschulapp/api/1.0/current-timetable/"
+
+
+def student_answers(plan):
+    answers = calendar_answers()
+    answers[ME] = json_answer({
+        "id": 7, "displayname": "Max Musterkind", "roles": ["student"],
+        "mainCourse": {"id": 5, "name": "5a"},
+        "courses": [{"id": 12, "name": "Mathe 5a", "type": "course"}, {"id": 11, "name": "Deutsch 5a", "type": "course"}, {"name": "x"}],
+    })
+    answers[OWN_PLAN] = json_answer(plan)
+    return answers
+
+
+def test_the_report_asks_the_own_timetable_with_the_own_courses_and_shows_only_counts_and_shapes():
+    plan = {"entries": [{"id": 1, "weekday": 0, "room": {"name": "Turnhalle"}}, {"id": 2, "weekday": 1}], "vacations": [], "schoolEvents": []}
+    client, adapter = recording_client(student_answers(plan))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    text = "\n".join(lines)
+    assert "- Own courses: 2" in lines
+    assert "- Entries: no student blocks, entries at the top 2" in lines
+    asked = [url for url in adapter.sent if url.startswith(OWN_PLAN)]
+    assert len(asked) == 1
+    assert "filterBy=courseSubject.course%3Ain%2811%7C12%29" in asked[0]
+    assert "substitutions=false" in asked[0]
+    for word in SECRET_WORDS + ("Mathe", "Deutsch", "Max"):
+        assert word not in text
+
+
+def test_without_own_courses_the_own_timetable_is_not_asked():
+    client, adapter = recording_client(calendar_answers())
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Own courses: 0" in lines
+    assert "- Own timetable: not asked, the account lists no own courses" in lines
+    assert not [url for url in adapter.sent if url.startswith(OWN_PLAN)]
+
+
+def test_the_own_timetable_answer_of_a_parent_shape_counts_the_student_blocks():
+    client, _ = recording_client(student_answers({"students": [{"student": {"id": 7}, "entries": [{"id": 1}]}]}))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Entries: student blocks 1, entries per block 1" in lines
+
+
+def test_a_calendar_appointments_source_shows_its_answer_shape():
+    answers = calendar_answers()
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/api/eventsources"] = json_answer(
+        [{"label": "Eltern 5a", "id": "/eltern.5a/calendar", "subscription": False, "type": "cal", "url": "/iserv/calendar/api/calendar-appointments?cal=/eltern.5a/calendar"}]
+    )
+    answers[SCHOOL_ONE_URL + "/iserv/calendar/api/calendar-appointments"] = json_answer({"events": [EVENT], "errors": []})
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = diagnostics.page_structure(fetcher, {"slug": "calendar", "segment": "calendar", "name": "Kalender", "page": "/iserv/calendar", "json": None}, TODAY, {}, nav_paths=menu_of(fetcher))
+    text = "\n".join(lines)
+    assert "type cal, url /iserv/calendar/api/calendar-appointments?cal=" in text
+    assert "1 events" in text
+    assert "JSON value shapes" in text.split("Calendar sources", 1)[1]
+    for word in SECRET_WORDS:
+        assert word not in text

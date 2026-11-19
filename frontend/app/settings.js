@@ -25,6 +25,7 @@ function schoolSettingRows(id) {
     rows.push(periodsSettingRow(id, config));
     rows.push(settingRow(t("settings.names"), "", openNamesPage, "names-setting", SETTINGS_PAGE_NAMES));
     rows.push(...courseSettingRows(id));
+    rows.push(...sourceChoiceSettingRows(id));
   }
   if (moduleOn("absences") && !noChildren()) {
     rows.push(settingRow(t("settings.phones"), t("settings.phones.count", { count: formatNumber((config.phones || []).filter((p) => p.number).length) }), () => openSheet(phonesSheet)));

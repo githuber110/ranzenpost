@@ -54,7 +54,7 @@ from .reportfacts import (
 from .requestlog import messenger_sync_lines, slow_request_lines
 from .scriptscan import SCRIPT_ROOT, change_type_label_line, change_type_labels, script_sources
 from .store import host_of
-from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option
+from .timetable_source import SCHOOL_APP_SOURCE, SOURCE_KEY, matching_option, stored_choice
 from .valueshape import table_cell
 from .versions import pending_updates
 
@@ -782,6 +782,7 @@ def school_section(index, connection, structure, today, module="", budget=None):
     lines.append("- Session: %s" % session_state)
     rows = module_rows(registry)
     lines.append("- Timetable source: %s" % timetable_source_fact(config, registry))
+    lines.append("- Timetable source chosen: %s" % stored_choice(config))
     lines.append("### Modules")
     lines.append(TABLE_HEAD)
     lines.append(TABLE_RULE)

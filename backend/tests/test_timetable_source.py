@@ -200,13 +200,16 @@ def test_the_school_app_takes_over_again_once_slots_appear(tmp_path):
     assert remembered(service) == ""
 
 
-def test_a_school_that_keeps_its_plan_in_the_school_app_never_asks_the_old_module(tmp_path):
+def test_a_school_that_keeps_its_plan_in_the_school_app_asks_the_old_module_only_to_compare_once_an_hour(tmp_path):
     school = TimeTableSchool(school_lessons=True)
     service = make(tmp_path, school)
-    result = service.timetable(CHILD, reference=WEDNESDAY)
-    assert result["source"] == "school-app"
-    assert school.paths(PAGE) == []
-    assert school.paths(DATA) == []
+    for _ in range(3):
+        result = service.timetable(CHILD, reference=WEDNESDAY)
+        assert result["source"] == "school-app"
+        service.timetable(CHILD, reference=WEDNESDAY, week_offset=1)
+    assert len(school.paths(PAGE)) == 1
+    assert len(school.paths(DATA)) == 1
+    assert remembered(service) == ""
 
 
 def test_an_empty_week_with_slots_is_honestly_empty_without_the_old_module(tmp_path):

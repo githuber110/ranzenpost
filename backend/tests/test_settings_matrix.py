@@ -537,6 +537,18 @@ def own_entries_ha_app(h):
     assert read(h) is True
 
 
+def choose_old_timetable(h):
+    h.patch_connection(timetable_choice="time-table")
+
+
+def timetable_choice_app(h):
+    read = lambda h: h.client.get(f"/api/connections/{SCHOOL}").json()["timetable_choice"]
+    assert _flip(h, read, choose_old_timetable) == ("", "time-table")
+    refused = h.client.post(f"/api/connections/{SCHOOL}", json={"timetable_choice": "elsewhere"})
+    assert refused.status_code == 400 and refused.json()["error"] == "invalid_value"
+    assert read(h) == "time-table"
+
+
 def own_entries_ha_info(h):
     assert _flip(h, lambda h: h.info()["schools"][0]["own_entries"], share_own_entries) == (False, True)
 
@@ -1228,6 +1240,7 @@ ROWS = (
     Row("period_time", ("period_times",), {"app_timetable": period_time_app, "feed": period_time_feed, "integration_state": period_time_state, "integration_events": period_time_events}),
     Row("period_duration", ("period_grid",), {"app_timetable": period_duration_app, "feed": period_duration_feed}),
     Row("own_entry", ("own_entries",), {"app_periods": own_entry_app, "feed": own_entry_feed}),
+    Row("timetable_choice", ("timetable_choice",), {"app_connections": timetable_choice_app}),
     Row("own_entries_ha", ("own_entries_ha",), {"app_connections": own_entries_ha_app, "integration_info": own_entries_ha_info, "integration_events": own_entries_ha_events}),
     Row("subject_name", ("subjects",), {"app_timetable": subject_name_app, "feed": subject_name_feed, "integration_state": subject_name_state, "integration_events": subject_name_events}),
     Row("subject_code_derived", ("subjects",), {"app_timetable": subject_code_derived_app, "integration_events": subject_code_derived_events}),
@@ -1277,6 +1290,7 @@ EXEMPT_KEYS = {
     "children": "chosen in the wizard, propagation covered by test_children_page.py and e2e/two-schools.spec.js",
     "poll_state": "internal poller bookkeeping",
     "timetable_source": "learned from the school answers, covered by test_timetable_source.py",
+    "timetable_both": "learned from the school answers, covered by test_timetable_choice.py",
     "children_state": "learned from the child list answers, covered by test_several_schools.py",
 }
 

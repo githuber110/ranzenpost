@@ -3,6 +3,29 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2611.3.0
+
+### New
+
+- Some schools keep two timetables in IServ, the new one and the outdated one, and enter substitutions in only one of them.
+  The settings let you choose for each such school which one Ranzenpost reads. Once you choose the outdated one, Ranzenpost
+  stays with it until you change it. The choice shows how many changes each timetable holds this week, and the timetable
+  offers to switch when only the other one has changes. If the chosen outdated timetable is gone or cannot be read, the app
+  shows the new one and says so. If the school cannot be reached, the last state stays as before.
+
+### Fixed
+
+- School calendars that IServ serves over its newer appointments address are read too, so group and school events no
+  longer go missing.
+- A timetable answer that lists the lessons at the top instead of per child is read.
+- The CSS selector library used to read IServ pages is updated for four published security advisories.
+
+### Report
+
+- The problem report shows the answer shape of such calendars and, for accounts with their own courses, whether the
+  timetable answers with them.
+- It names the timetable you chose for a school with two.
+
 ## 2611.2.0
 
 ### New

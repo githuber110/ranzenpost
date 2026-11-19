@@ -72,6 +72,7 @@ describe("the page loads its scripts in a fixed order", () => {
       "app/schools.js",
       "app/periodsPage.js",
       "app/ownPlan.js",
+      "app/sourceChoice.js",
       "lib/globals.js",
       "app.js",
     ]);

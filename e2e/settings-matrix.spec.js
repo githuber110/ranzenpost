@@ -1190,6 +1190,7 @@ const EXEMPT_KEYS = {
   modules_disabled: "the module switch runs through the bar, the overview and the settings rows in e2e/layout-settings.spec.js; the integration side is the backend matrix row modules_disabled-integration_info",
   reported_modules: "bookkeeping of the unknown-module card, covered end to end by e2e/help-report.spec.js and the backend matrix row module_card_flags-app_config",
   modules_card_hidden: "bookkeeping of the unknown-module card, covered end to end by e2e/help-report.spec.js and the backend matrix row module_card_flags-app_config",
+  timetable_choice: "only offered at schools with two timetables, which the e2e fixture school does not have; covered by frontend/tests/sourceChoice.test.js and the backend matrix row timetable_choice-app_connections",
 };
 
 function stepsOf(row) {

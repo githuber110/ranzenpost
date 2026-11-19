@@ -2194,6 +2194,8 @@ def test_school_app_query_lines_say_when_the_answers_are_not_understood():
     ({"students": ["text", None]}, "students 0, entries per student -"),
     ({"students": [{"entries": ["text", None]}]}, "students 1, entries per student 2"),
     ({"students": [{"entries": 3}]}, "students 1, entries per student 0"),
+    ({"entries": ["text", None], "vacations": []}, "no student blocks, entries at the top 2"),
+    ({"entries": 3}, "no student blocks, entries at the top 0"),
 ])
 def test_school_app_query_lines_survive_an_odd_answer_shape(payload, entries):
     settings = [{"id": 1, "timetable_availableForGuardiansAndStudents": True, "substitutions_availableForGuardiansAndStudents": True}]
