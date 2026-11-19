@@ -3,6 +3,17 @@
 Version scheme: `YYMM.N.P`, following Home Assistant. YYMM is year and month, N counts feature releases, P counts
 fixes. Test builds carry a `b` suffix, for example `2609.2.1b0`, and sort below the release.
 
+## 2611.3.1
+
+### Report
+
+- For student and parent accounts, the problem report asks the timetable the way the school app does, and reads
+  substitutions and the day's board messages.
+- It shows how info screens are built and reads the plans and files they embed, as structure only.
+- It shows whether the Plans module exists and what the file list returns when IServ loads it in the background.
+- The report may take up to 90 seconds and reads info screens, files and timetables first. The app waits up to three
+  minutes for it.
+
 ## 2611.3.0
 
 ### New

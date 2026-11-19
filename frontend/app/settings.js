@@ -1,3 +1,5 @@
+const REPORT_TIMEOUT_MS = 180000;
+
 function settingsView() {
   const config = state.config || {};
   const view = el("div", {});
@@ -246,7 +248,7 @@ function helpIssueBody() {
 async function loadHelpReport() {
   state.helpFailed = false;
   try {
-    const data = await getJson(HELP_REPORT_PATH, requestSignal(UPLOAD_TIMEOUT_MS));
+    const data = await getJson(HELP_REPORT_PATH, requestSignal(REPORT_TIMEOUT_MS));
     state.helpReport = String(data && data.report ? data.report : "");
     state.helpFacts = data && data.facts && typeof data.facts === "object" ? data.facts : null;
     state.helpBundle = null;

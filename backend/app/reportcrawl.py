@@ -38,7 +38,7 @@ from .iserv.school_calendar import (
     source_kind,
 )
 from .module_catalogue import slug_of
-from .pageshape import body_kind, code_text, json_of, response_skeleton
+from .pageshape import body_kind, code_text, json_of, response_skeleton, visible_text
 from .pathpattern import path_only, placeholders
 from .reportexplore import (
     APP_API_WORDS,
@@ -48,6 +48,12 @@ from .reportexplore import (
     as_prefixes,
     client_redirect,
     embedded_sources,
+    widget_frame_paths,
+    widget_host,
+    widget_lines,
+    widget_other_host,
+    widget_path_shape,
+    widget_target,
     first_foreign_frame,
     first_own_frame,
     frame_line,
@@ -71,7 +77,7 @@ MAX_PAGES_PER_MODULE = 5
 MAX_PAGES_PER_REPORT = 64
 MAX_APIS_PER_MODULE = 5
 MAX_MODULE_LINES = 400
-REPORT_SECONDS = 60
+REPORT_SECONDS = 90
 REQUEST_SECONDS = 5
 MIN_REQUEST_SECONDS = 0.5
 STOP_PAGES = "pages"
@@ -175,6 +181,29 @@ SCHOOL_ACCOUNT_PATH = modules.DSA_API + "/users/me"
 OWN_COURSE_FIELDS = "id,roles,mainCourse,mainCourse.id,mainCourse.name,courses,courses.id,courses.name,courses.type"
 OWN_COURSES_HEAD = "##### Own courses of the account (users/me with course fields)"
 OWN_TIMETABLE_HEAD = "##### Own timetable with the account's courses"
+STUDENT_LIST_PATH = modules.DSA_API + "/students/"
+STUDENT_LIST_FIELDS = "id,forename,surname,displayname,mainCourse,mainCourse.name,courses"
+STUDENT_LIST_HEAD = "##### Student list as the school app asks it (students/)"
+APP_TIMETABLE_HEAD = "##### Timetable as the school app asks it for the first listed student"
+FAMILY_ROLE_WORDS = ("student", "pupil", "schueler", "guardian", "parent", "eltern")
+STAFF_ROLE_WORDS = ("teacher", "admin", "lehr", "leitung", "sekretar", "staff", "employee", "mitarbeit", "verwalt")
+PLAN_MODULE_PATH = "/iserv/plan/"
+SUBSTITUTIONS_PATH = modules.DSA_API + "/substitutions/"
+BOARD_MESSAGES_PATH = modules.DSA_API + "/substitutionBoardMessages/"
+SUBSTITUTIONS_HEAD = "##### Substitutions and board messages as the school app asks them"
+FILE_LIST_PATH = "/iserv/file/-/Files"
+FILE_LIST_HEAD = "##### File list as the file page loads it"
+BACKGROUND_HEADERS = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*; q=0.01"}
+MAX_WIDGET_SOURCE_READS = 4
+MAX_WIDGET_FOLLOW_STEPS = 2
+FILE_GROUPS_PATH = "/iserv/file/-/Groups"
+SUBSTITUTION_RANGE_DAYS = 7
+MAX_ROW_FIELDS = 12
+HTML_TAGS = frozenset("a abbr b br button div em i img input label li ol option p select small span strong sub sup svg table tbody td th thead tr u ul".split())
+WIDGET_SOURCE_ROOTS = ("/iserv/infodisplay/", "/iserv/public/infodisplay/", "/iserv/plan/", "/iserv/file/", "/iserv/dieschulapp/")
+PLAN_MODULE_HEAD = "##### Plans module"
+PLAN_LINK_PREFIX = "/iserv/plan/show/"
+MAX_PLAN_LINKS = 6
 
 
 def upcoming_params(_today):
@@ -665,7 +694,9 @@ def calendar_source_lines(client, answer, today):
 def account_api_lines(client, today):
     if client is None:
         return []
-    return [ACCOUNT_API_HEAD] + api_probe_lines(client, ACCOUNT_APIS, today) + own_timetable_lines(client, today)
+    seen = {}
+    lines = [ACCOUNT_API_HEAD] + api_probe_lines(client, ACCOUNT_APIS, today) + own_timetable_lines(client, today, seen)
+    return lines + student_list_lines(client, today, seen) + plan_module_lines(client) + file_list_lines(client)
 
 
 def own_course_ids(payload):
@@ -686,7 +717,265 @@ def own_entries_fact(payload):
     return "- Entries: no student blocks, entries at the top %d" % (len(entries) if isinstance(entries, list) else 0)
 
 
-def own_timetable_lines(client, today):
+ROLE_NAME_KEYS = ("name", "role", "slug")
+
+
+def _role_name(role):
+    if isinstance(role, str):
+        return role.casefold()
+    if isinstance(role, dict):
+        for key in ROLE_NAME_KEYS:
+            if isinstance(role.get(key), str):
+                return role[key].casefold()
+    return ""
+
+
+def account_roles(payload):
+    roles = payload.get("roles") if isinstance(payload, dict) else None
+    return [name for name in (_role_name(role) for role in roles) if name] if isinstance(roles, list) else []
+
+
+def _plan_link(href):
+    try:
+        path = path_only(href)
+    except ValueError:
+        return ""
+    return path if path.startswith(PLAN_LINK_PREFIX) else ""
+
+
+def family_account(roles):
+    if any(word in role for role in roles for word in STAFF_ROLE_WORDS):
+        return False
+    return any(word in role for role in roles for word in FAMILY_ROLE_WORDS)
+
+
+def listed_course_ids(student):
+    courses = student.get("courses") if isinstance(student, dict) else None
+    ids = set()
+    for course in courses if isinstance(courses, list) else []:
+        value = course.get("id") if isinstance(course, dict) else course
+        if type(value) is int:
+            ids.add(value)
+    return sorted(ids)
+
+
+def week_start(today):
+    return today - timedelta(days=today.weekday())
+
+
+def student_list_lines(client, today, seen):
+    lines = [STUDENT_LIST_HEAD]
+    if "roles" not in seen:
+        return lines + ["- Student list: not asked, the account roles are unknown"]
+    if not family_account(seen["roles"]):
+        return lines + ["- Student list: not asked, the roles do not clearly say student or guardian"]
+    return lines + _student_timetable_lines(client, today, seen) + substitution_lines(client, today)
+
+
+def next_school_day(today):
+    day = today + timedelta(days=1)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day
+
+
+def _json_section(client, label, path, params=None, headers=None, rows=False):
+    budget = budget_of(client)
+    if not budget.take():
+        return [budget.stop_line(label + " reads")]
+    answer, problem = read_unfollowed(client, path + ("?" + urlencode(params) if params else ""), headers=headers)
+    if answer is None:
+        return ["- Answer: %s" % problem]
+    lines = [page_answer_line(path + (" +" + label.lower() if params or headers else ""), answer)]
+    status = status_of(answer)
+    if status != 200 and not 400 <= status < 500:
+        return lines
+    try:
+        payload = json_of(answer)
+    except (ValueError, TypeError):
+        return lines + (["- Answer is not JSON"] if status == 200 else [])
+    if status != 200:
+        texts = _error_texts(payload, [])[:MAX_ERROR_TEXTS]
+        return lines + response_skeleton(answer, menu_shape) + (["- Error texts: " + " | ".join("'%s'" % text for text in texts)] if texts else [])
+    count = len(payload) if isinstance(payload, list) else len(payload.get("data")) if isinstance(payload, dict) and isinstance(payload.get("data"), list) else None
+    if count is not None:
+        lines.append("- Entries: %d" % count)
+    lines.extend(response_skeleton(answer, menu_shape))
+    return lines + (row_field_lines(payload) if rows else [])
+
+
+def substitution_lines(client, today):
+    lines = [SUBSTITUTIONS_HEAD]
+    for day in (today, next_school_day(today)):
+        stamp = day.strftime("%Y-%m-%d")
+        lines.extend(_json_section(client, "Date filter " + ("today" if day == today else "next school day"), SUBSTITUTIONS_PATH, {"filterBy": "date:is(%s)" % stamp}))
+    start = (today - timedelta(days=SUBSTITUTION_RANGE_DAYS)).strftime("%Y-%m-%d")
+    end = (today + timedelta(days=SUBSTITUTION_RANGE_DAYS)).strftime("%Y-%m-%d")
+    lines.extend(_json_section(client, "Range of two weeks", SUBSTITUTIONS_PATH, {"filterBy": "date:greaterOrEqualThan(%s),date:smallerOrEqualThan(%s)" % (start, end)}))
+    stamp = today.strftime("%Y-%m-%d")
+    board = {"filterBy": "validFromDate:smallerOrEqualThan(%s),validTillDate:greaterOrEqualThan(%s)" % (stamp, stamp)}
+    return lines + _json_section(client, "Valid today", BOARD_MESSAGES_PATH, board)
+
+
+def file_list_lines(client):
+    lines = [FILE_LIST_HEAD]
+    for path in (FILE_LIST_PATH, FILE_GROUPS_PATH):
+        lines.extend(_json_section(client, "Background request", path, headers=BACKGROUND_HEADERS, rows=True))
+    return lines
+
+
+def _html_field(value):
+    soup = BeautifulSoup(value, "html.parser")
+    tags = []
+    for node in soup.find_all(True):
+        name = node.name if node.name in HTML_TAGS else "<tag>"
+        if name not in tags:
+            tags.append(name)
+    links = []
+    for node in soup.find_all(("a", "img")):
+        target = node.get("href") or node.get("src") or ""
+        try:
+            shape = widget_path_shape(target)
+        except ValueError:
+            shape = "unreadable link"
+        if target and shape not in links:
+            links.append(shape)
+    return "html tags %s; links %s" % (", ".join(tags) or "-", " | ".join(links) or "-")
+
+
+def _field_name(key):
+    text = str(key)
+    return text if text.startswith("column ") else code_text(placeholders(text))
+
+
+ERROR_TEXT_KEYS = ("message", "msg", "error", "detail", "title", "description")
+MAX_ERROR_TEXTS = 4
+
+
+def _error_texts(payload, found):
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key in ERROR_TEXT_KEYS and isinstance(value, str):
+                shown = visible_text(" ".join(value.split()), known_word)[:120]
+                if shown and shown not in found:
+                    found.append(shown)
+            else:
+                _error_texts(value, found)
+    elif isinstance(payload, list):
+        for value in payload:
+            _error_texts(value, found)
+    return found
+
+
+def row_field_lines(payload):
+    rows = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], (dict, list)):
+        return []
+    lines = []
+    fields = []
+    first = rows[0] if isinstance(rows[0], dict) else {"column %d" % number: value for number, value in enumerate(rows[0])}
+    for key, value in first.items():
+        if isinstance(value, dict):
+            fields.extend(("%s.%s" % (key, inner), item) for inner, item in value.items())
+        else:
+            fields.append((key, value))
+    for key, value in fields[:MAX_ROW_FIELDS]:
+        if isinstance(value, str) and value.lstrip().startswith("<"):
+            lines.append("- First row field %s: %s" % (_field_name(key), _html_field(value)))
+        elif isinstance(value, str) and value.startswith("/"):
+            lines.append("- First row field %s: path %s" % (_field_name(key), widget_path_shape(value)))
+    return lines
+
+
+def _student_timetable_lines(client, today, seen):
+    lines = []
+    budget = budget_of(client)
+    if not budget.take():
+        return lines + [budget.stop_line("Student list reads")]
+    answer, problem = read_unfollowed(client, STUDENT_LIST_PATH + "?" + urlencode({"fields": STUDENT_LIST_FIELDS}))
+    if answer is None:
+        return lines + ["- Answer: %s" % problem]
+    lines.append(page_answer_line(STUDENT_LIST_PATH + " +app fields", answer))
+    if status_of(answer) != 200:
+        return lines
+    try:
+        payload = json_of(answer)
+    except (ValueError, TypeError):
+        return lines + ["- Students listed: unreadable"]
+    lines.extend(response_skeleton(answer, menu_shape))
+    if isinstance(payload, dict):
+        listed = [value for value in payload.values() if isinstance(value, list) and all(isinstance(entry, dict) for entry in value)]
+        if not listed:
+            return lines + ["- Students listed: answer is not a list"]
+        lines.append("- Students listed: inside an object")
+        payload = listed[0]
+    if not isinstance(payload, list):
+        return lines + ["- Students listed: answer is not a list"]
+    own_id = seen.get("own_id")
+    ids = listed_course_ids(payload[0]) if payload else []
+    lines.append(
+        "- Students listed: %d, the account itself among them: %s, courses of the first: %d, same as the account's own courses: %s"
+        % (
+            len(payload),
+            "unknown" if own_id is None else ("yes" if any(isinstance(entry, dict) and entry.get("id") == own_id for entry in payload) else "no"),
+            len(ids),
+            "yes" if ids == seen.get("ids") else "no",
+        )
+    )
+    lines.append(APP_TIMETABLE_HEAD)
+    if not ids:
+        return lines + ["- Timetable: not asked, the first listed student has no courses" if payload else "- Timetable: not asked, the school app lists no student"]
+    if not budget.take():
+        return lines + [budget.stop_line("Student timetable reads")]
+    params = timetable_params(week_start(today), ids, True)
+    reply, problem = read_unfollowed(client, modules.DSA_TIMETABLE_PATH + "?" + urlencode(params))
+    if reply is None:
+        return lines + ["- Answer: %s" % problem]
+    lines.append(page_answer_line(modules.DSA_TIMETABLE_PATH + " +app filter (%d) with substitutions" % len(ids), reply))
+    if status_of(reply) != 200:
+        return lines
+    try:
+        lines.append(own_entries_fact(json_of(reply)))
+    except (ValueError, TypeError):
+        return lines + ["- Entries: unreadable"]
+    return lines + response_skeleton(reply, menu_shape)
+
+
+def plan_module_lines(client):
+    lines = [PLAN_MODULE_HEAD]
+    budget = budget_of(client)
+    if not budget.take():
+        return lines + [budget.stop_line("Plans module reads")]
+    answer, problem = read_unfollowed(client, PLAN_MODULE_PATH)
+    if answer is None:
+        return lines + ["- Answer: %s" % problem]
+    lines.append(page_answer_line(PLAN_MODULE_PATH, answer))
+    if status_of(answer) != 200:
+        return lines
+    soup = BeautifulSoup(getattr(answer, "text", "") or "", "html.parser")
+    links = [link for link in (_plan_link(anchor["href"]) for anchor in soup.find_all("a", href=True)) if link]
+    shapes = []
+    for link in links:
+        rest = [part for part in link[len(PLAN_LINK_PREFIX):].split("/") if part]
+        shape = PLAN_LINK_PREFIX + "/".join("<seg>" for _ in rest)
+        if shape not in shapes:
+            shapes.append(shape)
+    lines.append("- Plan links: %d%s" % (len(links), (", shapes " + " | ".join(shapes[:MAX_PLAN_LINKS])) if shapes else ""))
+    if not links:
+        return lines
+    if not budget.take():
+        return lines + [budget.stop_line("Plan page reads")]
+    first, problem = read_unfollowed(client, links[0])
+    if first is None:
+        return lines + ["- First plan: %s" % problem]
+    lines.append(page_answer_line("first plan " + PLAN_LINK_PREFIX + "<seg>", first))
+    if status_of(first) == 200:
+        lines.extend(response_skeleton(first, valueshape.link_shape))
+    return lines
+
+
+def own_timetable_lines(client, today, seen=None):
+    seen = {} if seen is None else seen
     budget = budget_of(client)
     lines = [OWN_COURSES_HEAD]
     if not budget.take():
@@ -699,9 +988,13 @@ def own_timetable_lines(client, today):
         return lines
     lines.extend(response_skeleton(answer, menu_shape))
     try:
-        ids = own_course_ids(json_of(answer))
+        payload = json_of(answer)
+        ids = own_course_ids(payload)
     except (ValueError, TypeError):
         return lines + ["- Own courses: unreadable"]
+    seen["roles"] = account_roles(payload)
+    seen["own_id"] = payload.get("id") if isinstance(payload, dict) and type(payload.get("id")) is int else None
+    seen["ids"] = ids
     lines.append("- Own courses: %d" % len(ids))
     if not ids:
         return lines + ["- Own timetable: not asked, the account lists no own courses"]
@@ -853,10 +1146,84 @@ def rule_page_lines(client, rule, answer, link_shape, prefix, landing=False):
         lines.extend(join_lines(html, url, link_shape))
     if rule.rows:
         lines.extend(row_text_lines(html))
+    if rule.widgets:
+        lines.extend(widget_lines(html, url, link_shape))
+        lines.extend(widget_source_lines(client, html, url, link_shape))
     if rule.media:
         shown, own = embedded_sources(html, url, link_shape)
         lines.extend(shown)
         lines.extend(source_type_lines(client, own, link_shape, prefix, rule))
+    return lines
+
+
+def _source_label(target):
+    label = widget_path_shape(target.path)
+    names = sorted({name if QUERY_KEY.match(name) and known_word(name) else "<word>" for name, _ in parse_qsl(target.query, keep_blank_values=True)})
+    return label + (" ?" + "&".join(names) if names else "")
+
+
+def _readable_source(target, host):
+    if target is None or (target.netloc and target.netloc.lower() != host):
+        return False
+    return target.path.startswith(WIDGET_SOURCE_ROOTS) and not write_path(target.path) and not sign_in_path(target.path)
+
+
+def _source_request(target):
+    return target.path + ("?" + target.query if target.query else "")
+
+
+def _follow_source(client, answer, page_url, host, lines):
+    for _ in range(MAX_WIDGET_FOLLOW_STEPS):
+        kind, value = "", ""
+        if getattr(answer, "next_url", ""):
+            kind, value = "redirect", answer.next_url
+        elif status_of(answer) == 200:
+            kind, value = client_redirect(getattr(answer, "text", "") or "", page_url)
+        if not value:
+            return
+        target = widget_target(value, page_url)
+        if not _readable_source(target, host):
+            outside = target is not None and target.netloc and target.netloc.lower() != host
+            lines.append("  - %s to %s, not followed" % (kind, widget_other_host(target) if outside else "a path outside the widget areas"))
+            return
+        budget = budget_of(client)
+        if not budget.take():
+            lines.append("  " + budget.stop_line("Widget follow reads"))
+            return
+        answer, problem = read_unfollowed(client, _source_request(target))
+        if answer is None:
+            lines.append("  - %s to %s -> %s" % (kind, _source_label(target), problem))
+            return
+        lines.append("  - %s to %s -> %s" % (kind, _source_label(target), _answer_facts(answer)))
+        if status_of(answer) == 200:
+            lines.extend("    " + line for line in response_skeleton(answer, widget_path_shape))
+        page_url = urljoin(page_url, target.path)
+
+
+def widget_source_lines(client, html, page_url, link_shape):
+    host = widget_host(page_url)
+    found = widget_frame_paths(html, page_url)
+    targets = [target for target in found if _readable_source(target, host)]
+    budget = budget_of(client)
+    lines = []
+    skipped = len(found) - len(targets)
+    if skipped:
+        lines.append("- Widget sources skipped: %d (other host, write or sign-in path, or outside the widget areas)" % skipped)
+    for target in targets[:MAX_WIDGET_SOURCE_READS]:
+        if not budget.take():
+            lines.append(budget.stop_line("Widget source reads"))
+            break
+        answer, problem = read_unfollowed(client, _source_request(target))
+        label = _source_label(target)
+        if answer is None:
+            lines.append("- Widget source %s -> %s" % (label, problem))
+            continue
+        lines.append("- Widget source %s -> %s" % (label, _answer_facts(answer)))
+        if status_of(answer) == 200:
+            lines.extend("  " + line for line in response_skeleton(answer, widget_path_shape))
+        _follow_source(client, answer, urljoin(page_url, target.path), host, lines)
+    if len(targets) > MAX_WIDGET_SOURCE_READS:
+        lines.append("- Widget sources not read: %d beyond the limit of %d" % (len(targets) - MAX_WIDGET_SOURCE_READS, MAX_WIDGET_SOURCE_READS))
     return lines
 
 

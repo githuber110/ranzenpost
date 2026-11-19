@@ -113,6 +113,7 @@ JSON_PROBES = {
 TABLE_HEAD = "| Module | Slug | Edition | Status | Probe | HTTP | Content type | Length | Final path |"
 TABLE_RULE = "|---|---|---|---|---|---|---|---|---|"
 MAX_UNKNOWN_STRUCTURE_ROWS = 10
+FIRST_STRUCTURE_SLUGS = ("infodisplay", "file", "dsa-timetable", "plan", "timetable", "timetable-legacy")
 MIN_WORD = 3
 MIN_SCHOOL_WORD = 4
 MIN_SECRET = 4
@@ -815,6 +816,7 @@ def school_section(index, connection, structure, today, module="", budget=None):
                 lines.append("- Not read: no module named %s" % module)
             always = [row for row in rows if row["status"] == STATUS_UNKNOWN and row not in base]
             chosen = base + always[:MAX_UNKNOWN_STRUCTURE_ROWS]
+            chosen.sort(key=lambda row: FIRST_STRUCTURE_SLUGS.index(row["slug"]) if row["slug"] in FIRST_STRUCTURE_SLUGS else len(FIRST_STRUCTURE_SLUGS))
             cache = {}
             child_id = _own_child_id(config)
             listed = _listed_count(connection, config.get("children")) if any(row["slug"] == TIME_TABLE_SLUG for row in chosen) else None

@@ -387,7 +387,7 @@ def test_the_report_asks_the_own_timetable_with_the_own_courses_and_shows_only_c
     text = "\n".join(lines)
     assert "- Own courses: 2" in lines
     assert "- Entries: no student blocks, entries at the top 2" in lines
-    asked = [url for url in adapter.sent if url.startswith(OWN_PLAN)]
+    asked = [url for url in adapter.sent if url.startswith(OWN_PLAN) and "substitutions=false" in url]
     assert len(asked) == 1
     assert "filterBy=courseSubject.course%3Ain%2811%7C12%29" in asked[0]
     assert "substitutions=false" in asked[0]
@@ -407,6 +407,411 @@ def test_the_own_timetable_answer_of_a_parent_shape_counts_the_student_blocks():
     client, _ = recording_client(student_answers({"students": [{"student": {"id": 7}, "entries": [{"id": 1}]}]}))
     lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
     assert "- Entries: student blocks 1, entries per block 1" in lines
+
+
+STUDENTS = SCHOOL_ONE_URL + "/iserv/dieschulapp/api/1.0/students/"
+PLANS = SCHOOL_ONE_URL + "/iserv/plan/"
+
+
+def listed_answers(students, roles=("student",)):
+    answers = student_answers({"entries": [{"id": 1, "weekday": 0}], "vacations": [], "schoolEvents": []})
+    me = json.loads(answers[ME][2])
+    me["roles"] = list(roles)
+    answers[ME] = json_answer(me)
+    answers[STUDENTS] = json_answer(students)
+    return answers
+
+
+def test_the_report_asks_the_student_list_and_the_timetable_the_way_the_school_app_does():
+    students = [{"id": 7, "displayname": "Max Musterkind", "mainCourse": {"name": "5a"}, "courses": [{"id": 11}, {"id": 12}, {"id": 13}]}]
+    client, adapter = recording_client(listed_answers(students))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    text = "\n".join(lines)
+    assert "- Students listed: 1, the account itself among them: yes, courses of the first: 3, same as the account's own courses: no" in lines
+    assert "- Entries: no student blocks, entries at the top 1" in lines
+    asked = [url for url in adapter.sent if url.startswith(OWN_PLAN) and "substitutions=true" in url]
+    assert len(asked) == 1
+    assert "filterBy=courseSubject.course%3Ain%2811%7C12%7C13%29" in asked[0]
+    assert "date=2026-01-12" in asked[0]
+    assert "week=true" in asked[0]
+    assert [url for url in adapter.sent if url.startswith(STUDENTS)][0].endswith(
+        "?fields=id%2Cforename%2Csurname%2Cdisplayname%2CmainCourse%2CmainCourse.name%2Ccourses"
+    )
+    for word in SECRET_WORDS + ("Max",):
+        assert word not in text
+
+
+def test_a_teacher_account_never_asks_the_student_list():
+    client, adapter = recording_client(listed_answers([{"id": 7, "courses": [{"id": 11}]}], roles=("teacher",)))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Student list: not asked, the roles do not clearly say student or guardian" in lines
+    assert not [url for url in adapter.sent if url.startswith(STUDENTS)]
+
+
+def test_staff_or_unclear_roles_never_ask_the_student_list():
+    for roles in ((), ("ROLE_TEACHER",), ("schooladmin",), ("Lehrkraft",), ("Schulleitung",), ("student", "admin"), ("staff",), ("member",)):
+        client, adapter = recording_client(listed_answers([{"id": 7, "courses": [{"id": 11}]}], roles=roles))
+        lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+        assert "- Student list: not asked, the roles do not clearly say student or guardian" in lines, roles
+        assert not [url for url in adapter.sent if url.startswith(STUDENTS)], roles
+
+
+def test_role_objects_count_only_by_their_name():
+    roles = ({"id": 3, "name": "Kollegium", "parent": None},)
+    client, adapter = recording_client(listed_answers([{"id": 7, "courses": [{"id": 11}]}], roles=roles))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Student list: not asked, the roles do not clearly say student or guardian" in lines
+    assert not [url for url in adapter.sent if url.startswith(STUDENTS)]
+    client, adapter = recording_client(listed_answers([{"id": 7, "courses": [{"id": 11}]}], roles=({"id": 4, "name": "ROLE_STUDENT"},)))
+    reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert [url for url in adapter.sent if url.startswith(STUDENTS)]
+
+
+def test_a_broken_link_on_the_plans_page_does_not_stop_the_report():
+    answers = calendar_answers()
+    answers[PLANS] = html_answer('<html><body><a href="http://[broken/x">x</a><a href="/iserv/plan/show/A">A</a></body></html>')
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Plan links: 1, shapes /iserv/plan/show/<seg>" in lines
+
+
+def test_a_guardian_account_asks_the_student_list_and_counts_its_children():
+    students = [{"id": 21, "courses": [11, 12]}, {"id": 22, "courses": [{"id": 14}]}]
+    client, adapter = recording_client(listed_answers(students, roles=("guardian",)))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Students listed: 2, the account itself among them: no, courses of the first: 2, same as the account's own courses: yes" in lines
+    asked = [url for url in adapter.sent if url.startswith(OWN_PLAN) and "substitutions=true" in url]
+    assert "filterBy=courseSubject.course%3Ain%2811%7C12%29" in asked[0]
+
+
+def test_a_student_list_that_is_no_list_still_shows_its_shape():
+    client, _ = recording_client(listed_answers({"items": [{"id": 7}], "total": 1}))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    head = lines.index(reportcrawl.STUDENT_LIST_HEAD)
+    section = lines[head:lines.index(reportcrawl.PLAN_MODULE_HEAD)]
+    assert "- Students listed: inside an object" in section
+    assert any("items: array len 1" in line for line in section)
+    assert "- Timetable: not asked, the first listed student has no courses" in section
+
+
+def test_a_student_list_without_any_list_says_so():
+    client, _ = recording_client(listed_answers({"total": 1}))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Students listed: answer is not a list" in lines
+
+
+def test_an_empty_student_list_says_so_and_asks_no_timetable_for_it():
+    client, adapter = recording_client(listed_answers([]))
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Students listed: 0, the account itself among them: no, courses of the first: 0, same as the account's own courses: no" in lines
+    assert "- Timetable: not asked, the school app lists no student" in lines
+    assert not [url for url in adapter.sent if url.startswith(OWN_PLAN) and "substitutions=true" in url]
+
+
+def test_unknown_roles_leave_the_student_list_unasked():
+    answers = calendar_answers()
+    answers.pop(ME)
+    client, adapter = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert "- Student list: not asked, the account roles are unknown" in lines
+    assert not [url for url in adapter.sent if url.startswith(STUDENTS)]
+
+
+def test_the_plans_module_shows_only_how_many_plans_it_links_and_their_shapes():
+    answers = calendar_answers()
+    answers[PLANS] = html_answer(
+        '<html><body><a href="/iserv/plan/show/Vertretung%20Sch%C3%BCler">Vertretung</a>'
+        '<a href="/iserv/plan/show/Lehrer">Lehrer</a><a href="/iserv/news">News</a></body></html>'
+    )
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    text = "\n".join(lines)
+    assert "- Plan links: 2, shapes /iserv/plan/show/<seg>" in lines
+    assert "Vertretung" not in text and "Lehrer" not in text
+
+
+def test_a_missing_plans_module_shows_only_its_answer():
+    client, _ = recording_client(calendar_answers())
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    head = lines.index(reportcrawl.PLAN_MODULE_HEAD)
+    assert lines[head + 1].startswith("- Page: /iserv/plan/ -> 404")
+    assert not any(line.startswith("- Plan links") for line in lines)
+
+
+SCREEN = (
+    '<html><title>Vertretungsplan Schüler</title><body><main><div class="info" data-default-height="1080">'
+    '<div class="grid-stack">'
+    '<div class="grid-stack-item" data-gs-x="0"><div class="grid-stack-item-content infodisplay-widget infodisplay-widget-ext">'
+    '<iframe class="infodisplay-widget-ext" src="/iserv/infodisplay/file/3/plan/k9x/Vertretung%20Sch%C3%BCler/subst_001.htm"></iframe></div></div>'
+    '<div class="grid-stack-item"><div class="grid-stack-item-content infodisplay-widget infodisplay-widget-html" data-refresh="60">'
+    '<table><tr><td>Mathe Musterkind</td><td>entfaellt</td></tr></table></div></div>'
+    '<div class="grid-stack-item"><div class="infodisplay-widget" data-url="https://other.example/board/Plan5a"></div></div>'
+    '</div></div></main></body></html>'
+)
+
+
+def test_the_info_screen_widgets_show_type_tags_sources_and_lengths_but_no_text():
+    lines = reportcrawl.widget_lines(SCREEN, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    text = "\n".join(lines)
+    assert lines[0] == "- Widgets: 1 grid(s) with 3 item(s)"
+    assert "iframe /iserv/infodisplay/file/<n>/plan/<seg>/<seg>/<file>.htm" in lines[1]
+    assert "tags iframe 1" in lines[1]
+    assert "infodisplay-widget-ext" in lines[1]
+    assert "tags table 1" in lines[2] and "data-refresh(number)" in lines[2]
+    assert "data-url(<other host>/board/<seg>)" in lines[3]
+    for word in ("Mathe", "Musterkind", "entfaellt", "Vertretung", "Plan5a", "other.example"):
+        assert word not in text
+
+
+def test_widget_classes_and_links_keep_only_known_words_and_survive_broken_addresses():
+    screen = (
+        '<div class="grid-stack"><div class="grid-stack-item infodisplay-widget-mueller-4711">'
+        '<a href="http://[broken/x">x</a><img src="/iserv/infodisplay/picture/3/1/k?name=Mueller">'
+        '<div data-url="' + SCHOOL_ONE_URL + '/iserv/infodisplay/file/3/plan/k/Mueller.htm?user=Mueller" data-x="http://[broken"></div>'
+        '</div></div>'
+    )
+    lines = reportcrawl.widget_lines(screen, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    text = "\n".join(lines)
+    assert "infodisplay-widget-<word>-<n>" in lines[1]
+    assert "a unreadable link" in lines[1]
+    assert "data-x(unreadable link)" in lines[1]
+    assert "<other host>" not in lines[1]
+    for word in ("mueller", "Mueller", "4711", "name=", "user="):
+        assert word not in text
+
+
+def test_an_info_screen_page_in_the_report_carries_its_widgets():
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": html_answer('<nav><a href="/iserv/infodisplay/index">Info</a></nav>'),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/index": html_answer('<html><title>Infobildschirm</title><body><a href="/iserv/infodisplay/show/3">A</a></body></html>'),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/show/3": html_answer(SCREEN),
+    }
+    client, _ = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    display = {"slug": "infodisplay", "segment": "infodisplay", "name": "Infobildschirm", "page": "/iserv/infodisplay/index", "json": None, "guessed_page": True}
+    lines = diagnostics.page_structure(fetcher, display, TODAY, {}, nav_paths=menu_of(fetcher))
+    text = "\n".join(lines)
+    assert "- Widgets: 1 grid(s) with 3 item(s)" in lines
+    assert "Mathe" not in text and "Musterkind" not in text
+
+
+SUBSTITUTIONS = SCHOOL_ONE_URL + "/iserv/dieschulapp/api/1.0/substitutions/"
+BOARD = SCHOOL_ONE_URL + "/iserv/dieschulapp/api/1.0/substitutionBoardMessages/"
+FILES = SCHOOL_ONE_URL + "/iserv/file/-/Files"
+
+
+def test_a_family_account_asks_substitutions_for_today_and_the_next_school_day_and_the_board_messages():
+    answers = listed_answers([{"id": 7, "courses": [{"id": 11}]}])
+    answers[SUBSTITUTIONS] = json_answer([{"id": 1, "date": "2026-01-15", "teacher": {"displayname": "Frau Musterkind"}, "note": "Turnhalle"}])
+    answers[BOARD] = json_answer([{"id": 2, "text": "Elternabend heute"}])
+    client, adapter = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    text = "\n".join(lines)
+    asked = [url for url in adapter.sent if url.startswith(SUBSTITUTIONS)]
+    assert len(asked) == 3
+    assert "date%3Ais%282026-01-15%29" in asked[0]
+    assert "date%3Ais%282026-01-16%29" in asked[1]
+    assert "date%3AgreaterOrEqualThan%282026-01-08%29%2Cdate%3AsmallerOrEqualThan%282026-01-22%29" in asked[2]
+    board = [url for url in adapter.sent if url.startswith(BOARD)][0]
+    assert "validFromDate%3AsmallerOrEqualThan%282026-01-15%29" in board
+    assert lines.count("- Entries: 1") >= 3
+    for word in SECRET_WORDS:
+        assert word not in text
+
+
+def test_substitutions_are_not_asked_for_staff():
+    client, adapter = recording_client(listed_answers([{"id": 7}], roles=("teacher",)))
+    reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    assert not [url for url in adapter.sent if url.startswith((SUBSTITUTIONS, BOARD))]
+
+
+def test_the_next_school_day_after_a_friday_is_monday():
+    assert reportcrawl.next_school_day(date(2026, 1, 16)) == date(2026, 1, 19)
+
+
+def file_page(request):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return json_answer({"data": [{"id": "a", "name": {"text": "Zeugnisse Musterkind.pdf", "link": "/iserv/file/-/Files/Zeugnisse"}, "size": {"order": 10}}]})
+    return html_answer('<table id="files"><thead><tr><th>Name</th></tr></thead><tfoot><tr><td>x</td></tr></tfoot></table>')
+
+
+def test_the_file_list_is_asked_the_way_the_file_page_loads_it_and_shows_only_its_shape():
+    answers = calendar_answers()
+    answers[FILES] = file_page
+    client, adapter = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    head = lines.index(reportcrawl.FILE_LIST_HEAD)
+    section = lines[head:]
+    assert section[1].startswith("- Page: /iserv/file/-/Files +background request -> 200 application/json")
+    assert "- Entries: 1" in section
+    assert any("data[].name.text: string" in line for line in section)
+    text = "\n".join(section)
+    assert "Zeugnisse" not in text and "Musterkind" not in text
+
+
+SUBST_FILE = (
+    '<html><body><table class="mon_list"><tr class="list"><th>Klasse(n)</th><th>Stunde</th><th>Vertreter</th><th>Fach</th></tr>'
+    '<tr class="list odd"><td>5a</td><td>3</td><td>Musterkind</td><td>Mathe</td></tr></table></body></html>'
+)
+WIDGET_SCREEN = (
+    '<div class="grid-stack"><div class="grid-stack-item"><iframe src="/iserv/infodisplay/file/3/plan/k9x/Vertretung/subst_001.htm"></iframe></div>'
+    '<div class="grid-stack-item"><iframe src="https://gym-nord.webuntis.com/WebUntis/monitor?school=gym-nord"></iframe></div>'
+    '<div class="grid-stack-item"><div class="infodisplay-widget"><table><tr><th>Klasse</th><th>Musterkind</th></tr></table></div></div></div>'
+)
+
+
+def test_an_own_widget_source_is_read_once_as_a_shape_and_known_services_are_named():
+    answers = {SCHOOL_ONE_URL + "/iserv/infodisplay/file/3/plan/k9x/Vertretung/subst_001.htm": html_answer(SUBST_FILE)}
+    client, adapter = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = reportcrawl.widget_lines(WIDGET_SCREEN, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    lines += reportcrawl.widget_source_lines(fetcher, WIDGET_SCREEN, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    text = "\n".join(lines)
+    assert "iframe <other host: webuntis.com>" in lines[2]
+    assert any(line.startswith("- Widget source /iserv/infodisplay/file/<n>/plan/<seg>/<seg>/<file>.htm -> 200 text/html") for line in lines)
+    assert any("Table rows" in line and "4 cells x2" in line for line in lines)
+    assert "table headers Klasse" in lines[3]
+    assert not [url for url in adapter.sent if "webuntis" in url]
+    for word in ("Musterkind", "Mathe", "gym-nord", "Vertretung", "5a"):
+        assert word not in text
+
+
+def test_the_first_plan_of_the_plans_module_is_read_as_a_shape():
+    answers = calendar_answers()
+    answers[PLANS] = html_answer('<a href="/iserv/plan/show/Vertretung%20Sch%C3%BCler">V</a>')
+    answers[SCHOOL_ONE_URL + "/iserv/plan/show/Vertretung%20Sch%C3%BCler"] = html_answer(SUBST_FILE)
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    text = "\n".join(lines)
+    assert any(line.startswith("- Page: first plan /iserv/plan/show/<seg> -> 200") for line in lines)
+    assert any("Table rows" in line for line in lines)
+    for word in ("Musterkind", "Mathe", "Vertretung"):
+        assert word not in text
+
+
+def test_a_refused_filter_shows_the_shape_of_the_error_answer():
+    answers = listed_answers([{"id": 7, "courses": [{"id": 11}]}])
+    answers[SUBSTITUTIONS] = (400, {"Content-Type": "application/json"}, json.dumps({"errors": [{"field": "date", "message": "unknown operator"}]}).encode())
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    head = lines.index(reportcrawl.SUBSTITUTIONS_HEAD)
+    section = lines[head:head + 12]
+    assert section[1].startswith("- Page: /iserv/dieschulapp/api/1.0/substitutions/ +date filter today -> 400")
+    assert any("errors[].message: string" in line for line in section)
+
+
+def groups_page(request):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return json_answer({"data": [{"id": "g", "name": '<a href="/iserv/file/-/Groups/Eltern 5a" class="file-link"><img src="/iserv/static/img/folder.png">Eltern 5a</a>', "path": "/iserv/file/-/Groups/Eltern 5a"}]})
+    return html_answer("<table id='files'></table>")
+
+
+def test_the_file_list_asks_files_and_groups_and_shows_html_fields_as_tags_and_link_shapes():
+    answers = calendar_answers()
+    answers[FILES] = file_page
+    answers[SCHOOL_ONE_URL + "/iserv/file/-/Groups"] = groups_page
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    section = lines[lines.index(reportcrawl.FILE_LIST_HEAD):]
+    text = "\n".join(section)
+    assert any(line.startswith("- Page: /iserv/file/-/Groups +background request -> 200") for line in section)
+    assert "- First row field name: html tags a, img; links /iserv/file/-/Groups/<seg> | /<seg>/<seg>/<seg>/<file>.png" in section or any(
+        line.startswith("- First row field name: html tags a, img; links /iserv/file/-/Groups/<seg>") for line in section
+    )
+    assert "- First row field path: path /iserv/file/-/Groups/<seg>" in section
+    assert "Eltern" not in text and "5a" not in text
+
+
+FOLLOW_SCREEN = (
+    '<div class="grid-stack">'
+    '<div class="grid-stack-item"><iframe src="/iserv/infodisplay/file/3/plan/k9x/Vertretung/subst_001.htm?key=Mueller&amp;t=99"></iframe></div>'
+    '<div class="grid-stack-item"><div class="infodisplay-widget" data-src="/iserv/infodisplay/pdf/4/1/k8"></div><img src="/iserv/infodisplay/picture/5/1/k7"></div>'
+    '<div class="grid-stack-item"><iframe src="/iserv/mail"></iframe></div>'
+    '</div>'
+)
+
+
+def follow_answers():
+    first = SCHOOL_ONE_URL + "/iserv/infodisplay/file/3/plan/k9x/Vertretung/subst_001.htm"
+    second = SCHOOL_ONE_URL + "/iserv/infodisplay/file/3/plan/k9x/Vertretung/subst_002.htm"
+    return {
+        first: html_answer('<html><head><meta http-equiv="refresh" content="8; URL=subst_002.htm"></head><body><table><tr><td>a</td></tr></table></body></html>'),
+        second: html_answer(SUBST_FILE),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/pdf/4/1/k8": (200, {"Content-Type": "application/pdf"}, b"%PDF-1.4 Musterkind"),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/picture/5/1/k7": (302, {"Location": "/iserv/infodisplay/picture/5/1/k7/full"}, b""),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/picture/5/1/k7/full": (200, {"Content-Type": "image/png"}, b"png"),
+    }
+
+
+def test_widget_sources_from_frames_data_attributes_and_images_are_read_with_query_names_only_and_followed_once():
+    client, adapter = recording_client(follow_answers())
+    fetcher = diagnostics.ReportFetcher(client)
+    lines = reportcrawl.widget_source_lines(fetcher, FOLLOW_SCREEN, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    text = "\n".join(lines)
+    assert lines[0] == "- Widget sources skipped: 1 (other host, write or sign-in path, or outside the widget areas)"
+    assert any(line.startswith("- Widget source /iserv/infodisplay/file/<n>/plan/<seg>/<seg>/<file>.htm ?<word>&key -> 200") for line in lines)
+    assert any(line.startswith("  - meta refresh to /iserv/infodisplay/file/<n>/plan/<seg>/<seg>/<file>.htm -> 200") for line in lines)
+    assert any("Table rows" in line and "4 cells x2" in line for line in lines)
+    assert any(line.startswith("- Widget source /iserv/infodisplay/pdf/<n>/<n>/<seg> -> 200 application/pdf") for line in lines)
+    assert any(line.startswith("  - redirect to /iserv/infodisplay/picture/<n>/<n>/<seg>/<seg> -> 200 image/png") for line in lines)
+    assert [url for url in adapter.sent if "subst_001.htm" in url][0].endswith("?key=Mueller&t=99")
+    assert not [url for url in adapter.sent if url.endswith("/iserv/mail")]
+    for word in ("Mueller", "99", "Musterkind", "Vertretung"):
+        assert word not in text
+
+
+def test_the_fullscreen_view_of_an_info_screen_is_crawled_too():
+    answers = {
+        SCHOOL_ONE_URL + "/iserv/": html_answer('<nav><a href="/iserv/infodisplay/index">Info</a></nav>'),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/index": html_answer(
+            '<html><title>Infobildschirm</title><body><a href="/iserv/infodisplay/fullscreen/3">A</a></body></html>'
+        ),
+        SCHOOL_ONE_URL + "/iserv/infodisplay/fullscreen/3": html_answer(SCREEN),
+    }
+    client, adapter = recording_client(answers)
+    fetcher = diagnostics.ReportFetcher(client)
+    display = {"slug": "infodisplay", "segment": "infodisplay", "name": "Infobildschirm", "page": "/iserv/infodisplay/index", "json": None, "guessed_page": True}
+    lines = diagnostics.page_structure(fetcher, display, TODAY, {}, nav_paths=menu_of(fetcher))
+    assert SCHOOL_ONE_URL + "/iserv/infodisplay/fullscreen/3" in adapter.sent
+    assert "- Widgets: 1 grid(s) with 3 item(s)" in lines
+
+
+def test_html_fields_show_only_real_tag_names():
+    line = reportcrawl.row_field_lines({"data": [{"name": "<Max Mustermann> report.pdf"}]})
+    assert line == ["- First row field name: html tags <tag>; links -"]
+
+
+def test_file_rows_given_as_arrays_show_each_html_or_path_column_as_a_shape():
+    lines = reportcrawl.row_field_lines({"data": [["<input type=checkbox>", '<a href="/iserv/file/-/Files/Max Muster">Max Muster</a>', "12 KB", "/iserv/file/-/Files/Max"]]})
+    assert lines == [
+        "- First row field column 0: html tags input; links -",
+        "- First row field column 1: html tags a; links /iserv/file/-/Files/<seg>",
+        "- First row field column 3: path /iserv/file/-/Files/<seg>",
+    ]
+
+
+def test_error_answers_show_their_messages_with_unknown_words_masked():
+    answers = listed_answers([{"id": 7, "courses": [{"id": 11}]}])
+    answers[SUBSTITUTIONS] = (400, {"Content-Type": "application/json"}, json.dumps({"errors": [{"message": "Unknown filter for date Musterkind"}]}).encode())
+    client, _ = recording_client(answers)
+    lines = reportcrawl.account_api_lines(diagnostics.ReportFetcher(client), TODAY)
+    texts = [line for line in lines if line.startswith("- Error texts: ")]
+    assert texts and "filter" in texts[0] and "date" in texts[0]
+    assert "Musterkind" not in "\n".join(lines)
+
+
+def test_a_widget_source_that_leaves_for_a_known_service_names_the_service():
+    screen = '<div class="grid-stack"><div class="grid-stack-item"><iframe src="/iserv/infodisplay/file/3/link/k/x.htm"></iframe></div></div>'
+    answers = {SCHOOL_ONE_URL + "/iserv/infodisplay/file/3/link/k/x.htm": (302, {"Location": "https://gym-nord.dsbmobile.de/plan"}, b"")}
+    client, _ = recording_client(answers)
+    lines = reportcrawl.widget_source_lines(diagnostics.ReportFetcher(client), screen, SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    assert "  - redirect to <other host: dsbmobile.de>, not followed" in lines
+    assert "gym-nord" not in "\n".join(lines)
+
+
+def test_a_page_without_a_grid_says_so():
+    lines = reportcrawl.widget_lines("<html><body><div class='panel'>x</div></body></html>", SCHOOL_ONE_URL + "/iserv/infodisplay/show/3", reportcrawl.valueshape.link_shape)
+    assert lines == ["- Widgets: no grid on the page, elements with a widget class: 0"]
 
 
 def test_a_calendar_appointments_source_shows_its_answer_shape():

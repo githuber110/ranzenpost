@@ -18,8 +18,8 @@ SCRIPT_REDIRECT = re.compile(
 )
 ModuleRule = namedtuple(
     "ModuleRule",
-    "routes details depth free_after first_free never max_ids forms scripts apis join rows media frames",
-    defaults=(frozenset(), False, 1, frozenset(), False, frozenset(), None, frozenset(), 0, False, False, False, False, False),
+    "routes details depth free_after first_free never max_ids forms scripts apis join rows media frames widgets",
+    defaults=(frozenset(), False, 1, frozenset(), False, frozenset(), None, frozenset(), 0, False, False, False, False, False, False),
 )
 
 
@@ -74,7 +74,7 @@ RULES = {
         routes=_words("room rooms overview index list"), never=_words("join start enter guest invite end leave meeting create bbb"),
         scripts=16, apis=True, join=True, rows=True,
     ),
-    "infodisplay": ModuleRule(routes=_words("show view display"), details=True, media=True),
+    "infodisplay": ModuleRule(routes=_words("show view display fullscreen"), details=True, media=True, widgets=True),
     "methodenguide": ModuleRule(media=True, frames=True),
     "althaus-fm": ModuleRule(
         routes=_words(DETAIL_ROUTES + " request participate"), details=True, depth=2,
@@ -277,6 +277,209 @@ def row_text_lines(html):
     return lines
 
 
+GRID_CLASS = "grid-stack"
+GRID_ITEM_CLASS = "grid-stack-item"
+WIDGET_MARK = "widget"
+WIDGET_TAGS = ("iframe", "frame", "object", "embed", "img", "video", "canvas", "table", "svg")
+WIDGET_LINK_ATTRIBUTES = ("src", "data", "href")
+MAX_WIDGETS = 12
+MAX_WIDGET_SOURCES = 4
+MAX_WIDGET_KEYS = 8
+WIDGET_CLASS_WORDS = frozenset(
+    "infodisplay grid stack item content widget ext external html pdf file local clock gallery picture image calendar news text frame iframe".split()
+)
+CLASS_PART = re.compile(r"([-_])")
+FRAME_LIKE_TAGS = ("iframe", "frame", "object", "embed")
+KNOWN_SERVICES = (
+    "webuntis.com", "untis.at", "untis.de", "dsbmobile.de", "heinekingmedia.de", "stundenplan24.de", "iserv.de",
+    "google.com", "office.com", "office365.com", "sharepoint.com", "microsoft.com", "youtube.com", "padlet.com",
+)
+MAX_WIDGET_HEADERS = 8
+WIDGET_PATH_WORDS = frozenset("iserv infodisplay public file files groups plan show raw pdf picture dieschulapp app-iserv -".split())
+
+
+def widget_path_shape(value):
+    parts = []
+    for part in path_only(value).split("/"):
+        if not part or part.casefold() in WIDGET_PATH_WORDS:
+            parts.append(part)
+        elif part.isdigit():
+            parts.append("<n>")
+        else:
+            extension = valueshape.FILE_SEGMENT.match(part.lower())
+            parts.append("<file>." + extension.group(1) if extension and extension.group(1) in valueshape.FILE_EXTENSIONS else "<seg>")
+    return "/".join(parts)
+
+
+def _classes(node):
+    value = node.get("class") or []
+    return value if isinstance(value, list) else str(value).split()
+
+
+def _class_part(part):
+    if part in ("-", "_", ""):
+        return part
+    if part.isdigit():
+        return "<n>"
+    return part if part.casefold() in WIDGET_CLASS_WORDS else "<word>"
+
+
+def _widget_class(name):
+    return "".join(_class_part(part) for part in CLASS_PART.split(name))
+
+
+def _split(value, page_url=""):
+    try:
+        return urlsplit(urljoin(page_url or "", value))
+    except ValueError:
+        return None
+
+
+def _widget_classes(item):
+    found = []
+    for node in [item] + item.find_all(True):
+        for name in _classes(node):
+            shown = _widget_class(name)
+            if WIDGET_MARK in name.casefold() and shown not in found:
+                found.append(shown)
+    return found
+
+
+def _value_kind(value, link_shape, page_url=""):
+    text = str(value or "").strip()
+    if text.startswith("/") or text.startswith(("http://", "https://")):
+        target = _split(text, page_url)
+        if target is None:
+            return "unreadable link"
+        if target.netloc and target.netloc.lower() != _host(page_url):
+            return _other_host(target) + valueshape.link_shape(target.path)
+        return widget_path_shape(target.path)
+    if text.isdigit():
+        return "number"
+    return "text %d" % len(text)
+
+
+def widget_other_host(target):
+    return _other_host(target)
+
+
+def _other_host(target):
+    host = (target.hostname or "").lower()
+    for service in KNOWN_SERVICES:
+        if host == service or host.endswith("." + service):
+            return "<other host: %s>" % service
+    return "<other host>"
+
+
+def _host(page_url):
+    target = _split(page_url or "")
+    return target.netloc.lower() if target is not None else ""
+
+
+def _widget_keys(item, link_shape, page_url=""):
+    keys = []
+    for node in [item] + item.find_all(True):
+        for name, value in node.attrs.items():
+            if not name.startswith("data-") or name.startswith("data-gs-"):
+                continue
+            entry = "%s(%s)" % (code_text(placeholders(name)), _value_kind(value, link_shape, page_url))
+            if entry not in keys:
+                keys.append(entry)
+    return keys
+
+
+def _widget_sources(item, page_url, link_shape):
+    host = _host(page_url)
+    shown = []
+    for node in item.find_all(WIDGET_TAGS + ("a",)):
+        for attribute in WIDGET_LINK_ATTRIBUTES:
+            value = str(node.get(attribute) or "").strip()
+            if not value or value.startswith(("data:", "blob:", "javascript:", "#")):
+                continue
+            target = _split(value, page_url)
+            if target is None:
+                entry = "%s unreadable link" % node.name
+            elif target.netloc and target.netloc.lower() != host:
+                entry = "%s %s%s" % (node.name, _other_host(target), valueshape.link_shape(target.path))
+            else:
+                entry = "%s %s" % (node.name, widget_path_shape(target.path))
+            if entry not in shown:
+                shown.append(entry)
+    return shown
+
+
+def _widget_line(number, item, page_url, link_shape):
+    tags = []
+    for name in WIDGET_TAGS:
+        count = len(item.find_all(name))
+        if count:
+            tags.append("%s %d" % (name, count))
+    text = " ".join(item.get_text(" ").split())
+    headers = []
+    for cell in item.find_all("th"):
+        shown = visible_text(" ".join(cell.get_text(" ").split()), known_header_word)[:24]
+        if shown and shown not in headers:
+            headers.append(shown)
+    parts = [
+        "classes " + (" ".join(_widget_classes(item)) or "-"),
+        "tags " + (", ".join(tags) or "-"),
+        "sources " + (" | ".join(_widget_sources(item, page_url, link_shape)[:MAX_WIDGET_SOURCES]) or "-"),
+        "data " + (", ".join(_widget_keys(item, link_shape, page_url)[:MAX_WIDGET_KEYS]) or "-"),
+        "table headers " + (" | ".join(headers[:MAX_WIDGET_HEADERS]) or "-"),
+        "text %d chars" % len(text),
+    ]
+    return "- Widget %d: %s" % (number, "; ".join(parts))
+
+
+def widget_host(page_url):
+    return _host(page_url)
+
+
+def widget_target(value, page_url):
+    return _split(str(value or "").strip(), page_url) if str(value or "").strip() else None
+
+
+def _widget_values(item):
+    for node in [item] + item.find_all(True):
+        if node.name in FRAME_LIKE_TAGS:
+            yield node.get("src") or node.get("data")
+        elif node.name == "img":
+            yield node.get("src")
+        for name, value in node.attrs.items():
+            if name.startswith("data-") and not name.startswith("data-gs-") and isinstance(value, str) and value.strip().startswith(("/", "http://", "https://")):
+                yield value
+
+
+def widget_frame_paths(html, page_url):
+    soup = BeautifulSoup(html or "", "html.parser")
+    targets = []
+    seen = set()
+    for item in [node for node in soup.find_all(True) if GRID_ITEM_CLASS in _classes(node)]:
+        for value in _widget_values(item):
+            target = widget_target(value, page_url)
+            if target is None or target.scheme not in ("http", "https"):
+                continue
+            key = (target.netloc.lower(), target.path, target.query)
+            if key not in seen:
+                seen.add(key)
+                targets.append(target)
+    return targets
+
+
+def widget_lines(html, page_url, link_shape):
+    soup = BeautifulSoup(html or "", "html.parser")
+    grids = [node for node in soup.find_all(True) if GRID_CLASS in _classes(node)]
+    if not grids:
+        marked = [node for node in soup.find_all(True) if any(WIDGET_MARK in name.casefold() for name in _classes(node))]
+        return ["- Widgets: no grid on the page, elements with a widget class: %d" % len(marked)]
+    items = [node for node in soup.find_all(True) if GRID_ITEM_CLASS in _classes(node)]
+    lines = ["- Widgets: %d grid(s) with %d item(s)" % (len(grids), len(items))]
+    lines.extend(_widget_line(number, item, page_url, link_shape) for number, item in enumerate(items[:MAX_WIDGETS], 1))
+    if len(items) > MAX_WIDGETS:
+        lines.append("- Widgets skipped: %d beyond the limit of %d" % (len(items) - MAX_WIDGETS, MAX_WIDGETS))
+    return lines
+
+
 def _source_value(node):
     return str(node.get("src") or node.get("data") or "").strip()
 
@@ -289,8 +492,8 @@ def embedded_sources(html, page_url, link_shape):
         value = _source_value(node)
         if not value or value.startswith(("data:", "blob:", "javascript:")):
             continue
-        target = urlsplit(urljoin(page_url or "", value))
-        if target.scheme not in ("http", "https"):
+        target = _split(value, page_url)
+        if target is None or target.scheme not in ("http", "https"):
             continue
         if target.netloc.lower() == page.netloc.lower():
             entry = "%s %s" % (node.name, link_shape(target.path))
@@ -308,8 +511,9 @@ def embedded_sources(html, page_url, link_shape):
 def _frame_targets(html, page_url):
     for node in BeautifulSoup(html or "", "html.parser").find_all(("iframe", "frame")):
         value = _source_value(node)
-        if value:
-            yield urlsplit(urljoin(page_url or "", value))
+        target = _split(value, page_url) if value else None
+        if target is not None:
+            yield target
 
 
 def first_foreign_frame(html, page_url):
